@@ -10,8 +10,9 @@ Bu dosya her oturumda geçerli. Kurallar eklendikçe güncellenir.
    serbest. Bu yüzden her geliştirme adımında hangi aracın (ve versiyonunun)
    hangi iş için kullanıldığı kayıt altına alınır. İki kayıt yeri:
    (a) README.md modül tablosu ("AI aracı" sütunu): dosya bazında;
-   (b) `docs/AI_LOG.md`: **her prompt için bir satır** (tarih, araç + sürüm,
-   prompt özeti, üretilen, commit). Her commit'ten önce AI_LOG'a satır eklenir.
+   (b) `docs/AI_LOG.md`: **her geliştirme adımı için bir satır**, sadece üç
+   sütun: araç + sürüm, tarih, yapılan düzeltme. Sohbet, yönlendirme veya
+   iptal edilen denemeler yazılmaz. Her commit'ten önce satır eklenir.
    Bu oturumdaki model: claude-fable-5-1 (Cowork).
 3. **Tek README, artımlı güncelleme.** Repoda tek bir `README.md` olur
    (docs/ altındaki PLAN, DECISIONS ve AI_LOG ayrı amaçlı yardımcı dosyalardır). Her

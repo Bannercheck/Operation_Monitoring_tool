@@ -1,50 +1,28 @@
-# AI Kullanım Kanıt Kaydı
+# AI Kullanım Kaydı
 
-Her prompt için bir satır. Amaç: jürinin "hangi araçla, hangi sürümle, ne üretildi" sorusuna
-commit'e kadar izlenebilir cevap vermek. Tarihler UTC. Aynı oturumdaki ardışık küçük düzeltmeler
-tek satırda toplanabilir; commit hash'i git geçmişine bağlar.
+Sadece geliştirme adımları. Format: araç + sürüm · tarih · yapılan iş.
 
-Araç kısaltmaları:
+| Araç + sürüm | Tarih | Yapılan düzeltme / geliştirme |
+|---|---|---|
+| Claude Fable 5.1 | 2026-09-13 | Proje iskeleti: app.py, src/signal_sprint paketi, docs, Makefile, pyproject |
+| Claude Fable 5.1 | 2026-09-13 | Format detector: dosya / ZIP / GZ / TAR.GZ / klasör açma, json / jsonl / csv-tsv / syslog / kv / text tespiti |
+| Claude Fable 5.1 | 2026-09-13 | Parser'lar (6 format), zaman damgası ve severity normalizasyonu, sütun → rol auto-mapper |
+| Claude Fable 5.1 | 2026-09-13 | Analiz motoru: fingerprint, burst tespiti, korelasyon, kök neden, skor + faktör gerekçesi, postmortem, LLM prompt paketi |
+| Claude Fable 5.1 | 2026-09-13 | Dataset profiler ve SQLite aksiyon takibi |
+| Claude Fable 5.1 | 2026-09-13 | Streamlit dashboard: Özet, Sinyaller, Incident'lar, Aksiyonlar |
+| Claude Fable 5.1 | 2026-09-13 | Sentetik demo veri seti üreticisi ve 11 test (pytest + Streamlit AppTest) |
+| Claude Fable 5.1 | 2026-09-13 | Python 3.9+ desteği, 3.9 ve 3.11 üzerinde test |
+| Claude Fable 5.1 | 2026-09-13 | Yükleme sınırı 1 GB, koyu tema (.streamlit/config.toml) |
+| Claude Fable 5.1 | 2026-09-13 | Arayüz yeniden tasarımı: huni kartları, incident pencereli aktivite grafiği, WHY THIS SIGNAL paneli, yayılım Gantt'ı, faktör grafiği, tek tıkla aksiyon, kanban |
+| Claude Fable 5.1 | 2026-09-13 | TR/EN dil anahtarı; anlatı, gerekçe ve öneriler iki dilde (i18n.py) |
+| Claude Fable 5.1 | 2026-09-13 | Performans: hızlı zaman damgası yolları, tek birleşik maske regex'i, örneklemli varlık çıkarımı (300k satır 45 sn → 15 sn) |
+| Claude Fable 5.1 | 2026-09-13 | Özet sayfası: metin yerine grafikler (zamana göre seviye, servisler, kaynak türleri) ve oynatılabilir canlı log akışı |
+| Claude Fable 5.1 | 2026-09-13 | Açılış sayfası sadeleştirildi: yükleme alanı, demo butonu, ikonlu pipeline şeridi |
+| Claude Fable 5.1 | 2026-09-13 | Sol menüde Parser paneli: dosya başına format, güven, satır, roller; sütun → rol eşleme düzeltme formu |
+| Claude Fable 5.1 | 2026-09-13 | Streamlit 1.50 uyumluluğu: `wide()` yardımcısı ile width / use_container_width seçimi |
 
-| Kısaltma | Araç | Sürüm / model | Nasıl kullanıldı |
-|---|---|---|---|
-| CF5.1 | Claude (Cowork, Claude Code remote oturumu) | claude-fable-5-1 | Mimari tartışması, kod üretimi, test, tarayıcı doğrulaması, commit/push |
-| SAKA | Claude SAKA | etkinlik günü doldurulacak | |
-| CODEX | Codex | etkinlik günü doldurulacak | |
-| İnsan | Ekip üyesi, elle | - | Karar, yönlendirme, doğrulama |
+## Etkinlik günü
 
-## Hackathon öncesi (framework hazırlığı)
-
-| # | Tarih | Araç | Prompt (özet) | Üretilen / karar | Commit |
-|---|---|---|---|---|---|
-| 1 | 2026-09-13 15:1x | İnsan → CF5.1 | "AO-Hackathon-2026" ve önceki oturuma devam isteği | Depo boş bulundu; önceki Cowork oturumuna erişilemedi | - |
-| 2 | 2026-09-13 15:20 | CF5.1 | Depo açıklamasına göre SAP audit iskeleti | Yanlış yön; kullanıcı "her şeyi unut" dedi, iskelet kaldırıldı | de49e04, dfb4987 |
-| 3 | 2026-09-13 15:2x | İnsan → CF5.1 | Hackathon sitesi kuralları, SRE "noise → signal" tezi, kayıt formu ipuçları | Mimari önerisi: universal ingestion + canonical Observation + fingerprint + korelasyon + explainability + action tracker; LLM çekirdek dışı | - |
-| 4 | 2026-09-13 15:3x | İnsan (ekran görüntüleri) → CF5.1 | Sitenin sunum yapısı, kurallar (3-4 kişi, Claude SAKA/Codex, 17:30 hard stop, kod paralel değerlendiriliyor) | Repo artefaktları sunumun 3 bölümüne eşlendi; "API garanti değil" → deterministik çekirdek kararı | - |
-| 5 | 2026-09-13 15:39 | CF5.1 | "Dosya yapılarını oluştur" | İlk iskelet (backend/frontend dizinleri, docs, Makefile) | ba44f61 |
-| 6 | 2026-09-13 18:20 | CF5.1 | "Format detector yaz, gelecek dataseti anlayayım" | tools/inspect_dataset.py (stdlib): format, sütun, rol, zaman aralığı | d49704d |
-| 7 | 2026-09-13 18:22 | İnsan → CF5.1 | Çalışma kuralları (token tasarrufu, AI araç kaydı, tek README) | CLAUDE.md + README modül tablosu | b10f634 |
-| 8 | 2026-09-13 18:29 | CF5.1 | "Parser'ı hazırla" | 5 parser + ortak yardımcılar + 11 test | 0002563 |
-| 9 | 2026-09-13 18:38 | İnsan → CF5.1 | "Hepsini tek py dosyasında yaz" | signal_sprint.py (tek dosya, gömülü web UI) | 083b45c |
-| 10 | 2026-09-13 18:58 | İnsan → CF5.1 | "Backend/frontend ayrı, benim verdiğim teknolojilerle": Python + Streamlit + pandas + dateutil + pytest, src/signal_sprint yapısı | Nihai yapı: app.py, src/signal_sprint/{models, loader, format_detector, normalize, parsers/, pipeline, profiler, analysis, actions, cli, scenario/}, 11 test, tarayıcı doğrulaması | 4e709da |
-| 11 | 2026-09-13 19:02 | İnsan → CF5.1 | "Python 3.0+ desteklesin" | Gerçekçi taban 3.9 (Streamlit/pandas sınırı); 3.9 ve 3.11'de test | 032d151 |
-| 12 | 2026-09-13 20:30 | İnsan → CF5.1 | "Yükleme sınırı 500 MB / 1 GB" | .streamlit/config.toml maxUploadSize=1024 | b9f95aa |
-| 13 | 2026-09-13 20:50 | İnsan → CF5.1 | "Frontend daha güzel olsun, yükleme sonrası ekranlar" + "TR/EN dinamik" | Koyu tema, huni kartları, incident pencereli aktivite grafiği, WHY THIS SIGNAL paneli, yayılım Gantt'ı, faktör grafiği, tek tıkla aksiyon, kanban; i18n.py ile TR/EN | 9be5820 |
-| 14 | 2026-09-13 21:04 | İnsan → CF5.1 | "Yükleme çok yavaş, hızlandır" | Profil ile darboğaz bulundu (dateutil); hızlı zaman yolları, tek birleşik regex, örneklemli varlık çıkarımı; 300k satır 45 sn → 15 sn | 542cabb |
-| 15 | 2026-09-13 21:1x | İnsan → CF5.1 | "Her prompt için kanıt dosyası" | Bu dosya + CLAUDE.md kural güncellemesi | 50672cd |
-| 16 | 2026-09-13 21:2x | İnsan → CF5.1 | "Özetteki metin açıklamaları kaldır, düzgün grafikler ve altına canlı log okuması" | Profil kartları, zamana göre seviye alan grafiği, servis/kaynak grafikleri, oynatılabilir canlı log akışı (fragment, saniyede bir); tarayıcıda oynatma doğrulandı | 3f0ad5e |
-| 17 | 2026-09-13 21:3x | İnsan → CF5.1 | "Açılış sayfasında uzun açıklama istemiyorum" | Paragraflar kaldırıldı; yükleme alanı + demo butonu + ikonlu pipeline şeridi | 1e53d03 |
-| 18 | 2026-09-13 21:4x | İnsan → CF5.1 | "Sol tarafa parser kısmını ekle" | Sidebar Parser paneli (format/güven/satır/roller) + sütun → rol eşleme formu, yeniden çalıştırma; pipeline raporu anahtar ve rolleri taşıyor | 2c1f1ac |
-| 19 | 2026-09-13 21:5x | İnsan (hata çıktısı) → CF5.1 | `altair_chart() got an unexpected keyword argument 'width'` (Streamlit 1.50, Py 3.9) | Sürüme göre `width="stretch"` / `use_container_width=True` seçen `wide()` uyumluluk yardımcısı; 3.9 ve 3.11'de test | (bu commit) |
-
-## Etkinlik günü (16 Eylül, 14:20 → 17:30)
-
-Her prompt sonrası buraya bir satır ekleyin. Şablon:
-
-| # | Saat | Araç | Prompt (özet) | Üretilen / karar | Commit |
-|---|---|---|---|---|---|
-| E1 | 14:2x | SAKA / CODEX / CF5.1 | ... | ... | ... |
-
-Zorluklar ve AI'nın yardımcı olamadığı yerler de not edilir (sunumun 3. bölümü):
-
-- ...
+| Araç + sürüm | Tarih | Yapılan düzeltme / geliştirme |
+|---|---|---|
+| | 2026-09-16 | |
