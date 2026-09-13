@@ -34,7 +34,8 @@ Araç kısaltmaları:
 | 15 | 2026-09-13 21:1x | İnsan → CF5.1 | "Her prompt için kanıt dosyası" | Bu dosya + CLAUDE.md kural güncellemesi | 50672cd |
 | 16 | 2026-09-13 21:2x | İnsan → CF5.1 | "Özetteki metin açıklamaları kaldır, düzgün grafikler ve altına canlı log okuması" | Profil kartları, zamana göre seviye alan grafiği, servis/kaynak grafikleri, oynatılabilir canlı log akışı (fragment, saniyede bir); tarayıcıda oynatma doğrulandı | 3f0ad5e |
 | 17 | 2026-09-13 21:3x | İnsan → CF5.1 | "Açılış sayfasında uzun açıklama istemiyorum" | Paragraflar kaldırıldı; yükleme alanı + demo butonu + ikonlu pipeline şeridi | 1e53d03 |
-| 18 | 2026-09-13 21:4x | İnsan → CF5.1 | "Sol tarafa parser kısmını ekle" | Sidebar Parser paneli (format/güven/satır/roller) + sütun → rol eşleme formu, yeniden çalıştırma; pipeline raporu anahtar ve rolleri taşıyor | (bu commit) |
+| 18 | 2026-09-13 21:4x | İnsan → CF5.1 | "Sol tarafa parser kısmını ekle" | Sidebar Parser paneli (format/güven/satır/roller) + sütun → rol eşleme formu, yeniden çalıştırma; pipeline raporu anahtar ve rolleri taşıyor | 2c1f1ac |
+| 19 | 2026-09-13 21:5x | İnsan (hata çıktısı) → CF5.1 | `altair_chart() got an unexpected keyword argument 'width'` (Streamlit 1.50, Py 3.9) | Sürüme göre `width="stretch"` / `use_container_width=True` seçen `wide()` uyumluluk yardımcısı; 3.9 ve 3.11'de test | (bu commit) |
 
 ## Etkinlik günü (16 Eylül, 14:20 → 17:30)
 
