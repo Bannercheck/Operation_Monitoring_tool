@@ -28,7 +28,8 @@ burada tutulur ve sadece ilgili satır güncellenir. Araç kısaltması:
 | `backend/app/ingest/loader.py` | Upload'ı (dosya/ZIP/GZ) metin dosyalarına açar | CF5.1 | Recursive `iter_files(name, bytes)` |
 | `backend/app/ingest/detect.py` | Format tespiti | CF5.1 | Her parser'ın `sniff()` skorunu karşılaştırır |
 | `backend/app/ingest/schema.py` | Sütun -> rol (timestamp/severity/service/host/message) tahmini | CF5.1 | İsim eşleme heuristiği, UI'da onaylanır |
-| `backend/app/ingest/parsers/` | jsonl, csv, syslog, kv, plain parser'ları | CF5.1 | `Parser` arayüzü: `sniff()` ve `parse()`. Gövdeler TODO |
+| `backend/app/ingest/common.py` | Parser'ların ortak yardımcıları: zaman damgası ayrıştırma, severity normalizasyonu, sütun -> rol eşleme | CF5.1 | `parse_timestamp` 15+ formatı ve epoch s/ms'yi tanır, her zaman tz-aware UTC döner. `normalize_severity` warn/err/P1/syslog 0-7 gibi değerleri DEBUG/INFO/WARN/ERROR/CRITICAL'e indirger. `resolve_mapping` isim ipuçlarıyla rol seçer, açık mapping öncelikli |
+| `backend/app/ingest/parsers/` | jsonl (JSONL, JSON dizisi, sarmalayan nesne), csv/tsv (ayraç tespiti), syslog (RFC3164 + PRI), kv (logfmt), plain (öncü zaman + seviye + logger) | CF5.1 | Her parser `sniff()` ile 0-1 güven verir, `parse()` kayıt üretir. `base.py` kayıtları Observation'a çevirir: rolleri ilk 50 kaydın anahtar birleşiminden çözer, zamanı olmayan satıra önceki zamanı verir, rol dışı alanları `attributes`'a koyar |
 | `backend/app/ingest/pipeline.py` | Upload bytes -> Observation listesi + dosya raporu | CF5.1 | loader -> detect -> parser, zamana göre sıralar |
 | `backend/app/reduce/` | Drain şablon madenciliği, fingerprint, burst tespiti | CF5.1 | TODO |
 | `backend/app/correlate/` | Ko-oküran graf ve kök neden seçimi | CF5.1 | TODO |
@@ -36,7 +37,7 @@ burada tutulur ve sadece ilgili satır güncellenir. Araç kısaltması:
 | `backend/app/explain/` | Rationale, şablon anlatı, postmortem export | CF5.1 | TODO |
 | `backend/app/actions/tracker.py` | SQLite aksiyon takibi | CF5.1 | TODO |
 | `backend/app/api/main.py` | FastAPI uçları | CF5.1 | Şimdilik sadece `/api/health` |
-| `backend/tests/` | pytest | CF5.1 | `make test` |
+| `backend/tests/` | pytest: format tespiti, 5 parser, açık mapping, ZIP pipeline, yardımcılar (11 test) | CF5.1 | `make test` |
 | `frontend/` | React + Vite dashboard: Upload, Overview, Signals, IncidentDetail, Actions | CF5.1 | Router ile 5 sayfa, `src/api/client.js` backend istemcisi, `/api` proxy |
 | `samples/` | Demo veri setleri | CF5.1 | TODO |
 | `docs/PLAN.md`, `DECISIONS.md`, `DEMO_SCRIPT.md` | Hedef listesi, tasarım kararları, 7 dk demo akışı | CF5.1 | Sunumun üç bölümüne karşılık gelir |
