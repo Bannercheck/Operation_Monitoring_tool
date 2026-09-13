@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import html
 import os
+import time
 from pathlib import Path
 
 import altair as alt
@@ -60,10 +61,12 @@ def store() -> ActionStore:
 
 
 def load(name: str, data: bytes | None = None, path: str | None = None) -> None:
+    t0 = time.perf_counter()
     obs, report = ingest_bytes(name, data) if data is not None else ingest_path(path)
     st.session_state["analysis"] = Analysis(obs, report)
     st.session_state["profile"] = profile(obs, report)
     st.session_state["dataset"] = name
+    st.session_state["elapsed"] = time.perf_counter() - t0
 
 
 def minute_chart(df: pd.DataFrame, incidents=None, height=200):
@@ -91,13 +94,13 @@ with st.sidebar:
         with st.spinner(t("working")):
             load(up.name, data=up.getvalue())
     demo = Path(__file__).with_name("samples") / "demo_mixed.zip"
-    if demo.exists() and st.button(t("load_demo"), use_container_width=True):
+    if demo.exists() and st.button(t("load_demo"), width="stretch"):
         with st.spinner(t("working")):
             load(demo.name, path=str(demo))
     if "analysis" in st.session_state:
         f = st.session_state["analysis"].funnel()
         st.divider()
-        st.markdown(f"**{st.session_state['dataset']}**")
+        st.markdown(f"**{st.session_state['dataset']}** <span class='muted'>· {st.session_state.get('elapsed', 0):.1f}s</span>", unsafe_allow_html=True)
         st.markdown(f"<div class='mono'>{f['raw_events']:,} {t('raw_events')}<br>↓ {f['fingerprints']} {t('fingerprints')}<br>↓ {f['meaningful_signals']} {t('meaningful')}"
                     f"<br>↓ {f['incidents']} {t('incidents')}<br>↓ {len(store().list())} {t('actions')}</div>", unsafe_allow_html=True)
         st.divider()
@@ -131,7 +134,7 @@ with tab_over:
     with left:
         st.markdown(f"#### {t('activity')}")
         st.caption(t("activity_cap"))
-        st.altair_chart(minute_chart(prof["per_minute"], a.incidents), use_container_width=True)
+        st.altair_chart(minute_chart(prof["per_minute"], a.incidents), width="stretch")
     with right:
         st.markdown(f"#### {t('found')}")
         found_html = esc(profile_text(prof, lang)).replace("\n", "<br>")
@@ -140,7 +143,7 @@ with tab_over:
         st.altair_chart(alt.Chart(sev).mark_bar().encode(
             x=alt.X("count:Q", title=None), y=alt.Y("severity:N", sort=list(SEV_RANK), title=None),
             color=alt.Color("severity:N", scale=alt.Scale(domain=list(SEV_COLORS), range=list(SEV_COLORS.values())), legend=None),
-            tooltip=["severity", "count"]).properties(height=130), use_container_width=True)
+            tooltip=["severity", "count"]).properties(height=130), width="stretch")
     if a.incidents:
         st.markdown(f"#### {t('top_incidents')}")
         for inc in a.incidents[:3]:
@@ -152,9 +155,9 @@ with tab_over:
     else:
         st.info(t("no_incidents"))
     with st.expander(t("files_rel")):
-        st.dataframe(pd.DataFrame(prof["files"]), hide_index=True, use_container_width=True)
+        st.dataframe(pd.DataFrame(prof["files"]), hide_index=True, width="stretch")
         if prof["relations"]:
-            st.dataframe(pd.DataFrame(prof["relations"]), hide_index=True, use_container_width=True)
+            st.dataframe(pd.DataFrame(prof["relations"]), hide_index=True, width="stretch")
 
 # ------------------------------------------------------------------ signals
 with tab_sig:
@@ -169,7 +172,7 @@ with tab_sig:
     st.dataframe(pd.DataFrame([{"id": s.id, "severity": s.severity, "template": s.template, "count": s.count, "burst": s.burst_score,
                                 "peak/min": s.peak_rate, "base/min": s.baseline_rate, "services": ", ".join(s.services),
                                 "onset": s.onset.strftime("%H:%M:%S")} for s in rows]),
-                 hide_index=True, use_container_width=True, height=min(420, 38 + 35 * max(len(rows), 1)),
+                 hide_index=True, width="stretch", height=min(420, 38 + 35 * max(len(rows), 1)),
                  column_config={"burst": st.column_config.ProgressColumn(min_value=0, max_value=1, format="%.2f"),
                                 "count": st.column_config.NumberColumn(format="%d")})
     st.markdown(f"#### {t('why_signal')}")
@@ -185,11 +188,11 @@ with tab_sig:
                         f'<b>{t("burst").capitalize()}</b><br>{t("burst_detail", peak=f"{s.peak_rate:.0f}", base=f"{s.baseline_rate:.0f}", score=s.burst_score)}</div>', unsafe_allow_html=True)
             per_min = pd.DataFrame({"timestamp": [o.timestamp for o in s.observations]})
             per_min = per_min.set_index(pd.to_datetime(per_min["timestamp"], utc=True)).resample("1min").size().rename("events").reset_index()
-            st.altair_chart(minute_chart(per_min, height=120), use_container_width=True)
+            st.altair_chart(minute_chart(per_min, height=120), width="stretch")
         with r:
             st.markdown(f"**{t('evidence_first', n=min(12, s.count), total=s.count)}**")
             st.dataframe(pd.DataFrame([{"ref": o.ref, "time": o.timestamp.strftime("%H:%M:%S"), "sev": o.severity, "service": o.service, "message": o.message}
-                                       for o in s.observations[:12]]), hide_index=True, use_container_width=True, height=460)
+                                       for o in s.observations[:12]]), hide_index=True, width="stretch", height=460)
 
 # ------------------------------------------------------------------ incidents
 with tab_inc:
@@ -212,14 +215,14 @@ with tab_inc:
             y=alt.Y("signal:N", sort=list(rowsdf.signal), title=None),
             color=alt.Color("severity:N", scale=alt.Scale(domain=list(SEV_COLORS), range=list(SEV_COLORS.values())), legend=None),
             tooltip=["signal", "severity", "count", "role"]).properties(height=30 * len(rowsdf) + 20)
-        st.altair_chart(gantt.configure_view(strokeWidth=0), use_container_width=True)
+        st.altair_chart(gantt.configure_view(strokeWidth=0), width="stretch")
         l, r = st.columns([2, 3])
         with l:
             st.markdown(f"#### {t('why_score')}")
             fac = pd.DataFrame([{"factor": t("f_" + x.name), "contribution": x.contribution, "detail": factor_value(x), "weight": x.weight} for x in inc.factors])
             st.altair_chart(alt.Chart(fac).mark_bar(color="#3ddc84").encode(
                 x=alt.X("contribution:Q", scale=alt.Scale(domain=[0, max(0.4, fac.contribution.max())]), title=None),
-                y=alt.Y("factor:N", sort=None, title=None), tooltip=["factor", "detail", "weight", "contribution"]).properties(height=140), use_container_width=True)
+                y=alt.Y("factor:N", sort=None, title=None), tooltip=["factor", "detail", "weight", "contribution"]).properties(height=140), width="stretch")
             for x in inc.factors:
                 st.markdown(f'<span class="muted">{t("f_" + x.name)}</span> · {factor_value(x)} × w{x.weight} = <b>{x.contribution}</b>', unsafe_allow_html=True)
             st.markdown(f"#### {t('narrative')}")
@@ -237,14 +240,14 @@ with tab_inc:
                     st.markdown(f'<span class="mono">{e["a"]} ↔ {e["b"]}</span> <span class="muted">{link_text(e)}</span>', unsafe_allow_html=True)
             st.markdown(f"#### {t('evidence')}")
             ref = st.selectbox(t("open_raw"), inc.evidence, key=f"ev-{iid}", label_visibility="collapsed")
-            o = next(o for o in a.observations if o.ref == ref)
+            o = a.obs_by_ref[ref]
             st.code(f"{o.ref}   {o.timestamp.isoformat()}   {o.severity}   {o.service} {o.host}\n{o.message}\n{o.attributes or ''}", language=None)
         st.markdown(f"#### {t('recommended')}")
         rc = st.columns(len(inc.recommendations))
         for c, rec in zip(rc, inc.recommendations):
             with c:
                 st.markdown(f'<div class="card">{recommendation_text(rec)}</div>', unsafe_allow_html=True)
-                if st.button(t("create_action"), key=f"rec-{iid}-{rec[:20]}", use_container_width=True):
+                if st.button(t("create_action"), key=f"rec-{iid}-{rec[:20]}", width="stretch"):
                     store().create(inc.id, recommendation_text(rec), "P1" if inc.severity == "critical" else "P2", "", rec, inc.root_cause_signal)
                     st.rerun()
         c1, c2, c3 = st.columns([2, 1, 1])
@@ -256,8 +259,8 @@ with tab_inc:
                 if st.form_submit_button(t("create")) and title:
                     store().create(inc.id, title, pr, owner, recommendation=title, evidence=inc.root_cause_signal)
                     st.rerun()
-        c2.download_button(t("postmortem"), postmortem_md(inc, a.signal_by_id), file_name=f"{inc.id}-postmortem.md", use_container_width=True)
-        with c3.popover(t("llm_prompt"), use_container_width=True):
+        c2.download_button(t("postmortem"), postmortem_md(inc, a.signal_by_id), file_name=f"{inc.id}-postmortem.md", width="stretch")
+        with c3.popover(t("llm_prompt"), width="stretch"):
             st.caption(t("llm_cap"))
             st.code(llm_prompt(inc, a.signal_by_id), language=None)
         mine = store().list(inc.id)

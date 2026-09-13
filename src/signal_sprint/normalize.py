@@ -31,8 +31,34 @@ SYSLOG_TS_RE = re.compile(r"^[A-Z][a-z]{2}\s+\d{1,2}\s\d{2}:\d{2}:\d{2}$")
 _DEFAULT = datetime(datetime.now().year, 1, 1)
 
 
+_FAST_FORMATS = (
+    "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S,%f", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S.%f",
+    "%Y-%m-%d %H:%M", "%d/%m/%Y %H:%M:%S", "%d.%m.%Y %H:%M:%S", "%m/%d/%Y %H:%M:%S", "%Y/%m/%d %H:%M:%S",
+    "%d/%b/%Y:%H:%M:%S %z", "%b %d %H:%M:%S", "%Y%m%d%H%M%S",
+)
+_format_cache: dict[str, str] = {}   # shape signature -> strptime format that worked last time
+
+
+def _shape(s: str) -> str:
+    """Signature of a timestamp string: digits -> 9, letters -> a, so equal-shaped strings share a format."""
+    return re.sub(r"[A-Za-z]", "a", re.sub(r"\d", "9", s))
+
+
+def _from_iso(s: str) -> datetime | None:
+    """datetime.fromisoformat fast path; on 3.9/3.10 it needs 'Z' -> '+00:00' and no more than 6 fraction digits."""
+    if s.endswith("Z") or s.endswith("z"):
+        s = s[:-1] + "+00:00"
+    m = re.match(r"^(.*?\.\d{6})\d+(.*)$", s)
+    if m:
+        s = m[1] + m[2]
+    try:
+        return datetime.fromisoformat(s)
+    except ValueError:
+        return None
+
+
 def parse_timestamp(value: Any) -> datetime | None:
-    """Parse epoch s/ms, ISO, syslog, locale-ish strings via dateutil. Always tz-aware (naive -> UTC)."""
+    """Parse epoch s/ms, ISO, common log formats, syslog; dateutil only as a last resort. Always tz-aware (naive -> UTC)."""
     if value is None:
         return None
     if isinstance(value, (int, float)):
@@ -41,15 +67,40 @@ def parse_timestamp(value: Any) -> datetime | None:
     s = str(value).strip()
     if not s:
         return None
-    if re.fullmatch(r"\d{13}", s):
-        return datetime.fromtimestamp(int(s) / 1000, tz=UTC)
-    if re.fullmatch(r"\d{10}(\.\d+)?", s):
+    if s.isdigit():
+        if len(s) == 13:
+            return datetime.fromtimestamp(int(s) / 1000, tz=UTC)
+        if len(s) == 10:
+            return datetime.fromtimestamp(int(s), tz=UTC)
+    if re.fullmatch(r"\d{10}\.\d+", s):
         return datetime.fromtimestamp(float(s), tz=UTC)
-    try:
-        dt = dtparser.parse(s.replace(",", ".", 1) if re.search(r"\d,\d{3}$", s) else s, default=_DEFAULT,
-                            dayfirst=bool(re.match(r"\d{2}[./]\d{2}[./]\d{4}", s)))
-    except (ValueError, OverflowError, TypeError):
-        return None
+    dt = None
+    if len(s) >= 19 and s[4] == "-" and s[7] == "-":
+        dt = _from_iso(s)
+    if dt is None:
+        shape = _shape(s)
+        fmt = _format_cache.get(shape)
+        if fmt:
+            try:
+                dt = datetime.strptime(s, fmt)
+            except ValueError:
+                dt = None
+        if dt is None:
+            for fmt in _FAST_FORMATS:
+                try:
+                    dt = datetime.strptime(s, fmt)
+                    _format_cache[shape] = fmt
+                    break
+                except ValueError:
+                    continue
+        if dt is not None and fmt == "%b %d %H:%M:%S":
+            dt = dt.replace(year=datetime.now().year)
+    if dt is None:
+        try:
+            dt = dtparser.parse(s.replace(",", ".", 1) if re.search(r"\d,\d{3}$", s) else s, default=_DEFAULT,
+                                dayfirst=bool(re.match(r"\d{2}[./]\d{2}[./]\d{4}", s)))
+        except (ValueError, OverflowError, TypeError):
+            return None
     return dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt
 
 

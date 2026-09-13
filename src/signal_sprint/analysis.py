@@ -16,17 +16,37 @@ from . import scenario
 from .i18n import link_text, narrative_text, reason_text
 
 # ---------------------------------------------------------------- fingerprint
-MASKS = [
-    (re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.I), "<uuid>"),
-    (re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?\b"), "<ip>"),
-    (re.compile(r"\b[0-9a-f]{16,}\b", re.I), "<hex>"),
-    (re.compile(r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}[^\s]*"), "<ts>"),
-    (re.compile(r"https?://\S+"), "<url>"),
-    (re.compile(r"(?<=[\s=:/])/[\w./\-]+"), "<path>"),
-    (re.compile(r"\b\d+(?:\.\d+)?\s?(ms|s|sec|m|h|%|kb|mb|gb)\b", re.I), "<n>\\1"),
-    (re.compile(r"\b\d+\b"), "<n>"),
+MASKS = [  # (pattern, replacement); applied as ONE combined regex, leftmost-first, so order = priority
+    (r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", "<uuid>"),
+    (r"\b\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?\b", "<ip>"),
+    (r"\b[0-9a-f]{16,}\b", "<hex>"),
+    (r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}[^\s]*", "<ts>"),
+    (r"https?://\S+", "<url>"),
+    (r"(?<=[\s=:/])/[\w./\-]+", "<path>"),
+    (r"\b\d+(?:\.\d+)?\s?(?P<unit>ms|s|sec|m|h|%|kb|mb|gb)\b", "<n>{unit}"),
+    (r"\b\d+\b", "<n>"),
 ]
+_mask_cache: dict[int, tuple] = {}
+
+
+def _mask_re():
+    """Combined mask regex (+ scenario.EXTRA_MASKS), rebuilt only when the scenario list changes."""
+    key = len(scenario.EXTRA_MASKS)
+    if key not in _mask_cache:
+        pairs = MASKS + list(scenario.EXTRA_MASKS)
+        rx = re.compile("|".join(f"(?P<m{i}>{pat})" for i, (pat, _) in enumerate(pairs)), re.I)
+        reps = {f"m{i}": rep for i, (_, rep) in enumerate(pairs)}
+        _mask_cache[key] = (rx, reps)
+    return _mask_cache[key]
+
+
+def _mask_sub(m: re.Match, reps: dict) -> str:
+    rep = reps[m.lastgroup]
+    return rep.replace("{unit}", m.group("unit") or "") if "{unit}" in rep else rep
+
+
 ENTITY_RE = re.compile(r"\b(?:\d{1,3}(?:\.\d{1,3}){3}|[a-z][\w\-]*(?:-\d+|\.[a-z]+)+|[a-z]+-(?:api|db|svc|service|cache|queue|worker|gateway|proxy)\b)", re.I)
+ENTITY_SAMPLE = 40
 DEPENDENCY_WORDS = ["database", "db", "postgres", "mysql", "redis", "kafka", "queue", "connection", "network", "dns",
                     "disk", "storage", "latency", "duration", "slow", "certificate", "auth", "gateway", "no space", "oom"]
 WINDOW_MIN = 5
@@ -34,15 +54,13 @@ MIN_SEVERITY = "WARN"
 WEIGHTS = {"burst": 0.35, "severity": 0.25, "blast_radius": 0.25, "duration": 0.15}
 
 
-def _masks():
-    return MASKS + [(re.compile(rx), rep) for rx, rep in scenario.EXTRA_MASKS]
+_WS = re.compile(r"\s+")
 
 
 def template_of(message: str) -> str:
-    t = message.strip()
-    for rx, rep in _masks():
-        t = rx.sub(rep, t)
-    return re.sub(r"\s+", " ", t).lower()[:200]
+    rx, reps = _mask_re()
+    t = rx.sub(lambda m: _mask_sub(m, reps), message.strip())
+    return _WS.sub(" ", t).lower()[:200]
 
 
 def entities_of(o: Observation) -> set[str]:
@@ -73,7 +91,7 @@ def build_signals(observations: list[Observation]) -> list[Signal]:
     for n, (fp, obs) in enumerate(groups.items(), 1):
         obs.sort(key=lambda o: o.timestamp)
         ents: set[str] = set()
-        for o in obs:
+        for o in obs[:ENTITY_SAMPLE]:  # entities are stable within a fingerprint; a sample is enough
             ents |= entities_of(o)
         sig = Signal(id=f"S{n}", fingerprint=fp, template=obs[0].template, severity=obs[0].severity, count=len(obs),
                      services=sorted({o.service for o in obs if o.service}), hosts=sorted({o.host for o in obs if o.host}),
@@ -242,6 +260,7 @@ class Analysis:
         self.incidents = incs
         self.signal_by_id = {s.id: s for s in self.signals}
         self.incident_by_id = {i.id: i for i in self.incidents}
+        self.obs_by_ref = {o.ref: o for o in observations}
 
     def funnel(self) -> dict:
         return {"raw_events": len(self.observations), "fingerprints": len(self.signals),
