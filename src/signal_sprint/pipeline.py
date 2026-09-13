@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from typing import Iterator
 
+import itertools
+
 from .format_detector import detect_format
 from .loader import iter_bytes, iter_path
 from .models import Observation
+from .normalize import auto_map
 from .parsers import PARSERS
 from . import scenario
 
@@ -17,10 +20,16 @@ def ingest(files: Iterator[tuple[str, str]], mapping: dict | None = None) -> tup
     report: list[dict] = []
     for fname, text in files:
         fmt, conf = detect_format(text)
-        rows = list(PARSERS[fmt].parse(text, fname, mapping, conf))
+        parser = PARSERS[fmt]
+        head = [r for _, r in itertools.islice(parser.records(text), 50)]
+        keys: list[str] = []
+        for r in head:
+            keys.extend(k for k in r if k not in keys)
+        roles = auto_map(keys, head, mapping)
+        rows = list(parser.parse(text, fname, mapping, conf))
         observations.extend(rows)
         report.append({"file": fname, "format": fmt, "confidence": conf, "rows": len(rows),
-                       "kind": rows[0].kind if rows else "-"})
+                       "kind": rows[0].kind if rows else "-", "keys": keys, "roles": roles})
     observations.sort(key=lambda o: o.timestamp)
     return observations, report
 

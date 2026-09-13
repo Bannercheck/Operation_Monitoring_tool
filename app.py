@@ -60,13 +60,16 @@ def store() -> ActionStore:
     return ActionStore(os.environ.get("ACTIONS_DB", "actions.db"))
 
 
-def load(name: str, data: bytes | None = None, path: str | None = None) -> None:
+def load(name: str, data: bytes | None = None, path: str | None = None, mapping: dict | None = None) -> None:
     t0 = time.perf_counter()
-    obs, report = ingest_bytes(name, data) if data is not None else ingest_path(path)
+    obs, report = ingest_bytes(name, data, mapping) if data is not None else ingest_path(path, mapping)
     st.session_state["analysis"] = Analysis(obs, report)
     st.session_state["profile"] = profile(obs, report)
     st.session_state["dataset"] = name
+    st.session_state["source"] = {"name": name, "data": data, "path": path}
+    st.session_state["mapping"] = mapping or {}
     st.session_state["elapsed"] = time.perf_counter() - t0
+    st.session_state.pop("cursor", None)
 
 
 def minute_chart(df: pd.DataFrame, incidents=None, height=200):
@@ -103,6 +106,28 @@ with st.sidebar:
         st.markdown(f"**{st.session_state['dataset']}** <span class='muted'>· {st.session_state.get('elapsed', 0):.1f}s</span>", unsafe_allow_html=True)
         st.markdown(f"<div class='mono'>{f['raw_events']:,} {t('raw_events')}<br>↓ {f['fingerprints']} {t('fingerprints')}<br>↓ {f['meaningful_signals']} {t('meaningful')}"
                     f"<br>↓ {f['incidents']} {t('incidents')}<br>↓ {len(store().list())} {t('actions')}</div>", unsafe_allow_html=True)
+        st.divider()
+        st.markdown(f"**{t('parser')}**")
+        rep = st.session_state["analysis"].report
+        for r in rep:
+            st.markdown(f'<div class="card" style="padding:8px 10px;margin-bottom:6px"><b>{esc(r["file"])}</b><br>'
+                        f'<span class="pill" style="background:#3ddc84">{r["format"]}</span> <span class="muted">{t("conf")} {r["confidence"]:.2f} · {r["rows"]:,} {t("rows")} · {r["kind"]}</span><br>'
+                        f'<span class="mono muted">' + " · ".join(f"{k}={v}" for k, v in r["roles"].items() if v) + "</span></div>", unsafe_allow_html=True)
+        with st.expander(t("mapping")):
+            st.caption(t("mapping_hint"))
+            all_keys = sorted({k for r in rep for k in r["keys"]})
+            cur = st.session_state.get("mapping", {})
+            with st.form("mapping_form"):
+                choice = {}
+                for role in ("timestamp", "severity", "service", "host", "message"):
+                    opts = [""] + all_keys
+                    choice[role] = st.selectbox(role, opts, index=opts.index(cur.get(role, "")) if cur.get(role, "") in opts else 0,
+                                                format_func=lambda x: x or t("auto"))
+                if st.form_submit_button(t("apply"), width="stretch"):
+                    src = st.session_state["source"]
+                    with st.spinner(t("working")):
+                        load(src["name"], data=src["data"], path=src["path"], mapping={k: v for k, v in choice.items() if v})
+                    st.rerun()
         st.divider()
         st.caption(t("footer"))
 
