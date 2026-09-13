@@ -19,7 +19,7 @@ from signal_sprint.analysis import Analysis, interesting, llm_prompt, postmortem
 from signal_sprint.i18n import factor_value, narrative_text, reason_text, recommendation_text, link_text, t
 from signal_sprint.models import SEV_RANK
 from signal_sprint.pipeline import ingest_bytes, ingest_path
-from signal_sprint.profiler import profile, profile_text
+from signal_sprint.profiler import profile
 
 st.set_page_config(page_title="Signal Sprint", page_icon="📡", layout="wide", initial_sidebar_state="expanded")
 
@@ -121,6 +121,20 @@ f = a.funnel()
 tab_over, tab_sig, tab_inc, tab_act = st.tabs([t("tab_overview"), f"{t('tab_signals')} · {f['fingerprints']}", f"{t('tab_incidents')} · {f['incidents']}", f"{t('tab_actions')} · {len(store().list())}"])
 
 # ------------------------------------------------------------------ overview
+SEV_SCALE = alt.Scale(domain=list(SEV_RANK), range=[SEV_COLORS[k] for k in SEV_RANK])
+
+
+@st.cache_data(show_spinner=False)
+def frames(dataset: str, n: int):
+    """DataFrames for the overview charts, cached per loaded dataset."""
+    a_ = st.session_state["analysis"]
+    df = pd.DataFrame([{"timestamp": o.timestamp, "severity": o.severity, "service": o.service or "-", "host": o.host or "-",
+                        "kind": o.kind, "source": o.source, "message": o.message} for o in a_.observations])
+    df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
+    df["minute"] = df["timestamp"].dt.floor("min")
+    return df
+
+
 with tab_over:
     cols = st.columns([3, 1, 3, 1, 3, 1, 3, 1, 3])
     steps = [(f"{f['raw_events']:,}", t("raw_events")), (f["fingerprints"], t("fingerprints")), (f["meaningful_signals"], t("meaningful")),
@@ -130,20 +144,37 @@ with tab_over:
         if i < 4:
             cols[i * 2 + 1].markdown('<div class="arrow">→</div>', unsafe_allow_html=True)
     st.markdown("")
+    df = frames(st.session_state["dataset"], len(a.observations))
+    tiles = st.columns(6)
+    for c, (v, l) in zip(tiles, [(len(prof["files"]), t("files_n")), (f"{prof['records']:,}", t("records_n")), (len(prof["services"]), t("services_n")),
+                                 (len(prof["hosts"]), t("hosts_n")), (prof["error_classes"], t("error_classes")), (prof["time_range"]["minutes"], t("span_min"))]):
+        c.markdown(kpi(v, l), unsafe_allow_html=True)
+    st.markdown("")
     left, right = st.columns([3, 2])
     with left:
         st.markdown(f"#### {t('activity')}")
         st.caption(t("activity_cap"))
         st.altair_chart(minute_chart(prof["per_minute"], a.incidents), width="stretch")
+        st.markdown(f"#### {t('sev_over_time')}")
+        sev_min = df.groupby(["minute", "severity"]).size().rename("events").reset_index()
+        st.altair_chart(alt.Chart(sev_min).mark_area(interpolate="monotone").encode(
+            x=alt.X("minute:T", title=None, axis=alt.Axis(format="%H:%M")), y=alt.Y("events:Q", stack=True, title="events / min"),
+            color=alt.Color("severity:N", scale=SEV_SCALE, legend=alt.Legend(orient="top", title=None)),
+            order=alt.Order("severity:N"), tooltip=[alt.Tooltip("minute:T", format="%H:%M"), "severity", "events"])
+            .properties(height=180).configure_view(strokeWidth=0), width="stretch")
     with right:
-        st.markdown(f"#### {t('found')}")
-        found_html = esc(profile_text(prof, lang)).replace("\n", "<br>")
-        st.markdown(f'<div class="card mono">{found_html}</div>', unsafe_allow_html=True)
-        sev = pd.DataFrame({"severity": list(prof["severity"]), "count": list(prof["severity"].values())})
-        st.altair_chart(alt.Chart(sev).mark_bar().encode(
-            x=alt.X("count:Q", title=None), y=alt.Y("severity:N", sort=list(SEV_RANK), title=None),
-            color=alt.Color("severity:N", scale=alt.Scale(domain=list(SEV_COLORS), range=list(SEV_COLORS.values())), legend=None),
-            tooltip=["severity", "count"]).properties(height=130), width="stretch")
+        st.markdown(f"#### {t('top_services')}")
+        svc = df[df.service != "-"].groupby(["service", "severity"]).size().rename("events").reset_index()
+        top = svc.groupby("service").events.sum().nlargest(8).index.tolist()
+        st.altair_chart(alt.Chart(svc[svc.service.isin(top)]).mark_bar().encode(
+            x=alt.X("events:Q", title=None), y=alt.Y("service:N", sort=top, title=None),
+            color=alt.Color("severity:N", scale=SEV_SCALE, legend=None), tooltip=["service", "severity", "events"])
+            .properties(height=200).configure_view(strokeWidth=0), width="stretch")
+        st.markdown(f"#### {t('sources')}")
+        kinds = df.groupby(["source", "kind"]).size().rename("events").reset_index()
+        st.altair_chart(alt.Chart(kinds).mark_arc(innerRadius=45).encode(
+            theta="events:Q", color=alt.Color("source:N", legend=alt.Legend(orient="right", title=None)), tooltip=["source", "kind", "events"])
+            .properties(height=170).configure_view(strokeWidth=0), width="stretch")
     if a.incidents:
         st.markdown(f"#### {t('top_incidents')}")
         for inc in a.incidents[:3]:
@@ -154,10 +185,41 @@ with tab_over:
                         unsafe_allow_html=True)
     else:
         st.info(t("no_incidents"))
-    with st.expander(t("files_rel")):
-        st.dataframe(pd.DataFrame(prof["files"]), hide_index=True, width="stretch")
-        if prof["relations"]:
-            st.dataframe(pd.DataFrame(prof["relations"]), hide_index=True, width="stretch")
+
+    # ---- live log stream (replay of the dataset in time order)
+    st.markdown(f"#### {t('live')}")
+    st.caption(t("live_cap"))
+    total = len(a.observations)
+    ss = st.session_state
+    ss.setdefault("cursor", min(200, total)); ss.setdefault("playing", False)
+    b1, b2, b3, b4, b5, b6 = st.columns([1, 1, 1, 1, 2, 2])
+    if b1.button(t("pause") if ss.playing else t("play"), width="stretch"):
+        ss.playing = not ss.playing; st.rerun()
+    if b2.button(t("reset"), width="stretch"):
+        ss.cursor, ss.playing = min(200, total), False; st.rerun()
+    speed = b3.selectbox(t("speed"), [50, 200, 1000, 5000], index=1, format_func=lambda x: f"{x}/s")
+    n_lines = b4.selectbox(t("lines"), [25, 50, 100], index=1)
+    live_sev = b5.selectbox(t("min_sev"), list(SEV_RANK), index=0, key="live_sev")
+    live_q = b6.text_input(t("filter_text"), key="live_q")
+
+    @st.fragment(run_every="1s" if ss.playing else None)
+    def live_panel():
+        if ss.playing:
+            ss.cursor = min(total, ss.cursor + speed)
+            if ss.cursor >= total:
+                ss.playing = False
+        ss.cursor = st.slider(t("position"), 1, max(total, 1), ss.cursor, label_visibility="collapsed")
+        window = a.observations[:ss.cursor]
+        q = live_q.lower()
+        shown = [o for o in reversed(window) if SEV_RANK[o.severity] >= SEV_RANK[live_sev] and (not q or q in o.message.lower() or q in o.service.lower())][:n_lines]
+        upto = window[-1].timestamp.strftime("%H:%M:%S") if window else "-"
+        st.caption(t("showing", n=len(shown), total=len(window), time=upto))
+        rows = "".join(
+            f'<div><span class="muted">{o.timestamp:%H:%M:%S}</span> <span style="color:{SEV_COLORS.get(o.severity, "#8b93a1")};font-weight:700">{o.severity:<8}</span> '
+            f'<span style="color:#9fb3c8">{esc(o.service or o.source)[:18]:<18}</span> {esc(o.message)[:160]}</div>' for o in shown)
+        st.markdown(f'<div class="card mono" style="max-height:420px;overflow:auto;white-space:pre;line-height:1.55">{rows}</div>', unsafe_allow_html=True)
+
+    live_panel()
 
 # ------------------------------------------------------------------ signals
 with tab_sig:

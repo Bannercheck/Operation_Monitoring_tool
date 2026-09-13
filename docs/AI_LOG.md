@@ -31,7 +31,8 @@ Araç kısaltmaları:
 | 12 | 2026-09-13 20:30 | İnsan → CF5.1 | "Yükleme sınırı 500 MB / 1 GB" | .streamlit/config.toml maxUploadSize=1024 | b9f95aa |
 | 13 | 2026-09-13 20:50 | İnsan → CF5.1 | "Frontend daha güzel olsun, yükleme sonrası ekranlar" + "TR/EN dinamik" | Koyu tema, huni kartları, incident pencereli aktivite grafiği, WHY THIS SIGNAL paneli, yayılım Gantt'ı, faktör grafiği, tek tıkla aksiyon, kanban; i18n.py ile TR/EN | 9be5820 |
 | 14 | 2026-09-13 21:04 | İnsan → CF5.1 | "Yükleme çok yavaş, hızlandır" | Profil ile darboğaz bulundu (dateutil); hızlı zaman yolları, tek birleşik regex, örneklemli varlık çıkarımı; 300k satır 45 sn → 15 sn | 542cabb |
-| 15 | 2026-09-13 21:1x | İnsan → CF5.1 | "Her prompt için kanıt dosyası" | Bu dosya + CLAUDE.md kural güncellemesi | (bu commit) |
+| 15 | 2026-09-13 21:1x | İnsan → CF5.1 | "Her prompt için kanıt dosyası" | Bu dosya + CLAUDE.md kural güncellemesi | 50672cd |
+| 16 | 2026-09-13 21:2x | İnsan → CF5.1 | "Özetteki metin açıklamaları kaldır, düzgün grafikler ve altına canlı log okuması" | Profil kartları, zamana göre seviye alan grafiği, servis/kaynak grafikleri, oynatılabilir canlı log akışı (fragment, saniyede bir); tarayıcıda oynatma doğrulandı | (bu commit) |
 
 ## Etkinlik günü (16 Eylül, 14:20 → 17:30)
 
