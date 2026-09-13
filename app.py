@@ -108,11 +108,21 @@ with st.sidebar:
 
 if "analysis" not in st.session_state:
     st.markdown(f"## {t('landing_title')}")
-    st.markdown(t("landing_body"))
-    c1, c2, c3, c4 = st.columns(4)
-    for c, k in zip((c1, c2, c3, c4), ("step1", "step2", "step3", "step4")):
-        c.markdown(f'<div class="card"><b>{t(k)}</b><br><span class="muted">{t(k + "d")}</span></div>', unsafe_allow_html=True)
-    st.info(t("landing_hint"))
+    up_main = st.file_uploader(t("upload"), type=None, key="up_main", label_visibility="collapsed")
+    if up_main is not None:
+        with st.spinner(t("working")):
+            load(up_main.name, data=up_main.getvalue())
+        st.rerun()
+    c1, c2 = st.columns([1, 5])
+    if demo.exists() and c1.button(t("load_demo"), key="demo_main", width="stretch"):
+        with st.spinner(t("working")):
+            load(demo.name, path=str(demo))
+        st.rerun()
+    c2.markdown(
+        '<div style="display:flex;gap:10px;align-items:center;padding:6px 0">' + "".join(
+            f'<span class="card" style="margin:0;padding:8px 14px;white-space:nowrap">{icon} {t(k)}</span>' + ('<span class="arrow" style="padding:0">→</span>' if i < 3 else "")
+            for i, (icon, k) in enumerate((("📥", "step1"), ("🧹", "step2"), ("🔗", "step3"), ("✅", "step4")))) + "</div>",
+        unsafe_allow_html=True)
     st.stop()
 
 a: Analysis = st.session_state["analysis"]
