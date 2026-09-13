@@ -16,7 +16,7 @@ actions. No external API is required at runtime.
     signal-sprint data.zip --inspect   # per-file format, roles, columns: first 10 minutes with a new dataset
     make test
 
-Python 3.10+, Streamlit + pandas + python-dateutil. No LLM, API key or network needed at runtime.
+Python 3.9+ (3.9 ve 3.11 üzerinde test edildi), Streamlit + pandas + python-dateutil. No LLM, API key or network needed at runtime.
 
 ## Mimari
 

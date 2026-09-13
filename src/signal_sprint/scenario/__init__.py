@@ -3,6 +3,8 @@
 Everything here is optional; empty values mean "use the generic defaults".
 """
 
+from __future__ import annotations
+
 # Column -> role mapping when the auto-mapper guesses wrong, e.g. {"timestamp": "event_ts", "message": "detail"}
 MAPPING: dict[str, str] = {}
 
