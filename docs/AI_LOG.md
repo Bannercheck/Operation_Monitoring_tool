@@ -20,6 +20,7 @@ Sadece geliştirme adımları. Format: araç + sürüm · tarih · yapılan iş.
 | Claude Fable 5.1 | 2026-09-13 | Açılış sayfası sadeleştirildi: yükleme alanı, demo butonu, ikonlu pipeline şeridi |
 | Claude Fable 5.1 | 2026-09-13 | Sol menüde Parser paneli: dosya başına format, güven, satır, roller; sütun → rol eşleme düzeltme formu |
 | Claude Fable 5.1 | 2026-09-13 | Streamlit 1.50 uyumluluğu: `wide()` yardımcısı ile width / use_container_width seçimi |
+| Claude Fable 5.1 | 2026-09-13 | Gerçek veri şekilleri: iç içe JSON kayıt listesi, Türkçe başlık ipuçları, kv satır öneki, zaman damgası olmayan satırların 1970'e düşmesi düzeltildi, otomatik zaman kovası; sade sol menü, yükleme anında ilerleme, parser tablosu Özet'te |
 
 ## Etkinlik günü
 

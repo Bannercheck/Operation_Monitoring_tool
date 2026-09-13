@@ -21,8 +21,7 @@ def test_streamlit_app_renders(tmp_path, monkeypatch):
     assert not at.exception
     at.sidebar.button[0].click().run()            # "Demo veri setini yükle"
     assert not at.exception
-    assert any("ham olay" in m.value for m in at.sidebar.markdown)
-    assert any(">914<" in m.value for m in at.markdown)
+    assert any(">914<" in m.value and "ham olay" in m.value.lower() for m in at.markdown)
     at.sidebar.radio[0].set_value("en").run()     # language switch
     assert not at.exception
-    assert any("raw events" in m.value for m in at.sidebar.markdown)
+    assert any(">914<" in m.value and "raw events" in m.value.lower() for m in at.markdown)

@@ -30,8 +30,20 @@ def ingest(files: Iterator[tuple[str, str]], mapping: dict | None = None) -> tup
         observations.extend(rows)
         report.append({"file": fname, "format": fmt, "confidence": conf, "rows": len(rows),
                        "kind": rows[0].kind if rows else "-", "keys": keys, "roles": roles})
+    fill_missing_timestamps(observations)
     observations.sort(key=lambda o: o.timestamp)
     return observations, report
+
+
+def fill_missing_timestamps(observations: list[Observation]) -> None:
+    """Rows without a parseable time get the earliest real time of the dataset (so charts keep a sane range)."""
+    real = [o.timestamp for o in observations if not o.attributes.get("_no_ts")]
+    fallback = min(real) if real else observations[0].timestamp if observations else None
+    if fallback is None:
+        return
+    for o in observations:
+        if o.attributes.pop("_no_ts", False):
+            o.timestamp = fallback
 
 
 def ingest_path(path: str, mapping: dict | None = None):

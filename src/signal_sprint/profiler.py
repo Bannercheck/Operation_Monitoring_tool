@@ -12,6 +12,12 @@ from .models import Observation
 ID_LIKE = re.compile(r"(^|[_.])(id|key|name|hostname|service|host|node|pod)$", re.I)
 
 
+def bucket_for(span) -> str:
+    """Time bucket that keeps charts to a few hundred bars: minutes up to 6h, then 5min/1h/1D."""
+    minutes = span.total_seconds() / 60
+    return "1min" if minutes <= 360 else "5min" if minutes <= 2880 else "1h" if minutes <= 60 * 24 * 90 else "1D"
+
+
 def profile(observations: list[Observation], report: list[dict]) -> dict:
     if not observations:
         return {"files": report, "records": 0}
@@ -58,7 +64,8 @@ def profile(observations: list[Observation], report: list[dict]) -> dict:
         "time_range": {"start": df.timestamp.min().isoformat(), "end": df.timestamp.max().isoformat(),
                        "minutes": round((df.timestamp.max() - df.timestamp.min()).total_seconds() / 60, 1)},
         "relations": relations[:10],
-        "per_minute": df.set_index("timestamp").resample("1min").size().rename("events").reset_index(),
+        "bucket": bucket_for(df.timestamp.max() - df.timestamp.min()),
+        "per_minute": df.set_index("timestamp").resample(bucket_for(df.timestamp.max() - df.timestamp.min())).size().rename("events").reset_index(),
     }
 
 

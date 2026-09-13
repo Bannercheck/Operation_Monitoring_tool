@@ -125,3 +125,23 @@ def test_action_store(tmp_path):
         st.update(a["id"], status="bogus")
     assert st.list("INC-1")[0]["owner"] == "Database Team"
     st.delete(a["id"]); assert st.list() == []
+
+
+def test_real_world_shapes_nested_json_turkish_csv_kv_prefix():
+    """Alertmanager-style nested JSON, Turkish-header CSV with dd.mm.yyyy, kv log with leading time/level/logger."""
+    import json
+    alerts = json.dumps({"status": "success", "data": {"alerts": [
+        {"labels": {"alertname": "DBLatencyHigh", "severity": "warning", "job": "postgres", "instance": "db-01:9187"},
+         "annotations": {"summary": "p99 latency 6.2s on db-01"}, "activeAt": "2026-09-16T14:31:20Z"}]}})
+    csv_tr = "Kayıt No;Oluşturma Zamanı;Öncelik;Uygulama;Özet\nINC1;16.09.2026 14:36:00;P1;payment-api;Ödeme hataları %38\n"
+    kv = '2026-09-16 14:32:00 ERROR notification-service: broker=kafka-01 msg="timeout publishing to db-01 after 5000ms"\n'
+    no_ts = '{"level":"info","msg":"no time here"}\n'
+    obs, report = ingest(iter([("alerts.json", alerts), ("incidents.csv", csv_tr), ("svc.log", kv), ("nots.jsonl", no_ts)]))
+    by = {o.source: o for o in obs}
+    assert by["alerts.json"].timestamp.minute == 31 and by["alerts.json"].severity == "WARN" and by["alerts.json"].service == "postgres"
+    assert by["alerts.json"].message.startswith("p99 latency") and by["alerts.json"].host == "db-01:9187"
+    assert by["incidents.csv"].timestamp.day == 16 and by["incidents.csv"].severity == "CRITICAL" and by["incidents.csv"].service == "payment-api"
+    assert by["svc.log"].timestamp.minute == 32 and by["svc.log"].severity == "ERROR" and by["svc.log"].service == "notification-service"
+    assert by["svc.log"].message.startswith("timeout publishing")
+    assert by["nots.jsonl"].timestamp == min(o.timestamp for o in obs) and by["nots.jsonl"].timestamp.year == 2026  # no epoch-0
+    assert (max(o.timestamp for o in obs) - min(o.timestamp for o in obs)).total_seconds() < 3600

@@ -20,11 +20,15 @@ SEVERITY_MAP = {
     "firing": "ERROR", "resolved": "INFO", "major": "ERROR", "minor": "WARN",
 }
 ROLE_HINTS = {
-    "timestamp": ("timestamp", "time", "ts", "@timestamp", "datetime", "date", "event_time", "created_at", "logged_at", "t", "start_time"),
-    "severity": ("severity", "level", "loglevel", "log_level", "priority", "sev", "status"),
-    "service": ("service", "app", "application", "component", "logger", "source", "module", "job", "program", "svc", "service_name"),
-    "host": ("host", "hostname", "node", "instance", "server", "pod", "container", "machine"),
-    "message": ("message", "msg", "text", "description", "log", "summary", "title", "body", "line", "event", "alert", "alertname"),
+    "timestamp": ("timestamp", "time", "ts", "@timestamp", "datetime", "date", "event_time", "created_at", "logged_at", "t", "start_time",
+                  "startsat", "starts_at", "activeat", "active_at", "firedat", "opened_at", "created", "zaman", "tarih", "olusturma zamani",
+                  "olusturma_zamani", "olusturmazamani", "acilis zamani", "kayit zamani"),
+    "severity": ("severity", "level", "loglevel", "log_level", "priority", "sev", "status", "labels.severity", "seviye", "oncelik", "onem", "kritiklik"),
+    "service": ("service", "app", "application", "component", "logger", "source", "module", "job", "program", "svc", "service_name",
+                "alertname", "labels.job", "labels.service", "servis", "uygulama", "bilesen", "sistem", "kaynak sistem"),
+    "host": ("host", "hostname", "node", "instance", "server", "pod", "container", "machine", "labels.instance", "sunucu", "makine", "cihaz"),
+    "message": ("message", "msg", "text", "description", "log", "summary", "title", "body", "line", "event", "alert",
+                "annotations.summary", "annotations.description", "ozet", "aciklama", "mesaj", "baslik", "konu"),
 }
 LEVEL_WORD_RE = re.compile(r"\b(TRACE|DEBUG|INFO|NOTICE|WARN(?:ING)?|ERR(?:OR)?|CRIT(?:ICAL)?|FATAL|ALERT|EMERG)\b", re.I)
 SYSLOG_TS_RE = re.compile(r"^[A-Z][a-z]{2}\s+\d{1,2}\s\d{2}:\d{2}:\d{2}$")
@@ -121,12 +125,19 @@ def severity_from_text(text: str) -> str:
     return normalize_severity(m[1]) if m else "INFO"
 
 
+_TR = str.maketrans("çğıöşüÇĞİÖŞÜ", "cgiosuCGIOSU")
+
+
+def _norm_key(k: str) -> str:
+    return k.translate(_TR).lower().strip()
+
+
 def auto_map(keys: list[str], sample: list[dict] | None = None, mapping: dict | None = None) -> dict[str, str | None]:
     """Schema auto-mapper: which key plays timestamp / severity / service / host / message.
 
     Order: explicit mapping > exact name hint > suffix hint > value-based guess (timestamp-looking, level-looking, longest text).
     """
-    lowered = {k.lower(): k for k in keys}
+    lowered = {_norm_key(k): k for k in keys}
     out: dict[str, str | None] = {}
     for role, hints in ROLE_HINTS.items():
         if mapping and mapping.get(role) in keys:
@@ -135,7 +146,7 @@ def auto_map(keys: list[str], sample: list[dict] | None = None, mapping: dict | 
         hit = next((lowered[h] for h in hints if h in lowered), None)
         if hit is None:
             hit = next((k for lk, k in lowered.items()
-                        if any(lk.endswith(sep + h) for h in hints for sep in ("_", ".", "-"))), None)
+                        if any(lk.endswith(sep + h) for h in hints for sep in ("_", ".", "-", " "))), None)
         out[role] = hit
     if sample:
         taken = {v for v in out.values() if v}
