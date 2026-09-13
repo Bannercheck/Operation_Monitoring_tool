@@ -19,7 +19,10 @@ def test_streamlit_app_renders(tmp_path, monkeypatch):
     from streamlit.testing.v1 import AppTest
     at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=60).run()
     assert not at.exception
-    at.sidebar.button[0].click().run()            # "Load demo dataset"
+    at.sidebar.button[0].click().run()            # "Demo veri setini yükle"
+    assert not at.exception
+    assert any("ham olay" in m.value for m in at.sidebar.markdown)
+    assert any(">914<" in m.value for m in at.markdown)
+    at.sidebar.radio[0].set_value("en").run()     # language switch
     assert not at.exception
     assert any("raw events" in m.value for m in at.sidebar.markdown)
-    assert at.metric[0].value == "914"

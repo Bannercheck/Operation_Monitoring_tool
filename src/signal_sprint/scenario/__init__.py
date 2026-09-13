@@ -22,6 +22,8 @@ WEIGHTS: dict[str, float] | None = None
 RECOMMENDATIONS: dict[str, list[str]] = {
     "timeout": ["Check connection pool exhaustion on the dependency", "Verify network path / DNS to the target"],
     "latency": ["Inspect slow queries and locks", "Check CPU / IO saturation on the host"],
+    "duration": ["Inspect slow queries and locks", "Check CPU / IO saturation on the host"],
+    "slow": ["Inspect slow queries and locks", "Check CPU / IO saturation on the host"],
     "no space": ["Free disk on the host, rotate logs", "Add disk usage alert threshold at 85%"],
     "oom": ["Raise memory limit or fix the leak", "Add memory alert before OOM"],
     "5xx": ["Roll back last deploy if correlated", "Check upstream dependency health"],

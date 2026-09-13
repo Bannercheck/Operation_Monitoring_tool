@@ -35,10 +35,11 @@ burada tutulur ve sadece ilgili satır güncellenir. Araç kısaltması:
 | Yol | Ne işe yarar | AI aracı | Nasıl çalışır |
 |-----|--------------|----------|---------------|
 | `CLAUDE.md` | Claude için çalışma kuralları, her oturumda yüklenir | CF5.1 | Kullanıcı kuralları yazdı, dosyaya aktarıldı |
-| `.streamlit/config.toml` | Streamlit sunucu ayarları | CF5.1 | `maxUploadSize = 1024` (MB): 1 GB'a kadar dosya yüklenir; kullanım istatistiği kapalı |
+| `.streamlit/config.toml` | Streamlit sunucu ve tema ayarları | CF5.1 | `maxUploadSize = 1024` (MB): 1 GB'a kadar dosya; koyu tema (yeşil vurgu); kullanım istatistiği kapalı |
+| `src/signal_sprint/i18n.py` | TR/EN metinler ve yerelleştirilmiş anlatı | CF5.1 | `t(key)` aktif dili session state'ten okur (varsayılan TR). Kök neden gerekçesi ve korelasyon bağları motorda **kod** olarak tutulur (`root_cause_codes`, `links[].ents/gap`), metin dile göre burada üretilir: `reason_text`, `link_text`, `narrative_text`, `factor_value`, `recommendation_text`. CLI/postmortem İngilizce |
 | `pyproject.toml`, `Makefile` | Paket tanımı, `signal-sprint` CLI girişi, `make run / test / inspect DS=x` | CF5.1 | `pip install -e .` ile kurulur, `src/` layout |
-| `app.py` | Streamlit dashboard (frontend) | CF5.1 | Sidebar: upload / demo yükle / huni (raw → fingerprint → meaningful → incident → action). Sekmeler: **Profile** (metrikler, "I found…" özeti, dakika grafiği, dosyalar, severity, ilişkiler), **Signals** (tablo + "WHY THIS SIGNAL?" kanıt/gerekçe/güven), **Incidents** (tablo, anlatı, kök neden, faktör grafiği, timeline, kanıt satırı, öneriler, aksiyon formu, postmortem indir, LLM prompt), **Actions** (open / in_progress / done / suppressed kolonları) |
-| `src/signal_sprint/models.py` | `Observation`, `Signal` (+`why()`), `Factor`, `Incident`, `Action` | CF5.1 | Dataclass'lar. Her satır önce Observation olur; `ref` = `dosya:satır` kanıt adresi, `parser_confidence` taşır |
+| `app.py` | Streamlit dashboard (frontend), TR/EN | CF5.1 | Sidebar: dil anahtarı (🇹🇷/🇬🇧, anında değişir), upload, demo yükle, huni. **Özet**: huni kartları, incident pencereleri gölgeli aktivite grafiği (Altair), "Buldum: …" profil özeti, severity dağılımı, öne çıkan incident kartları. **Sinyaller**: seviye/patlama/servis filtreleri, progress sütunlu tablo, "NEDEN BU SİNYAL?" paneli (gerekçe, şablon, gruplama, patlama, dakika grafiği, kanıt tablosu). **Incident'lar**: kök neden kartı, yayılım Gantt'ı, skor faktör grafiği, zaman çizgisi, korelasyon bağları, ham kanıt satırı, tek tıkla öneriden aksiyon, özel aksiyon formu, postmortem indir, LLM prompt popover. **Aksiyonlar**: öncelik renkli kanban (open / in_progress / done / suppressed) |
+| `src/signal_sprint/models.py` | `Observation`, `Signal` (+`why()`), `Factor` (+`data`), `Incident` (+`root_cause_codes`), `Action` | CF5.1 | Dataclass'lar. Her satır önce Observation olur; `ref` = `dosya:satır` kanıt adresi, `parser_confidence` taşır |
 | `src/signal_sprint/loader.py` | Universal loader | CF5.1 | Dosya / ZIP / GZ / TAR.GZ / klasör, recursive; utf-8-sig → utf-16 → latin-1 encoding fallback; ikili dosyaları atlar |
 | `src/signal_sprint/format_detector.py` | Format tespiti | CF5.1 | İlk 200 satırla json / jsonl / csv-tsv / syslog / kv / text seçer, güven skoru döner; ayraç tespiti |
 | `src/signal_sprint/normalize.py` | Zaman, severity, **schema auto-mapper** | CF5.1 | `parse_timestamp` epoch s/ms + dateutil (her format, tz-aware UTC). `normalize_severity` warn/err/P1/major/syslog 0-7 → DEBUG..CRITICAL. `auto_map`: açık mapping > isim ipucu > sonek > değer bazlı tahmin (zaman gibi görünen, seviye gibi görünen, en uzun metin) |
@@ -50,13 +51,13 @@ burada tutulur ve sadece ilgili satır güncellenir. Araç kısaltması:
 | `src/signal_sprint/cli.py` | `signal-sprint <path> [--inspect] [--json]` | CF5.1 | `--inspect`: dosya başına format, roller, zaman aralığı, severity, kolon profili. Varsayılan: profil özeti + incident'lar |
 | `src/signal_sprint/scenario/__init__.py` | **Hackathon günü dokunulacak tek yer** | CF5.1 | MAPPING, EXTRA_MASKS, EXTRA_DEPENDENCY_WORDS, WINDOW_MIN, WEIGHTS, RECOMMENDATIONS |
 | `samples/make_demo.py` | Sentetik demo veri seti (`demo_mixed.zip`) | CF5.1 | 914 olay, 4 dosya (jsonl, text log, syslog, csv). Zincir: DB gecikmesi → payment timeout → checkout 500 → alarm; ayrıca worker-02 disk dolu; arka plan gürültüsü |
-| `tests/test_smoke.py` | Paket + pipeline + Streamlit AppTest | CF5.1 | Demo yükle, metrik 914 |
+| `tests/test_smoke.py` | Paket + pipeline + Streamlit AppTest | CF5.1 | Demo yükle, huni 914, TR→EN dil geçişi |
 | `tests/test_pipeline.py` | 9 test: tespit, parser'lar, auto-map, yardımcılar, ZIP + TAR.GZ, profil, burst, incident zinciri/kök neden/gerekçe, aksiyonlar | CF5.1 | `make test` |
 | `docs/PLAN.md`, `docs/DECISIONS.md` | Hedef listesi ve tasarım kararları | CF5.1 | Sunumun "planlama" bölümüne kaynak |
 
 ## Demo akışı (7 dk)
 
-1. Sidebar → "Load demo dataset". Profile: 914 olay, 11 sinyal, 2 incident, 83× azaltma; "I found: 4 files…" özeti; 14:31 tepesi.
+1. Sidebar → "Demo veri setini yükle". Özet: huni 914 → 11 → 8 → 2, aktivite grafiğinde gölgeli incident pencereleri, "Buldum: 4 dosya…" özeti, öne çıkan incident kartları. Dil anahtarı ile EN'e geçip aynı ekranı göster.
 2. Signals: 532 satırlık sağlıklı trafik tek satır (burst 0), timeout sinyali burst 1.0. "WHY THIS SIGNAL?" ile kanıt + gerekçe + güven.
 3. Incidents → INC-1: kök neden postgres gecikmesi, 4 belirti timeline'da, faktör grafiği, kanıt satırı, öneriler.
 4. Aksiyon oluştur (P1, owner), Actions sekmesinde in_progress → done. Postmortem indir. LLM prompt'unu göster.

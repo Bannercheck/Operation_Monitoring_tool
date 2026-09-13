@@ -73,8 +73,9 @@ class Signal:
 class Factor:
     name: str
     weight: float
-    value: str
+    value: str                      # English label, used by CLI / postmortem
     contribution: float
+    data: dict = field(default_factory=dict)   # raw numbers for localized rendering
 
 
 @dataclass
@@ -96,6 +97,7 @@ class Incident:
     links: list[dict]
     narrative: str
     recommendations: list[str] = field(default_factory=list)
+    root_cause_codes: list = field(default_factory=list)   # i18n reason codes, e.g. ["r_earliest", ("r_fan", 3)]
 
 
 @dataclass

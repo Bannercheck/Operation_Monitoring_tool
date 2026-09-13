@@ -62,14 +62,15 @@ def profile(observations: list[Observation], report: list[dict]) -> dict:
     }
 
 
-def profile_text(p: dict) -> str:
+def profile_text(p: dict, lang: str = "en") -> str:
     """The 30-second summary shown right after upload."""
+    from .i18n import t
     if not p.get("records"):
-        return "No records parsed."
-    lines = [f"I found: {len(p['files'])} files, {p['records']:,} records",
-             "Probable sources: " + ", ".join(f"{k} ({v})" for k, v in p["probable_sources"].items()),
-             f"Detected entities: {len(p['services'])} services, {len(p['hosts'])} hosts, {p['error_classes']} error classes",
-             f"Detected time range: {p['time_range']['start'][11:16]} -> {p['time_range']['end'][11:16]} ({p['time_range']['minutes']} min)"]
+        return t("p_none", lang)
+    lines = [t("p_found", lang, files=len(p["files"]), records=f"{p['records']:,}"),
+             t("p_sources", lang, items=", ".join(f"{k} ({v})" for k, v in p["probable_sources"].items())),
+             t("p_entities", lang, services=len(p["services"]), hosts=len(p["hosts"]), errors=p["error_classes"]),
+             t("p_range", lang, start=p["time_range"]["start"][11:16], end=p["time_range"]["end"][11:16], minutes=p["time_range"]["minutes"])]
     if p["relations"]:
-        lines.append("Suggested relations: " + "; ".join(f"{r['from']} -> {r['to']}" for r in p["relations"][:4]))
+        lines.append(t("p_relations", lang, items="; ".join(f"{r['from']} -> {r['to']}" for r in p["relations"][:4])))
     return "\n".join(lines)

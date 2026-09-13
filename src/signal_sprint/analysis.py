@@ -13,6 +13,7 @@ from datetime import timedelta
 
 from .models import SEV_RANK, Factor, Incident, Observation, Signal
 from . import scenario
+from .i18n import link_text, narrative_text, reason_text
 
 # ---------------------------------------------------------------- fingerprint
 MASKS = [
@@ -124,13 +125,14 @@ def correlate(signals: list[Signal], window_min: int | None = None) -> list[tupl
                 continue
             shared = a.entities & b.entities
             gap = abs((a.onset - b.onset).total_seconds())
-            why = None
+            edge = None
             if shared:
-                why = f"shared entity {', '.join(sorted(shared)[:3])}, {gap:.0f}s apart"
+                edge = {"a": a.id, "b": b.id, "ents": sorted(shared)[:3], "gap": f"{gap:.0f}"}
             elif a.burst_score >= 0.5 and b.burst_score >= 0.5:
-                why = f"both burst within {gap:.0f}s"
-            if why:
-                edges.append({"a": a.id, "b": b.id, "why": why})
+                edge = {"a": a.id, "b": b.id, "ents": [], "gap": f"{gap:.0f}"}
+            if edge:
+                edge["why"] = link_text(edge, "en")
+                edges.append(edge)
                 parent[find(a.id)] = find(b.id)
     comps: dict[str, list[Signal]] = defaultdict(list)
     for s in cand:
@@ -142,7 +144,7 @@ def correlate(signals: list[Signal], window_min: int | None = None) -> list[tupl
     return out
 
 
-def pick_root_cause(members: list[Signal]) -> tuple[Signal, str]:
+def pick_root_cause(members: list[Signal]) -> tuple[Signal, list]:
     """Earliest onset weighs most; then dependency words in the template, fan-out, severity."""
     words = DEPENDENCY_WORDS + scenario.EXTRA_DEPENDENCY_WORDS
     earliest = members[0].onset
@@ -155,18 +157,19 @@ def pick_root_cause(members: list[Signal]) -> tuple[Signal, str]:
         ranked.append((score, s, lead_min, dep, fan))
     ranked.sort(key=lambda r: -r[0])
     _, s, lead, dep, fan = ranked[0]
-    reasons = ["earliest onset in the group" if lead == 0 else f"starts {lead:.0f} min after the first signal"]
+    codes: list = ["r_earliest"] if lead == 0 else [("r_lead", f"{lead:.0f}")]
     if dep:
-        reasons.append("mentions an infrastructure dependency")
+        codes.append("r_dep")
     if fan:
-        reasons.append(f"shares entities with {fan} other signal(s)")
-    return s, "; ".join(reasons)
+        codes.append(("r_fan", fan))
+    return s, codes
 
 
 # ---------------------------------------------------------------- scoring + explanation
 def build_incident(n: int, members: list[Signal], edges: list[dict]) -> Incident:
     weights = scenario.WEIGHTS or WEIGHTS
-    root, why = pick_root_cause(members)
+    root, codes = pick_root_cause(members)
+    why = reason_text(codes, "en")
     services = sorted({x for s in members for x in s.services})
     hosts = sorted({x for s in members for x in s.hosts})
     start, end = min(s.first_seen for s in members), max(s.last_seen for s in members)
@@ -179,7 +182,11 @@ def build_incident(n: int, members: list[Signal], edges: list[dict]) -> Incident
               "severity": f"{raw['severity']:.0%} of {total} events are ERROR+",
               "blast_radius": f"{len(services)} service(s), {len(hosts)} host(s)",
               "duration": f"{(end - start).total_seconds() / 60:.0f} min"}
-    factors = [Factor(k, weights[k], labels[k], round(weights[k] * raw[k], 3)) for k in weights]
+    data = {"burst": {"peak": f"{max(s.peak_rate for s in members):.0f}", "base": f"{max(s.baseline_rate for s in members):.0f}"},
+            "severity": {"share": f"{raw['severity']:.0%}", "total": total},
+            "blast_radius": {"services": len(services), "hosts": len(hosts)},
+            "duration": {"minutes": f"{(end - start).total_seconds() / 60:.0f}"}}
+    factors = [Factor(k, weights[k], labels[k], round(weights[k] * raw[k], 3), data[k]) for k in weights]
     score = round(sum(f.contribution for f in factors), 3)
     top_sev = max((s.severity for s in members), key=lambda x: SEV_RANK[x])
     severity = "critical" if score >= 0.6 or top_sev == "CRITICAL" else "high" if score >= 0.4 else "medium" if score >= 0.2 else "low"
@@ -192,22 +199,9 @@ def build_incident(n: int, members: list[Signal], edges: list[dict]) -> Incident
     inc = Incident(id=f"INC-{n}", title=title, severity=severity, score=score, root_cause_signal=root.id, root_cause_reason=why,
                    affected_services=services, affected_hosts=hosts, started_at=start, ended_at=end,
                    signal_ids=[s.id for s in members], factors=factors, evidence=evidence, timeline=timeline,
-                   links=edges, narrative="", recommendations=recs)
-    inc.narrative = narrative(inc, members)
+                   links=edges, narrative="", recommendations=recs, root_cause_codes=codes)
+    inc.narrative = narrative_text(inc, {s.id: s for s in members}, "en")
     return inc
-
-
-def narrative(inc: Incident, members: list[Signal]) -> str:
-    root = next(s for s in members if s.id == inc.root_cause_signal)
-    parts = [f"{sum(s.count for s in members)} raw events collapsed into {len(members)} signal(s) between "
-             f"{inc.started_at:%H:%M:%S} and {inc.ended_at:%H:%M:%S}.",
-             f"Probable origin: {root.id} \"{root.template}\" because: {inc.root_cause_reason}."]
-    symptoms = [s for s in members if s is not root]
-    if symptoms:
-        parts.append("Downstream symptoms: " + "; ".join(f"{s.id} \"{s.template[:60]}\" x{s.count}" for s in symptoms[:4]) + ".")
-    if inc.links:
-        parts.append("Links: " + "; ".join(f"{e['a']}-{e['b']} ({e['why']})" for e in inc.links[:4]) + ".")
-    return " ".join(parts)
 
 
 def postmortem_md(inc: Incident, signals: dict[str, Signal]) -> str:
