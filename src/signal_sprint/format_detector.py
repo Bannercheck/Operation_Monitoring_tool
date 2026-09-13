@@ -27,7 +27,7 @@ def detect_format(text: str) -> tuple[str, float]:
     if not lines:
         return "text", 0.0
     first = lines[0].lstrip()
-    if first.startswith("[") or (first.startswith("{") and not first.rstrip().endswith("}")):
+    if first.startswith("[") or (first.startswith("{") and (len(lines) == 1 or not first.rstrip().endswith("}"))):
         try:
             json.loads(text)
             return "json", 0.95
