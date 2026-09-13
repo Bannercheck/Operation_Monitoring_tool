@@ -41,7 +41,7 @@ def load(name: str, data: bytes | None = None, path: str | None = None) -> None:
 with st.sidebar:
     st.title("📡 Signal Sprint")
     st.caption("noise → signals → explained incidents → tracked actions")
-    up = st.file_uploader("Upload dataset (file / ZIP / TAR.GZ)", type=None)
+    up = st.file_uploader("Upload dataset (file / ZIP / TAR.GZ, up to 1 GB)", type=None)
     if up is not None and st.session_state.get("dataset") != up.name:
         with st.spinner("Analyzing…"):
             load(up.name, data=up.getvalue())

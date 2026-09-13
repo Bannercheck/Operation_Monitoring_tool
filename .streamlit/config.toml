@@ -1,0 +1,7 @@
+[server]
+maxUploadSize = 1024       # MB; dataset uploads up to 1 GB
+maxMessageSize = 1024
+headless = false
+
+[browser]
+gatherUsageStats = false

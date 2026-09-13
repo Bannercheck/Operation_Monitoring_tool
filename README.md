@@ -35,6 +35,7 @@ burada tutulur ve sadece ilgili satır güncellenir. Araç kısaltması:
 | Yol | Ne işe yarar | AI aracı | Nasıl çalışır |
 |-----|--------------|----------|---------------|
 | `CLAUDE.md` | Claude için çalışma kuralları, her oturumda yüklenir | CF5.1 | Kullanıcı kuralları yazdı, dosyaya aktarıldı |
+| `.streamlit/config.toml` | Streamlit sunucu ayarları | CF5.1 | `maxUploadSize = 1024` (MB): 1 GB'a kadar dosya yüklenir; kullanım istatistiği kapalı |
 | `pyproject.toml`, `Makefile` | Paket tanımı, `signal-sprint` CLI girişi, `make run / test / inspect DS=x` | CF5.1 | `pip install -e .` ile kurulur, `src/` layout |
 | `app.py` | Streamlit dashboard (frontend) | CF5.1 | Sidebar: upload / demo yükle / huni (raw → fingerprint → meaningful → incident → action). Sekmeler: **Profile** (metrikler, "I found…" özeti, dakika grafiği, dosyalar, severity, ilişkiler), **Signals** (tablo + "WHY THIS SIGNAL?" kanıt/gerekçe/güven), **Incidents** (tablo, anlatı, kök neden, faktör grafiği, timeline, kanıt satırı, öneriler, aksiyon formu, postmortem indir, LLM prompt), **Actions** (open / in_progress / done / suppressed kolonları) |
 | `src/signal_sprint/models.py` | `Observation`, `Signal` (+`why()`), `Factor`, `Incident`, `Action` | CF5.1 | Dataclass'lar. Her satır önce Observation olur; `ref` = `dosya:satır` kanıt adresi, `parser_confidence` taşır |
