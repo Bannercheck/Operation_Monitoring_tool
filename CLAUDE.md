@@ -24,5 +24,7 @@ Bu dosya her oturumda geçerli. Kurallar eklendikçe güncellenir.
 - Ürün: operasyonel gürültü -> sinyal -> gerekçeli incident -> aksiyon
   takibi. Web uygulaması üzerinden canlı demo. Çalışma zamanında LLM/API
   yok sayılır, çekirdek deterministiktir.
-- Stack: backend Python 3.11 + FastAPI, frontend React + Vite, test pytest.
+- Stack (kullanıcının seçimi, değiştirme): Python 3.11, Streamlit UI (`app.py`),
+  pandas, stdlib csv/json, python-dateutil, pytest. Motor `src/signal_sprint/`,
+  case'e özel kod sadece `src/signal_sprint/scenario/`. LLM opsiyonel, çekirdeğe bağlı değil.
 - Branch: `claude/cool-tesla-dh9nw3`. Her adım ayrı commit, `make test` yeşil.

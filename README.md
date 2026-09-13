@@ -10,13 +10,21 @@ actions. No external API is required at runtime.
 
 ## Quick start
 
-    make demo                                   # generates sample data and opens the dashboard on :8000
-    python3 signal_sprint.py inspect data.zip   # what is in an unknown dataset?
-    python3 signal_sprint.py analyze data.zip   # pipeline results as markdown (--json for machine output)
-    python3 signal_sprint.py serve data.zip     # web dashboard; upload also works from the UI
+    pip install -e ".[dev]"
+    streamlit run app.py            # sidebar: upload a dataset, or click "Load demo dataset"
+    signal-sprint data.zip          # CLI: profile + incidents as text   (--json for machine output)
+    signal-sprint data.zip --inspect   # per-file format, roles, columns: first 10 minutes with a new dataset
     make test
 
-Python 3.10+, standard library only. No API keys, no network.
+Python 3.10+, Streamlit + pandas + python-dateutil. No LLM, API key or network needed at runtime.
+
+## Mimari
+
+    UNKNOWN DATASET -> loader (zip/gz/tar/dir, encoding fallback) -> format_detector -> parsers/* -> Observation
+      -> analysis: fingerprint (masked template) -> Signal + burst -> correlation (time + shared entities)
+      -> Incident: root cause, weighted score, factors, evidence, recommendations -> actions (SQLite) -> app.py
+
+Generic core: `src/signal_sprint/`. Case-specific code on hackathon day: **only** `src/signal_sprint/scenario/`.
 
 ## Modüller
 
@@ -27,27 +35,42 @@ burada tutulur ve sadece ilgili satır güncellenir. Araç kısaltması:
 | Yol | Ne işe yarar | AI aracı | Nasıl çalışır |
 |-----|--------------|----------|---------------|
 | `CLAUDE.md` | Claude için çalışma kuralları, her oturumda yüklenir | CF5.1 | Kullanıcı kuralları yazdı, dosyaya aktarıldı |
-| `Makefile` | `make test / demo / inspect DS=x / analyze DS=x` | CF5.1 | Kısayollar, tek dosyayı çağırır |
-| `signal_sprint.py` | Ürünün tamamı, tek dosya, sadece stdlib | CF5.1 | Aşağıdaki bölümler aynı dosyanın numaralı başlıklarıdır |
-| `signal_sprint.py` §1 model | `Observation`, `Signal`, `Factor`, `Incident` dataclass'ları | CF5.1 | Her satır önce Observation olur; analiz sadece bunu görür. `ref` = `dosya:satır` kanıt adresi |
-| §2 loading + detect | Dosya/ZIP/GZ/klasör açma ve format tespiti | CF5.1 | `iter_files` recursive açar, ikili dosyaları atlar. `detect_format` ilk 200 satırla json / jsonl / csv-tsv / syslog / kv / plain seçer, güven skoru verir |
-| §3 helpers | Zaman damgası, severity, rol eşleme | CF5.1 | `parse_timestamp` 15+ format + epoch s/ms, hep tz-aware UTC. `normalize_severity` warn/err/P1/syslog 0-7 → DEBUG..CRITICAL. `resolve_roles` isim ipuçlarıyla timestamp/severity/service/host/message sütunlarını seçer, açık mapping öncelikli |
-| §4 parsers | 6 format için kayıt üreticileri ve `to_observations` | CF5.1 | Her parser `(satır_no, dict)` üretir. `to_observations` rolleri ilk 50 kaydın anahtar birleşiminden çözer, zamanı olmayan satıra önceki zamanı verir, rol dışı alanları `attributes`'a koyar |
-| §5 noise reduction | Şablon çıkarma, fingerprint, Signal, burst | CF5.1 | `template_of` uuid/ip/hex/ts/url/path/sayıları maskeler. fingerprint = sha1(template+severity+service). `score_burst`: dakikalık peak vs tüm veri aralığındaki medyan (sessiz dakikalar 0 sayılır); sürekli trafik burst 0, ani patlama 1 |
-| §6 correlation | Sinyalleri incident adayına gruplar, kök neden seçer | CF5.1 | Union-find: onset'ler 5 dk içinde VE (ortak varlık: servis/host/ip/id VEYA ikisi de burst). `pick_root_cause`: en erken onset ağır basar (-3/dk), altyapı kelimesi (+1.5), fan-out (+0.3/sinyal), severity (+0.3) |
-| §7 scoring + explain | Skor, faktörler, anlatı, postmortem, Claude promptu | CF5.1 | `WEIGHTS` burst .35 / severity .25 / blast_radius .25 / duration .15, sprint günü burada ayarlanır. Her faktör değer + katkı taşır, toplam = skor. `postmortem_md` ve `claude_prompt` (API'siz, SAKA'ya yapıştırılır, kanıt ref'leri zorunlu) |
-| §8 pipeline | `Analysis` sınıfı: uçtan uca akış ve `overview()` | CF5.1 | Tek sinyalli zayıf gruplar elenir (ERROR+ veya burst ≥ .5 değilse). Incident'lar skora göre sıralanır |
-| §9 actions | SQLite aksiyon takibi | CF5.1 | `ActionStore`: open / in_progress / done, atama, not, zaman damgaları |
-| §10 web | Gömülü dashboard, stdlib `http.server` | CF5.1 | Tek HTML+JS sayfası: Upload (sürükle-bırak), Overview (KPI + dakika grafiği), Signals, Incidents, Incident detail (timeline, faktör çubukları, tıklanabilir kanıt, aksiyon ekleme, postmortem export, Claude prompt kopyala), Actions kanban. API: `/api/overview, /signals, /incidents, /evidence/{ref}, /actions` |
-| §11 cli | `inspect / analyze / serve` komutları | CF5.1 | `inspect` format, roller, zaman aralığı, severity dağılımı, sütun profili basar |
-| `samples/make_demo.py` | Sentetik demo veri seti üretir (`demo_mixed.zip`) | CF5.1 | 914 olay, 4 dosya (jsonl, plain log, syslog, csv). Gömülü zincir: DB gecikmesi → payment timeout → checkout 500 → alarm; ayrıca worker-02 disk dolu; arka plan gürültüsü |
-| `tests/test_signal_sprint.py` | 9 test: tespit, parser'lar, mapping, yardımcılar, ZIP, demo üzerinde azaltma/burst/incident zinciri/kök neden, postmortem, aksiyonlar | CF5.1 | `make test` |
+| `pyproject.toml`, `Makefile` | Paket tanımı, `signal-sprint` CLI girişi, `make run / test / inspect DS=x` | CF5.1 | `pip install -e .` ile kurulur, `src/` layout |
+| `app.py` | Streamlit dashboard (frontend) | CF5.1 | Sidebar: upload / demo yükle / huni (raw → fingerprint → meaningful → incident → action). Sekmeler: **Profile** (metrikler, "I found…" özeti, dakika grafiği, dosyalar, severity, ilişkiler), **Signals** (tablo + "WHY THIS SIGNAL?" kanıt/gerekçe/güven), **Incidents** (tablo, anlatı, kök neden, faktör grafiği, timeline, kanıt satırı, öneriler, aksiyon formu, postmortem indir, LLM prompt), **Actions** (open / in_progress / done / suppressed kolonları) |
+| `src/signal_sprint/models.py` | `Observation`, `Signal` (+`why()`), `Factor`, `Incident`, `Action` | CF5.1 | Dataclass'lar. Her satır önce Observation olur; `ref` = `dosya:satır` kanıt adresi, `parser_confidence` taşır |
+| `src/signal_sprint/loader.py` | Universal loader | CF5.1 | Dosya / ZIP / GZ / TAR.GZ / klasör, recursive; utf-8-sig → utf-16 → latin-1 encoding fallback; ikili dosyaları atlar |
+| `src/signal_sprint/format_detector.py` | Format tespiti | CF5.1 | İlk 200 satırla json / jsonl / csv-tsv / syslog / kv / text seçer, güven skoru döner; ayraç tespiti |
+| `src/signal_sprint/normalize.py` | Zaman, severity, **schema auto-mapper** | CF5.1 | `parse_timestamp` epoch s/ms + dateutil (her format, tz-aware UTC). `normalize_severity` warn/err/P1/major/syslog 0-7 → DEBUG..CRITICAL. `auto_map`: açık mapping > isim ipucu > sonek > değer bazlı tahmin (zaman gibi görünen, seviye gibi görünen, en uzun metin) |
+| `src/signal_sprint/parsers/` | `base.py` arayüz, `common.py` kayıt → Observation, json / jsonl / csv / kv / syslog / text parser'ları | CF5.1 | Her parser `(satır_no, dict)` üretir; `common` rolleri ilk 50 kaydın anahtar birleşiminden çözer, zamanı olmayan satıra önceki zamanı verir, dosya adına göre kind (alert/incident) atar |
+| `src/signal_sprint/pipeline.py` | Ingest orkestrasyonu | CF5.1 | loader → detector → parser; `scenario.MAPPING` uygulanır; zamana göre sıralı Observation listesi + dosya raporu |
+| `src/signal_sprint/profiler.py` | **Dataset profiler** | CF5.1 | pandas ile: dosya/kayıt sayısı, olası kaynak türleri, servis/host/hata sınıfı sayısı, zaman aralığı, dakikalık seri, dosyalar arası ilişki önerisi (id/host/service benzeri kolonlarda ≥ %50 değer örtüşmesi). `profile_text` 30 saniyelik özet |
+| `src/signal_sprint/analysis.py` | Deterministik motor | CF5.1 | `template_of` uuid/ip/hex/ts/url/path/sayı maskeler (+`scenario.EXTRA_MASKS`); fingerprint = sha1(template+severity+service). `score_burst`: peak vs tüm aralıktaki medyan. `correlate`: union-find, onset'ler pencere içinde VE (ortak varlık VEYA ikisi de burst). `pick_root_cause`: en erken onset (-3/dk), altyapı kelimesi (+1.5), fan-out, severity. `build_incident`: `WEIGHTS` burst .35 / severity .25 / blast_radius .25 / duration .15, faktör katkıları toplamı = skor, öneriler `scenario.RECOMMENDATIONS`'tan. `postmortem_md`, `llm_prompt` (opsiyonel, SAKA'ya yapıştırılır) |
+| `src/signal_sprint/actions.py` | Aksiyon takibi (SQLite) | CF5.1 | title, priority P1-P4, status open/in_progress/done/suppressed, owner, recommendation, evidence |
+| `src/signal_sprint/cli.py` | `signal-sprint <path> [--inspect] [--json]` | CF5.1 | `--inspect`: dosya başına format, roller, zaman aralığı, severity, kolon profili. Varsayılan: profil özeti + incident'lar |
+| `src/signal_sprint/scenario/__init__.py` | **Hackathon günü dokunulacak tek yer** | CF5.1 | MAPPING, EXTRA_MASKS, EXTRA_DEPENDENCY_WORDS, WINDOW_MIN, WEIGHTS, RECOMMENDATIONS |
+| `samples/make_demo.py` | Sentetik demo veri seti (`demo_mixed.zip`) | CF5.1 | 914 olay, 4 dosya (jsonl, text log, syslog, csv). Zincir: DB gecikmesi → payment timeout → checkout 500 → alarm; ayrıca worker-02 disk dolu; arka plan gürültüsü |
+| `tests/test_smoke.py` | Paket + pipeline + Streamlit AppTest | CF5.1 | Demo yükle, metrik 914 |
+| `tests/test_pipeline.py` | 9 test: tespit, parser'lar, auto-map, yardımcılar, ZIP + TAR.GZ, profil, burst, incident zinciri/kök neden/gerekçe, aksiyonlar | CF5.1 | `make test` |
 | `docs/PLAN.md`, `docs/DECISIONS.md` | Hedef listesi ve tasarım kararları | CF5.1 | Sunumun "planlama" bölümüne kaynak |
 
 ## Demo akışı (7 dk)
 
-1. Upload: `demo_mixed.zip` sürükle, ingest raporunda 4 dosya 4 format.
-2. Overview: 914 olay → 11 sinyal → 2 incident, 83x azaltma, dakika grafiğinde 14:31 tepesi.
-3. Signals: 532 satırlık sağlıklı trafik tek satır, burst 0; timeout sinyali burst 1.0.
-4. Incident INC-1: kök neden postgres gecikmesi, timeline'da 4 belirti, faktör çubukları, kanıt satırına tıkla.
-5. İki aksiyon ekle, birini Done yap, postmortem'i indir, Claude promptunu kopyala.
+1. Sidebar → "Load demo dataset". Profile: 914 olay, 11 sinyal, 2 incident, 83× azaltma; "I found: 4 files…" özeti; 14:31 tepesi.
+2. Signals: 532 satırlık sağlıklı trafik tek satır (burst 0), timeout sinyali burst 1.0. "WHY THIS SIGNAL?" ile kanıt + gerekçe + güven.
+3. Incidents → INC-1: kök neden postgres gecikmesi, 4 belirti timeline'da, faktör grafiği, kanıt satırı, öneriler.
+4. Aksiyon oluştur (P1, owner), Actions sekmesinde in_progress → done. Postmortem indir. LLM prompt'unu göster.
+5. Kapanış: plan vs gerçekleşen (docs/PLAN.md), AI kullanımı (bu tablo).
+
+## Hackathon günü (14:20 → 17:30)
+
+| Saat | İş |
+|---|---|
+| 14:20–14:30 | `signal-sprint data.zip --inspect`: dosyalar, formatlar, roller |
+| 14:30–14:45 | Dashboard'a yükle, profil ve rol tahminini kontrol et |
+| 14:45–15:10 | Gerekirse `scenario.MAPPING` / yeni parser |
+| 15:10–15:50 | `scenario`: pencere, ağırlıklar, bağımlılık kelimeleri, maskeler |
+| 15:50–16:25 | Öneriler, opsiyonel LLM zenginleştirme |
+| 16:25–16:50 | Demo verisi ile aksiyon akışı provası |
+| 16:50–17:10 | Edge case, testler |
+| 17:10–17:25 | README, AI kullanım hikâyesi, sunum |
+| 17:25 | Code freeze, push, GitHub doğrulama |

@@ -1,0 +1,267 @@
+"""Deterministic engine: fingerprint -> signals (burst) -> correlation -> incidents (root cause, score, rationale).
+
+Works without any LLM. `llm_prompt()` builds an evidence bundle for optional enrichment (paste into Claude SAKA).
+"""
+
+from __future__ import annotations
+
+import hashlib
+import re
+from collections import Counter, defaultdict
+from dataclasses import asdict
+from datetime import timedelta
+
+from .models import SEV_RANK, Factor, Incident, Observation, Signal
+from . import scenario
+
+# ---------------------------------------------------------------- fingerprint
+MASKS = [
+    (re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.I), "<uuid>"),
+    (re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?\b"), "<ip>"),
+    (re.compile(r"\b[0-9a-f]{16,}\b", re.I), "<hex>"),
+    (re.compile(r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}[^\s]*"), "<ts>"),
+    (re.compile(r"https?://\S+"), "<url>"),
+    (re.compile(r"(?<=[\s=:/])/[\w./\-]+"), "<path>"),
+    (re.compile(r"\b\d+(?:\.\d+)?\s?(ms|s|sec|m|h|%|kb|mb|gb)\b", re.I), "<n>\\1"),
+    (re.compile(r"\b\d+\b"), "<n>"),
+]
+ENTITY_RE = re.compile(r"\b(?:\d{1,3}(?:\.\d{1,3}){3}|[a-z][\w\-]*(?:-\d+|\.[a-z]+)+|[a-z]+-(?:api|db|svc|service|cache|queue|worker|gateway|proxy)\b)", re.I)
+DEPENDENCY_WORDS = ["database", "db", "postgres", "mysql", "redis", "kafka", "queue", "connection", "network", "dns",
+                    "disk", "storage", "latency", "duration", "slow", "certificate", "auth", "gateway", "no space", "oom"]
+WINDOW_MIN = 5
+MIN_SEVERITY = "WARN"
+WEIGHTS = {"burst": 0.35, "severity": 0.25, "blast_radius": 0.25, "duration": 0.15}
+
+
+def _masks():
+    return MASKS + [(re.compile(rx), rep) for rx, rep in scenario.EXTRA_MASKS]
+
+
+def template_of(message: str) -> str:
+    t = message.strip()
+    for rx, rep in _masks():
+        t = rx.sub(rep, t)
+    return re.sub(r"\s+", " ", t).lower()[:200]
+
+
+def entities_of(o: Observation) -> set[str]:
+    ents = {x.lower() for x in ENTITY_RE.findall(o.message)}
+    ents.update(x for x in (o.service.lower(), o.host.lower()) if x)
+    for k, v in o.attributes.items():
+        if isinstance(v, str) and re.fullmatch(r"[\w.\-]{3,40}", v) and \
+                any(h in k.lower() for h in ("id", "host", "service", "node", "ip", "target", "endpoint", "db", "pod")):
+            ents.add(v.lower())
+    return ents
+
+
+def fingerprint(observations: list[Observation]) -> None:
+    for o in observations:
+        o.template = template_of(o.message)
+        o.fingerprint = hashlib.sha1(f"{o.template}|{o.severity}|{o.service.lower()}".encode()).hexdigest()[:12]
+
+
+# ---------------------------------------------------------------- signals + burst
+def build_signals(observations: list[Observation]) -> list[Signal]:
+    span_min = 1
+    if observations:
+        span_min = max(1, int((observations[-1].timestamp - observations[0].timestamp).total_seconds() // 60) + 1)
+    groups: dict[str, list[Observation]] = defaultdict(list)
+    for o in observations:
+        groups[o.fingerprint].append(o)
+    signals = []
+    for n, (fp, obs) in enumerate(groups.items(), 1):
+        obs.sort(key=lambda o: o.timestamp)
+        ents: set[str] = set()
+        for o in obs:
+            ents |= entities_of(o)
+        sig = Signal(id=f"S{n}", fingerprint=fp, template=obs[0].template, severity=obs[0].severity, count=len(obs),
+                     services=sorted({o.service for o in obs if o.service}), hosts=sorted({o.host for o in obs if o.host}),
+                     entities=ents, first_seen=obs[0].timestamp, last_seen=obs[-1].timestamp, onset=obs[0].timestamp,
+                     observations=obs)
+        score_burst(sig, span_min)
+        signals.append(sig)
+    return signals
+
+
+def score_burst(sig: Signal, span_min: int) -> None:
+    """Peak events/min vs baseline = median rate over the whole dataset span (quiet minutes count as 0).
+
+    Steady background traffic: baseline ~= peak -> burst 0. Silent-then-spike: baseline 0 -> burst high.
+    """
+    per_min = Counter(o.timestamp.replace(second=0, microsecond=0) for o in sig.observations)
+    rates = sorted(list(per_min.values()) + [0] * max(0, span_min - len(per_min)))
+    sig.peak_rate = float(rates[-1])
+    sig.baseline_rate = float(rates[len(rates) // 2])
+    peak_minute = max(per_min, key=per_min.get)
+    threshold = max(1.0, sig.baseline_rate * 2)
+    sig.onset = min(m for m, c in per_min.items() if c >= threshold or m == peak_minute)
+    ratio = sig.peak_rate / (sig.baseline_rate + 1.0)
+    sig.burst_score = round(min(1.0, (ratio - 1) / 9), 3) if ratio > 1 else 0.0
+
+
+# ---------------------------------------------------------------- correlation
+def interesting(s: Signal) -> bool:
+    return SEV_RANK[s.severity] >= SEV_RANK[MIN_SEVERITY] or s.burst_score >= 0.5
+
+
+def correlate(signals: list[Signal], window_min: int | None = None) -> list[tuple[list[Signal], list[dict]]]:
+    """Union-find over signals. Edge = onsets within the window AND (shared entity OR both bursting)."""
+    window_min = window_min or scenario.WINDOW_MIN or WINDOW_MIN
+    cand = [s for s in signals if interesting(s)]
+    parent = {s.id: s.id for s in cand}
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    edges: list[dict] = []
+    win = timedelta(minutes=window_min)
+    for i, a in enumerate(cand):
+        for b in cand[i + 1:]:
+            if abs(a.onset - b.onset) > win:
+                continue
+            shared = a.entities & b.entities
+            gap = abs((a.onset - b.onset).total_seconds())
+            why = None
+            if shared:
+                why = f"shared entity {', '.join(sorted(shared)[:3])}, {gap:.0f}s apart"
+            elif a.burst_score >= 0.5 and b.burst_score >= 0.5:
+                why = f"both burst within {gap:.0f}s"
+            if why:
+                edges.append({"a": a.id, "b": b.id, "why": why})
+                parent[find(a.id)] = find(b.id)
+    comps: dict[str, list[Signal]] = defaultdict(list)
+    for s in cand:
+        comps[find(s.id)].append(s)
+    out = []
+    for members in comps.values():
+        ids = {s.id for s in members}
+        out.append((sorted(members, key=lambda s: s.onset), [e for e in edges if e["a"] in ids]))
+    return out
+
+
+def pick_root_cause(members: list[Signal]) -> tuple[Signal, str]:
+    """Earliest onset weighs most; then dependency words in the template, fan-out, severity."""
+    words = DEPENDENCY_WORDS + scenario.EXTRA_DEPENDENCY_WORDS
+    earliest = members[0].onset
+    ranked = []
+    for s in members:
+        lead_min = (s.onset - earliest).total_seconds() / 60
+        dep = int(any(w in s.template for w in words))
+        fan = sum(1 for o in members if o is not s and (o.entities & s.entities))
+        score = -lead_min * 3 + dep * 1.5 + fan * 0.3 + SEV_RANK[s.severity] * 0.3
+        ranked.append((score, s, lead_min, dep, fan))
+    ranked.sort(key=lambda r: -r[0])
+    _, s, lead, dep, fan = ranked[0]
+    reasons = ["earliest onset in the group" if lead == 0 else f"starts {lead:.0f} min after the first signal"]
+    if dep:
+        reasons.append("mentions an infrastructure dependency")
+    if fan:
+        reasons.append(f"shares entities with {fan} other signal(s)")
+    return s, "; ".join(reasons)
+
+
+# ---------------------------------------------------------------- scoring + explanation
+def build_incident(n: int, members: list[Signal], edges: list[dict]) -> Incident:
+    weights = scenario.WEIGHTS or WEIGHTS
+    root, why = pick_root_cause(members)
+    services = sorted({x for s in members for x in s.services})
+    hosts = sorted({x for s in members for x in s.hosts})
+    start, end = min(s.first_seen for s in members), max(s.last_seen for s in members)
+    total = sum(s.count for s in members)
+    raw = {"burst": max(s.burst_score for s in members),
+           "severity": sum(s.count for s in members if SEV_RANK[s.severity] >= 3) / total,
+           "blast_radius": min(1.0, (len(services) + len(hosts)) / 6),
+           "duration": min(1.0, (end - start).total_seconds() / 3600)}
+    labels = {"burst": f"peak {max(s.peak_rate for s in members):.0f}/min vs baseline {max(s.baseline_rate for s in members):.0f}/min",
+              "severity": f"{raw['severity']:.0%} of {total} events are ERROR+",
+              "blast_radius": f"{len(services)} service(s), {len(hosts)} host(s)",
+              "duration": f"{(end - start).total_seconds() / 60:.0f} min"}
+    factors = [Factor(k, weights[k], labels[k], round(weights[k] * raw[k], 3)) for k in weights]
+    score = round(sum(f.contribution for f in factors), 3)
+    top_sev = max((s.severity for s in members), key=lambda x: SEV_RANK[x])
+    severity = "critical" if score >= 0.6 or top_sev == "CRITICAL" else "high" if score >= 0.4 else "medium" if score >= 0.2 else "low"
+    timeline = [{"time": s.onset.isoformat(), "signal": s.id, "severity": s.severity, "count": s.count, "template": s.template,
+                 "services": s.services, "role": "root cause" if s is root else "symptom"} for s in members]
+    evidence = [ref for s in members for ref in s.evidence[:3]]
+    recs = [r for key, lst in scenario.RECOMMENDATIONS.items() if key in root.template for r in lst][:4] or \
+           ["Investigate the root-cause signal's evidence lines", "Confirm blast radius with service owners"]
+    title = root.template[:70] + (f" ({', '.join(services[:3])})" if services else "")
+    inc = Incident(id=f"INC-{n}", title=title, severity=severity, score=score, root_cause_signal=root.id, root_cause_reason=why,
+                   affected_services=services, affected_hosts=hosts, started_at=start, ended_at=end,
+                   signal_ids=[s.id for s in members], factors=factors, evidence=evidence, timeline=timeline,
+                   links=edges, narrative="", recommendations=recs)
+    inc.narrative = narrative(inc, members)
+    return inc
+
+
+def narrative(inc: Incident, members: list[Signal]) -> str:
+    root = next(s for s in members if s.id == inc.root_cause_signal)
+    parts = [f"{sum(s.count for s in members)} raw events collapsed into {len(members)} signal(s) between "
+             f"{inc.started_at:%H:%M:%S} and {inc.ended_at:%H:%M:%S}.",
+             f"Probable origin: {root.id} \"{root.template}\" because: {inc.root_cause_reason}."]
+    symptoms = [s for s in members if s is not root]
+    if symptoms:
+        parts.append("Downstream symptoms: " + "; ".join(f"{s.id} \"{s.template[:60]}\" x{s.count}" for s in symptoms[:4]) + ".")
+    if inc.links:
+        parts.append("Links: " + "; ".join(f"{e['a']}-{e['b']} ({e['why']})" for e in inc.links[:4]) + ".")
+    return " ".join(parts)
+
+
+def postmortem_md(inc: Incident, signals: dict[str, Signal]) -> str:
+    out = [f"# Postmortem {inc.id}: {inc.title}", "", f"- Severity: **{inc.severity}** (score {inc.score})",
+           f"- Window: {inc.started_at.isoformat()} -> {inc.ended_at.isoformat()}",
+           f"- Affected services: {', '.join(inc.affected_services) or '-'}",
+           f"- Affected hosts: {', '.join(inc.affected_hosts) or '-'}",
+           f"- Root cause candidate: {inc.root_cause_signal} ({inc.root_cause_reason})", "", "## Timeline", ""]
+    out += [f"- {t['time'][11:19]} [{t['severity']}] {t['signal']} x{t['count']} {t['template']} ({t['role']})" for t in inc.timeline]
+    out += ["", "## Why this decision", ""] + [f"- {f.name}: weight {f.weight}, {f.value}, contribution {f.contribution}" for f in inc.factors]
+    out += ["", "## Evidence", ""]
+    for sid in inc.signal_ids:
+        out += [f"- `{o.ref}` {o.message[:140]}" for o in signals[sid].observations[:3]]
+    out += ["", "## Recommendations", ""] + [f"- {r}" for r in inc.recommendations]
+    out += ["", "## Narrative", "", inc.narrative, ""]
+    return "\n".join(out)
+
+
+def llm_prompt(inc: Incident, signals: dict[str, Signal]) -> str:
+    """Evidence bundle for optional LLM enrichment (paste into Claude SAKA). The answer must cite refs."""
+    ev = "\n".join(f"[{o.ref}] {o.timestamp:%H:%M:%S} {o.severity} {o.service} {o.message[:160]}"
+                   for sid in inc.signal_ids for o in signals[sid].observations[:5])
+    return (f"You are an SRE. Below is evidence for incident {inc.id}. Root cause candidate: {inc.root_cause_signal} "
+            f"({inc.root_cause_reason}). Write (1) a 3-sentence summary, (2) the most likely root cause, "
+            f"(3) three concrete actions. Cite evidence refs in [brackets]; do not invent facts.\n\nEVIDENCE\n{ev}\n")
+
+
+# ---------------------------------------------------------------- orchestration
+class Analysis:
+    def __init__(self, observations: list[Observation], report: list[dict]):
+        self.observations, self.report = observations, report
+        fingerprint(observations)
+        self.signals = sorted(build_signals(observations), key=lambda s: (-s.burst_score, -SEV_RANK[s.severity], -s.count))
+        comps = [(m, e) for m, e in correlate(self.signals) if len(m) > 1 or SEV_RANK[m[0].severity] >= 3 or m[0].burst_score >= 0.5]
+        incs = sorted((build_incident(i, m, e) for i, (m, e) in enumerate(comps, 1)), key=lambda i: -i.score)
+        for n, inc in enumerate(incs, 1):
+            inc.id = f"INC-{n}"
+        self.incidents = incs
+        self.signal_by_id = {s.id: s for s in self.signals}
+        self.incident_by_id = {i.id: i for i in self.incidents}
+
+    def funnel(self) -> dict:
+        return {"raw_events": len(self.observations), "fingerprints": len(self.signals),
+                "meaningful_signals": sum(1 for s in self.signals if interesting(s)), "incidents": len(self.incidents),
+                "reduction": round(len(self.observations) / max(len(self.signals), 1), 1)}
+
+
+def signal_dict(s: Signal) -> dict:
+    return {"id": s.id, "severity": s.severity, "template": s.template, "count": s.count, "burst": s.burst_score,
+            "peak/min": s.peak_rate, "base/min": s.baseline_rate, "services": ", ".join(s.services),
+            "hosts": ", ".join(s.hosts), "onset": s.onset.strftime("%H:%M:%S")}
+
+
+def incident_dict(inc: Incident) -> dict:
+    d = asdict(inc)
+    d["started_at"], d["ended_at"] = inc.started_at.isoformat(), inc.ended_at.isoformat()
+    return d

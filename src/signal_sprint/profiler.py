@@ -1,0 +1,75 @@
+"""Dataset profiler: what did we just receive? Files, records, probable sources, entities, time range, relations."""
+
+from __future__ import annotations
+
+import re
+from collections import Counter, defaultdict
+
+import pandas as pd
+
+from .models import Observation
+
+ID_LIKE = re.compile(r"(^|[_.])(id|key|name|hostname|service|host|node|pod)$", re.I)
+
+
+def profile(observations: list[Observation], report: list[dict]) -> dict:
+    if not observations:
+        return {"files": report, "records": 0}
+    df = pd.DataFrame([{"source": o.source, "kind": o.kind, "severity": o.severity, "service": o.service,
+                        "host": o.host, "timestamp": o.timestamp} for o in observations])
+    df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
+    per_file = df.groupby("source").agg(records=("kind", "size"), kind=("kind", "first"),
+                                        start=("timestamp", "min"), end=("timestamp", "max")).reset_index()
+    # columns per file (attributes + roles) for relation suggestions
+    cols: dict[str, set[str]] = defaultdict(set)
+    values: dict[tuple[str, str], set[str]] = defaultdict(set)
+    for o in observations:
+        for k, v in o.attributes.items():
+            cols[o.source].add(k)
+            if isinstance(v, (str, int)) and len(values[(o.source, k)]) < 500:
+                values[(o.source, k)].add(str(v))
+        for k, v in (("service", o.service), ("host", o.host)):
+            if v:
+                cols[o.source].add(k); values[(o.source, k)].add(v)
+    relations = []
+    files = list(cols)
+    for i, a in enumerate(files):
+        for b in files[i + 1:]:
+            for ka in cols[a]:
+                for kb in cols[b]:
+                    if not (ID_LIKE.search(ka) or ID_LIKE.search(kb)):
+                        continue
+                    va, vb = values[(a, ka)], values[(b, kb)]
+                    if len(va) >= 2 and len(vb) >= 2:
+                        overlap = len(va & vb) / min(len(va), len(vb))
+                        if overlap >= 0.5:
+                            relations.append({"from": f"{a}.{ka}", "to": f"{b}.{kb}", "overlap": round(overlap, 2)})
+    relations.sort(key=lambda r: -r["overlap"])
+    error_classes = Counter(o.template or o.message[:40] for o in observations if o.severity in ("ERROR", "CRITICAL"))
+    return {
+        "files": [dict(r, start=str(per_file.loc[per_file.source == r["file"], "start"].iloc[0])[:19] if (per_file.source == r["file"]).any() else "-")
+                  for r in report],
+        "records": len(observations),
+        "probable_sources": dict(Counter(o.kind for o in observations)),
+        "services": sorted({o.service for o in observations if o.service}),
+        "hosts": sorted({o.host for o in observations if o.host}),
+        "error_classes": len(error_classes),
+        "severity": dict(Counter(o.severity for o in observations)),
+        "time_range": {"start": df.timestamp.min().isoformat(), "end": df.timestamp.max().isoformat(),
+                       "minutes": round((df.timestamp.max() - df.timestamp.min()).total_seconds() / 60, 1)},
+        "relations": relations[:10],
+        "per_minute": df.set_index("timestamp").resample("1min").size().rename("events").reset_index(),
+    }
+
+
+def profile_text(p: dict) -> str:
+    """The 30-second summary shown right after upload."""
+    if not p.get("records"):
+        return "No records parsed."
+    lines = [f"I found: {len(p['files'])} files, {p['records']:,} records",
+             "Probable sources: " + ", ".join(f"{k} ({v})" for k, v in p["probable_sources"].items()),
+             f"Detected entities: {len(p['services'])} services, {len(p['hosts'])} hosts, {p['error_classes']} error classes",
+             f"Detected time range: {p['time_range']['start'][11:16]} -> {p['time_range']['end'][11:16]} ({p['time_range']['minutes']} min)"]
+    if p["relations"]:
+        lines.append("Suggested relations: " + "; ".join(f"{r['from']} -> {r['to']}" for r in p["relations"][:4]))
+    return "\n".join(lines)
