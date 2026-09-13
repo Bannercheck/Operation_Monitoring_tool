@@ -8,10 +8,13 @@ Bu dosya her oturumda geçerli. Kurallar eklendikçe güncellenir.
 2. **AI araç kaydı.** Hackathon "AI kullanım becerisi"ni puanlıyor ve şahsi
    araçlar (Claude SAKA ve Codex dışındakiler) katılımcı sorumluluğunda
    serbest. Bu yüzden her geliştirme adımında hangi aracın (ve versiyonunun)
-   hangi iş için kullanıldığı kayıt altına alınır. Kayıt yeri: README.md
-   içindeki modül tablosu ("AI aracı" sütunu). Bu oturumdaki model:
-   claude-fable-5-1 (Cowork).
-3. **Tek README, artımlı güncelleme.** Repoda tek bir `README.md` olur. Her
+   hangi iş için kullanıldığı kayıt altına alınır. İki kayıt yeri:
+   (a) README.md modül tablosu ("AI aracı" sütunu): dosya bazında;
+   (b) `docs/AI_LOG.md`: **her prompt için bir satır** (tarih, araç + sürüm,
+   prompt özeti, üretilen, commit). Her commit'ten önce AI_LOG'a satır eklenir.
+   Bu oturumdaki model: claude-fable-5-1 (Cowork).
+3. **Tek README, artımlı güncelleme.** Repoda tek bir `README.md` olur
+   (docs/ altındaki PLAN, DECISIONS ve AI_LOG ayrı amaçlı yardımcı dosyalardır). Her
    dosya/modül için şu bilgiler tutulur: ne işe yarar, hangi AI
    aracı/versiyonu ile üretildi, ilgili kod nasıl çalışır. Her geliştirme
    sonrası README'nin sadece ilgili bölümü güncellenir; README asla baştan

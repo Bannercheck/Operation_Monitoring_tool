@@ -55,6 +55,7 @@ burada tutulur ve sadece ilgili satır güncellenir. Araç kısaltması:
 | `tests/test_smoke.py` | Paket + pipeline + Streamlit AppTest | CF5.1 | Demo yükle, huni 914, TR→EN dil geçişi |
 | `tests/test_pipeline.py` | 9 test: tespit, parser'lar, auto-map, yardımcılar, ZIP + TAR.GZ, profil, burst, incident zinciri/kök neden/gerekçe, aksiyonlar | CF5.1 | `make test` |
 | `docs/PLAN.md`, `docs/DECISIONS.md` | Hedef listesi ve tasarım kararları | CF5.1 | Sunumun "planlama" bölümüne kaynak |
+| `docs/AI_LOG.md` | **Prompt başına AI kanıt kaydı**: tarih, araç + sürüm, prompt özeti, üretilen, commit | CF5.1 | Hackathon öncesi 15 satır dolu; etkinlik günü için şablon hazır. Sunumun "AI stratejisi" bölümünün kaynağı |
 
 ## Demo akışı (7 dk)
 
