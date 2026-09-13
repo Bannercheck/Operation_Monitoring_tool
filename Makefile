@@ -1,19 +1,9 @@
-.PHONY: dev api web test demo install
-
-install:
-	cd backend && pip install -e ".[dev]"
-	cd frontend && npm install
-
-api:
-	cd backend && uvicorn app.api.main:app --reload --port 8000
-
-web:
-	cd frontend && npm run dev
-
-dev:
-	$(MAKE) -j2 api web
-
+.PHONY: test demo inspect analyze
 test:
-	cd backend && pytest -q
-
-demo: dev
+	pytest -q
+demo:
+	python3 samples/make_demo.py && python3 signal_sprint.py serve samples/demo_mixed.zip
+inspect:
+	python3 signal_sprint.py inspect $(DS)
+analyze:
+	python3 signal_sprint.py analyze $(DS)

@@ -1,9 +1,0 @@
-:root { color-scheme: dark; --bg: #0b0d10; --panel: #15181d; --line: #262b33; --fg: #e6e8eb; --muted: #8b93a1; --accent: #3ddc84; }
-* { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 system-ui, sans-serif; }
-.layout { display: flex; min-height: 100vh; }
-.sidebar { width: 200px; padding: 20px; border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
-.sidebar h1 { font-size: 18px; color: var(--accent); margin: 0 0 16px; }
-.sidebar a { color: var(--muted); text-decoration: none; padding: 6px 8px; border-radius: 6px; }
-.sidebar a.active { color: var(--fg); background: var(--panel); }
-.content { flex: 1; padding: 24px 32px; }
