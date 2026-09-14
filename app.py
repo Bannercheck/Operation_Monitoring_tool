@@ -51,9 +51,20 @@ CSS = """
 .card.hot{border-color:#ff5c5c}
 .kpi{background:var(--secondary-background-color);border:1px solid #262b33;border-radius:12px;padding:12px 14px;text-align:center}
 .kpi b{display:block;font-size:30px;line-height:1.1}.kpi span{color:#8b93a1;font-size:12px;text-transform:uppercase;letter-spacing:.5px}
+.k2{position:relative;overflow:hidden;background:linear-gradient(160deg,var(--secondary-background-color) 0%,#101318 100%);border:1px solid #262b33;border-top:2px solid var(--acc);border-radius:14px;padding:14px 16px 8px;min-height:104px}
+.k2:before{content:"";position:absolute;right:-30px;top:-30px;width:110px;height:110px;border-radius:55px;background:var(--acc);opacity:.07}
+.k2 .ic{position:absolute;right:12px;top:10px;font-size:20px;opacity:.9}
+.k2 .lb{color:#8b93a1;font-size:11px;text-transform:uppercase;letter-spacing:.7px}
+.k2 .v{display:block;font-size:32px;font-weight:700;line-height:1.15;margin:4px 0 2px;color:#f2f4f7}
+.k2 .sub{font-size:12px;color:var(--acc);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.k2 .sub.m{color:#8b93a1}
+.flow{display:flex;align-items:center;justify-content:center;height:100%;color:#3ddc84;font-size:22px;padding-top:34px}
 .arrow{text-align:center;color:#3ddc84;font-size:26px;padding-top:18px}
-.tile div[data-testid="stButton"] button{width:100%;margin-top:-6px;padding:2px;font-size:11px;background:transparent;color:#8b93a1;border:0}
-.tile div[data-testid="stButton"] button:hover{color:#3ddc84}
+[class*="st-key-tile-"]{margin-top:-14px}
+[class*="st-key-tile-"] button{width:100%;min-height:22px;height:22px;padding:0;font-size:11px;letter-spacing:.4px;background:#0f1216;color:#6b7684;border:1px solid #262b33;border-top:0;border-radius:0 0 12px 12px}
+[class*="st-key-tile-"] button:hover{color:#3ddc84;border-color:#3ddc84;background:#0f1216}
+[class*="st-key-tile-"] button p{font-size:11px}
+.k2{border-radius:14px 14px 0 0}
 .muted{color:#8b93a1}.mono{font-family:ui-monospace,Menlo,monospace;font-size:12.5px}
 .tl{border-left:2px solid #262b33;margin-left:6px;padding-left:14px}.tl .step{position:relative;margin-bottom:8px}
 .tl .step:before{content:"";position:absolute;left:-19px;top:7px;width:8px;height:8px;border-radius:4px;background:#8b93a1}
@@ -72,6 +83,11 @@ def pill(s: str) -> str:
 
 def kpi(value, label) -> str:
     return f'<div class="kpi"><b>{value}</b><span>{label}</span></div>'
+
+
+def kpi2(value, label, icon: str, accent: str, sub: str = "", muted: bool = False) -> str:
+    return (f'<div class="k2" style="--acc:{accent}"><span class="ic">{icon}</span><div class="lb">{label}</div>'
+            f'<span class="v">{value}</span><div class="sub{" m" if muted else ""}">{esc(str(sub))}</div></div>')
 
 
 @st.cache_resource
@@ -193,25 +209,47 @@ def frames(dataset: str, n: int):
 
 
 with tab_over:
-    def tile(col, key: str, value, label: str) -> None:
+    def tile(col, key: str, value, label: str, icon: str, accent: str, sub: str = "", muted: bool = False) -> None:
         with col:
-            st.markdown('<div class="tile">' + kpi(value, label) + "</div>", unsafe_allow_html=True)
+            st.markdown('<div class="tile">' + kpi2(value, label, icon, accent, sub, muted) + "</div>", unsafe_allow_html=True)
             if st.button(t("detail"), key=f"tile-{key}", **wide("button")):
                 st.session_state["detail"] = None if st.session_state.get("detail") == key else key
                 st.rerun()
 
-    cols = st.columns([3, 1, 3, 1, 3, 1, 3, 1, 3])
-    steps = [("raw_events", f"{f['raw_events']:,}"), ("fingerprints", f["fingerprints"]), ("meaningful", f["meaningful_signals"]),
-             ("incidents", f["incidents"]), ("actions", len(store().list()))]
-    for i, (key, v) in enumerate(steps):
-        tile(cols[i * 2], key, v, t(key))
-        if i < 4:
-            cols[i * 2 + 1].markdown('<div class="arrow">→</div>', unsafe_allow_html=True)
     df = frames(st.session_state["dataset"], len(a.observations))
+    n_err = int((df.severity.isin(["ERROR", "CRITICAL"])).sum())
+    n_crit = sum(1 for i in a.incidents if i.severity == "critical")
+    acts_all = store().list()
+    n_open = sum(1 for x_ in acts_all if x_["status"] in ("open", "in_progress"))
+    top_sig = a.signals[0] if a.signals else None
+    svc_counts = df[df.service != "-"].service.value_counts()
+    host_counts = df[df.host != "-"].host.value_counts()
+    err_sigs = [x_ for x_ in a.signals if SEV_RANK[x_.severity] >= 3]
+    tr = prof["time_range"]
+    cols = st.columns([3, 1, 3, 1, 3, 1, 3, 1, 3])
+    steps = [
+        ("raw_events", f"{f['raw_events']:,}", "🧾", "#6b9bd2", f"{n_err / max(f['raw_events'], 1):.0%} ERROR+" if f["raw_events"] else ""),
+        ("fingerprints", f["fingerprints"], "🧬", "#3ddc84", f"{f['reduction']}× {t('reduction')}"),
+        ("meaningful", f["meaningful_signals"], "📡", "#f2d55c", f"{top_sig.id} · {t('burst')} {top_sig.burst_score}" if top_sig else ""),
+        ("incidents", f["incidents"], "🚨", "#ff5c5c" if n_crit else "#ffb347", f"{n_crit} critical" if n_crit else t("no_critical")),
+        ("actions", len(acts_all), "✅", "#9b7bff", f"{n_open} {t('open_n')}" if acts_all else t("none_yet")),
+    ]
+    for i, (key, v, ic, acc, sub) in enumerate(steps):
+        tile(cols[i * 2], key, v, t(key), ic, acc, sub)
+        if i < 4:
+            cols[i * 2 + 1].markdown('<div class="flow">→</div>', unsafe_allow_html=True)
     tiles = st.columns(6)
-    for c, (key, v) in zip(tiles, [("files_n", len(prof["files"])), ("records_n", f"{prof['records']:,}"), ("services_n", len(prof["services"])),
-                                   ("hosts_n", len(prof["hosts"])), ("error_classes", prof["error_classes"]), ("span_min", prof["time_range"]["minutes"])]):
-        tile(c, key, v, t(key))
+    fmts = ", ".join(sorted({r["format"] for r in a.report}))
+    second = [
+        ("files_n", len(prof["files"]), "📁", "#8b93a1", fmts, True),
+        ("records_n", f"{prof['records']:,}", "🗂", "#8b93a1", f"{max(a.report, key=lambda r: r['rows'])['file'].split('/')[-1]} · {max(r['rows'] for r in a.report):,}" if a.report else "", True),
+        ("services_n", len(prof["services"]), "🧩", "#6b9bd2", f"{svc_counts.index[0]} · {svc_counts.iloc[0]:,}" if len(svc_counts) else "-", False),
+        ("hosts_n", len(prof["hosts"]), "🖥", "#6b9bd2", f"{host_counts.index[0]} · {host_counts.iloc[0]:,}" if len(host_counts) else "-", False),
+        ("error_classes", prof["error_classes"], "💥", "#ffb347", f"{err_sigs[0].template[:32]} · {err_sigs[0].count}" if err_sigs else "-", False),
+        ("span_min", tr["minutes"], "⏱", "#3ddc84", f"{tr['start'][11:16]} → {tr['end'][11:16]} · {prof.get('bucket', '1min')}", False),
+    ]
+    for c, (key, v, ic, acc, sub, muted) in zip(tiles, second):
+        tile(c, key, v, t(key), ic, acc, sub, muted)
 
     detail = st.session_state.get("detail")
     if detail:
