@@ -87,7 +87,7 @@ def demo():
 def test_profile(demo):
     _, p = demo
     txt = profile_text(p)
-    assert p["records"] == 914 and "I found: 4 files" in txt and "Detected entities" in txt
+    assert p["records"] == 916 and "I found: 4 files" in txt and "Detected entities" in txt
     assert p["probable_sources"]["alert"] == 3 and p["time_range"]["minutes"] > 40
 
 
@@ -159,8 +159,19 @@ def test_compare_two_datasets():
     b = an.Analysis(obs_b, rep_b)
     c = compare(a, profile(obs_a, rep_a), b, profile(obs_b, rep_b))
     k = {r["metric"]: r for r in c["kpis"]}
-    assert k["raw_events"]["a"] == 914 and k["raw_events"]["b"] == 4 and k["raw_events"]["delta"] == -910
-    assert c["summary"]["only_a"] == 11 and c["summary"]["only_b"] >= 3 and c["summary"]["shared"] == 0
+    assert k["raw_events"]["a"] == 916 and k["raw_events"]["b"] == 4 and k["raw_events"]["delta"] == -912
+    assert c["summary"]["only_a"] == 13 and c["summary"]["only_b"] >= 3 and c["summary"]["shared"] == 0
     assert {r["dataset"] for r in c["timeline"]} == {"A", "B"} and len(c["incidents_a"]) == 2
     c2 = compare(a, profile(obs_a, rep_a), a, profile(obs_a, rep_a))
-    assert c2["summary"]["shared"] == 11 and all(r["delta"] == 0 for r in c2["kpis"] if r["delta"] is not None)
+    assert c2["summary"]["shared"] == 13 and all(r["delta"] == 0 for r in c2["kpis"] if r["delta"] is not None)
+
+
+def test_incident_origin_timing_recovery(demo):
+    a, _ = demo
+    inc = a.incidents[0]
+    assert inc.origin["files"]["app.jsonl"] == 60 and "postgres" in inc.origin["services"] and "syslog" in inc.origin["parsers"]
+    assert inc.timing["first_signal"].endswith("14:31:00+00:00") and inc.timing["duration_s"] == 295 and inc.timing["error_count"] > 90
+    assert inc.recovery["kind"] == "restart" and inc.recovery["evidence"].startswith("db.log:") and "ready to accept" in inc.recovery["what"]
+    assert a.incidents[1].recovery["kind"] in ("stopped", "self_healed")
+    o = a.obs_by_ref[inc.recovery["evidence"]]
+    assert o.raw.startswith("Sep 16 14:36:20 db-01 postgres") and a.obs_by_ref["app.jsonl:540"].raw.startswith("{")

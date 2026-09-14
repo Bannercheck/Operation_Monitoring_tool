@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import itertools
+import json
 from datetime import datetime
 from typing import Iterator
 
@@ -14,7 +15,7 @@ MISSING_TS = datetime.fromtimestamp(0, tz=UTC)  # placeholder, replaced in pipel
 
 
 def records_to_observations(records: Iterator[tuple[int, dict]], source: str, parser: str, kind: str,
-                            mapping: dict | None = None, confidence: float = 1.0) -> Iterator[Observation]:
+                            mapping: dict | None = None, confidence: float = 1.0, lines: list[str] | None = None) -> Iterator[Observation]:
     records = iter(records)
     head = list(itertools.islice(records, HEAD))
     keys: list[str] = []
@@ -41,4 +42,5 @@ def records_to_observations(records: Iterator[tuple[int, dict]], source: str, pa
             service=str(rec.get(roles["service"]) or "") if roles["service"] else "",
             host=str(rec.get(roles["host"]) or "") if roles["host"] else "",
             attributes={**{k: v for k, v in rec.items() if k not in used and v not in (None, "")}, **({"_no_ts": True} if missing else {})},
-            source=source, line_no=line_no, parser=parser, parser_confidence=confidence)
+            source=source, line_no=line_no, parser=parser, parser_confidence=confidence,
+            raw=(lines[line_no - 1] if lines and 0 < line_no <= len(lines) else json.dumps(rec, ensure_ascii=False, default=str)))

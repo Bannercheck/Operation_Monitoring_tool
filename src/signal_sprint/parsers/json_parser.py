@@ -12,6 +12,7 @@ from .base import Parser
 class JsonParser(Parser):
     name = "json"
     kind = "event"
+    line_oriented = False
 
     def records(self, text: str) -> Iterator[tuple[int, dict]]:
         obj = json.loads(text)

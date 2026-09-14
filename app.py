@@ -5,6 +5,7 @@ Sidebar: upload / demo. Tabs: Overview, Signals, Incidents, Actions. Determinist
 
 from __future__ import annotations
 
+from collections import Counter
 import html
 import json
 import os
@@ -23,6 +24,7 @@ from signal_sprint.live import LiveStore, start_receiver, start_simulator
 from signal_sprint.itsm import SYSTEMS, correlate as correlate_tickets, demo_tickets, fetch_generic
 from signal_sprint.analysis import template_of
 from signal_sprint.compare import compare as compare_datasets
+from signal_sprint.playbook import Playbook
 from signal_sprint.llm import LLMConfig, chat as llm_chat, test_connection as llm_test
 from signal_sprint.i18n import factor_value, narrative_text, reason_text, recommendation_text, link_text, t
 from signal_sprint.models import SEV_RANK
@@ -104,6 +106,11 @@ def store() -> ActionStore:
 
 
 @st.cache_resource
+def playbook() -> Playbook:
+    return Playbook(os.environ.get("PLAYBOOK_DB", "playbook.db"))
+
+
+@st.cache_resource
 def live_store() -> LiveStore:
     return LiveStore(spool=os.environ.get("LIVE_SPOOL", "data/live/events.jsonl"))
 
@@ -146,6 +153,8 @@ def load(name: str, data: bytes | None = None, path: str | None = None, mapping:
     reg[key] = {"analysis": analysis, "profile": prof, "source": {"name": name, "data": data, "path": path},
                 "mapping": mapping or {}, "elapsed": time.perf_counter() - t0, "loaded_at": datetime.now(UTC)}
     activate_dataset(key)
+    record_auto_recoveries(analysis, key)
+    playbook().record(analysis, key)
     rec = st.session_state.setdefault("recent", [])
     if key not in rec:
         rec.append(key)
@@ -158,6 +167,54 @@ def activate_dataset(key: str) -> None:
                              "mapping": d["mapping"], "elapsed": d["elapsed"], "active": key})
     st.session_state.pop("cursor", None)
     st.session_state.pop("detail", None)
+
+
+def show_row(o, key: str = "") -> None:
+    """Full record of one observation: all fields plus the raw line from the dataset."""
+    fields = {"ref": o.ref, "timestamp": o.timestamp.isoformat(), "severity": o.severity, "service": o.service, "host": o.host,
+              "kind": o.kind, "parser": o.parser, "template": o.template, "fingerprint": o.fingerprint, **{f"attr.{k}": v for k, v in o.attributes.items()}}
+    st.markdown(f"**{t('row_detail')}** · `{o.ref}`")
+    st.dataframe(pd.DataFrame({"field": list(fields), "value": [str(v) for v in fields.values()]}), hide_index=True, **wide("dataframe"),
+                 height=min(420, 38 + 35 * len(fields)))
+    st.markdown(f"**{t('raw_line')}**")
+    st.code(o.raw or o.message, language=None)
+
+
+def evidence_table(observations: list, key: str, height: int = 320):
+    """Clickable evidence table; returns the selected observation (or None)."""
+    df_ = pd.DataFrame([{"ref": o.ref, "time": o.timestamp.strftime("%H:%M:%S"), "sev": o.severity, "service": o.service, "host": o.host,
+                         "message": o.message} for o in observations])
+    st.caption(t("click_row"))
+    ev = st.dataframe(df_, hide_index=True, **wide("dataframe"), height=height, on_select="rerun", selection_mode="single-row", key=key)
+    rows = getattr(getattr(ev, "selection", None), "rows", None) or []
+    refs = [o.ref for o in observations]
+    pick = st.selectbox(t("pick_row"), [""] + refs, key=key + "-pick", label_visibility="collapsed", format_func=lambda x: x or t("pick_row"))
+    if pick:
+        return observations[refs.index(pick)]
+    return observations[rows[0]] if rows else None
+
+
+def recovery_label(kind: str) -> str:
+    return t("rec_" + kind) if kind in ("restart", "self_healed", "stopped", "ongoing") else t("rec_unknown")
+
+
+def record_auto_recoveries(a: Analysis, dataset: str) -> int:
+    """Self-recovered incidents get a done action describing what happened (deduplicated per dataset + incident)."""
+    st_ = store()
+    existing = {x["evidence"] for x in st_.list()}
+    n = 0
+    for inc in a.incidents:
+        kind = inc.recovery.get("kind")
+        if kind not in ("restart", "self_healed"):
+            continue
+        tag = f"auto:{dataset}:{inc.id}"
+        if tag in existing:
+            continue
+        what = (t("rec_restart") if kind == "restart" else t("rec_self_healed")) + f" · {inc.recovery.get('recovered_at', '')[11:19]} · {inc.recovery.get('evidence') or ''} · {inc.recovery.get('what', '')[:80]}"
+        act = st_.create(inc.id, t("auto_title", what=what), "P3", "", t("auto_rec"), tag)
+        st_.update(act["id"], status="done")
+        n += 1
+    return n
 
 
 def minute_chart(df: pd.DataFrame, incidents=None, height=200):
@@ -177,8 +234,8 @@ def minute_chart(df: pd.DataFrame, incidents=None, height=200):
 # ------------------------------------------------------------------ sidebar navigation
 demo = Path(__file__).with_name("samples") / "demo_mixed.zip"
 LIVE_PORT = int(os.environ.get("LIVE_PORT", "8600"))
-PAGES = ["ops", "data", "itsm", "conn", "readme"]
-PAGE_KEYS = {"ops": "sb_ops", "data": "sb_data", "itsm": "sb_itsm", "conn": "sb_conn", "readme": "sb_readme"}
+PAGES = ["ops", "data", "pb", "itsm", "conn", "readme"]
+PAGE_KEYS = {"ops": "sb_ops", "data": "sb_data", "pb": "sb_pb", "itsm": "sb_itsm", "conn": "sb_conn", "readme": "sb_readme"}
 with st.sidebar:
     st.markdown("## 📡 Signal Sprint")
     st.radio("Language", ["tr", "en"], horizontal=True, label_visibility="collapsed",
@@ -351,6 +408,56 @@ def page_ops() -> None:
     if b2.button(t("live_clear"), key="ops_clr", **wide("button")):
         ls.clear()
         st.rerun()
+
+
+# ------------------------------------------------------------------ page: Playbook
+def page_playbook() -> None:
+    pb = playbook()
+    st.markdown(f"## {t('pb_title')}")
+    st.caption(t("pb_sub"))
+    q = st.text_input(t("pb_search"), key="pb_q")
+    rows = pb.all(q)
+    if not rows:
+        st.info(t("pb_empty")); return
+    df_ = pd.DataFrame([{"template": r["template"], "sev": r["severity"], t("pb_occ"): r["occurrences"], t("pb_datasets"): len(r["datasets"]),
+                         t("pb_events"): r["events"], t("pb_root"): r["root_cause_count"],
+                         t("pb_recov"): ", ".join(f"{k}×{v}" for k, v in r["recoveries"].items()) or "-",
+                         t("pb_last"): (r["last_seen"] or "")[:16], "runbook": "✓" if r["runbook"] else "", "notes": "✓" if r["resolution"] else ""} for r in rows])
+    st.dataframe(df_, hide_index=True, **wide("dataframe"), height=min(400, 38 + 35 * len(df_)))
+    keys = [r["template"] for r in rows]
+    sel = st.selectbox(t("pb_entry"), keys, key="pb_sel", format_func=lambda k: k[:90])
+    r = pb.get(sel)
+    if not r:
+        return
+    st.markdown(f'<div class="card">{pill(r["severity"])} <span class="mono">{esc(r["template"])}</span><br>'
+                f'<span class="muted">{t("pb_first")} {esc(r["first_seen"] or "")[:16]} · {t("pb_last")} {esc(r["last_seen"] or "")[:16]} · '
+                f'{t("pb_times", n=r["occurrences"], d=len(r["datasets"]))} · {r["events"]} {t("pb_events")} · {t("pb_root")} {r["root_cause_count"]}×</span><br>'
+                f'{t("pb_datasets")}: {esc(", ".join(r["datasets"]))}<br>{t("services").lower()}: {esc(", ".join(r["services"]) or "-")} · {t("hosts")}: {esc(", ".join(r["hosts"]) or "-")}<br>'
+                f'{t("pb_recov")}: ' + (", ".join(f"{recovery_label(k)} ×{v}" for k, v in r["recoveries"].items()) or "-") + "</div>", unsafe_allow_html=True)
+    c1, c2 = st.columns(2)
+    res = c1.text_area(t("pb_resolution"), value=r["resolution"], key=f"pb_res_{sel}", height=140)
+    rb = c2.text_area(t("pb_runbook"), value=r["runbook"], key=f"pb_rb_{sel}", height=140)
+    b1, b2, _ = st.columns([1, 1, 4])
+    if b1.button(t("pb_save"), key="pb_save", **wide("button")):
+        pb.set_notes(sel, res, rb); st.success(t("pb_saved"))
+    if b2.button(t("pb_delete"), key="pb_del", **wide("button")):
+        pb.delete(sel); st.rerun()
+
+
+def playbook_card(template: str, current_dataset: str) -> None:
+    """'Seen before' card for an incident's root-cause template."""
+    e = playbook().lookup(template)
+    others = [d for d in (e["datasets"] if e else []) if d != current_dataset]
+    if not e or not others and e["occurrences"] <= 1:
+        st.markdown(f'<div class="card"><b>📚 {t("pb_new")}</b></div>', unsafe_allow_html=True); return
+    sim = f' · {t("pb_similar")} {e.get("similarity")}' if e.get("similarity") else ""
+    recov = ", ".join(f"{recovery_label(k)} ×{v}" for k, v in e["recoveries"].items()) or "-"
+    st.markdown(f'<div class="card" style="border-left:4px solid #9b7bff"><b>📚 {t("pb_seen_before")}</b>{sim} · {t("pb_times", n=e["occurrences"], d=len(e["datasets"]))} · '
+                f'{t("pb_last")} {esc(e["last_seen"] or "")[:16]}<br><span class="muted">{t("pb_datasets")}: {esc(", ".join(others or e["datasets"]))} · {t("pb_recov")}: {recov}</span>'
+                f'<br><b>{t("pb_resolution")}:</b> {esc(e["resolution"]) or t("pb_no_notes")}<br><b>{t("pb_runbook")}:</b><br>{esc(e["runbook"]).replace(chr(10), "<br>") or t("pb_no_notes")}</div>',
+                unsafe_allow_html=True)
+    if st.button(t("pb_open"), key=f"pb_open_{template[:20]}"):
+        st.session_state["page"] = "pb"; st.session_state["pb_sel"] = e["template"]; st.rerun()
 
 
 # ------------------------------------------------------------------ page: ITSM
@@ -538,6 +645,9 @@ def compare_view(da: dict, db: dict, ka: str, kb: str) -> None:
 
 if page == "ops":
     page_ops()
+    st.stop()
+if page == "pb":
+    page_playbook()
     st.stop()
 if page == "itsm":
     page_itsm()
@@ -794,9 +904,20 @@ with tab_sig:
             per_min = per_min.set_index(pd.to_datetime(per_min["timestamp"], utc=True)).resample("1min").size().rename("events").reset_index()
             st.altair_chart(minute_chart(per_min, height=120), **wide("altair_chart"))
         with r:
-            st.markdown(f"**{t('evidence_first', n=min(12, s.count), total=s.count)}**")
-            st.dataframe(pd.DataFrame([{"ref": o.ref, "time": o.timestamp.strftime("%H:%M:%S"), "sev": o.severity, "service": o.service, "message": o.message}
-                                       for o in s.observations[:12]]), hide_index=True, **wide("dataframe"), height=460)
+            srcs = Counter(o.source for o in s.observations)
+            agents_ = sorted({str(o.attributes.get("agent")) for o in s.observations if o.attributes.get("agent")})
+            recs = [recommendation_text(x) for key_, lst in __import__("signal_sprint.scenario", fromlist=["x"]).RECOMMENDATIONS.items() if key_ in s.template for x in lst][:3]
+            dur = (s.last_seen - s.first_seen).total_seconds()
+            st.markdown(
+                f'<div class="card"><b>{t("where")}</b> · {t("sources")}: ' + ", ".join(f"{esc(k)} ({v})" for k, v in srcs.most_common(4)) +
+                (f' · {t("agents_n")}: {esc(", ".join(agents_))}' if agents_ else "") + f' · {t("services").lower()}: {esc(", ".join(s.services) or "-")} · {t("hosts")}: {esc(", ".join(s.hosts) or "-")}'
+                f'<br><b>{t("why_raised")}</b> · {t("why_fp")}; {t("why_sev", sev=s.severity, n=s.count)}; {t("why_burst", score=s.burst_score, peak=f"{s.peak_rate:.0f}", base=f"{s.baseline_rate:.0f}")}'
+                f'<br><b>{t("timing")}</b> · {t("first_signal")} {s.first_seen:%H:%M:%S} · {t("last_error")} {s.last_seen:%H:%M:%S} · {t("duration")} {dur / 60:.1f} min'
+                f'<br><b>{t("what_to_do")}</b> · ' + (" · ".join(esc(x) for x in recs) if recs else esc(recommendation_text("Investigate the root-cause signal's evidence lines"))) + "</div>",
+                unsafe_allow_html=True)
+            picked = evidence_table(s.observations[:200], key=f"sig-ev-{sid}", height=260)
+            if picked is not None:
+                show_row(picked)
 
 # ------------------------------------------------------------------ incidents
 with tab_inc:
@@ -810,6 +931,20 @@ with tab_inc:
         st.markdown(f'<div class="card hot"><b>{t("probable_origin")}</b> · <span class="mono">{inc.root_cause_signal}</span> "{esc(a.signal_by_id[inc.root_cause_signal].template)}"'
                     f'<br><span class="muted">{t("because")}: {reason_text(inc.root_cause_codes)}</span><br><br>'
                     f'<b>{t("affected")}</b> · {t("services").lower()}: {", ".join(inc.affected_services) or "-"} · {t("hosts")}: {", ".join(inc.affected_hosts) or "-"}</div>', unsafe_allow_html=True)
+        og, tm, rc = inc.origin, inc.timing, inc.recovery
+        oc, tc = st.columns(2)
+        oc.markdown(f'<div class="card"><b>{t("where")}</b><br>{t("sources")}: ' + ", ".join(f"{esc(k)} ({v})" for k, v in list(og.get("files", {}).items())[:5]) +
+                    f'<br>{t("services").lower()}: {esc(", ".join(og.get("services", [])) or "-")}<br>{t("hosts")}: {esc(", ".join(og.get("hosts", [])) or "-")}' +
+                    (f'<br>{t("agents_n")}: {esc(", ".join(og.get("agents", [])))}' if og.get("agents") else "") +
+                    f'<br>parser: {esc(", ".join(og.get("parsers", [])))} · kind: {esc(", ".join(og.get("kinds", [])))}</div>', unsafe_allow_html=True)
+        rk = rc.get("kind", "unknown")
+        rcol = {"restart": "#3ddc84", "self_healed": "#3ddc84", "stopped": "#f2d55c", "ongoing": "#ff5c5c"}.get(rk, "#8b93a1")
+        tc.markdown(f'<div class="card" style="border-left:4px solid {rcol}"><b>{t("timing")}</b><br>{t("first_signal")}: <span class="mono">{tm.get("first_signal", "")[11:19]}</span> · '
+                    f'{t("last_error")}: <span class="mono">{tm.get("last_error", "")[11:19]}</span> · {t("duration")}: <b>{tm.get("duration_s", 0) / 60:.1f} min</b> ({tm.get("error_count", 0)} ERROR+)'
+                    f'<br>{t("quiet")}: <b>{rc.get("quiet_min", 0)} min</b><br><span style="color:{rcol};font-weight:700">{recovery_label(rk)}</span>' +
+                    (f'<br>{t("rec_evidence")}: <span class="mono">{esc(rc.get("evidence") or "")}</span> {esc(rc.get("recovered_at") or "")[11:19]} · {esc(rc.get("what") or "")}' if rc.get("evidence") else "") + "</div>",
+                    unsafe_allow_html=True)
+        playbook_card(a.signal_by_id[inc.root_cause_signal].template, st.session_state.get("dataset", ""))
         st.markdown(f"#### {t('propagation')}")
         rowsdf = pd.DataFrame([{"signal": f"{x['signal']} · {x['template'][:55]}", "start": a.signal_by_id[x["signal"]].first_seen,
                                 "end": a.signal_by_id[x["signal"]].last_seen, "severity": x["severity"], "count": x["count"], "role": t(x["role"].replace(" ", "_"))}
@@ -843,9 +978,10 @@ with tab_inc:
                 for e in inc.links[:6]:
                     st.markdown(f'<span class="mono">{e["a"]} ↔ {e["b"]}</span> <span class="muted">{link_text(e)}</span>', unsafe_allow_html=True)
             st.markdown(f"#### {t('evidence')}")
-            ref = st.selectbox(t("open_raw"), inc.evidence, key=f"ev-{iid}", label_visibility="collapsed")
-            o = a.obs_by_ref[ref]
-            st.code(f"{o.ref}   {o.timestamp.isoformat()}   {o.severity}   {o.service} {o.host}\n{o.message}\n{o.attributes or ''}", language=None)
+            ev_obs = [a.obs_by_ref[r_] for r_ in inc.evidence if r_ in a.obs_by_ref]
+            picked = evidence_table(ev_obs, key=f"inc-ev-{iid}", height=min(300, 38 + 35 * max(len(ev_obs), 1)))
+            if picked is not None:
+                show_row(picked)
         st.markdown(f"#### {t('recommended')}")
         rc = st.columns(len(inc.recommendations))
         for c, rec in zip(rc, inc.recommendations):
@@ -889,6 +1025,15 @@ with tab_inc:
 
 # ------------------------------------------------------------------ actions
 with tab_act:
+    st.markdown(f"#### {t('auto_actions')}")
+    healed = [i for i in a.incidents if i.recovery.get("kind") in ("restart", "self_healed")]
+    if healed:
+        for inc in healed:
+            rc = inc.recovery
+            st.markdown(f'<div class="act" style="border-left-color:#3ddc84"><b>{inc.id}</b> · {esc(inc.title[:70])}<br>'
+                        f'<span class="muted">{recovery_label(rc["kind"])} · {esc(rc.get("recovered_at") or "")[11:19]} · {esc(rc.get("evidence") or "")} · {esc(rc.get("what") or "")}</span></div>', unsafe_allow_html=True)
+    else:
+        st.caption(t("auto_none"))
     acts = store().list()
     if not acts:
         st.info(t("no_actions"))

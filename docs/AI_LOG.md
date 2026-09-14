@@ -28,6 +28,8 @@ Sadece geliştirme adımları. Format: araç + sürüm · tarih · yapılan iş.
 | Claude Fable 5.1 | 2026-09-14 | Sol menü sayfa gezinmesi (Operasyon, Datasets, ITSM, Connection Settings, README); ana sayfa yükleme alanı olmadan önce metriklerle açılıyor; GPU metriği (simülatör, ajan nvidia-smi, eşik); log analizi Datasets sayfasında; ITSM yapılandırma + tam tablo + ticket detayı kendi sayfasında |
 | Claude Fable 5.1 | 2026-09-14 | Çoklu veri seti kaydı: her set ayrı tutulur, aktif set dropdown ile seçilir, kaldırılabilir; `compare.py` ile iki setin karşılaştırma bölümü (KPI deltaları, seviye dağılımı, göreli zaman çizgisi, ortak / sadece A / sadece B sinyaller, incident'lar); 2 yeni test |
 | Claude Fable 5.1 | 2026-09-14 | README yalnızca uygulama kılavuzu olarak yeniden yazıldı: sayfalar, veri akışları, her .py dosyası fonksiyon düzeyinde, testler, teknolojiler; yarışma takvimi ve demo akışı docs/PLAN.md'ye taşındı |
+| Claude Fable 5.1 | 2026-09-14 | Log anlamlandırma: ham satır saklama, incident origin / timing / recovery tespiti (restart, kendiliğinden, durdu, devam ediyor), sinyal ve incident'ta Nereden / Neden / Ne yapmalı / Zaman ve düzelme kartları, tıklanabilir kanıt satırı → tam kayıt + ham satır, kendiliğinden düzelenler için otomatik done aksiyon kaydı ve Aksiyonlar bölümü; demo veri setine restart olayı; 1 yeni test |
+| Claude Fable 5.1 | 2026-09-14 | Playbook / hata kütüphanesi: SQLite'ta kalıcı hata desenleri (nerede, ne zaman, kaç kez, düzelme türleri, çözüm notu, runbook), her analizde otomatik kayıt, bulanık eşleşme, Playbook sayfası, incident'ta "Daha önce görüldü" kartı; kanıt tablosuna satır seçme kutusu; 1 yeni test |
 
 ## Etkinlik günü
 

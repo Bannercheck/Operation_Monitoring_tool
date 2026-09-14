@@ -67,7 +67,7 @@ def test_http_connector_zip_and_json_path():
     try:
         name, data = fetch_http(base + "/demo.zip")
         obs, _ = ingest_bytes(name, data)
-        assert name.endswith(".zip") and len(obs) == 914
+        assert name.endswith(".zip") and len(obs) == 916
         name, data = fetch_http(base + "/alerts", json_path="data.alerts")
         obs, rep = ingest_bytes(name, data)
         assert rep[0]["format"] == "json" and len(obs) == 1 and obs[0].service == "postgres"

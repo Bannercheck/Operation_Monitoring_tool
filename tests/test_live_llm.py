@@ -61,7 +61,7 @@ def test_agent_file_mode(tmp_path):
     port = srv.server_address[1]
     try:
         assert agent.main(["--url", f"http://127.0.0.1:{port}/ingest", "--file", str(ROOT / "samples" / "demo_mixed.zip"), "--agent", "ci"]) == 0
-        assert store.received == 914 and store.agents.get("ci")
+        assert store.received == 916 and store.agents.get("ci")
     finally:
         srv.shutdown()
 

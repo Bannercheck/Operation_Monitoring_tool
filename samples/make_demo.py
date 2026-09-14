@@ -32,6 +32,8 @@ for m in (32, 33, 34):
 for m in (33, 34, 35):
     for s in range(0, 60, 5):
         chk.append(f"{ts(m, s):%Y-%m-%d %H:%M:%S} ERROR checkout-api: POST /checkout 500 upstream payment-api timeout req={random.randint(100000,999999)}")
+db.append(f"{ts(36, 5):%b %d %H:%M:%S} db-01 systemd[1]: Stopping PostgreSQL RDBMS...")
+db.append(f"{ts(36, 20):%b %d %H:%M:%S} db-01 postgres[9001]: LOG: database system is ready to accept connections")
 al.append(f"{ts(35, 10):%Y-%m-%d %H:%M:%S},critical,PAYMENT_FAILURE,payment-api,prd-api-01,payment failure rate 38% over 5m")
 al.append(f"{ts(36, 0):%Y-%m-%d %H:%M:%S},warning,HTTP_5XX_RATE,checkout-api,prd-api-02,5xx rate 21% over 5m")
 # incident 2 (unrelated): disk full on worker-02 at 14:10

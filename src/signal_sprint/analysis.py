@@ -51,6 +51,10 @@ DEPENDENCY_WORDS = ["database", "db", "postgres", "mysql", "redis", "kafka", "qu
                     "disk", "storage", "latency", "duration", "slow", "certificate", "auth", "gateway", "no space", "oom"]
 WINDOW_MIN = 5
 MIN_SEVERITY = "WARN"
+RESTART_RE = re.compile(r"\b(restart(?:ed|ing)?|reboot(?:ed)?|start(?:ed|ing)? (?:up|service|server|application)|(?:database|system) (?:is )?ready|"
+                        r"listening on|boot(?:ed|ing)?|initializ(?:ed|ing)|reloaded|recovered|back online|healthy|failover complete|"
+                        r"shut(?:ting)? down|pool (?:reset|recreated)|reconnected)\b", re.I)
+QUIET_MIN = 2   # minutes without errors after the last error to call an incident recovered
 WEIGHTS = {"burst": 0.35, "severity": 0.25, "blast_radius": 0.25, "duration": 0.15}
 
 
@@ -222,6 +226,41 @@ def build_incident(n: int, members: list[Signal], edges: list[dict]) -> Incident
     return inc
 
 
+def explain_incident(inc: Incident, members: list[Signal], observations: list[Observation]) -> None:
+    """Fill origin (where), timing (when / how long) and recovery (did it stop by itself, restart evidence)."""
+    obs = [o for s in members for o in s.observations]
+    files: Counter = Counter(o.source for o in obs)
+    inc.origin = {"files": dict(files.most_common()), "services": inc.affected_services, "hosts": inc.affected_hosts,
+                  "agents": sorted({str(o.attributes.get("agent")) for o in obs if o.attributes.get("agent")}),
+                  "parsers": sorted({o.parser for o in obs}), "kinds": sorted({o.kind for o in obs})}
+    errors = sorted(o.timestamp for o in obs if SEV_RANK[o.severity] >= 3) or sorted(o.timestamp for o in obs)
+    first_signal, last_error = inc.started_at, errors[-1]
+    dataset_end = observations[-1].timestamp if observations else inc.ended_at
+    quiet = (dataset_end - last_error).total_seconds()
+    inc.timing = {"first_signal": first_signal.isoformat(), "last_error": last_error.isoformat(),
+                  "duration_s": round((last_error - first_signal).total_seconds()), "quiet_s": round(quiet), "dataset_end": dataset_end.isoformat(),
+                  "error_count": len(errors)}
+    ents = {x.lower() for x in inc.affected_services + inc.affected_hosts}
+    lo, hi = first_signal - timedelta(minutes=1), last_error + timedelta(minutes=10)
+    window = [o for o in observations if lo <= o.timestamp <= hi and (o.service.lower() in ents or o.host.lower() in ents or not ents)]
+    restart = next((o for o in window if o.timestamp >= first_signal and RESTART_RE.search(o.message)), None)
+    normal_after = next((o for o in observations if o.timestamp > last_error and SEV_RANK[o.severity] < 2
+                         and (o.service.lower() in ents or o.host.lower() in ents)), None)
+    if quiet < QUIET_MIN * 60:
+        kind = "ongoing"
+    elif restart:
+        kind = "restart"
+    elif normal_after:
+        kind = "self_healed"
+    else:
+        kind = "stopped"   # errors stopped, but no evidence of normal traffic or a restart
+    inc.recovery = {"kind": kind, "last_error": last_error.isoformat(),
+                    "recovered_at": (restart or normal_after).timestamp.isoformat() if (restart or normal_after) else None,
+                    "evidence": (restart or normal_after).ref if (restart or normal_after) else None,
+                    "what": (restart.message[:160] if restart else (normal_after.message[:160] if normal_after else "")),
+                    "quiet_min": round(quiet / 60, 1)}
+
+
 def postmortem_md(inc: Incident, signals: dict[str, Signal]) -> str:
     out = [f"# Postmortem {inc.id}: {inc.title}", "", f"- Severity: **{inc.severity}** (score {inc.score})",
            f"- Window: {inc.started_at.isoformat()} -> {inc.ended_at.isoformat()}",
@@ -255,8 +294,10 @@ class Analysis:
         self.signals = sorted(build_signals(observations), key=lambda s: (-s.burst_score, -SEV_RANK[s.severity], -s.count))
         comps = [(m, e) for m, e in correlate(self.signals) if len(m) > 1 or SEV_RANK[m[0].severity] >= 3 or m[0].burst_score >= 0.5]
         incs = sorted((build_incident(i, m, e) for i, (m, e) in enumerate(comps, 1)), key=lambda i: -i.score)
+        sig_by_id = {s.id: s for s in self.signals}
         for n, inc in enumerate(incs, 1):
             inc.id = f"INC-{n}"
+            explain_incident(inc, [sig_by_id[x] for x in inc.signal_ids], observations)
         self.incidents = incs
         self.signal_by_id = {s.id: s for s in self.signals}
         self.incident_by_id = {i.id: i for i in self.incidents}

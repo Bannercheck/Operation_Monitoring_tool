@@ -24,10 +24,10 @@ def test_streamlit_app_renders(tmp_path, monkeypatch):
     at.sidebar.radio(key="page").set_value("data").run()   # Datasets page
     at.button(key="demo_main").click().run()                 # "Demo veri setini yükle"
     assert not at.exception
-    assert any(">914<" in m.value and "ham olay" in m.value.lower() for m in at.markdown)
+    assert any(">916<" in m.value and "ham olay" in m.value.lower() for m in at.markdown)
     at.sidebar.radio[0].set_value("en").run()     # language switch
     assert not at.exception
-    assert any(">914<" in m.value and "raw events" in m.value.lower() for m in at.markdown)
+    assert any(">916<" in m.value and "raw events" in m.value.lower() for m in at.markdown)
 
 
 def test_multi_dataset_registry_and_compare(tmp_path, monkeypatch):
