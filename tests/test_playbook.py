@@ -27,6 +27,6 @@ def test_playbook_records_lookup_notes(tmp_path):
     fuzzy = pb.lookup("log: duration: <n>ms statement: select * from customers where id = <n>")
     assert fuzzy and fuzzy["template"] == root and fuzzy["similarity"] >= 0.6
     assert pb.lookup("completely unrelated thing happened") is None
-    assert similarity("db timeout error", "db timeout warning") == 0.5
+    assert similarity("connection timeout error", "connection timeout warning") == 0.5
     pb.delete(root)
     assert pb.get(root) is None
