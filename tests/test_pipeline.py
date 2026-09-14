@@ -145,3 +145,22 @@ def test_real_world_shapes_nested_json_turkish_csv_kv_prefix():
     assert by["svc.log"].message.startswith("timeout publishing")
     assert by["nots.jsonl"].timestamp == min(o.timestamp for o in obs) and by["nots.jsonl"].timestamp.year == 2026  # no epoch-0
     assert (max(o.timestamp for o in obs) - min(o.timestamp for o in obs)).total_seconds() < 3600
+
+
+def test_compare_two_datasets():
+    from signal_sprint.compare import compare
+    import io, zipfile
+    obs_a, rep_a = ingest_path(str(ROOT / "samples" / "demo_mixed.zip"))
+    a = an.Analysis(obs_a, rep_a)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("app.jsonl", JSONL); zf.writestr("db.log", SYSLOG)
+    obs_b, rep_b = ingest(iter_bytes("b.zip", buf.getvalue()))
+    b = an.Analysis(obs_b, rep_b)
+    c = compare(a, profile(obs_a, rep_a), b, profile(obs_b, rep_b))
+    k = {r["metric"]: r for r in c["kpis"]}
+    assert k["raw_events"]["a"] == 914 and k["raw_events"]["b"] == 4 and k["raw_events"]["delta"] == -910
+    assert c["summary"]["only_a"] == 11 and c["summary"]["only_b"] >= 3 and c["summary"]["shared"] == 0
+    assert {r["dataset"] for r in c["timeline"]} == {"A", "B"} and len(c["incidents_a"]) == 2
+    c2 = compare(a, profile(obs_a, rep_a), a, profile(obs_a, rep_a))
+    assert c2["summary"]["shared"] == 11 and all(r["delta"] == 0 for r in c2["kpis"] if r["delta"] is not None)

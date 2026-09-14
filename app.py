@@ -22,6 +22,7 @@ from signal_sprint.connectors import fetch_http, fetch_mcp, mcp_tools, parse_hea
 from signal_sprint.live import LiveStore, start_receiver, start_simulator
 from signal_sprint.itsm import SYSTEMS, correlate as correlate_tickets, demo_tickets, fetch_generic
 from signal_sprint.analysis import template_of
+from signal_sprint.compare import compare as compare_datasets
 from signal_sprint.llm import LLMConfig, chat as llm_chat, test_connection as llm_test
 from signal_sprint.i18n import factor_value, narrative_text, reason_text, recommendation_text, link_text, t
 from signal_sprint.models import SEV_RANK
@@ -135,13 +136,28 @@ def load(name: str, data: bytes | None = None, path: str | None = None, mapping:
         st.write(t("step_profile", s=len(analysis.signals), i=len(analysis.incidents)))
         prof = profile(obs, report)
         status.update(label=t("done", secs=f"{time.perf_counter() - t0:.1f}"), state="complete", expanded=False)
-    st.session_state.update({"analysis": analysis, "profile": prof, "dataset": name,
-                             "source": {"name": name, "data": data, "path": path}, "mapping": mapping or {},
-                             "elapsed": time.perf_counter() - t0})
-    st.session_state.pop("cursor", None)
+    reg = st.session_state.setdefault("datasets", {})
+    key = name
+    if key in reg and reg[key]["source"] != {"name": name, "data": data, "path": path}:
+        n = 2
+        while f"{name} #{n}" in reg:
+            n += 1
+        key = f"{name} #{n}"
+    reg[key] = {"analysis": analysis, "profile": prof, "source": {"name": name, "data": data, "path": path},
+                "mapping": mapping or {}, "elapsed": time.perf_counter() - t0, "loaded_at": datetime.now(UTC)}
+    activate_dataset(key)
     rec = st.session_state.setdefault("recent", [])
-    if name not in rec:
-        rec.append(name)
+    if key not in rec:
+        rec.append(key)
+
+
+def activate_dataset(key: str) -> None:
+    """Mirror the selected dataset into the legacy single-dataset keys used by the analysis views."""
+    d = st.session_state["datasets"][key]
+    st.session_state.update({"analysis": d["analysis"], "profile": d["profile"], "dataset": key, "source": d["source"],
+                             "mapping": d["mapping"], "elapsed": d["elapsed"], "active": key})
+    st.session_state.pop("cursor", None)
+    st.session_state.pop("detail", None)
 
 
 def minute_chart(df: pd.DataFrame, incidents=None, height=200):
@@ -459,9 +475,65 @@ def datasets_controls() -> None:
             name, data = live_store().to_dataset()
             load(name, data=data)
             st.rerun()
-        rec = st.session_state.get("recent", [])
-        if rec:
-            st.caption(t("ds_recent") + ": " + ", ".join(rec[-4:]))
+    reg = st.session_state.get("datasets", {})
+    if reg:
+        keys = list(reg)
+        s1, s2 = st.columns([4, 1])
+        chosen = s1.selectbox(t("ds_active"), keys, index=keys.index(st.session_state.get("active", keys[-1])) if st.session_state.get("active") in keys else len(keys) - 1,
+                              key="ds_select", format_func=lambda k: f"{k} · {reg[k]['analysis'].funnel()['raw_events']:,} {t('raw_events')} · {reg[k]['analysis'].funnel()['incidents']} {t('incidents')} · {reg[k]['loaded_at']:%H:%M}")
+        if chosen != st.session_state.get("active"):
+            activate_dataset(chosen)
+            st.rerun()
+        if s2.button(t("ds_remove"), key="ds_remove", **wide("button")):
+            reg.pop(chosen, None)
+            for k in ("analysis", "profile", "dataset", "active", "source", "mapping"):
+                st.session_state.pop(k, None)
+            if reg:
+                activate_dataset(list(reg)[-1])
+            st.rerun()
+        if len(reg) >= 2:
+            with st.expander(t("ds_compare")):
+                ca, cb = st.columns(2)
+                ka = ca.selectbox(t("ds_a"), keys, index=0, key="cmp_a")
+                kb = cb.selectbox(t("ds_b"), keys, index=min(1, len(keys) - 1), key="cmp_b")
+                if ka == kb:
+                    st.warning(t("cmp_same"))
+                else:
+                    compare_view(reg[ka], reg[kb], ka, kb)
+
+
+def compare_view(da: dict, db: dict, ka: str, kb: str) -> None:
+    c = compare_datasets(da["analysis"], da["profile"], db["analysis"], db["profile"])
+    st.caption(f"A = {ka} · B = {kb}")
+    st.markdown(f"**{t('cmp_kpis')}**")
+    kdf = pd.DataFrame(c["kpis"]).rename(columns={"metric": t("metric"), "a": "A", "b": "B", "delta": t("delta"), "delta_pct": "Δ %"})
+    kdf[t("metric")] = kdf[t("metric")].map(lambda k: t(k) if k in ("raw_events", "fingerprints", "incidents") else k)
+    st.dataframe(kdf, hide_index=True, **wide("dataframe"), height=38 + 35 * len(kdf))
+    l, r = st.columns(2)
+    with l:
+        st.markdown(f"**{t('cmp_sev')}**")
+        st.altair_chart(alt.Chart(pd.DataFrame(c["severity"])).mark_bar().encode(
+            x=alt.X("dataset:N", title=None), y=alt.Y("events:Q", stack="normalize", title=None),
+            color=alt.Color("severity:N", scale=SEV_SCALE, legend=alt.Legend(orient="top", title=None)), order=alt.Order("severity:N"),
+            tooltip=["dataset", "severity", "events"]).properties(height=200).configure_view(strokeWidth=0), **wide("altair_chart"))
+    with r:
+        st.markdown(f"**{t('cmp_timeline')}**")
+        st.altair_chart(alt.Chart(pd.DataFrame(c["timeline"])).mark_line(interpolate="monotone").encode(
+            x=alt.X("minute:Q", title="min"), y=alt.Y("events:Q", title=None),
+            color=alt.Color("dataset:N", scale=alt.Scale(domain=["A", "B"], range=["#3ddc84", "#6b9bd2"]), legend=alt.Legend(orient="top", title=None)),
+            tooltip=["dataset", "minute", "events"]).properties(height=200).configure_view(strokeWidth=0), **wide("altair_chart"))
+    sm = c["summary"]
+    t1, t2, t3 = st.tabs([f"{t('cmp_shared')} · {sm['shared']}", f"{t('cmp_only_a')} · {sm['only_a']}", f"{t('cmp_only_b')} · {sm['only_b']}"])
+    with t1:
+        st.dataframe(pd.DataFrame(c["shared"]) if c["shared"] else pd.DataFrame(columns=["template"]), hide_index=True, **wide("dataframe"), height=min(360, 38 + 35 * max(len(c["shared"]), 1)))
+    with t2:
+        st.dataframe(pd.DataFrame(c["only_a"]), hide_index=True, **wide("dataframe"), height=min(360, 38 + 35 * max(len(c["only_a"]), 1)))
+    with t3:
+        st.dataframe(pd.DataFrame(c["only_b"]), hide_index=True, **wide("dataframe"), height=min(360, 38 + 35 * max(len(c["only_b"]), 1)))
+    st.markdown(f"**{t('cmp_incidents')}**")
+    ia, ib = st.columns(2)
+    ia.dataframe(pd.DataFrame(c["incidents_a"]) if c["incidents_a"] else pd.DataFrame(columns=["id"]), hide_index=True, **wide("dataframe"))
+    ib.dataframe(pd.DataFrame(c["incidents_b"]) if c["incidents_b"] else pd.DataFrame(columns=["id"]), hide_index=True, **wide("dataframe"))
 
 
 if page == "ops":
