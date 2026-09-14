@@ -1,0 +1,14 @@
+services:
+  dashboard:
+    build: .
+    ports: ["8501:8501"]
+    volumes:
+      - ./data:/data            # drop datasets here; upload from the UI or point the MCP tool at /data/<file>
+      - ./actions.db:/app/actions.db
+  mcp:
+    build: .
+    command: ["python", "mcp_server.py", "--http", "--port", "8765"]
+    ports: ["8765:8765"]
+    volumes:
+      - ./data:/data
+      - ./actions.db:/app/actions.db

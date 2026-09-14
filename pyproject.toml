@@ -13,6 +13,7 @@ dependencies = ["streamlit>=1.35", "pandas>=1.5", "python-dateutil>=2.8"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+mcp = ["mcp>=2"]
 
 [project.scripts]
 signal-sprint = "signal_sprint.cli:main"

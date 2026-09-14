@@ -6,6 +6,7 @@ Sidebar: upload / demo. Tabs: Overview, Signals, Incidents, Actions. Determinist
 from __future__ import annotations
 
 import html
+import json
 import os
 import time
 from pathlib import Path
@@ -15,7 +16,8 @@ import pandas as pd
 import streamlit as st
 
 from signal_sprint.actions import PRIORITIES, STATUSES, ActionStore
-from signal_sprint.analysis import Analysis, interesting, llm_prompt, postmortem_md
+from signal_sprint.analysis import Analysis, interesting, llm_prompt, postmortem_md, signal_dict
+from signal_sprint.connectors import fetch_http, fetch_mcp, mcp_tools, parse_headers
 from signal_sprint.i18n import factor_value, narrative_text, reason_text, recommendation_text, link_text, t
 from signal_sprint.models import SEV_RANK
 from signal_sprint.pipeline import ingest_bytes, ingest_path
@@ -50,6 +52,8 @@ CSS = """
 .kpi{background:var(--secondary-background-color);border:1px solid #262b33;border-radius:12px;padding:12px 14px;text-align:center}
 .kpi b{display:block;font-size:30px;line-height:1.1}.kpi span{color:#8b93a1;font-size:12px;text-transform:uppercase;letter-spacing:.5px}
 .arrow{text-align:center;color:#3ddc84;font-size:26px;padding-top:18px}
+.tile div[data-testid="stButton"] button{width:100%;margin-top:-6px;padding:2px;font-size:11px;background:transparent;color:#8b93a1;border:0}
+.tile div[data-testid="stButton"] button:hover{color:#3ddc84}
 .muted{color:#8b93a1}.mono{font-family:ui-monospace,Menlo,monospace;font-size:12.5px}
 .tl{border-left:2px solid #262b33;margin-left:6px;padding-left:14px}.tl .step{position:relative;margin-bottom:8px}
 .tl .step:before{content:"";position:absolute;left:-19px;top:7px;width:8px;height:8px;border-radius:4px;background:#8b93a1}
@@ -118,6 +122,35 @@ with st.sidebar:
     if demo.exists() and st.button(t("load_demo"), key="demo_side", **wide("button")):
         load(demo.name, path=str(demo))
         st.rerun()
+    with st.expander(t("conn")):
+        kind = st.radio(t("conn_type"), ["http", "mcp"], horizontal=True, format_func=lambda x: t("conn_" + x), key="conn_kind")
+        c_url = st.text_input(t("conn_url"), key="conn_url", placeholder="https://api.example.com/alerts" if kind == "http" else "http://localhost:8765/mcp")
+        c_headers = st.text_area(t("conn_headers"), key="conn_headers", height=68, placeholder="Authorization: Bearer …")
+        if kind == "http":
+            c_method = st.selectbox(t("conn_method"), ["GET", "POST"], key="conn_method")
+            c_body = st.text_area(t("conn_body"), key="conn_body", height=68) if c_method == "POST" else ""
+            c_path = st.text_input(t("conn_path"), key="conn_path")
+        else:
+            st.caption(t("conn_mcp_hint"))
+            if st.button(t("conn_list_tools"), key="conn_tools", **wide("button")) and c_url:
+                try:
+                    st.session_state["conn_toolnames"] = [x["name"] for x in mcp_tools(c_url, parse_headers(c_headers))]
+                except Exception as e:  # noqa: BLE001
+                    st.error(t("conn_err", e=e))
+            names = st.session_state.get("conn_toolnames", [])
+            c_tool = st.selectbox(t("conn_tool"), names, key="conn_tool") if names else st.text_input(t("conn_tool"), key="conn_tool_txt")
+            c_args = st.text_input(t("conn_args"), key="conn_args", value="{}")
+        if st.button(t("conn_fetch"), key="conn_go", **wide("button")) and c_url:
+            try:
+                if kind == "http":
+                    name, data = fetch_http(c_url, c_method, parse_headers(c_headers), c_body or None, c_path)
+                else:
+                    name, data = fetch_mcp(c_url, c_tool, json.loads(c_args or "{}"), parse_headers(c_headers))
+                st.success(t("conn_ok", n=f"{len(data):,}", name=name))
+                load(name, data=data)
+                st.rerun()
+            except Exception as e:  # noqa: BLE001
+                st.error(t("conn_err", e=e))
     if "analysis" in st.session_state:
         st.caption(f"{st.session_state['dataset']} · {st.session_state.get('elapsed', 0):.1f}s")
     st.caption(t("footer"))
@@ -160,19 +193,79 @@ def frames(dataset: str, n: int):
 
 
 with tab_over:
+    def tile(col, key: str, value, label: str) -> None:
+        with col:
+            st.markdown('<div class="tile">' + kpi(value, label) + "</div>", unsafe_allow_html=True)
+            if st.button(t("detail"), key=f"tile-{key}", **wide("button")):
+                st.session_state["detail"] = None if st.session_state.get("detail") == key else key
+                st.rerun()
+
     cols = st.columns([3, 1, 3, 1, 3, 1, 3, 1, 3])
-    steps = [(f"{f['raw_events']:,}", t("raw_events")), (f["fingerprints"], t("fingerprints")), (f["meaningful_signals"], t("meaningful")),
-             (f["incidents"], t("incidents")), (len(store().list()), t("actions"))]
-    for i, (v, l) in enumerate(steps):
-        cols[i * 2].markdown(kpi(v, l), unsafe_allow_html=True)
+    steps = [("raw_events", f"{f['raw_events']:,}"), ("fingerprints", f["fingerprints"]), ("meaningful", f["meaningful_signals"]),
+             ("incidents", f["incidents"]), ("actions", len(store().list()))]
+    for i, (key, v) in enumerate(steps):
+        tile(cols[i * 2], key, v, t(key))
         if i < 4:
             cols[i * 2 + 1].markdown('<div class="arrow">→</div>', unsafe_allow_html=True)
-    st.markdown("")
     df = frames(st.session_state["dataset"], len(a.observations))
     tiles = st.columns(6)
-    for c, (v, l) in zip(tiles, [(len(prof["files"]), t("files_n")), (f"{prof['records']:,}", t("records_n")), (len(prof["services"]), t("services_n")),
-                                 (len(prof["hosts"]), t("hosts_n")), (prof["error_classes"], t("error_classes")), (prof["time_range"]["minutes"], t("span_min"))]):
-        c.markdown(kpi(v, l), unsafe_allow_html=True)
+    for c, (key, v) in zip(tiles, [("files_n", len(prof["files"])), ("records_n", f"{prof['records']:,}"), ("services_n", len(prof["services"])),
+                                   ("hosts_n", len(prof["hosts"])), ("error_classes", prof["error_classes"]), ("span_min", prof["time_range"]["minutes"])]):
+        tile(c, key, v, t(key))
+
+    detail = st.session_state.get("detail")
+    if detail:
+        with st.container(border=True):
+            h, x = st.columns([6, 1])
+            h.markdown(f"#### {t('d_' + detail)}")
+            if x.button(t("close"), key="detail-close", **wide("button")):
+                st.session_state["detail"] = None; st.rerun()
+            obs_df = df.assign(time=df["timestamp"].dt.strftime("%H:%M:%S"))[["time", "severity", "service", "host", "source", "message"]]
+            if detail == "raw_events":
+                st.dataframe(obs_df, hide_index=True, **wide("dataframe"), height=420)
+            elif detail in ("fingerprints", "meaningful"):
+                rows = [x_ for x_ in a.signals if detail == "fingerprints" or interesting(x_)]
+                st.dataframe(pd.DataFrame([signal_dict(x_) for x_ in rows]), hide_index=True, **wide("dataframe"), height=min(420, 38 + 35 * max(len(rows), 1)),
+                             column_config={"burst": st.column_config.ProgressColumn(min_value=0, max_value=1, format="%.2f")})
+            elif detail == "incidents":
+                st.dataframe(pd.DataFrame([{"id": i.id, "severity": i.severity, "score": i.score, "title": i.title, "signals": len(i.signal_ids),
+                                            "services": ", ".join(i.affected_services), "window": f"{i.started_at:%H:%M}–{i.ended_at:%H:%M}"} for i in a.incidents]),
+                             hide_index=True, **wide("dataframe"), column_config={"score": st.column_config.ProgressColumn(min_value=0, max_value=1)})
+            elif detail == "actions":
+                acts_ = store().list()
+                st.dataframe(pd.DataFrame(acts_) if acts_ else pd.DataFrame(columns=["id", "incident_id", "title", "priority", "status", "owner"]), hide_index=True, **wide("dataframe"))
+            elif detail in ("files_n", "records_n"):
+                st.dataframe(pd.DataFrame([{"file": r["file"], "format": r["format"], t("conf"): r["confidence"], t("rows"): r["rows"], "kind": r["kind"],
+                                            **{k: (v or "") for k, v in r["roles"].items()}} for r in a.report]), hide_index=True, **wide("dataframe"),
+                             column_config={t("conf"): st.column_config.ProgressColumn(min_value=0, max_value=1, format="%.2f")})
+                per_file = df.groupby(["source", "severity"]).size().rename("events").reset_index()
+                st.altair_chart(alt.Chart(per_file).mark_bar().encode(x=alt.X("events:Q", title=None), y=alt.Y("source:N", title=None),
+                                color=alt.Color("severity:N", scale=SEV_SCALE, legend=None), tooltip=["source", "severity", "events"]).properties(height=30 * len(a.report) + 20), **wide("altair_chart"))
+            elif detail in ("services_n", "hosts_n"):
+                col = "service" if detail == "services_n" else "host"
+                g = df[df[col] != "-"].groupby(col).agg(events=("severity", "size"), errors=("severity", lambda x_: (x_.isin(["ERROR", "CRITICAL"])).sum()),
+                                                      first=("timestamp", "min"), last=("timestamp", "max")).reset_index().sort_values("events", ascending=False)
+                g["error_rate"] = (g["errors"] / g["events"]).round(3)
+                g["first"] = g["first"].dt.strftime("%H:%M:%S"); g["last"] = g["last"].dt.strftime("%H:%M:%S")
+                l2, r2 = st.columns([2, 3])
+                l2.dataframe(g, hide_index=True, **wide("dataframe"), column_config={"error_rate": st.column_config.ProgressColumn(min_value=0, max_value=1, format="%.2f")})
+                bycol = df[df[col] != "-"].groupby([col, "severity"]).size().rename("events").reset_index()
+                r2.altair_chart(alt.Chart(bycol).mark_bar().encode(x=alt.X("events:Q", title=None), y=alt.Y(f"{col}:N", sort="-x", title=None),
+                                color=alt.Color("severity:N", scale=SEV_SCALE, legend=None), tooltip=[col, "severity", "events"]).properties(height=max(120, 26 * bycol[col].nunique())), **wide("altair_chart"))
+            elif detail == "error_classes":
+                err = [x_ for x_ in a.signals if SEV_RANK[x_.severity] >= 3]
+                st.dataframe(pd.DataFrame([{"id": x_.id, "severity": x_.severity, "template": x_.template, "count": x_.count, "services": ", ".join(x_.services),
+                                            "first": x_.first_seen.strftime("%H:%M:%S"), "last": x_.last_seen.strftime("%H:%M:%S")} for x_ in err]),
+                             hide_index=True, **wide("dataframe"))
+            elif detail == "span_min":
+                tr = prof["time_range"]
+                c1_, c2_, c3_ = st.columns(3)
+                c1_.markdown(kpi(tr["start"][11:19], tr["start"][:10]), unsafe_allow_html=True)
+                c2_.markdown(kpi(tr["end"][11:19], tr["end"][:10]), unsafe_allow_html=True)
+                c3_.markdown(kpi(prof.get("bucket", "1min"), "bucket"), unsafe_allow_html=True)
+                per_file_t = df.groupby("source").agg(first=("timestamp", "min"), last=("timestamp", "max"), events=("severity", "size")).reset_index()
+                st.altair_chart(alt.Chart(per_file_t).mark_bar(cornerRadius=3, height=14).encode(x=alt.X("first:T", title=None, axis=alt.Axis(format="%H:%M")), x2="last:T",
+                                y=alt.Y("source:N", title=None), tooltip=["source", "events"]).properties(height=30 * len(per_file_t) + 20), **wide("altair_chart"))
     st.markdown("")
     left, right = st.columns([3, 2])
     with left:
