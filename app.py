@@ -9,6 +9,7 @@ import html
 import json
 import os
 import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import altair as alt
@@ -19,6 +20,8 @@ from signal_sprint.actions import PRIORITIES, STATUSES, ActionStore
 from signal_sprint.analysis import Analysis, interesting, llm_prompt, postmortem_md, signal_dict
 from signal_sprint.connectors import fetch_http, fetch_mcp, mcp_tools, parse_headers
 from signal_sprint.live import LiveStore, start_receiver, start_simulator
+from signal_sprint.itsm import SYSTEMS, correlate as correlate_tickets, demo_tickets, fetch_generic
+from signal_sprint.analysis import template_of
 from signal_sprint.llm import LLMConfig, chat as llm_chat, test_connection as llm_test
 from signal_sprint.i18n import factor_value, narrative_text, reason_text, recommendation_text, link_text, t
 from signal_sprint.models import SEV_RANK
@@ -45,6 +48,7 @@ def wide(fn_name: str) -> dict:
 SEV_COLORS = {"CRITICAL": "#ff5c5c", "ERROR": "#ffb347", "WARN": "#f2d55c", "INFO": "#6b7a90", "DEBUG": "#4a5361",
               "critical": "#ff5c5c", "high": "#ffb347", "medium": "#f2d55c", "low": "#6b7a90"}
 PRIO_COLORS = {"P1": "#ff5c5c", "P2": "#ffb347", "P3": "#f2d55c", "P4": "#6b7a90"}
+UTC = timezone.utc
 SEV_SCALE = alt.Scale(domain=list(SEV_RANK), range=[SEV_COLORS[k] for k in SEV_RANK])
 CSS = """
 <style>
@@ -163,8 +167,8 @@ with st.sidebar:
              format_func=lambda x: {"tr": "🇹🇷 Türkçe", "en": "🇬🇧 English"}[x], key="lang")
 
     with st.expander(t("sb_conn"), expanded=False):
-        sec = st.radio("section", ["src", "live", "llm"], horizontal=True, label_visibility="collapsed",
-                       format_func=lambda x: {"src": t("conn_sources"), "live": t("conn_live"), "llm": t("conn_llm")}[x], key="conn_sec")
+        sec = st.radio("section", ["src", "live", "itsm", "llm"], horizontal=True, label_visibility="collapsed",
+                       format_func=lambda x: {"src": t("conn_sources"), "live": t("conn_live"), "itsm": t("conn_itsm"), "llm": t("conn_llm")}[x], key="conn_sec")
         if sec == "src":
             kind = st.radio(t("conn_type"), ["http", "mcp"], horizontal=True, format_func=lambda x: t("conn_" + x), key="conn_kind")
             c_url = st.text_input(t("conn_url"), key="conn_url", placeholder="https://api.example.com/alerts" if kind == "http" else "http://localhost:8765/mcp")
@@ -205,6 +209,24 @@ with st.sidebar:
                 st.success(t("live_running", port=int(port)))
             st.caption(t("live_agent_cmd"))
             st.code(f"python agent.py --url http://<dashboard-host>:{int(port)}/ingest{' --key ' + key if key else ''} --tail /var/log/app.log", language="bash")
+        elif sec == "itsm":
+            system = st.selectbox(t("itsm_system"), ["demo", "servicenow", "jira", "onedesk", "generic"], key="itsm_system",
+                                  format_func=lambda x: {"demo": t("itsm_demo"), "servicenow": "ServiceNow", "jira": "Jira Service Management", "onedesk": "OneDesk", "generic": "Generic REST"}[x])
+            if system != "demo":
+                st.text_input(t("itsm_base"), key="itsm_base", placeholder={"servicenow": "https://<instance>.service-now.com", "jira": "https://<site>.atlassian.net",
+                                                                            "onedesk": "https://app.onedesk.com/rest", "generic": "https://api.example.com/tickets"}[system])
+                st.text_input(t("itsm_user"), key="itsm_user"); st.text_input(t("itsm_pass"), key="itsm_pass", type="password")
+                st.text_input(t("itsm_token"), key="itsm_token", type="password")
+                st.text_input(t("itsm_query"), key="itsm_query")
+                if system == "generic":
+                    st.text_input(t("itsm_path"), key="itsm_path"); st.text_area(t("itsm_mapping"), key="itsm_mapping", height=68, placeholder='{"title": "subject", "created": "opened_at"}')
+            if st.button(t("itsm_fetch"), key="itsm_fetch", **wide("button")):
+                try:
+                    st.session_state["tickets"] = fetch_tickets(system)
+                    st.session_state["tickets_src"] = system
+                    st.success(t("itsm_ok", n=len(st.session_state["tickets"]), src=system))
+                except Exception as e:  # noqa: BLE001
+                    st.error(t("itsm_err", e=e))
         else:
             st.caption(t("llm_hint"))
             st.text_input(t("llm_base"), key="llm_base", placeholder="http://localhost:3000/v1")
@@ -244,23 +266,88 @@ if st.session_state.get("sim_on", True):
     simulator()
 
 
+def fetch_tickets(system: str) -> list:
+    ss = st.session_state
+    if system == "demo":
+        return demo_tickets()
+    if system == "generic":
+        mapping = json.loads(ss.get("itsm_mapping") or "{}")
+        headers = {"Authorization": f"Bearer {ss['itsm_token']}"} if ss.get("itsm_token") else {}
+        return fetch_generic(ss.get("itsm_base", ""), headers, mapping, ss.get("itsm_path", ""))
+    kw = {"user": ss.get("itsm_user", ""), "password": ss.get("itsm_pass", ""), "token": ss.get("itsm_token", "")}
+    if ss.get("itsm_query"):
+        kw["query"] = ss["itsm_query"]
+    return SYSTEMS[system](ss.get("itsm_base", ""), **kw)
+
+
+def live_signals(ls: LiveStore, window_min: int = 15) -> list[dict]:
+    """Quick error/burst signals from the live buffer for ticket correlation (no full pipeline)."""
+    start = datetime.now(UTC) - timedelta(minutes=window_min)
+    groups: dict[str, dict] = {}
+    for o in ls.snapshot():
+        if o.timestamp < start or SEV_RANK[o.severity] < 3:
+            continue
+        tpl = template_of(o.message)
+        g = groups.setdefault(tpl, {"id": f"L{len(groups) + 1}", "template": tpl, "services": set(), "hosts": set(), "severity": o.severity, "onset": o.timestamp, "count": 0})
+        g["count"] += 1
+        if o.service: g["services"].add(o.service)
+        if o.host: g["hosts"].add(o.host)
+        g["onset"] = min(g["onset"], o.timestamp)
+    out = [dict(g, services=sorted(g["services"]), hosts=sorted(g["hosts"])) for g in groups.values() if g["count"] >= 3]
+    return sorted(out, key=lambda g: -g["count"])[:12]
+
+
+def pct(v, digits=2):
+    return f"{v * 100:.{digits}f}%" if v is not None else t("no_data")
+
+
 def live_feed(compact: bool = False) -> None:
-    """Live feed: KPIs, events/min by severity, busiest services, latest events. Refreshes every 2s via a fragment."""
+    """Operations center: service levels, infrastructure, event flow, ITSM tickets, latest events. Refreshes every 2s."""
     ls = live_store()
 
     @st.fragment(run_every="2s")
     def _panel():
         stt = ls.stats(15)
+        slo = ls.slo(15)
+        ms = ls.metric_stats(15)
         real_agents = [a_ for a_ in stt["agents"] if a_ != "simulator"]
         badge_txt, badge_col = (t("live_real_badge"), "#3ddc84") if real_agents else (t("live_sim_badge"), "#f2d55c")
         st.markdown(f'#### {t("live_title")} <span class="pill" style="background:{badge_col}">{badge_txt}</span>'
-                    f' <span class="muted" style="font-size:13px">· {t("live_sub")}</span>', unsafe_allow_html=True)
-        k1, k2, k3, k4 = st.columns(4)
-        k1.markdown(kpi2(len(real_agents) or len(stt["agents"]), t("live_agents"), "🛰", "#6b9bd2", ", ".join(list(stt["agents"])[:3]) or t("live_no_agent"), True), unsafe_allow_html=True)
-        k2.markdown(kpi2(stt["per_minute_now"], t("live_rate"), "⚡", "#3ddc84", f"{stt['received']:,} total"), unsafe_allow_html=True)
-        k3.markdown(kpi2(stt["errors"], t("live_errors"), "🔥", "#ff5c5c" if stt["errors"] else "#8b93a1", ""), unsafe_allow_html=True)
-        k4.markdown(kpi2(f"{stt['total']:,}", t("live_buffered"), "🧺", "#9b7bff", stt["last"].strftime("%H:%M:%S") if stt["last"] else "-", True), unsafe_allow_html=True)
-        st.markdown("")
+                    f' <span class="muted" style="font-size:13px">· {t("live_sub")} · {len(stt["agents"])} {t("live_agents")}: {", ".join(list(stt["agents"])[:4]) or t("live_no_agent")}</span>', unsafe_allow_html=True)
+
+        # ---- service levels
+        st.markdown(f"**{t('ops_slo')}**")
+        k = st.columns(6)
+        av, p95, bud = slo["availability"], slo["p95_ms"], slo["error_budget"]
+        av_ok = av is not None and av >= slo["slo"]["availability"]
+        k[0].markdown(kpi2(pct(av), t("availability"), "🎯", "#3ddc84" if av_ok else "#ff5c5c", t("slo_target", v=pct(slo["slo"]["availability"], 1))), unsafe_allow_html=True)
+        p_ok = p95 is None or p95 <= slo["slo"]["p95_ms"]
+        k[1].markdown(kpi2(f"{p95:.0f} ms" if p95 is not None else t("no_data"), t("p95"), "⏱", "#3ddc84" if p_ok else "#ffb347", f"SLO ≤ {slo['slo']['p95_ms']} ms"), unsafe_allow_html=True)
+        k[2].markdown(kpi2(pct(bud, 0) if bud is not None else t("no_data"), t("budget"), "🧮", "#3ddc84" if (bud or 0) > 0.25 else "#ffb347" if (bud or 0) > 0 else "#ff5c5c", f"{slo['errors']} / {slo['total']} ERROR+"), unsafe_allow_html=True)
+        k[3].markdown(kpi2(t("ok") if slo["sla_ok"] else t("breach"), t("sla"), "📜", "#3ddc84" if slo["sla_ok"] else "#ff5c5c", t("sla_target", v=pct(slo["sla"]["availability"], 1))), unsafe_allow_html=True)
+        k[4].markdown(kpi2(stt["per_minute_now"], t("live_rate"), "⚡", "#6b9bd2", f"{stt['received']:,} total"), unsafe_allow_html=True)
+        k[5].markdown(kpi2(stt["errors"], t("live_errors"), "🔥", "#ff5c5c" if stt["errors"] else "#8b93a1", f"{stt['total']:,} {t('live_buffered')}", True), unsafe_allow_html=True)
+
+        # ---- infrastructure
+        st.markdown(f"**{t('ops_infra')}** <span class='muted'>· {ms['samples']} samples</span>", unsafe_allow_html=True)
+        thr = __import__("signal_sprint.scenario", fromlist=["x"]).METRIC_THRESHOLDS
+        ic = st.columns(3)
+        pm = pd.DataFrame(ms["per_minute"]) if ms["per_minute"] else pd.DataFrame(columns=["minute", "host", "metric", "value"])
+        for col, metric, icon in zip(ic, ("cpu", "memory", "disk"), ("🧠", "💾", "🗄")):
+            sm = ms["summary"][metric]
+            val = f"{sm['avg']:.0f}%" if sm["avg"] is not None else t("no_data")
+            color = "#8b93a1" if sm["max"] is None else "#ff5c5c" if sm["max"] >= thr[metric] else "#ffb347" if sm["max"] >= thr[metric] - 15 else "#3ddc84"
+            sub = f"{t('worst')} {sm['worst']} {sm['max']:.0f}% · {sm['hosts']} {t('hosts_n_short')}" if sm["max"] is not None else ""
+            with col:
+                st.markdown(kpi2(val, t(metric), icon, color, sub), unsafe_allow_html=True)
+                d = pm[pm.metric == metric]
+                if len(d):
+                    st.altair_chart(alt.Chart(d).mark_line(interpolate="monotone", strokeWidth=1.6).encode(
+                        x=alt.X("minute:T", title=None, axis=alt.Axis(format="%H:%M")), y=alt.Y("value:Q", title=None, scale=alt.Scale(domain=[0, 100])),
+                        color=alt.Color("host:N", legend=alt.Legend(orient="bottom", title=None, columns=5)), tooltip=["host", "metric", "value"])
+                        .properties(height=160).configure_view(strokeWidth=0), **wide("altair_chart"))
+
+        # ---- event flow
         c1, c2 = st.columns([3, 2])
         rows = pd.DataFrame(stt["rows"])
         with c1:
@@ -268,18 +355,37 @@ def live_feed(compact: bool = False) -> None:
             st.altair_chart(alt.Chart(rows).mark_area(interpolate="monotone").encode(
                 x=alt.X("minute:T", title=None, axis=alt.Axis(format="%H:%M")), y=alt.Y("events:Q", stack=True, title=None),
                 color=alt.Color("severity:N", scale=SEV_SCALE, legend=alt.Legend(orient="top", title=None)), order=alt.Order("severity:N"),
-                tooltip=[alt.Tooltip("minute:T", format="%H:%M"), "severity", "events"]).properties(height=190).configure_view(strokeWidth=0), **wide("altair_chart"))
+                tooltip=[alt.Tooltip("minute:T", format="%H:%M"), "severity", "events"]).properties(height=170).configure_view(strokeWidth=0), **wide("altair_chart"))
         with c2:
             st.markdown(f"**{t('live_services')}**")
             svc = pd.DataFrame(stt["services"], columns=["service", "events"]) if stt["services"] else pd.DataFrame({"service": ["-"], "events": [0]})
             st.altair_chart(alt.Chart(svc).mark_bar(color="#3ddc84").encode(x=alt.X("events:Q", title=None), y=alt.Y("service:N", sort="-x", title=None),
-                            tooltip=["service", "events"]).properties(height=190).configure_view(strokeWidth=0), **wide("altair_chart"))
+                            tooltip=["service", "events"]).properties(height=170).configure_view(strokeWidth=0), **wide("altair_chart"))
+
+        # ---- ITSM tickets correlated with live evidence
+        tickets = st.session_state.get("tickets")
+        if tickets is None and st.session_state.get("itsm_system", "demo") == "demo":
+            tickets = st.session_state["tickets"] = demo_tickets()
+            st.session_state["tickets_src"] = "demo"
+        st.markdown(f"**{t('ops_tickets')}** <span class='muted'>· {st.session_state.get('tickets_src', '-')} · {t('ops_tickets_sub')}</span>", unsafe_allow_html=True)
+        if tickets:
+            incs = [{"id": i.id, "title": i.title, "services": i.affected_services, "hosts": i.affected_hosts, "started_at": i.started_at}
+                    for i in st.session_state["analysis"].incidents] if "analysis" in st.session_state else []
+            correlate_tickets(tickets, live_signals(ls), ms["breaches"], incs)
+            tdf = pd.DataFrame([{t("t_id"): x.id, t("t_prio"): x.priority, t("t_status"): x.status, t("t_title"): x.title, t("t_service"): x.service,
+                                 t("t_opened"): x.created.strftime("%m-%d %H:%M") if x.created else "", t("t_rel"): x.relevance,
+                                 t("t_related"): ", ".join(x.related), t("t_why"): "; ".join(x.reasons)} for x in tickets])
+            st.dataframe(tdf, hide_index=True, **wide("dataframe"), height=min(300, 38 + 35 * len(tdf)),
+                         column_config={t("t_rel"): st.column_config.ProgressColumn(min_value=0, max_value=1, format="%.2f")})
+        else:
+            st.info(t("no_tickets"))
+
         if not compact:
             st.markdown(f"**{t('live_tail')}**")
             lines = "".join(
                 f'<div><span class="muted">{o.timestamp:%H:%M:%S}</span> <span style="color:{SEV_COLORS.get(o.severity, "#8b93a1")};font-weight:700">{o.severity:<8}</span> '
-                f'<span style="color:#9fb3c8">{esc(o.service or o.source)[:18]:<18}</span> {esc(o.message)[:150]}</div>' for o in reversed(ls.tail(14)))
-            st.markdown(f'<div class="card mono" style="max-height:300px;overflow:auto;white-space:pre;line-height:1.55">{lines or "…"}</div>', unsafe_allow_html=True)
+                f'<span style="color:#9fb3c8">{esc(o.service or o.source)[:18]:<18}</span> {esc(o.message)[:150]}</div>' for o in reversed(ls.tail(12)))
+            st.markdown(f'<div class="card mono" style="max-height:260px;overflow:auto;white-space:pre;line-height:1.55">{lines or "…"}</div>', unsafe_allow_html=True)
 
     _panel()
     b1, b2, _ = st.columns([1, 1, 4])
@@ -297,11 +403,7 @@ if "analysis" not in st.session_state:
     if up_main is not None:
         load(up_main.name, data=up_main.getvalue())
         st.rerun()
-    c1, c2 = st.columns([1, 5])
-    if demo.exists() and c1.button(t("load_demo"), key="demo_main", **wide("button")):
-        load(demo.name, path=str(demo))
-        st.rerun()
-    c2.markdown(
+    st.markdown(
         '<div style="display:flex;gap:10px;align-items:center;padding:6px 0">' + "".join(
             f'<span class="card" style="margin:0;padding:8px 14px;white-space:nowrap">{icon} {t(k)}</span>' + ('<span class="arrow" style="padding:0">→</span>' if i < 3 else "")
             for i, (icon, k) in enumerate((("📥", "step1"), ("🧹", "step2"), ("🔗", "step3"), ("✅", "step4")))) + "</div>",

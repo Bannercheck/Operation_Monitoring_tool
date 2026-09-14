@@ -29,3 +29,9 @@ RECOMMENDATIONS: dict[str, list[str]] = {
     "5xx": ["Roll back last deploy if correlated", "Check upstream dependency health"],
     "certificate": ["Renew the certificate", "Automate certificate rotation"],
 }
+
+# Service objectives shown on the live page. SLO = internal target, SLA = contractual.
+SLO: dict = {"availability": 0.999, "p95_ms": 300}
+SLA: dict = {"availability": 0.995}
+# Infra metric thresholds (percent) that count as anomalies for ticket correlation and tile colouring
+METRIC_THRESHOLDS: dict = {"cpu": 85, "memory": 90, "disk": 90}

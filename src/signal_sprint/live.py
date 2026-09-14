@@ -11,17 +11,23 @@ Any format the pipeline parses is accepted, so the agent can ship raw log lines.
 from __future__ import annotations
 
 import json
+import re
+import statistics
 import threading
 import time
-from collections import Counter, deque
+from collections import Counter, defaultdict, deque
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from .models import SEV_RANK, Observation
 from .pipeline import ingest_bytes
+from . import scenario
 
 UTC = timezone.utc
+METRIC_KEYS = {"cpu": "cpu", "cpu_percent": "cpu", "cpu_pct": "cpu", "memory": "memory", "mem": "memory", "mem_percent": "memory",
+               "memory_percent": "memory", "disk": "disk", "disk_percent": "disk", "disk_pct": "disk"}
+LATENCY_RE = re.compile(r"(\d+(?:\.\d+)?)\s?ms\b")
 
 
 class LiveStore:
@@ -29,6 +35,7 @@ class LiveStore:
 
     def __init__(self, spool: str | Path | None = None, maxlen: int = 50_000):
         self.buf: deque[Observation] = deque(maxlen=maxlen)
+        self.metrics: deque[tuple] = deque(maxlen=maxlen)     # (ts, host, metric, value)
         self.lock = threading.Lock()
         self.spool = Path(spool) if spool else None
         self.received = 0
@@ -40,14 +47,23 @@ class LiveStore:
     def ingest(self, name: str, data: bytes, agent: str = "unknown") -> int:
         obs, _ = ingest_bytes(name, data)
         now = datetime.now(UTC)
+        metric_rows: list[tuple] = []
+        events: list[Observation] = []
         for o in obs:
             if o.attributes.pop("_no_ts", False) or o.timestamp.year < 2000:
                 o.timestamp = now
             o.attributes["agent"] = agent
+            m = metric_of(o)
+            if m:
+                metric_rows.extend(m)
+            else:
+                events.append(o)
         with self.lock:
-            self.buf.extend(obs)
+            self.buf.extend(events)
+            self.metrics.extend(metric_rows)
             self.received += len(obs)
             self.agents[agent] = time.time()
+        obs = events
         if self.spool and obs:
             with self.spool.open("a", encoding="utf-8") as f:
                 for o in obs:
@@ -95,6 +111,68 @@ class LiveStore:
     def clear(self) -> None:
         with self.lock:
             self.buf.clear()
+            self.metrics.clear()
+
+    # ---- infra metrics
+    def metric_stats(self, window_min: int = 15) -> dict:
+        """Latest value per (metric, host), per-minute mean series, and threshold breaches."""
+        start = datetime.now(UTC) - timedelta(minutes=window_min)
+        with self.lock:
+            rows = [r for r in self.metrics if r[0] >= start]
+        latest: dict[tuple[str, str], float] = {}
+        series: dict[tuple, list] = defaultdict(list)
+        for ts, host, metric, value in rows:
+            latest[(metric, host)] = value
+            series[(ts.replace(second=0, microsecond=0), host, metric)].append(value)
+        per_min = [{"minute": k[0], "host": k[1], "metric": k[2], "value": round(statistics.fmean(v), 1)} for k, v in sorted(series.items())]
+        thr = scenario.METRIC_THRESHOLDS
+        breaches = [{"metric": m, "host": h, "value": v, "threshold": thr[m]} for (m, h), v in latest.items() if m in thr and v >= thr[m]]
+        summary = {}
+        for metric in ("cpu", "memory", "disk"):
+            vals = [v for (m, _h), v in latest.items() if m == metric]
+            summary[metric] = {"avg": round(statistics.fmean(vals), 1) if vals else None, "max": round(max(vals), 1) if vals else None,
+                               "hosts": len(vals), "worst": max(((v, h) for (m, h), v in latest.items() if m == metric), default=(None, None))[1]}
+        return {"latest": latest, "per_minute": per_min, "breaches": breaches, "summary": summary, "samples": len(rows)}
+
+    # ---- service levels
+    def slo(self, window_min: int = 15) -> dict:
+        """Availability = 1 - ERROR+/total, p95 latency from '<n>ms' in messages, error budget vs scenario.SLO / SLA."""
+        start = datetime.now(UTC) - timedelta(minutes=window_min)
+        obs = [o for o in self.snapshot() if o.timestamp >= start]
+        total = len(obs)
+        errors = sum(1 for o in obs if SEV_RANK[o.severity] >= 3)
+        avail = 1 - errors / total if total else None
+        lat = [float(m[1]) for o in obs for m in [LATENCY_RE.search(o.message)] if m]
+        lat.sort()
+        p95 = lat[int(len(lat) * 0.95) - 1] if len(lat) >= 20 else (lat[-1] if lat else None)
+        slo, sla = scenario.SLO, scenario.SLA
+        budget = None
+        if avail is not None:
+            allowed = 1 - slo["availability"]
+            budget = max(0.0, 1 - (1 - avail) / allowed) if allowed > 0 else None
+        return {"availability": avail, "p95_ms": p95, "error_budget": budget, "total": total, "errors": errors,
+                "slo_ok": avail is not None and avail >= slo["availability"] and (p95 is None or p95 <= slo["p95_ms"]),
+                "sla_ok": avail is None or avail >= sla["availability"], "slo": slo, "sla": sla}
+
+
+def metric_of(o: Observation) -> list[tuple] | None:
+    """Recognise metric samples: {"metric":"cpu","value":73} or {"cpu":73,"memory":55,"disk":80} style records."""
+    a = o.attributes
+    out: list[tuple] = []
+    name = str(a.get("metric") or a.get("name") or "").lower()
+    if name in METRIC_KEYS and a.get("value") not in (None, ""):
+        try:
+            out.append((o.timestamp, o.host or o.service or "-", METRIC_KEYS[name], float(a["value"])))
+        except (TypeError, ValueError):
+            return None
+        return out
+    for k, v in a.items():
+        if k.lower() in METRIC_KEYS:
+            try:
+                out.append((o.timestamp, o.host or o.service or "-", METRIC_KEYS[k.lower()], float(v)))
+            except (TypeError, ValueError):
+                continue
+    return out or None
 
 
 def make_handler(store: LiveStore, api_key: str | None):
@@ -170,11 +248,25 @@ def simulate_batch(rng, n: int = 8, incident: bool = False) -> bytes:
     return ("\n".join(out) + "\n").encode()
 
 
+def simulate_metrics(rng, state: dict, incident: bool = False) -> bytes:
+    """One CPU / memory / disk sample per host; random walk, CPU spikes during incidents, disk creeps up."""
+    now = datetime.now(UTC).isoformat()
+    out = []
+    for host in SIM_HOSTS:
+        st = state.setdefault(host, {"cpu": rng.uniform(25, 55), "memory": rng.uniform(45, 70), "disk": rng.uniform(40, 75)})
+        st["cpu"] = min(99, max(3, st["cpu"] + rng.uniform(-6, 6) + (25 if incident and host == "db-01" else 0)))
+        st["memory"] = min(99, max(10, st["memory"] + rng.uniform(-1.5, 1.8)))
+        st["disk"] = min(99, st["disk"] + rng.uniform(0, 0.05))
+        out.append(json.dumps({"ts": now, "host": host, "cpu": round(st["cpu"], 1), "memory": round(st["memory"], 1), "disk": round(st["disk"], 1)}))
+    return ("\n".join(out) + "\n").encode()
+
+
 def start_simulator(store: LiveStore, interval: float = 1.0, agent: str = "simulator") -> threading.Event:
     """Feed the store every `interval` seconds until the returned Event is set. Bursts every ~2 minutes."""
     import random
     stop = threading.Event()
     rng = random.Random(42)
+    mstate: dict = {}
 
     def run():
         tick = 0
@@ -182,6 +274,8 @@ def start_simulator(store: LiveStore, interval: float = 1.0, agent: str = "simul
             tick += 1
             incident = 90 <= tick % 150 < 110
             store.ingest("sim.jsonl", simulate_batch(rng, rng.randint(4, 12), incident), agent)
+            if tick % 5 == 1:
+                store.ingest("metrics.jsonl", simulate_metrics(rng, mstate, incident), agent)
             stop.wait(interval)
 
     threading.Thread(target=run, daemon=True, name="live-simulator").start()

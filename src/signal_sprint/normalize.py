@@ -162,7 +162,12 @@ def auto_map(keys: list[str], sample: list[dict] | None = None, mapping: dict | 
             if best and share(best, lambda v: str(v).lower() in SEVERITY_MAP) > 0.8:
                 out["severity"] = best; taken.add(best)
         if out["message"] is None:
-            cands = [k for k in keys if k not in taken]
+            def numeric(v):
+                try:
+                    float(str(v)); return True
+                except ValueError:
+                    return False
+            cands = [k for k in keys if k not in taken and share(k, numeric) < 0.5]
             best = max(cands, key=lambda k: sum(len(str(r.get(k, ""))) for r in sample), default=None)
             out["message"] = best
     return out

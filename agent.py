@@ -22,6 +22,34 @@ sys.path.insert(0, str(Path(__file__).with_name("src")))
 from signal_sprint.live import simulate_batch  # noqa: E402
 
 
+def host_metrics() -> dict:
+    """CPU / memory / disk percent using only the standard library (Linux / macOS; falls back gracefully)."""
+    import json as _json
+    import os
+    import shutil
+    out = {"ts": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(), "host": socket.gethostname()}
+    try:
+        load1 = os.getloadavg()[0]
+        out["cpu"] = round(min(100.0, 100.0 * load1 / max(os.cpu_count() or 1, 1)), 1)
+    except (OSError, AttributeError):
+        pass
+    try:
+        mem = {}
+        with open("/proc/meminfo") as f:
+            for ln in f:
+                k, v = ln.split(":", 1)
+                mem[k] = int(v.strip().split()[0])
+        out["memory"] = round(100.0 * (1 - mem["MemAvailable"] / mem["MemTotal"]), 1)
+    except (OSError, KeyError, ValueError):
+        pass
+    try:
+        du = shutil.disk_usage("/")
+        out["disk"] = round(100.0 * du.used / du.total, 1)
+    except OSError:
+        pass
+    return out
+
+
 def post(url: str, key: str | None, data: bytes, name: str, agent: str) -> int:
     headers = {"Content-Type": "application/octet-stream", "X-Agent": agent, "X-File-Name": name}
     if key:
@@ -60,6 +88,7 @@ def main(argv=None) -> int:
     g.add_argument("--tail", help="follow a log file")
     g.add_argument("--file", help="send a file once")
     g.add_argument("--simulate", action="store_true", help="generate synthetic traffic")
+    g.add_argument("--metrics", action="store_true", help="ship this host's CPU / memory / disk every --interval seconds")
     ap.add_argument("--interval", type=float, default=1.0)
     args = ap.parse_args(argv)
     if args.file:
@@ -69,6 +98,15 @@ def main(argv=None) -> int:
     if args.tail:
         tail(Path(args.tail), args.url, args.key, args.agent, args.interval)
         return 0
+    if args.metrics:
+        import json as _json
+        print(f"shipping host metrics -> {args.url} (Ctrl+C to stop)")
+        while True:
+            try:
+                post(args.url, args.key, (_json.dumps(host_metrics()) + "\n").encode(), "metrics.jsonl", args.agent)
+            except Exception as e:  # noqa: BLE001
+                print("send failed:", e, file=sys.stderr)
+            time.sleep(max(args.interval, 1.0))
     rng = random.Random()
     tick = 0
     print(f"simulating -> {args.url} (Ctrl+C to stop)")
