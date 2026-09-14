@@ -217,7 +217,8 @@ def build_incident(n: int, members: list[Signal], edges: list[dict]) -> Incident
     evidence = [ref for s in members for ref in s.evidence[:3]]
     recs = [r for key, lst in scenario.RECOMMENDATIONS.items() if key in root.template for r in lst][:4] or \
            ["Investigate the root-cause signal's evidence lines", "Confirm blast radius with service owners"]
-    title = root.template[:70] + (f" ({', '.join(services[:3])})" if services else "")
+    head = root.template or (root.observations[0].raw or root.observations[0].message or "").strip()[:70] or "(no message)"
+    title = head[:70] + (f" ({', '.join(services[:3])})" if services else "")
     inc = Incident(id=f"INC-{n}", title=title, severity=severity, score=score, root_cause_signal=root.id, root_cause_reason=why,
                    affected_services=services, affected_hosts=hosts, started_at=start, ended_at=end,
                    signal_ids=[s.id for s in members], factors=factors, evidence=evidence, timeline=timeline,

@@ -79,6 +79,7 @@ CSS = """
 .tl{border-left:2px solid #262b33;margin-left:6px;padding-left:14px}.tl .step{position:relative;margin-bottom:8px}
 .tl .step:before{content:"";position:absolute;left:-19px;top:7px;width:8px;height:8px;border-radius:4px;background:#8b93a1}
 .tl .step.root:before{background:#ff5c5c;box-shadow:0 0 0 3px rgba(255,92,92,.25)}
+.fc-row{margin:8px 0;line-height:1.55}
 .act{background:#0f1216;border:1px solid #262b33;border-left:4px solid #8b93a1;border-radius:8px;padding:8px 10px;margin-bottom:8px}
 </style>"""
 st.markdown(CSS, unsafe_allow_html=True)
@@ -192,6 +193,53 @@ def evidence_table(observations: list, key: str, height: int = 320):
     if pick:
         return observations[refs.index(pick)]
     return observations[rows[0]] if rows else None
+
+
+def incident_flashcard(inc, a: Analysis, key: str) -> None:
+    """One card that tells the whole story of an incident."""
+    root = a.signal_by_id[inc.root_cause_signal]
+    tm, rc, og = inc.timing, inc.recovery, inc.origin
+    symptoms = [a.signal_by_id[x] for x in inc.signal_ids if x != root.id]
+    rk = rc.get("kind", "unknown")
+    rcol = {"restart": "#3ddc84", "self_healed": "#3ddc84", "stopped": "#f2d55c", "ongoing": "#ff5c5c"}.get(rk, "#8b93a1")
+    chain = " → ".join([f"{root.id} {esc(root.template[:40])}"] + [f"{x.id} {esc(x.template[:40])}" for x in symptoms[:4]])
+    total = sum(a.signal_by_id[x].count for x in inc.signal_ids)
+    recs = "".join(f"<li>{esc(recommendation_text(r))}</li>" for r in inc.recommendations)
+    resolved = recovery_label(rk) + (f' · {esc(rc.get("recovered_at") or "")[11:19]} · <span class="mono">{esc(rc.get("evidence") or "")}</span> · {esc(rc.get("what") or "")[:120]}' if rc.get("evidence") else "")
+    pbe = playbook().lookup(root.template)
+    seen = ""
+    if pbe and (len(pbe["datasets"]) > 1 or pbe["occurrences"] > 1):
+        seen = (f'<div class="fc-row"><b>📚 {t("pb_seen_before")}</b> {t("pb_times", n=pbe["occurrences"], d=len(pbe["datasets"]))} · '
+                f'{esc(", ".join(pbe["datasets"][:3]))}' + (f' · {esc(pbe["resolution"][:140])}' if pbe["resolution"] else "") + "</div>")
+    st.markdown(f"""<div class="card" style="border-top:3px solid {rcol};padding:18px 20px">
+<div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:20px;font-weight:700">{inc.id} {pill(inc.severity)} <span class="muted" style="font-size:13px">{t('fc_score')} {inc.score}</span></span>
+<span class="muted">{tm.get('first_signal', '')[:10]}</span></div>
+<div class="fc-row"><b>{t('fc_what')}</b> · {esc(inc.title)}. {total:,} {t('fc_events')} {len(inc.signal_ids)} {t('fc_signals')}. <b>{t('fc_chain')}:</b> <span class="mono">{chain}</span></div>
+<div class="fc-row"><b>{t('fc_why')}</b> · <span class="mono">{root.id}</span> "{esc(root.template)}" — {esc(reason_text(inc.root_cause_codes))}</div>
+<div class="fc-row"><b>{t('fc_where')}</b> · {t('services').lower()}: {esc(', '.join(og.get('services', [])) or '-')} · {t('hosts')}: {esc(', '.join(og.get('hosts', [])) or '-')} · {t('sources')}: {esc(', '.join(f'{k} ({v})' for k, v in list(og.get('files', {}).items())[:4]))}</div>
+<div class="fc-row"><b>{t('fc_when')}</b> · {t('fc_started')} <span class="mono">{tm.get('first_signal', '')[11:19]}</span> · {t('fc_last')} <span class="mono">{tm.get('last_error', '')[11:19]}</span> · {t('fc_lasted')} <b>{tm.get('duration_s', 0) / 60:.1f} min</b> · {t('quiet')} {rc.get('quiet_min', 0)} min</div>
+<div class="fc-row"><b>{t('fc_resolved')}</b> · <span style="color:{rcol};font-weight:700">{resolved}</span></div>
+<div class="fc-row"><b>{t('fc_todo')}</b><ul style="margin:4px 0 0 18px">{recs}</ul></div>{seen}</div>""", unsafe_allow_html=True)
+    if st.button(t("fc_open"), key=f"fc-open-{key}-{inc.id}"):
+        st.session_state["inc_pick"] = inc.id
+        st.session_state["detail"] = None
+        st.rerun()
+
+
+def incidents_table(incidents: list, key: str, a: Analysis):
+    """Selectable incident table + flashcard of the selected row."""
+    df_ = pd.DataFrame([{"id": i.id, "severity": i.severity, "score": i.score, "title": i.title, "signals": len(i.signal_ids),
+                         "services": ", ".join(i.affected_services), "window": f"{i.started_at:%H:%M}–{i.ended_at:%H:%M}",
+                         "resolved": recovery_label(i.recovery.get("kind", "unknown"))} for i in incidents])
+    st.caption(t("fc_pick"))
+    ev = st.dataframe(df_, hide_index=True, **wide("dataframe"), on_select="rerun", selection_mode="single-row", key=key,
+                      column_config={"score": st.column_config.ProgressColumn(min_value=0, max_value=1, format="%.2f")})
+    rows = getattr(getattr(ev, "selection", None), "rows", None) or []
+    ids = [i.id for i in incidents]
+    pick = st.selectbox(t("pick_row"), [""] + ids, key=key + "-pick", label_visibility="collapsed", format_func=lambda x: x or t("pick_row"))
+    chosen = pick or (ids[rows[0]] if rows else None)
+    if chosen:
+        incident_flashcard(a.incident_by_id[chosen], a, key)
 
 
 def recovery_label(kind: str) -> str:
@@ -741,9 +789,7 @@ with tab_over:
                 st.dataframe(pd.DataFrame([signal_dict(x_) for x_ in rows]), hide_index=True, **wide("dataframe"), height=min(420, 38 + 35 * max(len(rows), 1)),
                              column_config={"burst": st.column_config.ProgressColumn(min_value=0, max_value=1, format="%.2f")})
             elif detail == "incidents":
-                st.dataframe(pd.DataFrame([{"id": i.id, "severity": i.severity, "score": i.score, "title": i.title, "signals": len(i.signal_ids),
-                                            "services": ", ".join(i.affected_services), "window": f"{i.started_at:%H:%M}–{i.ended_at:%H:%M}"} for i in a.incidents]),
-                             hide_index=True, **wide("dataframe"), column_config={"score": st.column_config.ProgressColumn(min_value=0, max_value=1)})
+                incidents_table(a.incidents, "ov-inc", a)
             elif detail == "actions":
                 acts_ = store().list()
                 st.dataframe(pd.DataFrame(acts_) if acts_ else pd.DataFrame(columns=["id", "incident_id", "title", "priority", "status", "owner"]), hide_index=True, **wide("dataframe"))
@@ -924,9 +970,14 @@ with tab_inc:
     if not a.incidents:
         st.info(t("no_incidents"))
     else:
-        iid = st.radio(t("incident"), [i.id for i in a.incidents], horizontal=True,
+        ids_ = [i.id for i in a.incidents]
+        default = st.session_state.pop("inc_pick", None)
+        if default in ids_:
+            st.session_state["inc_radio"] = default
+        iid = st.radio(t("incident"), ids_, horizontal=True, key="inc_radio",
                        format_func=lambda i: f"{i} · {a.incident_by_id[i].severity} · {a.incident_by_id[i].score}")
         inc = a.incident_by_id[iid]
+        incident_flashcard(inc, a, "tab")
         st.markdown(f'### {inc.id} &nbsp;{pill(inc.severity)} &nbsp;<span class="muted">{t("score")} {inc.score} · {inc.started_at:%H:%M:%S} → {inc.ended_at:%H:%M:%S}</span>', unsafe_allow_html=True)
         st.markdown(f'<div class="card hot"><b>{t("probable_origin")}</b> · <span class="mono">{inc.root_cause_signal}</span> "{esc(a.signal_by_id[inc.root_cause_signal].template)}"'
                     f'<br><span class="muted">{t("because")}: {reason_text(inc.root_cause_codes)}</span><br><br>'

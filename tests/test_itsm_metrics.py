@@ -65,11 +65,14 @@ def test_correlation_ranks_related_tickets():
     breaches = [{"metric": "cpu", "host": "db-01", "value": 93.0, "threshold": 85}]
     incidents = [{"id": "INC-1", "title": "x", "services": ["search-api"], "hosts": [], "started_at": now - timedelta(minutes=120)}]
     ranked = correlate(tickets, signals, breaches, incidents)
-    assert ranked[0].id == "INC0012345" and ranked[0].relevance >= 0.8 and "L1" in ranked[0].related
+    assert ranked[0].id == "INC0012345" and ranked[0].relevance >= 0.8 and "L1" in ranked[0].related_ids
+    assert ranked[0].related[0].startswith("⚠ connection timeout") and "payment-api" in ranked[0].reasons[0]
     cpu = next(x for x in ranked if x.id == "INC0012346")
-    assert "cpu@db-01" in cpu.related and any("93%" in r for r in cpu.reasons)
+    assert "cpu@db-01" in cpu.related_ids and any("93%" in r for r in cpu.reasons) and cpu.related[0].startswith("📈")
     search = next(x for x in ranked if x.id == "INC0012340")
-    assert "INC-1" in search.related
+    assert "INC-1" in search.related_ids and search.related[0].startswith("🚨")
+    vpn_like = next(x for x in ranked if x.id == "INC0012299")
+    assert "L1" not in vpn_like.related_ids   # generic words alone do not link a ticket to a signal
     vpn = next(x for x in ranked if x.id == "REQ0004410")
     assert vpn.relevance == 0.0 and ranked[-1].relevance <= ranked[0].relevance
 
