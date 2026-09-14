@@ -47,6 +47,14 @@ def host_metrics() -> dict:
         out["disk"] = round(100.0 * du.used / du.total, 1)
     except OSError:
         pass
+    try:  # NVIDIA GPUs, if nvidia-smi exists
+        import subprocess
+        r = subprocess.run(["nvidia-smi", "--query-gpu=utilization.gpu", "--format=csv,noheader,nounits"], capture_output=True, text=True, timeout=5)
+        vals = [float(x) for x in r.stdout.split() if x.strip().replace(".", "").isdigit()]
+        if vals:
+            out["gpu"] = round(max(vals), 1)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        pass
     return out
 
 

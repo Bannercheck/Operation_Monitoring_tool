@@ -34,4 +34,4 @@ RECOMMENDATIONS: dict[str, list[str]] = {
 SLO: dict = {"availability": 0.999, "p95_ms": 300}
 SLA: dict = {"availability": 0.995}
 # Infra metric thresholds (percent) that count as anomalies for ticket correlation and tile colouring
-METRIC_THRESHOLDS: dict = {"cpu": 85, "memory": 90, "disk": 90}
+METRIC_THRESHOLDS: dict = {"cpu": 85, "gpu": 95, "memory": 90, "disk": 90}

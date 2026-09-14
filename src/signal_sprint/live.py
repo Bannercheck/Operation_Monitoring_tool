@@ -26,7 +26,9 @@ from . import scenario
 
 UTC = timezone.utc
 METRIC_KEYS = {"cpu": "cpu", "cpu_percent": "cpu", "cpu_pct": "cpu", "memory": "memory", "mem": "memory", "mem_percent": "memory",
-               "memory_percent": "memory", "disk": "disk", "disk_percent": "disk", "disk_pct": "disk"}
+               "memory_percent": "memory", "disk": "disk", "disk_percent": "disk", "disk_pct": "disk",
+               "gpu": "gpu", "gpu_percent": "gpu", "gpu_util": "gpu", "gpu_utilization": "gpu"}
+METRICS = ("cpu", "gpu", "memory", "disk")
 LATENCY_RE = re.compile(r"(\d+(?:\.\d+)?)\s?ms\b")
 
 
@@ -128,7 +130,7 @@ class LiveStore:
         thr = scenario.METRIC_THRESHOLDS
         breaches = [{"metric": m, "host": h, "value": v, "threshold": thr[m]} for (m, h), v in latest.items() if m in thr and v >= thr[m]]
         summary = {}
-        for metric in ("cpu", "memory", "disk"):
+        for metric in METRICS:
             vals = [v for (m, _h), v in latest.items() if m == metric]
             summary[metric] = {"avg": round(statistics.fmean(vals), 1) if vals else None, "max": round(max(vals), 1) if vals else None,
                                "hosts": len(vals), "worst": max(((v, h) for (m, h), v in latest.items() if m == metric), default=(None, None))[1]}
@@ -228,6 +230,7 @@ def start_receiver(store: LiveStore, port: int = 8600, api_key: str | None = Non
 # ---------------------------------------------------------------- built-in simulator (for demos when no agent is connected)
 SIM_SERVICES = ["payment-api", "checkout-api", "auth-api", "search-api", "notification-service"]
 SIM_HOSTS = ["prd-api-01", "prd-api-02", "prd-api-03", "worker-01", "db-01"]
+SIM_GPU_HOSTS = ["ml-01", "ml-02"]
 
 
 def simulate_batch(rng, n: int = 8, incident: bool = False) -> bytes:
@@ -258,6 +261,12 @@ def simulate_metrics(rng, state: dict, incident: bool = False) -> bytes:
         st["memory"] = min(99, max(10, st["memory"] + rng.uniform(-1.5, 1.8)))
         st["disk"] = min(99, st["disk"] + rng.uniform(0, 0.05))
         out.append(json.dumps({"ts": now, "host": host, "cpu": round(st["cpu"], 1), "memory": round(st["memory"], 1), "disk": round(st["disk"], 1)}))
+    for host in SIM_GPU_HOSTS:
+        st = state.setdefault(host, {"cpu": rng.uniform(15, 35), "gpu": rng.uniform(40, 80), "memory": rng.uniform(50, 75), "disk": rng.uniform(30, 60)})
+        st["gpu"] = min(100, max(0, st["gpu"] + rng.uniform(-8, 8) + (15 if incident and host == "ml-01" else 0)))
+        st["cpu"] = min(99, max(3, st["cpu"] + rng.uniform(-3, 3)))
+        st["memory"] = min(99, max(10, st["memory"] + rng.uniform(-1, 1.2)))
+        out.append(json.dumps({"ts": now, "host": host, "cpu": round(st["cpu"], 1), "gpu": round(st["gpu"], 1), "memory": round(st["memory"], 1), "disk": round(st["disk"], 1)}))
     return ("\n".join(out) + "\n").encode()
 
 

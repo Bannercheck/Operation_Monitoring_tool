@@ -82,7 +82,7 @@ def test_metrics_and_slo():
         store.ingest("metrics.jsonl", simulate_metrics(rng, state, incident=True), "sim")
     store.ingest("events.jsonl", simulate_batch(rng, 60, incident=False), "sim")
     ms = store.metric_stats(15)
-    assert ms["samples"] == 15 * 3 and ms["summary"]["cpu"]["hosts"] == 5 and ms["summary"]["disk"]["avg"] is not None
+    assert ms["samples"] == 23 * 3 and ms["summary"]["cpu"]["hosts"] == 7 and ms["summary"]["gpu"]["hosts"] == 2 and ms["summary"]["disk"]["avg"] is not None
     assert all(len(store.metrics) for _ in [0]) and not any(o.attributes.get("cpu") for o in store.snapshot())  # metrics are not events
     slo = store.slo(15)
     assert slo["total"] == 60 and 0.8 <= slo["availability"] <= 1.0 and slo["p95_ms"] is not None

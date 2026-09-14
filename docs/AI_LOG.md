@@ -25,6 +25,7 @@ Sadece geliştirme adımları. Format: araç + sürüm · tarih · yapılan iş.
 | Claude Fable 5.1 | 2026-09-14 | Metrik kartları yeniden tasarlandı: ikon, vurgu rengi, gradyan, bağlam satırı, karta yapışık Detay şeridi |
 | Claude Fable 5.1 | 2026-09-14 | Canlı alım: HTTP alıcı (API anahtarlı `POST /ingest`), halka tampon + JSONL spool, yerleşik simülatör, `agent.py` (tail / file / simulate); açılış sayfası ve Canlı sekmesinde 2 sn'de bir yenilenen canlı grafikler; sol menü Connection Settings (veri kaynağı, canlı alım, LLM) / Datasets / README; OpenAI uyumlu yerel LLM istemcisi ve incident'ta LLM ile açıkla; README kullanım kılavuzu; 4 yeni test |
 | Claude Fable 5.1 | 2026-09-14 | Açılış operasyon merkezi: demo butonu kaldırıldı; SLO/SLA kartları (erişilebilirlik, p95, hata bütçesi), host bazlı CPU/bellek/disk metrikleri (alıcı + simülatör + `agent.py --metrics`), ITSM entegrasyonu (ServiceNow, Jira SM, OneDesk, genel REST, demo) ve ticket ↔ sinyal/metrik/incident ilişkilendirme; auto-mapper sayısal sütunu mesaj seçmiyor; 3 yeni test |
+| Claude Fable 5.1 | 2026-09-14 | Sol menü sayfa gezinmesi (Operasyon, Datasets, ITSM, Connection Settings, README); ana sayfa yükleme alanı olmadan önce metriklerle açılıyor; GPU metriği (simülatör, ajan nvidia-smi, eşik); log analizi Datasets sayfasında; ITSM yapılandırma + tam tablo + ticket detayı kendi sayfasında |
 
 ## Etkinlik günü
 
