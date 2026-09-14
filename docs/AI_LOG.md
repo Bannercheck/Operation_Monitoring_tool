@@ -23,6 +23,7 @@ Sadece geliştirme adımları. Format: araç + sürüm · tarih · yapılan iş.
 | Claude Fable 5.1 | 2026-09-13 | Gerçek veri şekilleri: iç içe JSON kayıt listesi, Türkçe başlık ipuçları, kv satır öneki, zaman damgası olmayan satırların 1970'e düşmesi düzeltildi, otomatik zaman kovası; sade sol menü, yükleme anında ilerleme, parser tablosu Özet'te |
 | Claude Fable 5.1 | 2026-09-14 | Tıklanabilir metrik kartları ve detay panelleri; sol menüde Bağlantı paneli (HTTP API + MCP istemcisi); motor MCP sunucusu (`mcp_server.py`, streamable HTTP / stdio); Dockerfile + docker-compose; 4 bağlayıcı testi |
 | Claude Fable 5.1 | 2026-09-14 | Metrik kartları yeniden tasarlandı: ikon, vurgu rengi, gradyan, bağlam satırı, karta yapışık Detay şeridi |
+| Claude Fable 5.1 | 2026-09-14 | Canlı alım: HTTP alıcı (API anahtarlı `POST /ingest`), halka tampon + JSONL spool, yerleşik simülatör, `agent.py` (tail / file / simulate); açılış sayfası ve Canlı sekmesinde 2 sn'de bir yenilenen canlı grafikler; sol menü Connection Settings (veri kaynağı, canlı alım, LLM) / Datasets / README; OpenAI uyumlu yerel LLM istemcisi ve incident'ta LLM ile açıkla; README kullanım kılavuzu; 4 yeni test |
 
 ## Etkinlik günü
 

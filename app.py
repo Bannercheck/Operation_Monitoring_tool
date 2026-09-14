@@ -18,6 +18,8 @@ import streamlit as st
 from signal_sprint.actions import PRIORITIES, STATUSES, ActionStore
 from signal_sprint.analysis import Analysis, interesting, llm_prompt, postmortem_md, signal_dict
 from signal_sprint.connectors import fetch_http, fetch_mcp, mcp_tools, parse_headers
+from signal_sprint.live import LiveStore, start_receiver, start_simulator
+from signal_sprint.llm import LLMConfig, chat as llm_chat, test_connection as llm_test
 from signal_sprint.i18n import factor_value, narrative_text, reason_text, recommendation_text, link_text, t
 from signal_sprint.models import SEV_RANK
 from signal_sprint.pipeline import ingest_bytes, ingest_path
@@ -43,6 +45,7 @@ def wide(fn_name: str) -> dict:
 SEV_COLORS = {"CRITICAL": "#ff5c5c", "ERROR": "#ffb347", "WARN": "#f2d55c", "INFO": "#6b7a90", "DEBUG": "#4a5361",
               "critical": "#ff5c5c", "high": "#ffb347", "medium": "#f2d55c", "low": "#6b7a90"}
 PRIO_COLORS = {"P1": "#ff5c5c", "P2": "#ffb347", "P3": "#f2d55c", "P4": "#6b7a90"}
+SEV_SCALE = alt.Scale(domain=list(SEV_RANK), range=[SEV_COLORS[k] for k in SEV_RANK])
 CSS = """
 <style>
 .block-container{padding-top:1.2rem;padding-bottom:2rem}
@@ -95,6 +98,29 @@ def store() -> ActionStore:
     return ActionStore(os.environ.get("ACTIONS_DB", "actions.db"))
 
 
+@st.cache_resource
+def live_store() -> LiveStore:
+    return LiveStore(spool=os.environ.get("LIVE_SPOOL", "data/live/events.jsonl"))
+
+
+@st.cache_resource
+def receiver(port: int, api_key: str):
+    """One receiver per (port, key) for the life of the process; a port clash returns the OSError to display."""
+    try:
+        return start_receiver(live_store(), port, api_key or None)
+    except OSError as e:
+        return e
+
+
+@st.cache_resource
+def simulator():
+    return start_simulator(live_store(), interval=1.0)
+
+
+def llm_cfg() -> LLMConfig:
+    return LLMConfig(st.session_state.get("llm_base", ""), st.session_state.get("llm_model", ""), st.session_state.get("llm_key", ""))
+
+
 def load(name: str, data: bytes | None = None, path: str | None = None, mapping: dict | None = None) -> None:
     t0 = time.perf_counter()
     with st.status(t("working"), expanded=True) as status:
@@ -109,6 +135,9 @@ def load(name: str, data: bytes | None = None, path: str | None = None, mapping:
                              "source": {"name": name, "data": data, "path": path}, "mapping": mapping or {},
                              "elapsed": time.perf_counter() - t0})
     st.session_state.pop("cursor", None)
+    rec = st.session_state.setdefault("recent", [])
+    if name not in rec:
+        rec.append(name)
 
 
 def minute_chart(df: pd.DataFrame, incidents=None, height=200):
@@ -125,51 +154,142 @@ def minute_chart(df: pd.DataFrame, incidents=None, height=200):
     return alt.layer(*layers).properties(height=height).configure_view(strokeWidth=0)
 
 
-# ------------------------------------------------------------------ sidebar (minimal: language, upload, demo)
+# ------------------------------------------------------------------ sidebar: Connection Settings / Datasets / README
 demo = Path(__file__).with_name("samples") / "demo_mixed.zip"
+LIVE_PORT = int(os.environ.get("LIVE_PORT", "8600"))
 with st.sidebar:
     st.markdown("## 📡 Signal Sprint")
     st.radio("Language", ["tr", "en"], horizontal=True, label_visibility="collapsed",
              format_func=lambda x: {"tr": "🇹🇷 Türkçe", "en": "🇬🇧 English"}[x], key="lang")
-    up = st.file_uploader(t("upload"), type=None, key="up_side")
-    if up is not None and st.session_state.get("dataset") != up.name:
-        load(up.name, data=up.getvalue())
-        st.rerun()
-    if demo.exists() and st.button(t("load_demo"), key="demo_side", **wide("button")):
-        load(demo.name, path=str(demo))
-        st.rerun()
-    with st.expander(t("conn")):
-        kind = st.radio(t("conn_type"), ["http", "mcp"], horizontal=True, format_func=lambda x: t("conn_" + x), key="conn_kind")
-        c_url = st.text_input(t("conn_url"), key="conn_url", placeholder="https://api.example.com/alerts" if kind == "http" else "http://localhost:8765/mcp")
-        c_headers = st.text_area(t("conn_headers"), key="conn_headers", height=68, placeholder="Authorization: Bearer …")
-        if kind == "http":
-            c_method = st.selectbox(t("conn_method"), ["GET", "POST"], key="conn_method")
-            c_body = st.text_area(t("conn_body"), key="conn_body", height=68) if c_method == "POST" else ""
-            c_path = st.text_input(t("conn_path"), key="conn_path")
-        else:
-            st.caption(t("conn_mcp_hint"))
-            if st.button(t("conn_list_tools"), key="conn_tools", **wide("button")) and c_url:
+
+    with st.expander(t("sb_conn"), expanded=False):
+        sec = st.radio("section", ["src", "live", "llm"], horizontal=True, label_visibility="collapsed",
+                       format_func=lambda x: {"src": t("conn_sources"), "live": t("conn_live"), "llm": t("conn_llm")}[x], key="conn_sec")
+        if sec == "src":
+            kind = st.radio(t("conn_type"), ["http", "mcp"], horizontal=True, format_func=lambda x: t("conn_" + x), key="conn_kind")
+            c_url = st.text_input(t("conn_url"), key="conn_url", placeholder="https://api.example.com/alerts" if kind == "http" else "http://localhost:8765/mcp")
+            c_headers = st.text_area(t("conn_headers"), key="conn_headers", height=68, placeholder="Authorization: Bearer …\nX-API-Key: …")
+            if kind == "http":
+                c_method = st.selectbox(t("conn_method"), ["GET", "POST"], key="conn_method")
+                c_body = st.text_area(t("conn_body"), key="conn_body", height=68) if c_method == "POST" else ""
+                c_path = st.text_input(t("conn_path"), key="conn_path")
+            else:
+                st.caption(t("conn_mcp_hint"))
+                if st.button(t("conn_list_tools"), key="conn_tools", **wide("button")) and c_url:
+                    try:
+                        st.session_state["conn_toolnames"] = [x["name"] for x in mcp_tools(c_url, parse_headers(c_headers))]
+                    except Exception as e:  # noqa: BLE001
+                        st.error(t("conn_err", e=e))
+                names = st.session_state.get("conn_toolnames", [])
+                c_tool = st.selectbox(t("conn_tool"), names, key="conn_tool") if names else st.text_input(t("conn_tool"), key="conn_tool_txt")
+                c_args = st.text_input(t("conn_args"), key="conn_args", value="{}")
+            if st.button(t("conn_fetch"), key="conn_go", **wide("button")) and c_url:
                 try:
-                    st.session_state["conn_toolnames"] = [x["name"] for x in mcp_tools(c_url, parse_headers(c_headers))]
+                    if kind == "http":
+                        name, data = fetch_http(c_url, c_method, parse_headers(c_headers), c_body or None, c_path)
+                    else:
+                        name, data = fetch_mcp(c_url, c_tool, json.loads(c_args or "{}"), parse_headers(c_headers))
+                    st.success(t("conn_ok", n=f"{len(data):,}", name=name))
+                    load(name, data=data)
+                    st.rerun()
                 except Exception as e:  # noqa: BLE001
                     st.error(t("conn_err", e=e))
-            names = st.session_state.get("conn_toolnames", [])
-            c_tool = st.selectbox(t("conn_tool"), names, key="conn_tool") if names else st.text_input(t("conn_tool"), key="conn_tool_txt")
-            c_args = st.text_input(t("conn_args"), key="conn_args", value="{}")
-        if st.button(t("conn_fetch"), key="conn_go", **wide("button")) and c_url:
-            try:
-                if kind == "http":
-                    name, data = fetch_http(c_url, c_method, parse_headers(c_headers), c_body or None, c_path)
-                else:
-                    name, data = fetch_mcp(c_url, c_tool, json.loads(c_args or "{}"), parse_headers(c_headers))
-                st.success(t("conn_ok", n=f"{len(data):,}", name=name))
-                load(name, data=data)
-                st.rerun()
-            except Exception as e:  # noqa: BLE001
-                st.error(t("conn_err", e=e))
-    if "analysis" in st.session_state:
-        st.caption(f"{st.session_state['dataset']} · {st.session_state.get('elapsed', 0):.1f}s")
+        elif sec == "live":
+            port = st.number_input(t("live_port"), 1024, 65535, LIVE_PORT, key="live_port")
+            key = st.text_input(t("live_key"), key="live_key", type="password", placeholder="secret")
+            sim_on = st.toggle(t("live_sim"), value=st.session_state.get("sim_on", True), key="sim_on")
+            srv = receiver(int(port), key)
+            if isinstance(srv, OSError):
+                st.error(str(srv))
+            else:
+                st.success(t("live_running", port=int(port)))
+            st.caption(t("live_agent_cmd"))
+            st.code(f"python agent.py --url http://<dashboard-host>:{int(port)}/ingest{' --key ' + key if key else ''} --tail /var/log/app.log", language="bash")
+        else:
+            st.caption(t("llm_hint"))
+            st.text_input(t("llm_base"), key="llm_base", placeholder="http://localhost:3000/v1")
+            st.text_input(t("llm_model"), key="llm_model", placeholder="llama3.1")
+            st.text_input(t("llm_key"), key="llm_key", type="password")
+            if st.button(t("llm_test"), key="llm_test_btn", **wide("button")):
+                ok, info = llm_test(llm_cfg())
+                (st.success if ok else st.error)(t("llm_ok", info=info) if ok else t("llm_fail", e=info))
+
+    with st.expander(t("sb_data"), expanded="analysis" not in st.session_state):
+        up = st.file_uploader(t("upload"), type=None, key="up_side")
+        if up is not None and st.session_state.get("dataset") != up.name:
+            load(up.name, data=up.getvalue())
+            st.rerun()
+        if demo.exists() and st.button(t("load_demo"), key="demo_side", **wide("button")):
+            load(demo.name, path=str(demo))
+            st.rerun()
+        if live_store().received and st.button(f"{t('live_analyze')} ({len(live_store().buf):,})", key="live_analyze_side", **wide("button")):
+            name, data = live_store().to_dataset()
+            load(name, data=data)
+            st.rerun()
+        if "analysis" in st.session_state:
+            st.caption(f"{t('ds_loaded')}: {st.session_state['dataset']} · {st.session_state.get('elapsed', 0):.1f}s")
+        recent = st.session_state.setdefault("recent", [])
+        if recent:
+            st.caption(t("ds_recent") + ": " + ", ".join(recent[-4:]))
+
+    with st.expander(t("sb_readme")):
+        readme = Path(__file__).with_name("README.md")
+        if readme.exists():
+            st.markdown(readme.read_text(encoding="utf-8"))
     st.caption(t("footer"))
+
+# always-on receiver + optional simulator (started once per process)
+_srv = receiver(int(st.session_state.get("live_port", LIVE_PORT)), st.session_state.get("live_key", ""))
+if st.session_state.get("sim_on", True):
+    simulator()
+
+
+def live_feed(compact: bool = False) -> None:
+    """Live feed: KPIs, events/min by severity, busiest services, latest events. Refreshes every 2s via a fragment."""
+    ls = live_store()
+
+    @st.fragment(run_every="2s")
+    def _panel():
+        stt = ls.stats(15)
+        real_agents = [a_ for a_ in stt["agents"] if a_ != "simulator"]
+        badge_txt, badge_col = (t("live_real_badge"), "#3ddc84") if real_agents else (t("live_sim_badge"), "#f2d55c")
+        st.markdown(f'#### {t("live_title")} <span class="pill" style="background:{badge_col}">{badge_txt}</span>'
+                    f' <span class="muted" style="font-size:13px">· {t("live_sub")}</span>', unsafe_allow_html=True)
+        k1, k2, k3, k4 = st.columns(4)
+        k1.markdown(kpi2(len(real_agents) or len(stt["agents"]), t("live_agents"), "🛰", "#6b9bd2", ", ".join(list(stt["agents"])[:3]) or t("live_no_agent"), True), unsafe_allow_html=True)
+        k2.markdown(kpi2(stt["per_minute_now"], t("live_rate"), "⚡", "#3ddc84", f"{stt['received']:,} total"), unsafe_allow_html=True)
+        k3.markdown(kpi2(stt["errors"], t("live_errors"), "🔥", "#ff5c5c" if stt["errors"] else "#8b93a1", ""), unsafe_allow_html=True)
+        k4.markdown(kpi2(f"{stt['total']:,}", t("live_buffered"), "🧺", "#9b7bff", stt["last"].strftime("%H:%M:%S") if stt["last"] else "-", True), unsafe_allow_html=True)
+        st.markdown("")
+        c1, c2 = st.columns([3, 2])
+        rows = pd.DataFrame(stt["rows"])
+        with c1:
+            st.markdown(f"**{t('live_events_min')}**")
+            st.altair_chart(alt.Chart(rows).mark_area(interpolate="monotone").encode(
+                x=alt.X("minute:T", title=None, axis=alt.Axis(format="%H:%M")), y=alt.Y("events:Q", stack=True, title=None),
+                color=alt.Color("severity:N", scale=SEV_SCALE, legend=alt.Legend(orient="top", title=None)), order=alt.Order("severity:N"),
+                tooltip=[alt.Tooltip("minute:T", format="%H:%M"), "severity", "events"]).properties(height=190).configure_view(strokeWidth=0), **wide("altair_chart"))
+        with c2:
+            st.markdown(f"**{t('live_services')}**")
+            svc = pd.DataFrame(stt["services"], columns=["service", "events"]) if stt["services"] else pd.DataFrame({"service": ["-"], "events": [0]})
+            st.altair_chart(alt.Chart(svc).mark_bar(color="#3ddc84").encode(x=alt.X("events:Q", title=None), y=alt.Y("service:N", sort="-x", title=None),
+                            tooltip=["service", "events"]).properties(height=190).configure_view(strokeWidth=0), **wide("altair_chart"))
+        if not compact:
+            st.markdown(f"**{t('live_tail')}**")
+            lines = "".join(
+                f'<div><span class="muted">{o.timestamp:%H:%M:%S}</span> <span style="color:{SEV_COLORS.get(o.severity, "#8b93a1")};font-weight:700">{o.severity:<8}</span> '
+                f'<span style="color:#9fb3c8">{esc(o.service or o.source)[:18]:<18}</span> {esc(o.message)[:150]}</div>' for o in reversed(ls.tail(14)))
+            st.markdown(f'<div class="card mono" style="max-height:300px;overflow:auto;white-space:pre;line-height:1.55">{lines or "…"}</div>', unsafe_allow_html=True)
+
+    _panel()
+    b1, b2, _ = st.columns([1, 1, 4])
+    if b1.button(t("live_analyze"), key=f"live_an_{compact}", **wide("button")) and ls.received:
+        name, data = ls.to_dataset()
+        load(name, data=data)
+        st.rerun()
+    if b2.button(t("live_clear"), key=f"live_clr_{compact}", **wide("button")):
+        ls.clear()
+        st.rerun()
 
 if "analysis" not in st.session_state:
     st.markdown(f"## {t('landing_title')}")
@@ -186,17 +306,16 @@ if "analysis" not in st.session_state:
             f'<span class="card" style="margin:0;padding:8px 14px;white-space:nowrap">{icon} {t(k)}</span>' + ('<span class="arrow" style="padding:0">→</span>' if i < 3 else "")
             for i, (icon, k) in enumerate((("📥", "step1"), ("🧹", "step2"), ("🔗", "step3"), ("✅", "step4")))) + "</div>",
         unsafe_allow_html=True)
+    st.markdown("")
+    live_feed()
     st.stop()
 
 a: Analysis = st.session_state["analysis"]
 prof = st.session_state["profile"]
 f = a.funnel()
-tab_over, tab_sig, tab_inc, tab_act = st.tabs([t("tab_overview"), f"{t('tab_signals')} · {f['fingerprints']}", f"{t('tab_incidents')} · {f['incidents']}", f"{t('tab_actions')} · {len(store().list())}"])
+tab_over, tab_sig, tab_inc, tab_act, tab_live = st.tabs([t("tab_overview"), f"{t('tab_signals')} · {f['fingerprints']}", f"{t('tab_incidents')} · {f['incidents']}", f"{t('tab_actions')} · {len(store().list())}", f"⚡ {t('tab_live')}"])
 
 # ------------------------------------------------------------------ overview
-SEV_SCALE = alt.Scale(domain=list(SEV_RANK), range=[SEV_COLORS[k] for k in SEV_RANK])
-
-
 @st.cache_data(show_spinner=False)
 def frames(dataset: str, n: int):
     """DataFrames for the overview charts, cached per loaded dataset."""
@@ -502,12 +621,29 @@ with tab_inc:
         with c3.popover(t("llm_prompt"), **wide("popover")):
             st.caption(t("llm_cap"))
             st.code(llm_prompt(inc, a.signal_by_id), language=None)
+        if st.button(t("llm_explain"), key=f"llm-{iid}"):
+            cfg = llm_cfg()
+            if not cfg.enabled:
+                st.warning(t("llm_none"))
+            else:
+                try:
+                    with st.spinner("LLM…"):
+                        st.session_state[f"llm_out_{iid}"] = llm_chat(cfg, llm_prompt(inc, a.signal_by_id))
+                except Exception as e:  # noqa: BLE001
+                    st.error(t("llm_fail", e=e))
+        if st.session_state.get(f"llm_out_{iid}"):
+            st.markdown(f"**{t('llm_answer')}** · {llm_cfg().model}")
+            st.markdown(f'<div class="card">{esc(st.session_state[f"llm_out_{iid}"]).replace(chr(10), "<br>")}</div>', unsafe_allow_html=True)
         mine = store().list(inc.id)
         if mine:
             st.markdown(f"**{t('actions_for', id=inc.id)}** ({len(mine)})")
             for act in mine:
                 st.markdown(f'<div class="act" style="border-left-color:{PRIO_COLORS[act["priority"]]}"><b>{act["priority"]}</b> · {esc(act["title"])} '
                             f'<span class="muted">· {t("status_" + act["status"])} · {act["owner"] or t("unassigned")}</span></div>', unsafe_allow_html=True)
+
+# ------------------------------------------------------------------ live tab
+with tab_live:
+    live_feed(compact=True)
 
 # ------------------------------------------------------------------ actions
 with tab_act:

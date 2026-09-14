@@ -16,10 +16,12 @@ def test_pipeline_smoke():
 
 def test_streamlit_app_renders(tmp_path, monkeypatch):
     monkeypatch.setenv("ACTIONS_DB", str(tmp_path / "a.db"))
+    monkeypatch.setenv("LIVE_SPOOL", str(tmp_path / "live.jsonl"))
+    monkeypatch.setenv("LIVE_PORT", "8699")
     from streamlit.testing.v1 import AppTest
     at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=60).run()
     assert not at.exception
-    at.sidebar.button[0].click().run()            # "Demo veri setini yükle"
+    at.sidebar.button(key="demo_side").click().run()   # "Demo veri setini yükle"
     assert not at.exception
     assert any(">914<" in m.value and "ham olay" in m.value.lower() for m in at.markdown)
     at.sidebar.radio[0].set_value("en").run()     # language switch

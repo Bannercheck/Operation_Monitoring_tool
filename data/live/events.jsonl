@@ -1,0 +1,20 @@
+{"ts": "2026-09-14T09:14:56.529003+00:00", "severity": "INFO", "service": "payment-api", "host": "prd-api-03", "message": "GET /api/v1/users/1680 200 94ms", "source": "sim.jsonl", "agent": "simulator"}
+{"ts": "2026-09-14T09:14:56.529003+00:00", "severity": "WARN", "service": "payment-api", "host": "prd-api-01", "message": "cache miss ratio 0.30 above 0.30", "source": "sim.jsonl", "agent": "simulator"}
+{"ts": "2026-09-14T09:14:56.529003+00:00", "severity": "INFO", "service": "notification-service", "host": "worker-01", "message": "GET /api/v1/cart/4558 200 111ms", "source": "sim.jsonl", "agent": "simulator"}
+{"ts": "2026-09-14T09:14:56.529003+00:00", "severity": "INFO", "service": "search-api", "host": "prd-api-03", "message": "GET /api/v1/users/5515 200 21ms", "source": "sim.jsonl", "agent": "simulator"}
+{"ts": "2026-09-14T09:14:56.529003+00:00", "severity": "INFO", "service": "auth-api", "host": "prd-api-03", "message": "GET /api/v1/users/7528 200 76ms", "source": "sim.jsonl", "agent": "simulator"}
+{"ts": "2026-09-14T09:15:07.674538+00:00", "severity": "INFO", "service": "payment-api", "host": "prd-api-03", "message": "GET /api/v1/users/1680 200 94ms", "source": "sim.jsonl", "agent": "simulator"}
+{"ts": "2026-09-14T09:15:07.674538+00:00", "severity": "WARN", "service": "payment-api", "host": "prd-api-01", "message": "cache miss ratio 0.30 above 0.30", "source": "sim.jsonl", "agent": "simulator"}
+{"ts": "2026-09-14T09:15:07.674538+00:00", "severity": "INFO", "service": "notification-service", "host": "worker-01", "message": "GET /api/v1/cart/4558 200 111ms", "source": "sim.jsonl", "agent": "simulator"}
+{"ts": "2026-09-14T09:15:07.674538+00:00", "severity": "INFO", "service": "search-api", "host": "prd-api-03", "message": "GET /api/v1/users/5515 200 21ms", "source": "sim.jsonl", "agent": "simulator"}
+{"ts": "2026-09-14T09:15:07.674538+00:00", "severity": "INFO", "service": "auth-api", "host": "prd-api-03", "message": "GET /api/v1/users/7528 200 76ms", "source": "sim.jsonl", "agent": "simulator"}
+{"ts": "2026-09-14T09:15:33.025218+00:00", "severity": "INFO", "service": "payment-api", "host": "prd-api-03", "message": "GET /api/v1/users/1680 200 94ms", "source": "sim.jsonl", "agent": "simulator"}
+{"ts": "2026-09-14T09:15:33.025218+00:00", "severity": "WARN", "service": "payment-api", "host": "prd-api-01", "message": "cache miss ratio 0.30 above 0.30", "source": "sim.jsonl", "agent": "simulator"}
+{"ts": "2026-09-14T09:15:33.025218+00:00", "severity": "INFO", "service": "notification-service", "host": "worker-01", "message": "GET /api/v1/cart/4558 200 111ms", "source": "sim.jsonl", "agent": "simulator"}
+{"ts": "2026-09-14T09:15:33.025218+00:00", "severity": "INFO", "service": "search-api", "host": "prd-api-03", "message": "GET /api/v1/users/5515 200 21ms", "source": "sim.jsonl", "agent": "simulator"}
+{"ts": "2026-09-14T09:15:33.025218+00:00", "severity": "INFO", "service": "auth-api", "host": "prd-api-03", "message": "GET /api/v1/users/7528 200 76ms", "source": "sim.jsonl", "agent": "simulator"}
+{"ts": "2026-09-14T09:16:26.006626+00:00", "severity": "INFO", "service": "payment-api", "host": "prd-api-03", "message": "GET /api/v1/users/1680 200 94ms", "source": "sim.jsonl", "agent": "simulator"}
+{"ts": "2026-09-14T09:16:26.006626+00:00", "severity": "WARN", "service": "payment-api", "host": "prd-api-01", "message": "cache miss ratio 0.30 above 0.30", "source": "sim.jsonl", "agent": "simulator"}
+{"ts": "2026-09-14T09:16:26.006626+00:00", "severity": "INFO", "service": "notification-service", "host": "worker-01", "message": "GET /api/v1/cart/4558 200 111ms", "source": "sim.jsonl", "agent": "simulator"}
+{"ts": "2026-09-14T09:16:26.006626+00:00", "severity": "INFO", "service": "search-api", "host": "prd-api-03", "message": "GET /api/v1/users/5515 200 21ms", "source": "sim.jsonl", "agent": "simulator"}
+{"ts": "2026-09-14T09:16:26.006626+00:00", "severity": "INFO", "service": "auth-api", "host": "prd-api-03", "message": "GET /api/v1/users/7528 200 76ms", "source": "sim.jsonl", "agent": "simulator"}
