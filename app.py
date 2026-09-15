@@ -373,31 +373,50 @@ def picker(label: str, options: list[str], key: str, fmt=None, help_: str = "") 
     return None if pick == all_ else pick
 
 
-def env_block(rows: list[dict], slo_target: float) -> None:
-    """One tile per environment: events, errors, availability, hosts."""
+def _set_scope(env_key: str, host_key: str, env=None, host=None) -> None:
+    """Button callback: runs before widgets are built, so the popover pickers can be updated safely."""
+    all_ = t("ops_all")
+    st.session_state[env_key] = env or all_
+    st.session_state[host_key] = host or all_
+
+
+def env_tiles(rows: list[dict], slo_target: float, picked: str | None) -> None:
+    """One clickable tile per environment (availability, events, errors, hosts). Clicking selects / clears the environment."""
     if not rows:
         return
     cols = st.columns(max(2, min(6, len(rows))))
     for col, r in zip(cols, rows):
-        av = r["availability"]
+        env, av = r["environment"], r["availability"]
         color = "#8b93a1" if av is None else "#3ddc84" if av >= slo_target else "#ffb347" if av >= slo_target - 0.02 else "#ff5c5c"
-        col.markdown(kpi2(pct(av), r["environment"], "🌐", color,
-                          f"{r['events']} {t('env_events')} · {r['errors']} {t('env_errors')} · {r['hosts']} {t('env_hosts')}"), unsafe_allow_html=True)
+        sel = env == picked
+        with col:
+            st.markdown('<div class="tile">' + kpi2(pct(av), env, "🌐", "#6b9bd2" if sel else color,
+                        f"{r['events']} {t('env_events')} · {r['errors']} {t('env_errors')} · {r['hosts']} {t('env_hosts')}") + "</div>", unsafe_allow_html=True)
+            st.button(f"✓ {env}" if sel else f"{t('ops_pick')} {env}", key=f"envt-{env}", **wide("button"), type="primary" if sel else "secondary",
+                      on_click=_set_scope, args=("ops_env_pick", "ops_host_pick", None if sel else env, None))
 
 
-def host_card(host: str, ms: dict, stt: dict) -> None:
-    """Summary tiles for the selected host: environment, latest CPU/GPU/memory/disk, events, errors."""
+def host_tiles(ls: LiveStore, env: str, per_host: dict, picked: str | None) -> None:
+    """Clickable tile per host of the chosen environment: latest CPU + memory / disk / GPU, events and errors (15 min)."""
     thr = __import__("signal_sprint.scenario", fromlist=["x"]).METRIC_THRESHOLDS
-    ph = ms["per_host"].get(host, {"env": "unknown"})
-    st.markdown(f"#### {t('ops_host_card')} · `{esc(host)}`")
-    k = st.columns(7)
-    k[0].markdown(kpi2(ph.get("env", "unknown"), t("environment"), "🌐", "#6b9bd2", ""), unsafe_allow_html=True)
-    for col, metric, icon in zip(k[1:5], ("cpu", "gpu", "memory", "disk"), ("🧠", "🎮", "💾", "🗄")):
-        v = ph.get(metric)
-        color = "#8b93a1" if v is None else "#ff5c5c" if v >= thr[metric] else "#ffb347" if v >= thr[metric] - 15 else "#3ddc84"
-        col.markdown(kpi2(f"{v:.0f}%" if v is not None else "—", t(metric), icon, color, f"max {thr[metric]}%"), unsafe_allow_html=True)
-    k[5].markdown(kpi2(stt["total"], t("env_events"), "⚡", "#6b9bd2", f"{len(stt['services'])} {t('ops_services_n')}"), unsafe_allow_html=True)
-    k[6].markdown(kpi2(stt["errors"], t("env_errors"), "🔥", "#ff5c5c" if stt["errors"] else "#8b93a1", ", ".join(s_ for s_, _ in stt["services"][:3]), True), unsafe_allow_html=True)
+    hosts = [h for h, e in ls.hosts().items() if e == env]
+    if not hosts:
+        st.caption(t("no_data")); return
+    cols = st.columns(max(2, min(6, len(hosts))))
+    for i, h in enumerate(hosts):
+        ph = per_host.get(h, {})
+        cpu = ph.get("cpu")
+        stt = ls.stats(15, host=h)
+        color = "#8b93a1" if cpu is None else "#ff5c5c" if cpu >= thr["cpu"] else "#ffb347" if cpu >= thr["cpu"] - 15 else "#3ddc84"
+        if stt["errors"]:
+            color = "#ff5c5c"
+        parts = [f"{k} {ph[m]:.0f}%" for k, m in (("GPU", "gpu"), (t("memory")[:3], "memory"), (t("disk")[:4], "disk")) if ph.get(m) is not None]
+        sub = " · ".join(parts + [f"{stt['total']} {t('env_events')} / {stt['errors']} {t('env_errors')}"])
+        sel = h == picked
+        with cols[i % len(cols)]:
+            st.markdown('<div class="tile">' + kpi2(f"{cpu:.0f}%" if cpu is not None else "—", f"{h} · CPU", "🖥", "#6b9bd2" if sel else color, sub) + "</div>", unsafe_allow_html=True)
+            st.button(f"✓ {h}" if sel else f"{t('ops_pick')} {h}", key=f"hostt-{h}", **wide("button"), type="primary" if sel else "secondary",
+                      on_click=_set_scope, args=("ops_env_pick", "ops_host_pick", env, None if sel else h))
 
 
 def metrics_block(ms: dict) -> None:
@@ -466,37 +485,33 @@ def page_ops() -> None:
         all_stt = ls.stats(15)
         real_agents = [a_ for a_ in all_stt["agents"] if a_ != "simulator"]
         badge_txt, badge_col = (t("live_real_badge"), "#3ddc84") if real_agents else (t("live_sim_badge"), "#f2d55c")
-        st.markdown(f'## {t("live_title")} <span class="pill" style="background:{badge_col}">{badge_txt}</span>'
-                    f' <span class="muted" style="font-size:13px">· {t("live_sub")} · {len(all_stt["agents"])} {t("live_agents")}: {", ".join(list(all_stt["agents"])[:4]) or t("live_no_agent")}</span>', unsafe_allow_html=True)
-        # filter bar: environment chips + clickable host names (hosts limited to the picked environment)
         host_env = ls.hosts()
         envs = sorted(set(host_env.values()) | set(ls.environments()))
-        with st.container(border=True):
-            f1, f2, f3 = st.columns([1, 1.3, 2.2], vertical_alignment="bottom")
-            with f1:
-                env = picker(t("ops_env"), envs, "ops_env_pick", help_=t("ops_env_hint"))
-            with f2:
-                host = picker(t("ops_hosts"), [h for h, e in host_env.items() if not env or e == env], "ops_host_pick",
-                              fmt=lambda h: f"{h}  ·  {host_env.get(h, '')}", help_=t("ops_host_hint"))
-            scope = " · ".join(x for x in (env, host) if x)
-            with f3:
-                if scope:
-                    def _reset():
-                        st.session_state["ops_env_pick"] = st.session_state["ops_host_pick"] = t("ops_all")
-                    st.button(f"✕ {t('ops_reset')}", key="ops_reset", on_click=_reset)
-                else:
-                    st.markdown(f"<div class='muted' style='padding-bottom:8px'>{len(envs)} {t('env_hosts_envs')} · {len(host_env)} {t('env_hosts')} · {t('ops_scope_all')}</div>", unsafe_allow_html=True)
+        h1, h2 = st.columns([11, 1], vertical_alignment="center")
+        h1.markdown(f'## {t("live_title")} <span class="pill" style="background:{badge_col}">{badge_txt}</span>'
+                    f' <span class="muted" style="font-size:13px">· {t("live_sub")} · {len(all_stt["agents"])} {t("live_agents")}: {", ".join(list(all_stt["agents"])[:4]) or t("live_no_agent")}</span>', unsafe_allow_html=True)
+        # compact filter behind an icon on the right; the same state is driven by the clickable tiles below
+        with h2.popover("🔎", help=t("ops_filter_help")):
+            env = picker(t("ops_env"), envs, "ops_env_pick", help_=t("ops_env_hint"))
+            host = picker(t("ops_hosts"), [h for h, e in host_env.items() if not env or e == env], "ops_host_pick",
+                          fmt=lambda h: f"{h}  ·  {host_env.get(h, '')}", help_=t("ops_host_hint"))
+            st.button(f"✕ {t('ops_reset')}", key="ops_reset", on_click=_set_scope, args=("ops_env_pick", "ops_host_pick"), disabled=not (env or host))
+        scope = " · ".join(x for x in (env, host) if x)
+        scope_html = f" <span class='pill' style='background:#6b9bd2'>{t('ops_filter_on')}: {esc(scope)}</span>" if scope else ""
+        # environment tiles -> host tiles of the chosen environment (drill-down)
+        crumbs = " › ".join([t("ops_all")] + [x for x in (env, host) if x])
+        st.markdown(f"#### {t('ops_by_env')} <span class='muted'>· {esc(crumbs)}</span>", unsafe_allow_html=True)
+        ms_all = ls.metric_stats(15)
+        env_tiles(ls.env_summary(15), ls.slo(15)["slo"]["availability"], env)
+        if env:
+            st.markdown(f"**{t('ops_hosts_in', env=env)}** <span class='muted'>· {t('ops_host_hint')}</span>", unsafe_allow_html=True)
+            host_tiles(ls, env, ms_all["per_host"], host)
         stt, slo, ms = ls.stats(15, env, host), ls.slo(15, env, host), ls.metric_stats(15, env, host)
         scope_html = f" <span class='pill' style='background:#6b9bd2'>{t('ops_filter_on')}: {esc(scope)}</span>" if scope else ""
-        if host:
-            host_card(host, ms, stt)
         st.markdown(f"#### {t('ops_infra')}{scope_html} <span class='muted'>· {ms['samples']} samples</span>", unsafe_allow_html=True)
         metrics_block(ms)
         st.markdown(f"#### {t('ops_slo')}{scope_html}", unsafe_allow_html=True)
         slo_block(slo, stt)
-        if not env and not host:
-            st.markdown(f"#### {t('ops_by_env')}")
-            env_block(ls.env_summary(15), slo["slo"]["availability"])
         st.markdown("")
         events_block(stt)
         tk = correlated_tickets(ls, ms["breaches"])

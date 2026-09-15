@@ -34,6 +34,7 @@ Sadece geliştirme adımları. Format: araç + sürüm · tarih · yapılan iş.
 | Claude Fable 5.1 | 2026-09-15 | Parser'a environment (prod/test/dev/staging/uat/qa; sütun, değer tahmini ya da host/mesajdan çıkarım) ve origin (hata kaynağı sütunu) rolleri; Özet'te Ortamlar kartı ve detay paneli (ortama göre hata dağılımı, hata kaynakları); Sinyaller'de ortam filtresi; sinyal/incident/flashcard kartlarında ortam ve kaynak; 1 yeni test |
 | Claude Fable 5.1 (Cowork) | 2026-09-15 | Operasyon sayfasına ortam çipleri, tıklanabilir sunucu adları (tek host görünümü + sunucu kartı) ve ortama göre kartlar; `LiveStore` env/host filtreleri, `env_summary`, simülatör ortam etiketi, `agent.py --env`; `test_live_env_and_host_filters` |
 | Claude Fable 5.1 (Cowork) | 2026-09-15 | Operasyon filtresi çiplerden açılır listelere (Ortam / Sunucu, `host · ortam` etiketi) ve "Filtreyi temizle" düğmesine çevrildi; EN etiketler "Busiest" → "Most active" |
+| Claude Fable 5.1 (Cowork) | 2026-09-15 | Operasyon sayfası: üst filtre kartı kaldırıldı, sağda 🔎 popover; "Ortama göre" kartları tıklanabilir oldu → seçili ortamın sunucu kartları → tek sunucu görünümü (ekmek kırıntısı, seçimle geri çıkma); `ENV_ORDER` ile sabit kart sırası |
 
 ## Etkinlik günü
 

@@ -29,6 +29,7 @@ METRIC_KEYS = {"cpu": "cpu", "cpu_percent": "cpu", "cpu_pct": "cpu", "memory": "
                "memory_percent": "memory", "disk": "disk", "disk_percent": "disk", "disk_pct": "disk",
                "gpu": "gpu", "gpu_percent": "gpu", "gpu_util": "gpu", "gpu_utilization": "gpu"}
 METRICS = ("cpu", "gpu", "memory", "disk")
+ENV_ORDER = ["prod", "staging", "test", "qa", "dev", "unknown"]   # stable tile order on the operations page
 LATENCY_RE = re.compile(r"(\d+(?:\.\d+)?)\s?ms\b")
 
 
@@ -184,7 +185,9 @@ class LiveStore:
         obs = [o for o in self.snapshot() if o.timestamp >= start]
         hosts = self.hosts()
         out = []
-        for env, n in Counter((o.environment or "unknown") for o in obs).most_common():
+        counts = Counter((o.environment or "unknown") for o in obs)
+        for env in sorted(set(counts) | set(hosts.values()), key=lambda e: (ENV_ORDER.index(e) if e in ENV_ORDER else len(ENV_ORDER), e)):
+            n = counts.get(env, 0)
             errs = sum(1 for o in obs if (o.environment or "unknown") == env and SEV_RANK[o.severity] >= 3)
             out.append({"environment": env, "events": n, "errors": errs, "availability": round(1 - errs / n, 4) if n else None,
                         "hosts": sum(1 for h, e in hosts.items() if e == env)})
