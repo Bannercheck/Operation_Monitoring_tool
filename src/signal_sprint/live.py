@@ -37,7 +37,7 @@ class LiveStore:
 
     def __init__(self, spool: str | Path | None = None, maxlen: int = 50_000):
         self.buf: deque[Observation] = deque(maxlen=maxlen)
-        self.metrics: deque[tuple] = deque(maxlen=maxlen)     # (ts, host, metric, value)
+        self.metrics: deque[tuple] = deque(maxlen=maxlen)     # (ts, host, metric, value, env)
         self.lock = threading.Lock()
         self.spool = Path(spool) if spool else None
         self.received = 0
@@ -70,25 +70,43 @@ class LiveStore:
             with self.spool.open("a", encoding="utf-8") as f:
                 for o in obs:
                     f.write(json.dumps({"ts": o.timestamp.isoformat(), "severity": o.severity, "service": o.service, "host": o.host,
-                                        "message": o.message, "source": o.source, "agent": agent}, ensure_ascii=False) + "\n")
+                                        "env": o.environment, "message": o.message, "source": o.source, "agent": agent}, ensure_ascii=False) + "\n")
         return len(obs)
 
-    def snapshot(self) -> list[Observation]:
+    def snapshot(self, env: str | None = None, host: str | None = None) -> list[Observation]:
         with self.lock:
-            return list(self.buf)
+            obs = list(self.buf)
+        if env:
+            obs = [o for o in obs if (o.environment or "unknown") == env]
+        if host:
+            obs = [o for o in obs if o.host == host]
+        return obs
 
-    def tail(self, n: int = 50) -> list[Observation]:
+    def environments(self) -> dict[str, int]:
+        return dict(Counter((o.environment or "unknown") for o in self.snapshot()).most_common())
+
+    def hosts(self) -> dict[str, str]:
+        """host -> environment for every host seen in events or metrics."""
+        out: dict[str, str] = {}
+        for o in self.snapshot():
+            if o.host:
+                out.setdefault(o.host, o.environment or "unknown")
         with self.lock:
-            return list(self.buf)[-n:]
+            for r in self.metrics:
+                out.setdefault(r[1], r[4] or "unknown")
+        return dict(sorted(out.items()))
 
-    def stats(self, window_min: int = 15) -> dict:
-        """Per-minute counts by severity for the last window, top services, totals."""
+    def tail(self, n: int = 50, env: str | None = None, host: str | None = None) -> list[Observation]:
+        return self.snapshot(env, host)[-n:]
+
+    def stats(self, window_min: int = 15, env: str | None = None, host: str | None = None) -> dict:
+        """Per-minute counts by severity for the last window, top services, totals (optionally one env / host)."""
         now = datetime.now(UTC).replace(second=0, microsecond=0)
         start = now - timedelta(minutes=window_min - 1)
         per_min: Counter = Counter()
         services: Counter = Counter()
         errors = 0
-        obs = self.snapshot()
+        obs = self.snapshot(env, host)
         for o in obs:
             if o.timestamp >= start:
                 per_min[(o.timestamp.replace(second=0, microsecond=0), o.severity)] += 1
@@ -105,7 +123,7 @@ class LiveStore:
 
     def to_dataset(self) -> tuple[str, bytes]:
         """Everything in the buffer as a JSONL dataset for the full pipeline."""
-        lines = [json.dumps({"ts": o.timestamp.isoformat(), "severity": o.severity, "service": o.service, "host": o.host,
+        lines = [json.dumps({"ts": o.timestamp.isoformat(), "severity": o.severity, "service": o.service, "host": o.host, "env": o.environment,
                              "message": o.message, **{k: v for k, v in o.attributes.items() if k != "agent"}}, ensure_ascii=False, default=str)
                  for o in self.snapshot()]
         return "live_buffer.jsonl", ("\n".join(lines) + "\n").encode()
@@ -116,17 +134,20 @@ class LiveStore:
             self.metrics.clear()
 
     # ---- infra metrics
-    def metric_stats(self, window_min: int = 15) -> dict:
-        """Latest value per (metric, host), per-minute mean series, and threshold breaches."""
+    def metric_stats(self, window_min: int = 15, env: str | None = None, host: str | None = None) -> dict:
+        """Latest value per (metric, host), per-minute mean series, and threshold breaches (optionally one env / host)."""
         start = datetime.now(UTC) - timedelta(minutes=window_min)
         with self.lock:
-            rows = [r for r in self.metrics if r[0] >= start]
+            rows = [r for r in self.metrics if r[0] >= start and (not env or (r[4] or "unknown") == env) and (not host or r[1] == host)]
         latest: dict[tuple[str, str], float] = {}
         series: dict[tuple, list] = defaultdict(list)
-        for ts, host, metric, value in rows:
+        host_env = {r[1]: (r[4] or "unknown") for r in rows}
+        for ts, host_, metric, value, _env in rows:
+            host = host_
             latest[(metric, host)] = value
             series[(ts.replace(second=0, microsecond=0), host, metric)].append(value)
-        per_min = [{"minute": k[0], "host": k[1], "metric": k[2], "value": round(statistics.fmean(v), 1)} for k, v in sorted(series.items())]
+        per_min = [{"minute": k[0], "host": k[1], "metric": k[2], "env": host_env.get(k[1], "unknown"), "value": round(statistics.fmean(v), 1)}
+                   for k, v in sorted(series.items())]
         thr = scenario.METRIC_THRESHOLDS
         breaches = [{"metric": m, "host": h, "value": v, "threshold": thr[m]} for (m, h), v in latest.items() if m in thr and v >= thr[m]]
         summary = {}
@@ -134,13 +155,14 @@ class LiveStore:
             vals = [v for (m, _h), v in latest.items() if m == metric]
             summary[metric] = {"avg": round(statistics.fmean(vals), 1) if vals else None, "max": round(max(vals), 1) if vals else None,
                                "hosts": len(vals), "worst": max(((v, h) for (m, h), v in latest.items() if m == metric), default=(None, None))[1]}
-        return {"latest": latest, "per_minute": per_min, "breaches": breaches, "summary": summary, "samples": len(rows)}
+        per_host = {h: {"env": e, **{m: latest.get((m, h)) for m in METRICS}} for h, e in sorted(host_env.items())}
+        return {"latest": latest, "per_minute": per_min, "breaches": breaches, "summary": summary, "samples": len(rows), "per_host": per_host}
 
     # ---- service levels
-    def slo(self, window_min: int = 15) -> dict:
+    def slo(self, window_min: int = 15, env: str | None = None, host: str | None = None) -> dict:
         """Availability = 1 - ERROR+/total, p95 latency from '<n>ms' in messages, error budget vs scenario.SLO / SLA."""
         start = datetime.now(UTC) - timedelta(minutes=window_min)
-        obs = [o for o in self.snapshot() if o.timestamp >= start]
+        obs = [o for o in self.snapshot(env, host) if o.timestamp >= start]
         total = len(obs)
         errors = sum(1 for o in obs if SEV_RANK[o.severity] >= 3)
         avail = 1 - errors / total if total else None
@@ -156,22 +178,35 @@ class LiveStore:
                 "slo_ok": avail is not None and avail >= slo["availability"] and (p95 is None or p95 <= slo["p95_ms"]),
                 "sla_ok": avail is None or avail >= sla["availability"], "slo": slo, "sla": sla}
 
+    def env_summary(self, window_min: int = 15) -> list[dict]:
+        """Per-environment events, errors, availability and host count for the last window."""
+        start = datetime.now(UTC) - timedelta(minutes=window_min)
+        obs = [o for o in self.snapshot() if o.timestamp >= start]
+        hosts = self.hosts()
+        out = []
+        for env, n in Counter((o.environment or "unknown") for o in obs).most_common():
+            errs = sum(1 for o in obs if (o.environment or "unknown") == env and SEV_RANK[o.severity] >= 3)
+            out.append({"environment": env, "events": n, "errors": errs, "availability": round(1 - errs / n, 4) if n else None,
+                        "hosts": sum(1 for h, e in hosts.items() if e == env)})
+        return out
+
 
 def metric_of(o: Observation) -> list[tuple] | None:
     """Recognise metric samples: {"metric":"cpu","value":73} or {"cpu":73,"memory":55,"disk":80} style records."""
     a = o.attributes
     out: list[tuple] = []
+    env = o.environment or ""
     name = str(a.get("metric") or a.get("name") or "").lower()
     if name in METRIC_KEYS and a.get("value") not in (None, ""):
         try:
-            out.append((o.timestamp, o.host or o.service or "-", METRIC_KEYS[name], float(a["value"])))
+            out.append((o.timestamp, o.host or o.service or "-", METRIC_KEYS[name], float(a["value"]), env))
         except (TypeError, ValueError):
             return None
         return out
     for k, v in a.items():
         if k.lower() in METRIC_KEYS:
             try:
-                out.append((o.timestamp, o.host or o.service or "-", METRIC_KEYS[k.lower()], float(v)))
+                out.append((o.timestamp, o.host or o.service or "-", METRIC_KEYS[k.lower()], float(v), env))
             except (TypeError, ValueError):
                 continue
     return out or None
@@ -231,6 +266,7 @@ def start_receiver(store: LiveStore, port: int = 8600, api_key: str | None = Non
 SIM_SERVICES = ["payment-api", "checkout-api", "auth-api", "search-api", "notification-service"]
 SIM_HOSTS = ["prd-api-01", "prd-api-02", "prd-api-03", "worker-01", "db-01"]
 SIM_GPU_HOSTS = ["ml-01", "ml-02"]
+SIM_ENV = {"prd-api-01": "prod", "prd-api-02": "prod", "prd-api-03": "prod", "db-01": "prod", "worker-01": "staging", "ml-01": "dev", "ml-02": "qa"}
 
 
 def simulate_batch(rng, n: int = 8, incident: bool = False) -> bytes:
@@ -238,7 +274,9 @@ def simulate_batch(rng, n: int = 8, incident: bool = False) -> bytes:
     now = datetime.now(UTC)
     out = []
     for _ in range(n):
-        svc, host = rng.choice(SIM_SERVICES), rng.choice(SIM_HOSTS)
+        svc, host = rng.choice(SIM_SERVICES), rng.choice(SIM_HOSTS + SIM_GPU_HOSTS)
+        if host in SIM_GPU_HOSTS:
+            svc = rng.choice(("model-serving", "training-job"))
         if incident and rng.random() < 0.7:
             lvl, msg = "error", f"Connection timeout to db-01 (172.16.1.55:5432) after 5000ms request={rng.randint(100000, 999999)}"
         else:
@@ -247,7 +285,7 @@ def simulate_batch(rng, n: int = 8, incident: bool = False) -> bytes:
             msg = {"info": f"GET /api/v1/{rng.choice(['users', 'orders', 'cart'])}/{rng.randint(1, 9999)} 200 {rng.randint(8, 120)}ms",
                    "warn": f"cache miss ratio 0.{rng.randint(30, 45)} above 0.30",
                    "error": f"HTTP 500 upstream {rng.choice(SIM_SERVICES)} req={rng.randint(100000, 999999)}"}[lvl]
-        out.append(json.dumps({"ts": now.isoformat(), "level": lvl, "service": svc, "host": host, "msg": msg}))
+        out.append(json.dumps({"ts": now.isoformat(), "level": lvl, "service": svc, "host": host, "env": SIM_ENV.get(host, "prod"), "msg": msg}))
     return ("\n".join(out) + "\n").encode()
 
 
@@ -260,13 +298,13 @@ def simulate_metrics(rng, state: dict, incident: bool = False) -> bytes:
         st["cpu"] = min(99, max(3, st["cpu"] + rng.uniform(-6, 6) + (25 if incident and host == "db-01" else 0)))
         st["memory"] = min(99, max(10, st["memory"] + rng.uniform(-1.5, 1.8)))
         st["disk"] = min(99, st["disk"] + rng.uniform(0, 0.05))
-        out.append(json.dumps({"ts": now, "host": host, "cpu": round(st["cpu"], 1), "memory": round(st["memory"], 1), "disk": round(st["disk"], 1)}))
+        out.append(json.dumps({"ts": now, "host": host, "env": SIM_ENV.get(host, "prod"), "cpu": round(st["cpu"], 1), "memory": round(st["memory"], 1), "disk": round(st["disk"], 1)}))
     for host in SIM_GPU_HOSTS:
         st = state.setdefault(host, {"cpu": rng.uniform(15, 35), "gpu": rng.uniform(40, 80), "memory": rng.uniform(50, 75), "disk": rng.uniform(30, 60)})
         st["gpu"] = min(100, max(0, st["gpu"] + rng.uniform(-8, 8) + (15 if incident and host == "ml-01" else 0)))
         st["cpu"] = min(99, max(3, st["cpu"] + rng.uniform(-3, 3)))
         st["memory"] = min(99, max(10, st["memory"] + rng.uniform(-1, 1.2)))
-        out.append(json.dumps({"ts": now, "host": host, "cpu": round(st["cpu"], 1), "gpu": round(st["gpu"], 1), "memory": round(st["memory"], 1), "disk": round(st["disk"], 1)}))
+        out.append(json.dumps({"ts": now, "host": host, "env": SIM_ENV.get(host, "dev"), "cpu": round(st["cpu"], 1), "gpu": round(st["gpu"], 1), "memory": round(st["memory"], 1), "disk": round(st["disk"], 1)}))
     return ("\n".join(out) + "\n").encode()
 
 

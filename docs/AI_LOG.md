@@ -32,6 +32,7 @@ Sadece geliştirme adımları. Format: araç + sürüm · tarih · yapılan iş.
 | Claude Fable 5.1 | 2026-09-14 | Playbook / hata kütüphanesi: SQLite'ta kalıcı hata desenleri (nerede, ne zaman, kaç kez, düzelme türleri, çözüm notu, runbook), her analizde otomatik kayıt, bulanık eşleşme, Playbook sayfası, incident'ta "Daha önce görüldü" kartı; kanıt tablosuna satır seçme kutusu; 1 yeni test |
 | Claude Fable 5.1 | 2026-09-14 | Incident flashcard (ne oldu / neden / nerede / ne zaman / nasıl çözüldü / ne yapmalı / daha önce görüldü) Özet panelinde ve Incident sekmesinde satır seçimiyle; ITSM ilişkilendirme okunur etiketler (⚠ / 📈 / 🚨) ve düz cümle gerekçelerle, genel kelimelerle sahte eşleşme engellendi; boş incident başlığı için ham satır yedeği |
 | Claude Fable 5.1 | 2026-09-15 | Parser'a environment (prod/test/dev/staging/uat/qa; sütun, değer tahmini ya da host/mesajdan çıkarım) ve origin (hata kaynağı sütunu) rolleri; Özet'te Ortamlar kartı ve detay paneli (ortama göre hata dağılımı, hata kaynakları); Sinyaller'de ortam filtresi; sinyal/incident/flashcard kartlarında ortam ve kaynak; 1 yeni test |
+| Claude Fable 5.1 (Cowork) | 2026-09-15 | Operasyon sayfasına ortam çipleri, tıklanabilir sunucu adları (tek host görünümü + sunucu kartı) ve ortama göre kartlar; `LiveStore` env/host filtreleri, `env_summary`, simülatör ortam etiketi, `agent.py --env`; `test_live_env_and_host_filters` |
 
 ## Etkinlik günü
 

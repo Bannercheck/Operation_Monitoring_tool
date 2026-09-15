@@ -363,10 +363,49 @@ def pct(v, digits=2):
     return f"{v * 100:.{digits}f}%" if v is not None else t("no_data")
 
 
+def chips(label: str, options: list[str], key: str, help_: str = "") -> str | None:
+    """Clickable chip row ('All' + options). Returns the picked option or None for 'All'. st.pills when available, radio otherwise."""
+    opts = [t("ops_all")] + options
+    if st.session_state.get(key) not in opts:
+        st.session_state[key] = opts[0]
+    if hasattr(st, "pills"):
+        pick = st.pills(label, opts, key=key, help=help_ or None)
+    else:
+        pick = st.radio(label, opts, key=key, horizontal=True, help=help_ or None)
+    return None if pick in (None, opts[0]) else pick
+
+
+def env_block(rows: list[dict], slo_target: float) -> None:
+    """One tile per environment: events, errors, availability, hosts."""
+    if not rows:
+        return
+    cols = st.columns(max(2, min(6, len(rows))))
+    for col, r in zip(cols, rows):
+        av = r["availability"]
+        color = "#8b93a1" if av is None else "#3ddc84" if av >= slo_target else "#ffb347" if av >= slo_target - 0.02 else "#ff5c5c"
+        col.markdown(kpi2(pct(av), r["environment"], "🌐", color,
+                          f"{r['events']} {t('env_events')} · {r['errors']} {t('env_errors')} · {r['hosts']} {t('env_hosts')}"), unsafe_allow_html=True)
+
+
+def host_card(host: str, ms: dict, stt: dict) -> None:
+    """Summary tiles for the selected host: environment, latest CPU/GPU/memory/disk, events, errors."""
+    thr = __import__("signal_sprint.scenario", fromlist=["x"]).METRIC_THRESHOLDS
+    ph = ms["per_host"].get(host, {"env": "unknown"})
+    st.markdown(f"#### {t('ops_host_card')} · `{esc(host)}`")
+    k = st.columns(7)
+    k[0].markdown(kpi2(ph.get("env", "unknown"), t("environment"), "🌐", "#6b9bd2", ""), unsafe_allow_html=True)
+    for col, metric, icon in zip(k[1:5], ("cpu", "gpu", "memory", "disk"), ("🧠", "🎮", "💾", "🗄")):
+        v = ph.get(metric)
+        color = "#8b93a1" if v is None else "#ff5c5c" if v >= thr[metric] else "#ffb347" if v >= thr[metric] - 15 else "#3ddc84"
+        col.markdown(kpi2(f"{v:.0f}%" if v is not None else t("no_data"), t(metric), icon, color, f"max {thr[metric]}%"), unsafe_allow_html=True)
+    k[5].markdown(kpi2(stt["total"], t("env_events"), "⚡", "#6b9bd2", f"{len(stt['services'])} {t('ops_services_n')}"), unsafe_allow_html=True)
+    k[6].markdown(kpi2(stt["errors"], t("env_errors"), "🔥", "#ff5c5c" if stt["errors"] else "#8b93a1", ", ".join(s_ for s_, _ in stt["services"][:3]), True), unsafe_allow_html=True)
+
+
 def metrics_block(ms: dict) -> None:
     """CPU / GPU / memory / disk tiles with per-host line charts."""
     thr = __import__("signal_sprint.scenario", fromlist=["x"]).METRIC_THRESHOLDS
-    pm = pd.DataFrame(ms["per_minute"]) if ms["per_minute"] else pd.DataFrame(columns=["minute", "host", "metric", "value"])
+    pm = pd.DataFrame(ms["per_minute"]) if ms["per_minute"] else pd.DataFrame(columns=["minute", "host", "metric", "env", "value"])
     ic = st.columns(4)
     for col, metric, icon in zip(ic, ("cpu", "gpu", "memory", "disk"), ("🧠", "🎮", "💾", "🗄")):
         sm = ms["summary"][metric]
@@ -379,7 +418,7 @@ def metrics_block(ms: dict) -> None:
             if len(d):
                 st.altair_chart(alt.Chart(d).mark_line(interpolate="monotone", strokeWidth=1.6).encode(
                     x=alt.X("minute:T", title=None, axis=alt.Axis(format="%H:%M")), y=alt.Y("value:Q", title=None, scale=alt.Scale(domain=[0, 100])),
-                    color=alt.Color("host:N", legend=alt.Legend(orient="bottom", title=None, columns=4)), tooltip=["host", "metric", "value"])
+                    color=alt.Color("host:N", legend=alt.Legend(orient="bottom", title=None, columns=4)), tooltip=["host", "env", "metric", "value"])
                     .properties(height=170).configure_view(strokeWidth=0), **wide("altair_chart"))
 
 
@@ -402,21 +441,21 @@ def events_block(stt: dict) -> None:
     with c1:
         st.markdown(f"**{t('live_events_min')}**")
         st.altair_chart(alt.Chart(rows).mark_area(interpolate="monotone").encode(
-            x=alt.X("minute:T", title=None, axis=alt.Axis(format="%H:%M")), y=alt.Y("events:Q", stack=True, title=None),
+            x=alt.X("minute:T", title=None, axis=alt.Axis(format="%H:%M")), y=alt.Y("events:Q", stack=True, title=None, axis=alt.Axis(format="d")),
             color=alt.Color("severity:N", scale=SEV_SCALE, legend=alt.Legend(orient="top", title=None)), order=alt.Order("severity:N"),
             tooltip=[alt.Tooltip("minute:T", format="%H:%M"), "severity", "events"]).properties(height=170).configure_view(strokeWidth=0), **wide("altair_chart"))
     with c2:
         st.markdown(f"**{t('live_services')}**")
         svc = pd.DataFrame(stt["services"], columns=["service", "events"]) if stt["services"] else pd.DataFrame({"service": ["-"], "events": [0]})
-        st.altair_chart(alt.Chart(svc).mark_bar(color="#3ddc84").encode(x=alt.X("events:Q", title=None), y=alt.Y("service:N", sort="-x", title=None),
+        st.altair_chart(alt.Chart(svc).mark_bar(color="#3ddc84").encode(x=alt.X("events:Q", title=None, axis=alt.Axis(format="d")), y=alt.Y("service:N", sort="-x", title=None),
                         tooltip=["service", "events"]).properties(height=170).configure_view(strokeWidth=0), **wide("altair_chart"))
 
 
-def tail_block(ls: LiveStore, n: int = 12) -> None:
+def tail_block(ls: LiveStore, n: int = 12, env: str | None = None, host: str | None = None) -> None:
     st.markdown(f"**{t('live_tail')}**")
     lines = "".join(
         f'<div><span class="muted">{o.timestamp:%H:%M:%S}</span> <span style="color:{SEV_COLORS.get(o.severity, "#8b93a1")};font-weight:700">{o.severity:<8}</span> '
-        f'<span style="color:#9fb3c8">{esc(o.service or o.source)[:18]:<18}</span> {esc(o.message)[:150]}</div>' for o in reversed(ls.tail(n)))
+        f'<span style="color:#9fb3c8">{esc(o.service or o.source)[:18]:<18}</span> {esc(o.message)[:150]}</div>' for o in reversed(ls.tail(n, env, host)))
     st.markdown(f'<div class="card mono" style="max-height:260px;overflow:auto;white-space:pre;line-height:1.55">{lines or "…"}</div>', unsafe_allow_html=True)
 
 
@@ -426,15 +465,31 @@ def page_ops() -> None:
 
     @st.fragment(run_every="2s")
     def _panel():
-        stt, slo, ms = ls.stats(15), ls.slo(15), ls.metric_stats(15)
-        real_agents = [a_ for a_ in stt["agents"] if a_ != "simulator"]
+        all_stt = ls.stats(15)
+        real_agents = [a_ for a_ in all_stt["agents"] if a_ != "simulator"]
         badge_txt, badge_col = (t("live_real_badge"), "#3ddc84") if real_agents else (t("live_sim_badge"), "#f2d55c")
         st.markdown(f'## {t("live_title")} <span class="pill" style="background:{badge_col}">{badge_txt}</span>'
-                    f' <span class="muted" style="font-size:13px">· {t("live_sub")} · {len(stt["agents"])} {t("live_agents")}: {", ".join(list(stt["agents"])[:4]) or t("live_no_agent")}</span>', unsafe_allow_html=True)
-        st.markdown(f"#### {t('ops_infra')} <span class='muted'>· {ms['samples']} samples</span>", unsafe_allow_html=True)
+                    f' <span class="muted" style="font-size:13px">· {t("live_sub")} · {len(all_stt["agents"])} {t("live_agents")}: {", ".join(list(all_stt["agents"])[:4]) or t("live_no_agent")}</span>', unsafe_allow_html=True)
+        # filter bar: environment chips + clickable host names (hosts limited to the picked environment)
+        host_env = ls.hosts()
+        envs = sorted(set(host_env.values()) | set(ls.environments()))
+        f1, f2 = st.columns([1.4, 2.6])
+        with f1:
+            env = chips(t("ops_env"), envs, "ops_env_pick")
+        with f2:
+            host = chips(t("ops_hosts"), [h for h, e in host_env.items() if not env or e == env], "ops_host_pick", t("ops_host_hint"))
+        stt, slo, ms = ls.stats(15, env, host), ls.slo(15, env, host), ls.metric_stats(15, env, host)
+        scope = " · ".join(x for x in (env, host) if x)
+        scope_html = f" <span class='pill' style='background:#6b9bd2'>{t('ops_filter_on')}: {esc(scope)}</span>" if scope else ""
+        if host:
+            host_card(host, ms, stt)
+        st.markdown(f"#### {t('ops_infra')}{scope_html} <span class='muted'>· {ms['samples']} samples</span>", unsafe_allow_html=True)
         metrics_block(ms)
-        st.markdown(f"#### {t('ops_slo')}")
+        st.markdown(f"#### {t('ops_slo')}{scope_html}", unsafe_allow_html=True)
         slo_block(slo, stt)
+        if not env and not host:
+            st.markdown(f"#### {t('ops_by_env')}")
+            env_block(ls.env_summary(15), slo["slo"]["availability"])
         st.markdown("")
         events_block(stt)
         tk = correlated_tickets(ls, ms["breaches"])
@@ -444,7 +499,7 @@ def page_ops() -> None:
                          column_config={t("t_rel"): st.column_config.ProgressColumn(min_value=0, max_value=1, format="%.2f")})
         else:
             st.info(t("no_tickets"))
-        tail_block(ls)
+        tail_block(ls, env=env, host=host)
 
     _panel()
     b1, b2, _ = st.columns([1, 1, 4])

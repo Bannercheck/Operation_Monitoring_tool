@@ -99,3 +99,21 @@ def test_llm_client():
         assert llm_test_connection(LLMConfig("http://127.0.0.1:1/v1", "x"))[0] is False
     finally:
         srv.shutdown()
+
+
+def test_live_env_and_host_filters():
+    store = LiveStore()
+    stop = start_simulator(store, interval=0.02)
+    import time
+    time.sleep(0.4)
+    stop.set()
+    envs = store.environments()
+    assert "prod" in envs and store.hosts()["prd-api-01"] == "prod" and store.hosts()["ml-02"] == "qa"
+    prod = store.stats(15, env="prod")
+    assert 0 < prod["total"] <= store.stats(15)["total"]
+    one = store.metric_stats(15, host="db-01")
+    assert set(one["per_host"]) == {"db-01"} and one["per_host"]["db-01"]["env"] == "prod" and one["per_host"]["db-01"]["cpu"] is not None
+    assert all(r["env"] == "dev" for r in store.metric_stats(15, env="dev")["per_minute"])
+    summary = {r["environment"]: r for r in store.env_summary(15)}
+    assert summary["prod"]["hosts"] == 4 and summary["prod"]["events"] == prod["total"]
+    assert store.slo(15, host="prd-api-02")["total"] == store.stats(15, host="prd-api-02")["total"]

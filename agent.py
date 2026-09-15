@@ -11,6 +11,7 @@ Standard library only, so it runs on any host with Python 3.9+.
 from __future__ import annotations
 
 import argparse
+import os
 import random
 import socket
 import sys
@@ -92,6 +93,7 @@ def main(argv=None) -> int:
     ap.add_argument("--url", default="http://localhost:8600/ingest")
     ap.add_argument("--key", default=None, help="API key configured in Connection Settings")
     ap.add_argument("--agent", default=socket.gethostname())
+    ap.add_argument("--env", default=os.environ.get("AGENT_ENV", ""), help="environment tag for this host (prod / test / dev / staging)")
     g = ap.add_mutually_exclusive_group(required=True)
     g.add_argument("--tail", help="follow a log file")
     g.add_argument("--file", help="send a file once")
@@ -111,7 +113,10 @@ def main(argv=None) -> int:
         print(f"shipping host metrics -> {args.url} (Ctrl+C to stop)")
         while True:
             try:
-                post(args.url, args.key, (_json.dumps(host_metrics()) + "\n").encode(), "metrics.jsonl", args.agent)
+                m = host_metrics()
+                if args.env:
+                    m["env"] = args.env
+                post(args.url, args.key, (_json.dumps(m) + "\n").encode(), "metrics.jsonl", args.agent)
             except Exception as e:  # noqa: BLE001
                 print("send failed:", e, file=sys.stderr)
             time.sleep(max(args.interval, 1.0))
