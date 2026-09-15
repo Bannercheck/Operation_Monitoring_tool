@@ -64,8 +64,9 @@ CSS = """
 .k2{position:relative;overflow:hidden;background:linear-gradient(160deg,var(--secondary-background-color) 0%,#101318 100%);border:1px solid #262b33;border-top:2px solid var(--acc);border-radius:14px;padding:14px 16px 8px;min-height:104px}
 .k2:before{content:"";position:absolute;right:-30px;top:-30px;width:110px;height:110px;border-radius:55px;background:var(--acc);opacity:.07}
 .k2 .ic{position:absolute;right:12px;top:10px;font-size:20px;opacity:.9}
-.k2 .lb{color:#8b93a1;font-size:11px;text-transform:uppercase;letter-spacing:.7px}
-.k2 .v{display:block;font-size:32px;font-weight:700;line-height:1.15;margin:4px 0 2px;color:#f2f4f7}
+.k2 .lb{color:#8b93a1;font-size:11px;text-transform:uppercase;letter-spacing:.7px;padding-right:30px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.k2 .v{display:block;font-size:32px;font-weight:700;line-height:1.15;margin:4px 0 2px;color:#f2f4f7;white-space:nowrap}
+.k2 .v.s{font-size:26px}
 .k2 .sub{font-size:12px;color:var(--acc);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .k2 .sub.m{color:#8b93a1}
 .flow{display:flex;align-items:center;justify-content:center;height:100%;color:#3ddc84;font-size:22px;padding-top:34px}
@@ -98,7 +99,7 @@ def kpi(value, label) -> str:
 
 def kpi2(value, label, icon: str, accent: str, sub: str = "", muted: bool = False) -> str:
     return (f'<div class="k2" style="--acc:{accent}"><span class="ic">{icon}</span><div class="lb">{label}</div>'
-            f'<span class="v">{value}</span><div class="sub{" m" if muted else ""}">{esc(str(sub))}</div></div>')
+            f'<span class="v{" s" if len(str(value)) > 6 else ""}">{value}</span><div class="sub{" m" if muted else ""}">{esc(str(sub))}</div></div>')
 
 
 @st.cache_resource
@@ -363,13 +364,14 @@ def pct(v, digits=2):
     return f"{v * 100:.{digits}f}%" if v is not None else t("no_data")
 
 
-def picker(label: str, options: list[str], key: str, fmt=None, help_: str = "") -> str | None:
+def picker(label: str, options: list[str], key: str, fmt=None, help_: str = "", hide: bool = False) -> str | None:
     """Dropdown with an 'All' entry first. Returns the picked option or None for 'All'. Keeps its value across reruns."""
     all_ = t("ops_all")
     opts = [all_] + options
     if st.session_state.get(key) not in opts:
         st.session_state[key] = all_
-    pick = st.selectbox(label, opts, key=key, help=help_ or None, format_func=(lambda v: v if v == all_ or fmt is None else fmt(v)))
+    pick = st.selectbox(label, opts, key=key, help=help_ or None, format_func=(lambda v: v if v == all_ or fmt is None else fmt(v)),
+                        label_visibility="collapsed" if hide else "visible")
     return None if pick == all_ else pick
 
 
@@ -380,43 +382,28 @@ def _set_scope(env_key: str, host_key: str, env=None, host=None) -> None:
     st.session_state[host_key] = host or all_
 
 
-def env_tiles(rows: list[dict], slo_target: float, picked: str | None) -> None:
-    """One clickable tile per environment (availability, events, errors, hosts). Clicking selects / clears the environment."""
-    if not rows:
-        return
-    cols = st.columns(max(2, min(6, len(rows))))
-    for col, r in zip(cols, rows):
-        env, av = r["environment"], r["availability"]
-        color = "#8b93a1" if av is None else "#3ddc84" if av >= slo_target else "#ffb347" if av >= slo_target - 0.02 else "#ff5c5c"
-        sel = env == picked
-        with col:
-            st.markdown('<div class="tile">' + kpi2(pct(av), env, "🌐", "#6b9bd2" if sel else color,
-                        f"{r['events']} {t('env_events')} · {r['errors']} {t('env_errors')} · {r['hosts']} {t('env_hosts')}") + "</div>", unsafe_allow_html=True)
-            st.button(f"✓ {env}" if sel else f"{t('ops_pick')} {env}", key=f"envt-{env}", **wide("button"), type="primary" if sel else "secondary",
-                      on_click=_set_scope, args=("ops_env_pick", "ops_host_pick", None if sel else env, None))
-
-
-def host_tiles(ls: LiveStore, env: str, per_host: dict, picked: str | None) -> None:
-    """Clickable tile per host of the chosen environment: latest CPU + memory / disk / GPU, events and errors (15 min)."""
-    thr = __import__("signal_sprint.scenario", fromlist=["x"]).METRIC_THRESHOLDS
-    hosts = [h for h, e in ls.hosts().items() if e == env]
-    if not hosts:
-        st.caption(t("no_data")); return
-    cols = st.columns(max(2, min(6, len(hosts))))
-    for i, h in enumerate(hosts):
-        ph = per_host.get(h, {})
-        cpu = ph.get("cpu")
-        stt = ls.stats(15, host=h)
-        color = "#8b93a1" if cpu is None else "#ff5c5c" if cpu >= thr["cpu"] else "#ffb347" if cpu >= thr["cpu"] - 15 else "#3ddc84"
-        if stt["errors"]:
-            color = "#ff5c5c"
-        parts = [f"{k} {ph[m]:.0f}%" for k, m in (("GPU", "gpu"), (t("memory")[:3], "memory"), (t("disk")[:4], "disk")) if ph.get(m) is not None]
-        sub = " · ".join(parts + [f"{stt['total']} {t('env_events')} / {stt['errors']} {t('env_errors')}"])
-        sel = h == picked
-        with cols[i % len(cols)]:
-            st.markdown('<div class="tile">' + kpi2(f"{cpu:.0f}%" if cpu is not None else "—", f"{h} · CPU", "🖥", "#6b9bd2" if sel else color, sub) + "</div>", unsafe_allow_html=True)
-            st.button(f"✓ {h}" if sel else f"{t('ops_pick')} {h}", key=f"hostt-{h}", **wide("button"), type="primary" if sel else "secondary",
-                      on_click=_set_scope, args=("ops_env_pick", "ops_host_pick", env, None if sel else h))
+def scope_panel(ls: LiveStore) -> tuple[str | None, str | None]:
+    """Environment box next to the cards: environment list, then the hosts of that environment. Returns (env, host)."""
+    host_env = ls.hosts()
+    summary = {r["environment"]: r for r in ls.env_summary(15)}
+    envs = [e for e in summary] + sorted(set(host_env.values()) - set(summary))
+    with st.container(border=True):
+        st.markdown(f"**🌐 {t('ops_env')}**")
+        env = picker("env", envs, "ops_env_pick", help_=t("ops_env_hint"), hide=True)
+        if not env and summary:
+            st.markdown("<div class='muted' style='font-size:12px;line-height:1.7'>" + "<br>".join(
+                f"{esc(e)} · {pct(r['availability'], 1)} · {r['errors']} {t('env_errors')}" for e, r in summary.items()) + "</div>", unsafe_allow_html=True)
+        hosts = [h for h, e in host_env.items() if not env or e == env]
+        st.markdown(f"**🖥 {t('ops_hosts')}** <span class='muted'>· {len(hosts)}</span>", unsafe_allow_html=True)
+        all_ = t("ops_all")
+        opts = [all_] + hosts
+        if st.session_state.get("ops_host_pick") not in opts:
+            st.session_state["ops_host_pick"] = all_
+        pick = st.radio("host", opts, key="ops_host_pick", label_visibility="collapsed", help=t("ops_host_hint"),
+                        format_func=lambda h: h if (h == all_ or env) else f"{h} · {host_env.get(h, '')}")
+        host = None if pick == all_ else pick
+        st.button(f"✕ {t('ops_reset')}", key="ops_reset", on_click=_set_scope, args=("ops_env_pick", "ops_host_pick"), disabled=not (env or host), **wide("button"))
+    return env, host
 
 
 def metrics_block(ms: dict) -> None:
@@ -443,7 +430,7 @@ def slo_block(slo: dict, stt: dict) -> None:
     k = st.columns(6)
     av, p95, bud = slo["availability"], slo["p95_ms"], slo["error_budget"]
     av_ok = av is not None and av >= slo["slo"]["availability"]
-    k[0].markdown(kpi2(pct(av), t("availability"), "🎯", "#3ddc84" if av_ok else "#ff5c5c", t("slo_target", v=pct(slo["slo"]["availability"], 1))), unsafe_allow_html=True)
+    k[0].markdown(kpi2(pct(av, 1), t("availability"), "🎯", "#3ddc84" if av_ok else "#ff5c5c", t("slo_target", v=pct(slo["slo"]["availability"], 1))), unsafe_allow_html=True)
     p_ok = p95 is None or p95 <= slo["slo"]["p95_ms"]
     k[1].markdown(kpi2(f"{p95:.0f} ms" if p95 is not None else t("no_data"), t("p95"), "⏱", "#3ddc84" if p_ok else "#ffb347", f"SLO ≤ {slo['slo']['p95_ms']} ms"), unsafe_allow_html=True)
     k[2].markdown(kpi2(pct(bud, 0) if bud is not None else t("no_data"), t("budget"), "🧮", "#3ddc84" if (bud or 0) > 0.25 else "#ffb347" if (bud or 0) > 0 else "#ff5c5c", f"{slo['errors']} / {slo['total']} ERROR+"), unsafe_allow_html=True)
@@ -485,33 +472,22 @@ def page_ops() -> None:
         all_stt = ls.stats(15)
         real_agents = [a_ for a_ in all_stt["agents"] if a_ != "simulator"]
         badge_txt, badge_col = (t("live_real_badge"), "#3ddc84") if real_agents else (t("live_sim_badge"), "#f2d55c")
-        host_env = ls.hosts()
-        envs = sorted(set(host_env.values()) | set(ls.environments()))
-        h1, h2 = st.columns([11, 1], vertical_alignment="center")
-        h1.markdown(f'## {t("live_title")} <span class="pill" style="background:{badge_col}">{badge_txt}</span>'
+        st.markdown(f'## {t("live_title")} <span class="pill" style="background:{badge_col}">{badge_txt}</span>'
                     f' <span class="muted" style="font-size:13px">· {t("live_sub")} · {len(all_stt["agents"])} {t("live_agents")}: {", ".join(list(all_stt["agents"])[:4]) or t("live_no_agent")}</span>', unsafe_allow_html=True)
-        # compact filter behind an icon on the right; the same state is driven by the clickable tiles below
-        with h2.popover("🔎", help=t("ops_filter_help")):
-            env = picker(t("ops_env"), envs, "ops_env_pick", help_=t("ops_env_hint"))
-            host = picker(t("ops_hosts"), [h for h, e in host_env.items() if not env or e == env], "ops_host_pick",
-                          fmt=lambda h: f"{h}  ·  {host_env.get(h, '')}", help_=t("ops_host_hint"))
-            st.button(f"✕ {t('ops_reset')}", key="ops_reset", on_click=_set_scope, args=("ops_env_pick", "ops_host_pick"), disabled=not (env or host))
+        # cards on the left, environment / host box on the right; the box narrows all ten cards
+        main, side = st.columns([4.6, 1.25], gap="medium")
+        with side:
+            st.markdown(f"#### {t('ops_scope')}")
+            env, host = scope_panel(ls)
+        stt, slo, ms = ls.stats(15, env, host), ls.slo(15, env, host), ls.metric_stats(15, env, host)
         scope = " · ".join(x for x in (env, host) if x)
         scope_html = f" <span class='pill' style='background:#6b9bd2'>{t('ops_filter_on')}: {esc(scope)}</span>" if scope else ""
-        # environment tiles -> host tiles of the chosen environment (drill-down)
-        crumbs = " › ".join([t("ops_all")] + [x for x in (env, host) if x])
-        st.markdown(f"#### {t('ops_by_env')} <span class='muted'>· {esc(crumbs)}</span>", unsafe_allow_html=True)
-        ms_all = ls.metric_stats(15)
-        env_tiles(ls.env_summary(15), ls.slo(15)["slo"]["availability"], env)
-        if env:
-            st.markdown(f"**{t('ops_hosts_in', env=env)}** <span class='muted'>· {t('ops_host_hint')}</span>", unsafe_allow_html=True)
-            host_tiles(ls, env, ms_all["per_host"], host)
-        stt, slo, ms = ls.stats(15, env, host), ls.slo(15, env, host), ls.metric_stats(15, env, host)
-        scope_html = f" <span class='pill' style='background:#6b9bd2'>{t('ops_filter_on')}: {esc(scope)}</span>" if scope else ""
-        st.markdown(f"#### {t('ops_infra')}{scope_html} <span class='muted'>· {ms['samples']} samples</span>", unsafe_allow_html=True)
-        metrics_block(ms)
-        st.markdown(f"#### {t('ops_slo')}{scope_html}", unsafe_allow_html=True)
-        slo_block(slo, stt)
+        with main:
+            st.markdown(f"#### {t('ops_infra')}{scope_html} <span class='muted'>· {ms['samples']} samples</span>", unsafe_allow_html=True)
+            metrics_block(ms)
+            st.markdown(f"#### {t('ops_slo')}{scope_html}", unsafe_allow_html=True)
+            st.caption(t("ops_slo_basis"))
+            slo_block(slo, stt)
         st.markdown("")
         events_block(stt)
         tk = correlated_tickets(ls, ms["breaches"])
