@@ -179,6 +179,58 @@ class LiveStore:
                 "slo_ok": avail is not None and avail >= slo["availability"] and (p95 is None or p95 <= slo["p95_ms"]),
                 "sla_ok": avail is None or avail >= sla["availability"], "slo": slo, "sla": sla}
 
+    def slo_detail(self, window_min: int = 15, env: str | None = None, host: str | None = None) -> dict:
+        """What drives the service-level cards: error events by service / host / template, latency per service,
+        per-minute availability, error-budget burn and the most recent ERROR+ events (same scope as slo())."""
+        from .analysis import template_of
+        now = datetime.now(UTC)
+        start = now - timedelta(minutes=window_min)
+        obs = [o for o in self.snapshot(env, host) if o.timestamp >= start]
+        errs = [o for o in obs if SEV_RANK[o.severity] >= 3]
+        by_service = Counter((o.service or "-") for o in errs).most_common()
+        by_host = Counter((o.host or "-") for o in errs).most_common()
+        tpl: dict[str, dict] = {}
+        for o in errs:
+            k = template_of(o.message)
+            g = tpl.setdefault(k, {"template": k, "count": 0, "severity": o.severity, "first": o.timestamp, "last": o.timestamp, "services": set(), "hosts": set(), "sample": o.message})
+            g["count"] += 1
+            g["first"], g["last"] = min(g["first"], o.timestamp), max(g["last"], o.timestamp)
+            if SEV_RANK[o.severity] > SEV_RANK[g["severity"]]: g["severity"] = o.severity
+            if o.service: g["services"].add(o.service)
+            if o.host: g["hosts"].add(o.host)
+        templates = sorted((dict(g, services=sorted(g["services"]), hosts=sorted(g["hosts"])) for g in tpl.values()), key=lambda g: -g["count"])
+        lat: dict[str, list[float]] = defaultdict(list)
+        slow: list[dict] = []
+        for o in obs:
+            m = LATENCY_RE.search(o.message)
+            if m:
+                v = float(m[1])
+                lat[o.service or "-"].append(v)
+                slow.append({"ts": o.timestamp, "service": o.service or "-", "host": o.host or "-", "ms": v, "message": o.message})
+        def q(v: list[float], p: float) -> float:
+            v = sorted(v); return v[max(0, min(len(v) - 1, int(len(v) * p) - 1))]
+        latency = sorted(({"service": k, "n": len(v), "p50": q(v, .5), "p95": q(v, .95), "max": max(v)} for k, v in lat.items()), key=lambda r: -r["p95"])
+        slow.sort(key=lambda r: -r["ms"])
+        start_min = now.replace(second=0, microsecond=0) - timedelta(minutes=window_min - 1)
+        tot_m: Counter = Counter(); err_m: Counter = Counter()
+        for o in obs:
+            k = o.timestamp.replace(second=0, microsecond=0)
+            tot_m[k] += 1
+            if SEV_RANK[o.severity] >= 3: err_m[k] += 1
+        target = scenario.SLO["availability"]
+        allowed = 1 - target
+        per_minute, cum_err, cum_tot = [], 0, 0
+        for i in range(window_min):
+            k = start_min + timedelta(minutes=i)
+            n, e = tot_m.get(k, 0), err_m.get(k, 0)
+            cum_err += e; cum_tot += n
+            per_minute.append({"minute": k, "total": n, "errors": e, "availability": (1 - e / n) if n else None,
+                               "budget_left": max(0.0, 1 - (cum_err / cum_tot) / allowed) if cum_tot and allowed > 0 else None})
+        recent = [{"ts": o.timestamp, "severity": o.severity, "service": o.service or "-", "host": o.host or "-", "message": o.message} for o in errs[-40:]][::-1]
+        return {"by_service": by_service, "by_host": by_host, "templates": templates[:10], "latency": latency, "slowest": slow[:10],
+                "per_minute": per_minute, "recent": recent, "errors": len(errs), "total": len(obs),
+                "allowed_errors": int(allowed * len(obs)), "breach_minutes": sum(1 for r in per_minute if r["availability"] is not None and r["availability"] < target)}
+
     def env_summary(self, window_min: int = 15) -> list[dict]:
         """Per-environment events, errors, availability and host count for the last window."""
         start = datetime.now(UTC) - timedelta(minutes=window_min)

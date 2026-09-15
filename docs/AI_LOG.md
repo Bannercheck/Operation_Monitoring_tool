@@ -36,6 +36,7 @@ Sadece geliştirme adımları. Format: araç + sürüm · tarih · yapılan iş.
 | Claude Fable 5.1 (Cowork) | 2026-09-15 | Operasyon filtresi çiplerden açılır listelere (Ortam / Sunucu, `host · ortam` etiketi) ve "Filtreyi temizle" düğmesine çevrildi; EN etiketler "Busiest" → "Most active" |
 | Claude Fable 5.1 (Cowork) | 2026-09-15 | Operasyon sayfası: üst filtre kartı kaldırıldı, sağda 🔎 popover; "Ortama göre" kartları tıklanabilir oldu → seçili ortamın sunucu kartları → tek sunucu görünümü (ekmek kırıntısı, seçimle geri çıkma); `ENV_ORDER` ile sabit kart sırası |
 | Claude Fable 5.1 (Cowork) | 2026-09-15 | Operasyon sayfası: kart/düğme gezinmesi kaldırıldı; kartların sağına Kapsam kutusu (ortam listesi + sunucu radyo listesi) eklendi, seçim 10 kartı ve grafikleri daraltır; servis seviyeleri için hesaplama dayanağı notu; uzun değerler için küçük yazı tipli kart |
+| Claude Fable 5.1 (Cowork) | 2026-09-15 | Operasyon sayfasındaki 10 kart tıklanabilir: `ops_tile` + `ops_detail_panel` (metrik grafiği ve host tablosu; erişilebilirlik / SLA / bütçe için oranı düşüren hata kalıpları, servis-host kırılımı, dakika bazlı grafik; p95 için servis gecikme tablosu ve en yavaş istekler; olay/dk ve ERROR+ listeleri); `LiveStore.slo_detail()`; `test_slo_detail_explains_cards` |
 
 ## Etkinlik günü
 

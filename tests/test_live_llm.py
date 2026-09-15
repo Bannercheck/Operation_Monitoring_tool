@@ -117,3 +117,19 @@ def test_live_env_and_host_filters():
     summary = {r["environment"]: r for r in store.env_summary(15)}
     assert summary["prod"]["hosts"] == 4 and summary["prod"]["events"] == prod["total"]
     assert store.slo(15, host="prd-api-02")["total"] == store.stats(15, host="prd-api-02")["total"]
+
+
+def test_slo_detail_explains_cards():
+    store = LiveStore()
+    stop = start_simulator(store, interval=0.02)
+    import time
+    time.sleep(0.4)
+    stop.set()
+    d = store.slo_detail(15)
+    assert d["total"] == store.slo(15)["total"] and d["errors"] == store.slo(15)["errors"]
+    assert sum(n for _, n in d["by_service"]) == d["errors"] and sum(g["count"] for g in d["templates"]) == d["errors"]
+    assert len(d["per_minute"]) == 15 and d["per_minute"][-1]["total"] > 0
+    assert d["latency"] and all(r["p50"] <= r["p95"] <= r["max"] for r in d["latency"])
+    assert d["slowest"] == sorted(d["slowest"], key=lambda r: -r["ms"])
+    one = store.slo_detail(15, host="ml-02")
+    assert all(r["host"] == "ml-02" for r in one["recent"]) and all(h == "ml-02" for h, _ in one["by_host"])

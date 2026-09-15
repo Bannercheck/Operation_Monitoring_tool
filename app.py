@@ -406,7 +406,26 @@ def scope_panel(ls: LiveStore) -> tuple[str | None, str | None]:
     return env, host
 
 
-def metrics_block(ms: dict) -> None:
+def ops_tile(key: str, html_: str, clickable: bool) -> None:
+    """A kpi2 card; with clickable=True a 'Detail' strip below toggles the live detail panel (session key ops_detail)."""
+    if not clickable:
+        st.markdown(html_, unsafe_allow_html=True); return
+    sel = st.session_state.get("ops_detail") == key
+    st.markdown('<div class="tile">' + html_ + "</div>", unsafe_allow_html=True)
+    st.button(("✓ " if sel else "") + t("detail"), key=f"ops-tile-{key}", **wide("button"), type="primary" if sel else "secondary",
+              on_click=lambda k=key: st.session_state.__setitem__("ops_detail", None if st.session_state.get("ops_detail") == k else k))
+
+
+def metric_chart(d: pd.DataFrame, height: int, thr: float | None = None):
+    base = alt.Chart(d).mark_line(interpolate="monotone", strokeWidth=1.6).encode(
+        x=alt.X("minute:T", title=None, axis=alt.Axis(format="%H:%M")), y=alt.Y("value:Q", title=None, scale=alt.Scale(domain=[0, 100])),
+        color=alt.Color("host:N", legend=alt.Legend(orient="bottom", title=None, columns=4)), tooltip=["host", "env", "metric", "value"])
+    if thr is not None:
+        base = base + alt.Chart(pd.DataFrame({"y": [thr]})).mark_rule(color="#ff5c5c", strokeDash=[4, 4]).encode(y="y:Q")
+    return base.properties(height=height).configure_view(strokeWidth=0)
+
+
+def metrics_block(ms: dict, clickable: bool = False) -> None:
     """CPU / GPU / memory / disk tiles with per-host line charts."""
     thr = __import__("signal_sprint.scenario", fromlist=["x"]).METRIC_THRESHOLDS
     pm = pd.DataFrame(ms["per_minute"]) if ms["per_minute"] else pd.DataFrame(columns=["minute", "host", "metric", "env", "value"])
@@ -417,26 +436,140 @@ def metrics_block(ms: dict) -> None:
         color = "#8b93a1" if sm["max"] is None else "#ff5c5c" if sm["max"] >= thr[metric] else "#ffb347" if sm["max"] >= thr[metric] - 15 else "#3ddc84"
         sub = f"{t('worst')} {sm['worst']} {sm['max']:.0f}% · {sm['hosts']} {t('hosts_n_short')}" if sm["max"] is not None else ""
         with col:
-            st.markdown(kpi2(val, t(metric), icon, color, sub), unsafe_allow_html=True)
+            ops_tile(metric, kpi2(val, t(metric), icon, color, sub), clickable)
             d = pm[pm.metric == metric]
             if len(d):
-                st.altair_chart(alt.Chart(d).mark_line(interpolate="monotone", strokeWidth=1.6).encode(
-                    x=alt.X("minute:T", title=None, axis=alt.Axis(format="%H:%M")), y=alt.Y("value:Q", title=None, scale=alt.Scale(domain=[0, 100])),
-                    color=alt.Color("host:N", legend=alt.Legend(orient="bottom", title=None, columns=4)), tooltip=["host", "env", "metric", "value"])
-                    .properties(height=170).configure_view(strokeWidth=0), **wide("altair_chart"))
+                st.altair_chart(metric_chart(d, 170), **wide("altair_chart"))
 
 
-def slo_block(slo: dict, stt: dict) -> None:
+def slo_block(slo: dict, stt: dict, clickable: bool = False) -> None:
     k = st.columns(6)
     av, p95, bud = slo["availability"], slo["p95_ms"], slo["error_budget"]
     av_ok = av is not None and av >= slo["slo"]["availability"]
-    k[0].markdown(kpi2(pct(av, 1), t("availability"), "🎯", "#3ddc84" if av_ok else "#ff5c5c", t("slo_target", v=pct(slo["slo"]["availability"], 1))), unsafe_allow_html=True)
     p_ok = p95 is None or p95 <= slo["slo"]["p95_ms"]
-    k[1].markdown(kpi2(f"{p95:.0f} ms" if p95 is not None else t("no_data"), t("p95"), "⏱", "#3ddc84" if p_ok else "#ffb347", f"SLO ≤ {slo['slo']['p95_ms']} ms"), unsafe_allow_html=True)
-    k[2].markdown(kpi2(pct(bud, 0) if bud is not None else t("no_data"), t("budget"), "🧮", "#3ddc84" if (bud or 0) > 0.25 else "#ffb347" if (bud or 0) > 0 else "#ff5c5c", f"{slo['errors']} / {slo['total']} ERROR+"), unsafe_allow_html=True)
-    k[3].markdown(kpi2(t("ok") if slo["sla_ok"] else t("breach"), t("sla"), "📜", "#3ddc84" if slo["sla_ok"] else "#ff5c5c", t("sla_target", v=pct(slo["sla"]["availability"], 1))), unsafe_allow_html=True)
-    k[4].markdown(kpi2(stt["per_minute_now"], t("live_rate"), "⚡", "#6b9bd2", f"{stt['received']:,} total"), unsafe_allow_html=True)
-    k[5].markdown(kpi2(stt["errors"], t("live_errors"), "🔥", "#ff5c5c" if stt["errors"] else "#8b93a1", f"{stt['total']:,} {t('live_buffered')}", True), unsafe_allow_html=True)
+    tiles = [
+        ("availability", kpi2(pct(av, 1), t("availability"), "🎯", "#3ddc84" if av_ok else "#ff5c5c", t("slo_target", v=pct(slo["slo"]["availability"], 1)))),
+        ("p95", kpi2(f"{p95:.0f} ms" if p95 is not None else t("no_data"), t("p95"), "⏱", "#3ddc84" if p_ok else "#ffb347", f"SLO ≤ {slo['slo']['p95_ms']} ms")),
+        ("budget", kpi2(pct(bud, 0) if bud is not None else t("no_data"), t("budget"), "🧮", "#3ddc84" if (bud or 0) > 0.25 else "#ffb347" if (bud or 0) > 0 else "#ff5c5c", f"{slo['errors']} / {slo['total']} ERROR+")),
+        ("sla", kpi2(t("ok") if slo["sla_ok"] else t("breach"), t("sla"), "📜", "#3ddc84" if slo["sla_ok"] else "#ff5c5c", t("sla_target", v=pct(slo["sla"]["availability"], 1)))),
+        ("rate", kpi2(stt["per_minute_now"], t("live_rate"), "⚡", "#6b9bd2", f"{stt['received']:,} total")),
+        ("errors", kpi2(stt["errors"], t("live_errors"), "🔥", "#ff5c5c" if stt["errors"] else "#8b93a1", f"{stt['total']:,} {t('live_buffered')}", True)),
+    ]
+    for col, (key, html_) in zip(k, tiles):
+        with col:
+            ops_tile(key, html_, clickable)
+
+
+def _bar(df: pd.DataFrame, x: str, y: str, color: str = "#ff5c5c", height: int = 200, fmt: str = "d"):
+    return alt.Chart(df).mark_bar(color=color).encode(x=alt.X(f"{x}:Q", title=None, axis=alt.Axis(format=fmt)), y=alt.Y(f"{y}:N", sort="-x", title=None),
+                                                     tooltip=[y, x]).properties(height=height).configure_view(strokeWidth=0)
+
+
+def ops_detail_panel(kind: str, ls: LiveStore, env, host, ms: dict, stt: dict, slo: dict) -> None:
+    """Live detail for the clicked card: one metric in depth, or what drives a service-level figure."""
+    thr = __import__("signal_sprint.scenario", fromlist=["x"]).METRIC_THRESHOLDS
+    with st.container(border=True):
+        h, x = st.columns([8, 1])
+        h.markdown(f"#### {t('od_' + kind)} <span class='muted' style='font-size:13px'>· {t('od_window')}</span>", unsafe_allow_html=True)
+        x.button(t("close"), key="ops-detail-close", **wide("button"), on_click=lambda: st.session_state.__setitem__("ops_detail", None))
+        if kind in ("cpu", "gpu", "memory", "disk"):
+            pm = pd.DataFrame(ms["per_minute"]) if ms["per_minute"] else pd.DataFrame(columns=["minute", "host", "metric", "env", "value"])
+            d = pm[pm.metric == kind]
+            if not len(d):
+                st.info(t("no_data")); return
+            st.altair_chart(metric_chart(d, 300, thr[kind]), **wide("altair_chart"))
+            rows = []
+            for hn, g in d.groupby("host"):
+                last, mx, avg = float(g.value.iloc[-1]), float(g.value.max()), float(g.value.mean())
+                rows.append({t("host"): hn, t("environment"): g.env.iloc[0], t("od_latest"): last, t("od_avg"): round(avg, 1), t("od_max"): mx,
+                             t("od_threshold"): thr[kind], t("od_status"): t("breach") if mx >= thr[kind] else t("od_warn") if mx >= thr[kind] - 15 else t("ok")})
+            st.dataframe(pd.DataFrame(rows).sort_values(t("od_max"), ascending=False), hide_index=True, **wide("dataframe"),
+                         column_config={t("od_latest"): st.column_config.ProgressColumn(min_value=0, max_value=100, format="%.0f%%"),
+                                        t("od_max"): st.column_config.NumberColumn(format="%.0f%%")})
+            br = [b for b in ms["breaches"] if b.get("metric") == kind]
+            if br:
+                st.markdown(f"**{t('od_breaches')}** · " + ", ".join(f"{b['host']} {b['value']:.0f}%" for b in br[:8]))
+            return
+        det = ls.slo_detail(15, env, host)
+        if kind == "rate":
+            obs = [o for o in ls.snapshot(env, host) if o.timestamp >= datetime.now(UTC) - timedelta(minutes=15)]
+            top = [s_ for s_, _ in Counter((o.service or "-") for o in obs).most_common(6)]
+            rows = Counter(((o.timestamp.replace(second=0, microsecond=0)), (o.service if o.service in top else t("od_other"))) for o in obs)
+            df_ = pd.DataFrame([{"minute": k[0], "service": k[1], "events": v} for k, v in rows.items()])
+            if len(df_):
+                st.altair_chart(alt.Chart(df_).mark_area(interpolate="monotone").encode(
+                    x=alt.X("minute:T", title=None, axis=alt.Axis(format="%H:%M")), y=alt.Y("events:Q", stack=True, title=None, axis=alt.Axis(format="d")),
+                    color=alt.Color("service:N", legend=alt.Legend(orient="top", title=None)), tooltip=[alt.Tooltip("minute:T", format="%H:%M"), "service", "events"])
+                    .properties(height=240).configure_view(strokeWidth=0), **wide("altair_chart"))
+            c1, c2 = st.columns(2)
+            c1.dataframe(pd.DataFrame(stt["services"], columns=[t("service"), t("env_events")]), hide_index=True, **wide("dataframe"))
+            c2.dataframe(pd.DataFrame(Counter((o.host or "-") for o in obs).most_common(), columns=[t("host"), t("env_events")]), hide_index=True, **wide("dataframe"))
+            return
+        if kind == "errors":
+            if not det["recent"]:
+                st.success(t("od_no_errors")); return
+            df_ = pd.DataFrame(det["recent"]); df_["ts"] = df_["ts"].dt.strftime("%H:%M:%S")
+            st.dataframe(df_.rename(columns={"ts": t("time"), "severity": t("severity"), "service": t("service"), "host": t("host"), "message": t("message")}),
+                         hide_index=True, **wide("dataframe"), height=380)
+            return
+        # availability / sla / budget / p95 -> what lowers the figure
+        target = slo["slo"]["availability"] if kind != "sla" else slo["sla"]["availability"]
+        k = st.columns(4)
+        k[0].markdown(kpi2(pct(slo["availability"], 2), t("availability"), "🎯", "#3ddc84" if (slo["availability"] or 0) >= target else "#ff5c5c", t("od_target", v=pct(target, 1))), unsafe_allow_html=True)
+        k[1].markdown(kpi2(f"{det['errors']} / {det['total']}", t("od_err_total"), "🔥", "#ff5c5c" if det["errors"] else "#8b93a1", t("od_allowed", n=det["allowed_errors"])), unsafe_allow_html=True)
+        k[2].markdown(kpi2(det["breach_minutes"], t("od_breach_min"), "⏱", "#ff5c5c" if det["breach_minutes"] else "#3ddc84", t("od_of_15")), unsafe_allow_html=True)
+        if kind == "p95":
+            k[3].markdown(kpi2(f"{slo['p95_ms']:.0f} ms" if slo["p95_ms"] is not None else t("no_data"), t("p95"), "⏱", "#ffb347", f"SLO ≤ {slo['slo']['p95_ms']} ms"), unsafe_allow_html=True)
+        else:
+            k[3].markdown(kpi2(pct(slo["error_budget"], 0) if slo["error_budget"] is not None else t("no_data"), t("budget"), "🧮",
+                               "#3ddc84" if (slo["error_budget"] or 0) > 0.25 else "#ff5c5c", t("od_budget_sub", v=pct(1 - target, 2))), unsafe_allow_html=True)
+        pm = pd.DataFrame(det["per_minute"])
+        if kind == "p95":
+            if not det["latency"]:
+                st.info(t("od_no_latency")); return
+            c1, c2 = st.columns([2, 3])
+            with c1:
+                lat = pd.DataFrame(det["latency"])
+                st.altair_chart((alt.Chart(lat).mark_bar(color="#ffb347").encode(x=alt.X("p95:Q", title="p95 ms"), y=alt.Y("service:N", sort="-x", title=None), tooltip=["service", "n", "p50", "p95", "max"])
+                                 + alt.Chart(pd.DataFrame({"x": [slo["slo"]["p95_ms"]]})).mark_rule(color="#ff5c5c", strokeDash=[4, 4]).encode(x="x:Q")).properties(height=220).configure_view(strokeWidth=0), **wide("altair_chart"))
+                st.dataframe(lat.rename(columns={"service": t("service"), "n": t("od_samples")}), hide_index=True, **wide("dataframe"))
+            with c2:
+                st.markdown(f"**{t('od_slowest')}**")
+                sl = pd.DataFrame(det["slowest"]); sl["ts"] = sl["ts"].dt.strftime("%H:%M:%S")
+                st.dataframe(sl.rename(columns={"ts": t("time"), "service": t("service"), "host": t("host"), "message": t("message")}), hide_index=True, **wide("dataframe"), height=330)
+            return
+        c1, c2 = st.columns([3, 2])
+        with c1:
+            st.markdown(f"**{t('od_minute_avail') if kind != 'budget' else t('od_burn')}**")
+            if kind == "budget":
+                d = pm.dropna(subset=["budget_left"])
+                ch = alt.Chart(d).mark_area(interpolate="monotone", color="#3ddc84", opacity=.5).encode(
+                    x=alt.X("minute:T", title=None, axis=alt.Axis(format="%H:%M")), y=alt.Y("budget_left:Q", title=None, axis=alt.Axis(format="%"), scale=alt.Scale(domain=[0, 1])),
+                    tooltip=[alt.Tooltip("minute:T", format="%H:%M"), alt.Tooltip("budget_left:Q", format=".0%"), "errors", "total"])
+            else:
+                d = pm.dropna(subset=["availability"])
+                ch = (alt.Chart(d).mark_line(interpolate="monotone", color="#6b9bd2", point=True).encode(
+                    x=alt.X("minute:T", title=None, axis=alt.Axis(format="%H:%M")), y=alt.Y("availability:Q", title=None, axis=alt.Axis(format="%"), scale=alt.Scale(domainMax=1)),
+                    tooltip=[alt.Tooltip("minute:T", format="%H:%M"), alt.Tooltip("availability:Q", format=".2%"), "errors", "total"])
+                      + alt.Chart(pd.DataFrame({"y": [target]})).mark_rule(color="#ff5c5c", strokeDash=[4, 4]).encode(y="y:Q"))
+            if len(d):
+                st.altair_chart(ch.properties(height=220).configure_view(strokeWidth=0), **wide("altair_chart"))
+            else:
+                st.info(t("no_data"))
+        with c2:
+            st.markdown(f"**{t('od_err_by_service')}**")
+            if det["by_service"]:
+                st.altair_chart(_bar(pd.DataFrame(det["by_service"], columns=["service", "errors"]), "errors", "service"), **wide("altair_chart"))
+            else:
+                st.success(t("od_no_errors"))
+        if det["templates"]:
+            st.markdown(f"**{t('od_what_lowers')}**")
+            tp = pd.DataFrame([{t("severity"): g["severity"], t("od_count"): g["count"], t("od_template"): g["template"], t("service"): ", ".join(g["services"]),
+                                t("host"): ", ".join(g["hosts"]), t("od_first"): g["first"].strftime("%H:%M:%S"), t("od_last"): g["last"].strftime("%H:%M:%S"),
+                                t("od_sample"): g["sample"]} for g in det["templates"]])
+            st.dataframe(tp, hide_index=True, **wide("dataframe"), height=38 + 35 * min(8, len(tp)))
+            if det["by_host"]:
+                st.markdown(f"**{t('od_err_by_host')}** · " + ", ".join(f"{h_} ({n})" for h_, n in det["by_host"][:8]))
 
 
 def events_block(stt: dict) -> None:
@@ -484,10 +617,14 @@ def page_ops() -> None:
         scope_html = f" <span class='pill' style='background:#6b9bd2'>{t('ops_filter_on')}: {esc(scope)}</span>" if scope else ""
         with main:
             st.markdown(f"#### {t('ops_infra')}{scope_html} <span class='muted'>· {ms['samples']} samples</span>", unsafe_allow_html=True)
-            metrics_block(ms)
+            metrics_block(ms, clickable=True)
+            if st.session_state.get("ops_detail") in ("cpu", "gpu", "memory", "disk"):
+                ops_detail_panel(st.session_state["ops_detail"], ls, env, host, ms, stt, slo)
             st.markdown(f"#### {t('ops_slo')}{scope_html}", unsafe_allow_html=True)
             st.caption(t("ops_slo_basis"))
-            slo_block(slo, stt)
+            slo_block(slo, stt, clickable=True)
+            if st.session_state.get("ops_detail") in ("availability", "p95", "budget", "sla", "rate", "errors"):
+                ops_detail_panel(st.session_state["ops_detail"], ls, env, host, ms, stt, slo)
         st.markdown("")
         events_block(stt)
         tk = correlated_tickets(ls, ms["breaches"])
