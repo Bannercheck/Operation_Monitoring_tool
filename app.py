@@ -363,16 +363,14 @@ def pct(v, digits=2):
     return f"{v * 100:.{digits}f}%" if v is not None else t("no_data")
 
 
-def chips(label: str, options: list[str], key: str, help_: str = "") -> str | None:
-    """Clickable chip row ('All' + options). Returns the picked option or None for 'All'. st.pills when available, radio otherwise."""
-    opts = [t("ops_all")] + options
+def picker(label: str, options: list[str], key: str, fmt=None, help_: str = "") -> str | None:
+    """Dropdown with an 'All' entry first. Returns the picked option or None for 'All'. Keeps its value across reruns."""
+    all_ = t("ops_all")
+    opts = [all_] + options
     if st.session_state.get(key) not in opts:
-        st.session_state[key] = opts[0]
-    if hasattr(st, "pills"):
-        pick = st.pills(label, opts, key=key, help=help_ or None)
-    else:
-        pick = st.radio(label, opts, key=key, horizontal=True, help=help_ or None)
-    return None if pick in (None, opts[0]) else pick
+        st.session_state[key] = all_
+    pick = st.selectbox(label, opts, key=key, help=help_ or None, format_func=(lambda v: v if v == all_ or fmt is None else fmt(v)))
+    return None if pick == all_ else pick
 
 
 def env_block(rows: list[dict], slo_target: float) -> None:
@@ -397,7 +395,7 @@ def host_card(host: str, ms: dict, stt: dict) -> None:
     for col, metric, icon in zip(k[1:5], ("cpu", "gpu", "memory", "disk"), ("🧠", "🎮", "💾", "🗄")):
         v = ph.get(metric)
         color = "#8b93a1" if v is None else "#ff5c5c" if v >= thr[metric] else "#ffb347" if v >= thr[metric] - 15 else "#3ddc84"
-        col.markdown(kpi2(f"{v:.0f}%" if v is not None else t("no_data"), t(metric), icon, color, f"max {thr[metric]}%"), unsafe_allow_html=True)
+        col.markdown(kpi2(f"{v:.0f}%" if v is not None else "—", t(metric), icon, color, f"max {thr[metric]}%"), unsafe_allow_html=True)
     k[5].markdown(kpi2(stt["total"], t("env_events"), "⚡", "#6b9bd2", f"{len(stt['services'])} {t('ops_services_n')}"), unsafe_allow_html=True)
     k[6].markdown(kpi2(stt["errors"], t("env_errors"), "🔥", "#ff5c5c" if stt["errors"] else "#8b93a1", ", ".join(s_ for s_, _ in stt["services"][:3]), True), unsafe_allow_html=True)
 
@@ -473,13 +471,22 @@ def page_ops() -> None:
         # filter bar: environment chips + clickable host names (hosts limited to the picked environment)
         host_env = ls.hosts()
         envs = sorted(set(host_env.values()) | set(ls.environments()))
-        f1, f2 = st.columns([1.4, 2.6])
-        with f1:
-            env = chips(t("ops_env"), envs, "ops_env_pick")
-        with f2:
-            host = chips(t("ops_hosts"), [h for h, e in host_env.items() if not env or e == env], "ops_host_pick", t("ops_host_hint"))
+        with st.container(border=True):
+            f1, f2, f3 = st.columns([1, 1.3, 2.2], vertical_alignment="bottom")
+            with f1:
+                env = picker(t("ops_env"), envs, "ops_env_pick", help_=t("ops_env_hint"))
+            with f2:
+                host = picker(t("ops_hosts"), [h for h, e in host_env.items() if not env or e == env], "ops_host_pick",
+                              fmt=lambda h: f"{h}  ·  {host_env.get(h, '')}", help_=t("ops_host_hint"))
+            scope = " · ".join(x for x in (env, host) if x)
+            with f3:
+                if scope:
+                    def _reset():
+                        st.session_state["ops_env_pick"] = st.session_state["ops_host_pick"] = t("ops_all")
+                    st.button(f"✕ {t('ops_reset')}", key="ops_reset", on_click=_reset)
+                else:
+                    st.markdown(f"<div class='muted' style='padding-bottom:8px'>{len(envs)} {t('env_hosts_envs')} · {len(host_env)} {t('env_hosts')} · {t('ops_scope_all')}</div>", unsafe_allow_html=True)
         stt, slo, ms = ls.stats(15, env, host), ls.slo(15, env, host), ls.metric_stats(15, env, host)
-        scope = " · ".join(x for x in (env, host) if x)
         scope_html = f" <span class='pill' style='background:#6b9bd2'>{t('ops_filter_on')}: {esc(scope)}</span>" if scope else ""
         if host:
             host_card(host, ms, stt)
