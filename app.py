@@ -173,7 +173,7 @@ def activate_dataset(key: str) -> None:
 def show_row(o, key: str = "") -> None:
     """Full record of one observation: all fields plus the raw line from the dataset."""
     fields = {"ref": o.ref, "timestamp": o.timestamp.isoformat(), "severity": o.severity, "service": o.service, "host": o.host,
-              "kind": o.kind, "parser": o.parser, "template": o.template, "fingerprint": o.fingerprint, **{f"attr.{k}": v for k, v in o.attributes.items()}}
+              "environment": o.environment, "origin": o.origin, "kind": o.kind, "parser": o.parser, "template": o.template, "fingerprint": o.fingerprint, **{f"attr.{k}": v for k, v in o.attributes.items()}}
     st.markdown(f"**{t('row_detail')}** · `{o.ref}`")
     st.dataframe(pd.DataFrame({"field": list(fields), "value": [str(v) for v in fields.values()]}), hide_index=True, **wide("dataframe"),
                  height=min(420, 38 + 35 * len(fields)))
@@ -216,7 +216,7 @@ def incident_flashcard(inc, a: Analysis, key: str) -> None:
 <span class="muted">{tm.get('first_signal', '')[:10]}</span></div>
 <div class="fc-row"><b>{t('fc_what')}</b> · {esc(inc.title)}. {total:,} {t('fc_events')} {len(inc.signal_ids)} {t('fc_signals')}. <b>{t('fc_chain')}:</b> <span class="mono">{chain}</span></div>
 <div class="fc-row"><b>{t('fc_why')}</b> · <span class="mono">{root.id}</span> "{esc(root.template)}" — {esc(reason_text(inc.root_cause_codes))}</div>
-<div class="fc-row"><b>{t('fc_where')}</b> · {t('services').lower()}: {esc(', '.join(og.get('services', [])) or '-')} · {t('hosts')}: {esc(', '.join(og.get('hosts', [])) or '-')} · {t('sources')}: {esc(', '.join(f'{k} ({v})' for k, v in list(og.get('files', {}).items())[:4]))}</div>
+<div class="fc-row"><b>{t('fc_where')}</b> · {t('environment')}: {esc(', '.join(f'{e} ({n})' for e, n in og.get('environments', {}).items()))} · {t('services').lower()}: {esc(', '.join(og.get('services', [])) or '-')} · {t('hosts')}: {esc(', '.join(og.get('hosts', [])) or '-')} · {t('sources')}: {esc(', '.join(f'{k} ({v})' for k, v in list(og.get('files', {}).items())[:4]))}{(' · ' + t('origin_col') + ': ' + esc(', '.join(og.get('origins', {})))) if og.get('origins') else ''}</div>
 <div class="fc-row"><b>{t('fc_when')}</b> · {t('fc_started')} <span class="mono">{tm.get('first_signal', '')[11:19]}</span> · {t('fc_last')} <span class="mono">{tm.get('last_error', '')[11:19]}</span> · {t('fc_lasted')} <b>{tm.get('duration_s', 0) / 60:.1f} min</b> · {t('quiet')} {rc.get('quiet_min', 0)} min</div>
 <div class="fc-row"><b>{t('fc_resolved')}</b> · <span style="color:{rcol};font-weight:700">{resolved}</span></div>
 <div class="fc-row"><b>{t('fc_todo')}</b><ul style="margin:4px 0 0 18px">{recs}</ul></div>{seen}</div>""", unsafe_allow_html=True)
@@ -725,6 +725,7 @@ def frames(dataset: str, n: int):
     """DataFrames for the overview charts, cached per loaded dataset."""
     a_ = st.session_state["analysis"]
     df = pd.DataFrame([{"timestamp": o.timestamp, "severity": o.severity, "service": o.service or "-", "host": o.host or "-",
+                        "environment": o.environment or "unknown", "origin": o.origin or "-",
                         "kind": o.kind, "source": o.source, "message": o.message} for o in a_.observations])
     df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
     df["minute"] = df["timestamp"].dt.floor("min")
@@ -761,8 +762,11 @@ with tab_over:
         tile(cols[i * 2], key, v, t(key), ic, acc, sub)
         if i < 4:
             cols[i * 2 + 1].markdown('<div class="flow">→</div>', unsafe_allow_html=True)
-    tiles = st.columns(6)
+    tiles = st.columns(7)
     fmts = ", ".join(sorted({r["format"] for r in a.report}))
+    envs = prof.get("environments", {})
+    env_err_total = sum(v["errors"] for v in envs.values()) or 1
+    env_sub = " · ".join(f"{e} {v['errors'] / env_err_total:.0%}" for e, v in list(envs.items())[:3] if v["errors"]) or ", ".join(list(envs)[:3])
     second = [
         ("files_n", len(prof["files"]), "📁", "#8b93a1", fmts, True),
         ("records_n", f"{prof['records']:,}", "🗂", "#8b93a1", f"{max(a.report, key=lambda r: r['rows'])['file'].split('/')[-1]} · {max(r['rows'] for r in a.report):,}" if a.report else "", True),
@@ -770,6 +774,7 @@ with tab_over:
         ("hosts_n", len(prof["hosts"]), "🖥", "#6b9bd2", f"{host_counts.index[0]} · {host_counts.iloc[0]:,}" if len(host_counts) else "-", False),
         ("error_classes", prof["error_classes"], "💥", "#ffb347", f"{err_sigs[0].template[:32]} · {err_sigs[0].count}" if err_sigs else "-", False),
         ("span_min", tr["minutes"], "⏱", "#3ddc84", f"{tr['start'][11:16]} → {tr['end'][11:16]} · {prof.get('bucket', '1min')}", False),
+        ("environments", len([e for e in envs if e != "unknown"]) or len(envs), "🌍", "#9b7bff", env_sub, False),
     ]
     for c, (key, v, ic, acc, sub, muted) in zip(tiles, second):
         tile(c, key, v, t(key), ic, acc, sub, muted)
@@ -816,6 +821,29 @@ with tab_over:
                 st.dataframe(pd.DataFrame([{"id": x_.id, "severity": x_.severity, "template": x_.template, "count": x_.count, "services": ", ".join(x_.services),
                                             "first": x_.first_seen.strftime("%H:%M:%S"), "last": x_.last_seen.strftime("%H:%M:%S")} for x_ in err]),
                              hide_index=True, **wide("dataframe"))
+            elif detail == "environments":
+                env_rows = [{t("environment"): e, t("env_events"): v["events"], t("env_errors"): v["errors"], t("env_rate"): v["error_rate"],
+                             t("env_share"): round(v["errors"] / env_err_total, 3)} for e, v in envs.items()]
+                l3, r3 = st.columns([2, 3])
+                l3.dataframe(pd.DataFrame(env_rows), hide_index=True, **wide("dataframe"),
+                             column_config={t("env_rate"): st.column_config.ProgressColumn(min_value=0, max_value=1, format="%.2f"),
+                                            t("env_share"): st.column_config.ProgressColumn(min_value=0, max_value=1, format="%.0%")})
+                byenv = df.groupby(["environment", "severity"]).size().rename("events").reset_index()
+                r3.altair_chart(alt.Chart(byenv).mark_bar().encode(x=alt.X("events:Q", title=None), y=alt.Y("environment:N", sort="-x", title=None),
+                                color=alt.Color("severity:N", scale=SEV_SCALE, legend=alt.Legend(orient="top", title=None)), tooltip=["environment", "severity", "events"])
+                                .properties(height=max(120, 34 * byenv.environment.nunique())), **wide("altair_chart"))
+                st.markdown(f"**{t('d_origins')}**")
+                origins = prof.get("origins", {})
+                if origins:
+                    st.dataframe(pd.DataFrame([{t("origin_col"): o_, t("env_events"): v["events"], t("env_errors"): v["errors"]} for o_, v in origins.items()]),
+                                 hide_index=True, **wide("dataframe"))
+                else:
+                    st.caption(t("no_origin"))
+                err_env_svc = df[df.severity.isin(["ERROR", "CRITICAL"])].groupby(["environment", "service"]).size().rename("errors").reset_index().sort_values("errors", ascending=False).head(15)
+                if len(err_env_svc):
+                    st.altair_chart(alt.Chart(err_env_svc).mark_bar().encode(x=alt.X("errors:Q", title=None), y=alt.Y("service:N", sort="-x", title=None),
+                                    color=alt.Color("environment:N", legend=alt.Legend(orient="top", title=None)), tooltip=["environment", "service", "errors"])
+                                    .properties(height=max(120, 26 * err_env_svc.service.nunique())), **wide("altair_chart"))
             elif detail == "span_min":
                 tr = prof["time_range"]
                 c1_, c2_, c3_ = st.columns(3)
@@ -921,16 +949,19 @@ with tab_over:
 
 # ------------------------------------------------------------------ signals
 with tab_sig:
-    fc1, fc2, fc3, fc4 = st.columns([1, 1, 1, 2])
+    fc1, fc2, fc3, fc4, fc5 = st.columns([1, 1, 1, 2, 1])
     min_sev = fc1.selectbox(t("min_sev"), list(SEV_RANK), index=0)
     only_burst = fc2.checkbox(t("only_burst"))
     only_meaningful = fc3.checkbox(t("only_meaningful"), value=False)
     svc_filter = fc4.multiselect(t("services"), sorted({s for x in a.signals for s in x.services}))
+    sig_env = lambda x: sorted({o.environment or "unknown" for o in x.observations})  # noqa: E731
+    env_filter = fc5.multiselect(t("environments"), sorted({e for x in a.signals for e in sig_env(x)}))
     rows = [s for s in a.signals if SEV_RANK[s.severity] >= SEV_RANK[min_sev]
             and (not only_burst or s.burst_score >= 0.5) and (not only_meaningful or interesting(s))
-            and (not svc_filter or set(s.services) & set(svc_filter))]
+            and (not svc_filter or set(s.services) & set(svc_filter)) and (not env_filter or set(sig_env(s)) & set(env_filter))]
     st.dataframe(pd.DataFrame([{"id": s.id, "severity": s.severity, "template": s.template, "count": s.count, "burst": s.burst_score,
                                 "peak/min": s.peak_rate, "base/min": s.baseline_rate, "services": ", ".join(s.services),
+                                t("environment"): ", ".join(sig_env(s)), t("origin_col"): ", ".join(sorted({o.origin for o in s.observations if o.origin})[:3]),
                                 "onset": s.onset.strftime("%H:%M:%S")} for s in rows]),
                  hide_index=True, **wide("dataframe"), height=min(420, 38 + 35 * max(len(rows), 1)),
                  column_config={"burst": st.column_config.ProgressColumn(min_value=0, max_value=1, format="%.2f"),
@@ -957,6 +988,8 @@ with tab_sig:
             st.markdown(
                 f'<div class="card"><b>{t("where")}</b> · {t("sources")}: ' + ", ".join(f"{esc(k)} ({v})" for k, v in srcs.most_common(4)) +
                 (f' · {t("agents_n")}: {esc(", ".join(agents_))}' if agents_ else "") + f' · {t("services").lower()}: {esc(", ".join(s.services) or "-")} · {t("hosts")}: {esc(", ".join(s.hosts) or "-")}'
+                f' · {t("environment")}: {esc(", ".join(f"{e} ({n})" for e, n in Counter(o.environment or "unknown" for o in s.observations).most_common(3)))}'
+                + (f' · {t("origin_col")}: {esc(", ".join(sorted({o.origin for o in s.observations if o.origin})[:3]))}' if any(o.origin for o in s.observations) else "") +
                 f'<br><b>{t("why_raised")}</b> · {t("why_fp")}; {t("why_sev", sev=s.severity, n=s.count)}; {t("why_burst", score=s.burst_score, peak=f"{s.peak_rate:.0f}", base=f"{s.baseline_rate:.0f}")}'
                 f'<br><b>{t("timing")}</b> · {t("first_signal")} {s.first_seen:%H:%M:%S} · {t("last_error")} {s.last_seen:%H:%M:%S} · {t("duration")} {dur / 60:.1f} min'
                 f'<br><b>{t("what_to_do")}</b> · ' + (" · ".join(esc(x) for x in recs) if recs else esc(recommendation_text("Investigate the root-cause signal's evidence lines"))) + "</div>",
@@ -987,6 +1020,8 @@ with tab_inc:
         oc.markdown(f'<div class="card"><b>{t("where")}</b><br>{t("sources")}: ' + ", ".join(f"{esc(k)} ({v})" for k, v in list(og.get("files", {}).items())[:5]) +
                     f'<br>{t("services").lower()}: {esc(", ".join(og.get("services", [])) or "-")}<br>{t("hosts")}: {esc(", ".join(og.get("hosts", [])) or "-")}' +
                     (f'<br>{t("agents_n")}: {esc(", ".join(og.get("agents", [])))}' if og.get("agents") else "") +
+                    f'<br>{t("environment")}: {esc(", ".join(f"{e} ({n})" for e, n in og.get("environments", {}).items()))}' +
+                    (f'<br>{t("origin_col")}: {esc(", ".join(f"{k} ({v})" for k, v in og.get("origins", {}).items()))}' if og.get("origins") else "") +
                     f'<br>parser: {esc(", ".join(og.get("parsers", [])))} · kind: {esc(", ".join(og.get("kinds", [])))}</div>', unsafe_allow_html=True)
         rk = rc.get("kind", "unknown")
         rcol = {"restart": "#3ddc84", "self_healed": "#3ddc84", "stopped": "#f2d55c", "ongoing": "#ff5c5c"}.get(rk, "#8b93a1")

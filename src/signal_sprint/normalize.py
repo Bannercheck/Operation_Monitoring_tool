@@ -24,12 +24,21 @@ ROLE_HINTS = {
                   "startsat", "starts_at", "activeat", "active_at", "firedat", "opened_at", "created", "zaman", "tarih", "olusturma zamani",
                   "olusturma_zamani", "olusturmazamani", "acilis zamani", "kayit zamani"),
     "severity": ("severity", "level", "loglevel", "log_level", "priority", "sev", "status", "labels.severity", "seviye", "oncelik", "onem", "kritiklik"),
-    "service": ("service", "app", "application", "component", "logger", "source", "module", "job", "program", "svc", "service_name",
-                "alertname", "labels.job", "labels.service", "servis", "uygulama", "bilesen", "sistem", "kaynak sistem"),
+    "service": ("service", "app", "application", "logger", "module", "job", "program", "svc", "service_name",
+                "alertname", "labels.job", "labels.service", "servis", "uygulama", "sistem", "kaynak sistem"),
+    "environment": ("environment", "env", "stage", "tier", "deployment", "labels.env", "labels.environment", "ortam", "cevre", "asama"),
+    "origin": ("source", "origin", "error_source", "component", "subsystem", "category", "layer", "error_type", "exception", "labels.component",
+               "kaynak", "bilesen", "hata kaynagi", "kategori", "katman"),
     "host": ("host", "hostname", "node", "instance", "server", "pod", "container", "machine", "labels.instance", "sunucu", "makine", "cihaz"),
     "message": ("message", "msg", "text", "description", "log", "summary", "title", "body", "line", "event", "alert",
                 "annotations.summary", "annotations.description", "ozet", "aciklama", "mesaj", "baslik", "konu"),
 }
+ENV_MAP = {"prod": "prod", "production": "prod", "prd": "prod", "live": "prod", "canli": "prod", "uretim": "prod",
+           "test": "test", "tst": "test", "testing": "test", "qa": "qa", "uat": "uat", "acceptance": "uat", "kabul": "uat",
+           "dev": "dev", "development": "dev", "develop": "dev", "gelistirme": "dev", "local": "dev", "sandbox": "dev",
+           "staging": "staging", "stage": "staging", "stg": "staging", "preprod": "staging", "pre-prod": "staging", "canary": "staging",
+           "dr": "dr", "disaster": "dr"}
+ENV_TOKEN_RE = re.compile(r"(?<![a-z0-9])(prod|production|prd|test|tst|qa|uat|dev|development|staging|stage|stg|preprod|canary|sandbox|live)(?![a-z0-9])", re.I)
 LEVEL_WORD_RE = re.compile(r"\b(TRACE|DEBUG|INFO|NOTICE|WARN(?:ING)?|ERR(?:OR)?|CRIT(?:ICAL)?|FATAL|ALERT|EMERG)\b", re.I)
 SYSLOG_TS_RE = re.compile(r"^[A-Z][a-z]{2}\s+\d{1,2}\s\d{2}:\d{2}:\d{2}$")
 _DEFAULT = datetime(datetime.now().year, 1, 1)
@@ -120,6 +129,30 @@ def normalize_severity(value: Any) -> str:
     return up if up in SEV_RANK else "INFO"
 
 
+def normalize_environment(value: Any) -> str:
+    """'Production' / 'PRD' / 'prod-eu' -> 'prod'; unknown values are kept lower-cased."""
+    if value is None:
+        return ""
+    v = str(value).strip().lower()
+    if not v:
+        return ""
+    if v in ENV_MAP:
+        return ENV_MAP[v]
+    m = ENV_TOKEN_RE.search(v)
+    return ENV_MAP[m[1].lower()] if m else v[:20]
+
+
+def infer_environment(*texts: str) -> str:
+    """Guess the environment from host / service names or the message ('prd-api-01' -> prod, 'dev-worker' -> dev)."""
+    for txt in texts:
+        if not txt:
+            continue
+        m = ENV_TOKEN_RE.search(txt)
+        if m:
+            return ENV_MAP[m[1].lower()]
+    return ""
+
+
 def severity_from_text(text: str) -> str:
     m = LEVEL_WORD_RE.search(text)
     return normalize_severity(m[1]) if m else "INFO"
@@ -161,6 +194,10 @@ def auto_map(keys: list[str], sample: list[dict] | None = None, mapping: dict | 
             best = max((k for k in keys if k not in taken), key=lambda k: share(k, lambda v: str(v).lower() in SEVERITY_MAP), default=None)
             if best and share(best, lambda v: str(v).lower() in SEVERITY_MAP) > 0.8:
                 out["severity"] = best; taken.add(best)
+        if out["environment"] is None:
+            best = max((k for k in keys if k not in taken), key=lambda k: share(k, lambda v: str(v).strip().lower() in ENV_MAP), default=None)
+            if best and share(best, lambda v: str(v).strip().lower() in ENV_MAP) > 0.8:
+                out["environment"] = best; taken.add(best)
         if out["message"] is None:
             def numeric(v):
                 try:

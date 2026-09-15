@@ -17,6 +17,8 @@ class Observation:
     severity: str = "INFO"
     service: str = ""
     host: str = ""
+    environment: str = ""             # prod | test | dev | staging | uat | qa | dr | "" (from a column, or inferred from host/message)
+    origin: str = ""                  # where the error came from: source / component / subsystem / category column
     attributes: dict[str, Any] = field(default_factory=dict)
     source: str = ""                  # file name inside the upload
     line_no: int = 0

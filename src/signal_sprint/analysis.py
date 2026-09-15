@@ -233,7 +233,9 @@ def explain_incident(inc: Incident, members: list[Signal], observations: list[Ob
     files: Counter = Counter(o.source for o in obs)
     inc.origin = {"files": dict(files.most_common()), "services": inc.affected_services, "hosts": inc.affected_hosts,
                   "agents": sorted({str(o.attributes.get("agent")) for o in obs if o.attributes.get("agent")}),
-                  "parsers": sorted({o.parser for o in obs}), "kinds": sorted({o.kind for o in obs})}
+                  "parsers": sorted({o.parser for o in obs}), "kinds": sorted({o.kind for o in obs}),
+                  "environments": dict(Counter(o.environment or "unknown" for o in obs).most_common()),
+                  "origins": dict(Counter(o.origin for o in obs if o.origin).most_common(5))}
     errors = sorted(o.timestamp for o in obs if SEV_RANK[o.severity] >= 3) or sorted(o.timestamp for o in obs)
     first_signal, last_error = inc.started_at, errors[-1]
     dataset_end = observations[-1].timestamp if observations else inc.ended_at

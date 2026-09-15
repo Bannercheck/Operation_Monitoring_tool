@@ -52,6 +52,10 @@ def profile(observations: list[Observation], report: list[dict]) -> dict:
                             relations.append({"from": f"{a}.{ka}", "to": f"{b}.{kb}", "overlap": round(overlap, 2)})
     relations.sort(key=lambda r: -r["overlap"])
     error_classes = Counter(o.template or o.message[:40] for o in observations if o.severity in ("ERROR", "CRITICAL"))
+    envs = Counter(o.environment or "unknown" for o in observations)
+    env_errors = Counter(o.environment or "unknown" for o in observations if o.severity in ("ERROR", "CRITICAL"))
+    origins = Counter(o.origin for o in observations if o.origin)
+    origin_errors = Counter(o.origin for o in observations if o.origin and o.severity in ("ERROR", "CRITICAL"))
     return {
         "files": [dict(r, start=str(per_file.loc[per_file.source == r["file"], "start"].iloc[0])[:19] if (per_file.source == r["file"]).any() else "-")
                   for r in report],
@@ -60,6 +64,8 @@ def profile(observations: list[Observation], report: list[dict]) -> dict:
         "services": sorted({o.service for o in observations if o.service}),
         "hosts": sorted({o.host for o in observations if o.host}),
         "error_classes": len(error_classes),
+        "environments": {e: {"events": n, "errors": env_errors.get(e, 0), "error_rate": round(env_errors.get(e, 0) / n, 3)} for e, n in envs.most_common()},
+        "origins": {o_: {"events": n, "errors": origin_errors.get(o_, 0)} for o_, n in origins.most_common(20)},
         "severity": dict(Counter(o.severity for o in observations)),
         "time_range": {"start": df.timestamp.min().isoformat(), "end": df.timestamp.max().isoformat(),
                        "minutes": round((df.timestamp.max() - df.timestamp.min()).total_seconds() / 60, 1)},

@@ -175,3 +175,22 @@ def test_incident_origin_timing_recovery(demo):
     assert a.incidents[1].recovery["kind"] in ("stopped", "self_healed")
     o = a.obs_by_ref[inc.recovery["evidence"]]
     assert o.raw.startswith("Sep 16 14:36:20 db-01 postgres") and a.obs_by_ref["app.jsonl:540"].raw.startswith("{")
+
+
+def test_environment_and_origin_roles():
+    from signal_sprint.normalize import auto_map, infer_environment, normalize_environment
+    m = auto_map(["ts", "level", "msg", "env", "source"], [{"env": "Production", "source": "kafka"}])
+    assert m["environment"] == "env" and m["origin"] == "source"
+    m2 = auto_map(["ts", "msg", "stage"], [{"stage": "staging"}, {"stage": "prod"}])
+    assert m2["environment"] == "stage"
+    m3 = auto_map(["ts", "msg", "x"], [{"x": "test"}, {"x": "dev"}, {"x": "prod"}])   # value-based guess
+    assert m3["environment"] == "x"
+    assert normalize_environment("PRD") == "prod" and normalize_environment("prod-eu-1") == "prod" and normalize_environment("Test") == "test"
+    assert infer_environment("prd-api-01") == "prod" and infer_environment("dev-worker-3") == "dev" and infer_environment("payment-api") == ""
+    o = parse("csv", "time,level,environment,source,message\n2026-09-16 14:00:00,error,Test,kafka-consumer,timeout\n2026-09-16 14:01:00,info,Prod,app,ok\n")
+    assert (o[0].environment, o[0].origin, o[1].environment) == ("test", "kafka-consumer", "prod")
+    obs, rep = ingest_path(str(ROOT / "samples" / "demo_mixed.zip"))
+    p = profile(obs, rep)
+    assert p["environments"]["prod"]["events"] > 500 and 0 < p["environments"]["prod"]["error_rate"] < 1
+    a = an.Analysis(obs, rep)
+    assert "prod" in a.incidents[0].origin["environments"]
