@@ -829,9 +829,9 @@ with tab_over:
                              column_config={t("env_rate"): st.column_config.ProgressColumn(min_value=0, max_value=1, format="%.2f"),
                                             t("env_share"): st.column_config.ProgressColumn(min_value=0, max_value=1, format="%.0%")})
                 byenv = df.groupby(["environment", "severity"]).size().rename("events").reset_index()
-                r3.altair_chart(alt.Chart(byenv).mark_bar().encode(x=alt.X("events:Q", title=None), y=alt.Y("environment:N", sort="-x", title=None),
+                r3.altair_chart(alt.Chart(byenv).mark_bar(size=26).encode(x=alt.X("events:Q", title=None), y=alt.Y("environment:N", sort="-x", title=None),
                                 color=alt.Color("severity:N", scale=SEV_SCALE, legend=alt.Legend(orient="top", title=None)), tooltip=["environment", "severity", "events"])
-                                .properties(height=max(120, 34 * byenv.environment.nunique())), **wide("altair_chart"))
+                                .properties(height=70 + 44 * byenv.environment.nunique()), **wide("altair_chart"))
                 st.markdown(f"**{t('d_origins')}**")
                 origins = prof.get("origins", {})
                 if origins:
@@ -841,9 +841,9 @@ with tab_over:
                     st.caption(t("no_origin"))
                 err_env_svc = df[df.severity.isin(["ERROR", "CRITICAL"])].groupby(["environment", "service"]).size().rename("errors").reset_index().sort_values("errors", ascending=False).head(15)
                 if len(err_env_svc):
-                    st.altair_chart(alt.Chart(err_env_svc).mark_bar().encode(x=alt.X("errors:Q", title=None), y=alt.Y("service:N", sort="-x", title=None),
+                    st.altair_chart(alt.Chart(err_env_svc).mark_bar(size=22).encode(x=alt.X("errors:Q", title=None), y=alt.Y("service:N", sort="-x", title=None),
                                     color=alt.Color("environment:N", legend=alt.Legend(orient="top", title=None)), tooltip=["environment", "service", "errors"])
-                                    .properties(height=max(120, 26 * err_env_svc.service.nunique())), **wide("altair_chart"))
+                                    .properties(height=70 + 36 * err_env_svc.service.nunique()), **wide("altair_chart"))
             elif detail == "span_min":
                 tr = prof["time_range"]
                 c1_, c2_, c3_ = st.columns(3)
