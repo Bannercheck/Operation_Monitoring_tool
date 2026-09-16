@@ -2,71 +2,82 @@
 
 ## 1. Tek Cümlelik Özet
 
-Signal Sprint, S-A1 alarm fırtınasındaki 3.000 alarmı gerekçeli 5 olay kartına indiren (kök neden + karşı olasılıklar + sahipli ilk aksiyon + gürültü denetimi), çalışma zamanında LLM gerektirmeyen bir SRE karar destek uygulamasıdır.
-
-**S-A1 sonucu:** 3.000 alarm → 5 kart · 1.752 alarm gerekçesiyle elendi · analiz 0,4 sn. Kartlar: (1) 02:33 payment-provider-gw dış servis erişilemiyor → payment-service / mobile-bff / order-service zaman aşımı ve işlem hataları; (2) 02:04 billing-db disk dolu → tablespace genişletilemedi → bağlantı havuzu → billing / charging / invoice-batch; (3) 01:33 dc1/rack-A kabin ağ olayı (9 sunucuda link kopması / paket kaybı; DNS ve auth o kabinde) → 16 servise yayılan zaman aşımı dalgası; (4) 03:05 batch penceresi çakışması → subscriber-db bağlantı havuzu tükenmesi → subscriber-service gecikmesi (yavaş gelişen). Neden 4 kart: veride yoğunluğu servisin kendi medyanının 3 katını aşan dört bağımsız zaman-topoloji bölgesi var; bunun dışındaki her sıcak nokta 15 alarmdan küçük ve kart olmuyor.
+Signal Sprint, S-A1 alarm fırtınasındaki 3.000 alarmı kök neden hipotezi, karşı olasılıklar, sahipli ilk aksiyon ve gürültü denetimi taşıyan 5 olay kartına indiren, çalışma zamanında LLM gerektirmeyen bir SRE karar destek uygulamasıdır.
 
 ## 2. Problem Tanımı
 
-- **Kim:** Operasyon / SRE / NOC ekipleri ve nöbetçi mühendisler.
-- **Ne:** Kesinti anında farklı formatlarda (JSON, CSV, syslog, key=value, düz metin, Alertmanager, ticket) on binlerce satır akar; aynı hatanın tekrarları gerçek sinyali gömer, kök neden ve "ne zaman başladı / düzeldi mi" soruları elle cevaplanır.
-- **Neden önemli:** Her dakika gecikme SLO / SLA ihlali ve müşteri etkisi demektir; "neden bu alarm önemli" sorusuna kanıtsız cevap verilemez, aksiyonlar takip edilmez, aynı hata bir sonraki nöbette yeniden öğrenilir.
+- **Kim:** Operasyon merkezi / SRE / NOC ekipleri ve gece nöbetçisi mühendis.
+- **Ne:** 02:14'te alarm ekranı hızlanır; iki saatte 3.000 alarm, 27 servis, 56 sunucu, 5 izleme sistemi. Birden fazla bağımsız olay aynı anda yaşanır, alarm tipleri olaylar arasında paylaşılır, arka plan gürültüsü her servise sabit hızda ve yüksek şiddette de gelir. Alarmlar arasındaki neden-sonuç ilişkisi görünmez.
+- **Neden önemli:** Kök neden, türev etki ve gürültü ayırt edilemeyince müdahale sırası yanlış kurulur, çözüm süresi uzar; her dakika SLA ihlali ve müşteri etkisi demektir. Nöbetçinin yedi dakikası vardır.
 
 ## 3. Çözüm
 
-Ana akış:
+Veri paketi (alarms.json / csv, service_dependencies.csv, host_inventory.csv) tek ZIP olarak yüklenir. Ana akış:
 
-1. Kullanıcı dosya / ZIP / klasör yükler, bir HTTP API veya MCP sunucusuna bağlanır ya da sunuculara `agent.py` kurar (canlı olay + CPU / GPU / bellek / disk).
-2. Sistem formatı kendisi tanır, sütunları rollere (zaman, seviye, servis, host, ortam, kaynak, mesaj) eşler, her satırı kanonik **Observation** modeline çevirir.
-3. Mesajlar maskelenip parmak izine indirilir (gürültü azaltma), patlama skoru hesaplanır, zaman penceresi + ortak varlık ile sinyaller **incident**'ta toplanır, kök neden seçilir, önem puanı faktörleriyle açıklanır.
-4. Sonuç: incident flashcard'ı (ne oldu / neden / nerede / ne zaman / nasıl düzeldi / ne yapmalı / daha önce görüldü mü), tıklanabilir kanıt satırları, aksiyon kanbanı, playbook (hata kütüphanesi), ITSM ticket ilişkilendirmesi, postmortem taslağı ve isteğe bağlı LLM açıklaması.
+1. **Alım:** yan tablolar (bağımlılık, envanter) referans olarak ayrılır; alarms.json ile alarms.csv `alarm_id` ile tekilleştirilir, 3.000 alarmın tamamı işlenir; şiddet ölçeği (1 = bilgi … 5 = kritik) kanonik seviyelere eşlenir.
+2. **Yoğunluk kümeleme** (`storm.py`): pencere 5 dk'lık kovalara bölünür; bir servis ya da sunucu kendi medyan hızının 3 katını aşınca hücre "sıcak" olur. Sıcak hücreler aynı servis / tanımlı bağımlılık / aynı kabin (ağ alarmları) ile ve en fazla bir kova arayla bağlanır. Normal hızındaki alarm tipleri gürültüye geri verilir; 15 alarmdan küçük noktalar kart olmaz. Şiddeti kademeli tırmanan neden-tipi zincirler (bellek sızıntısı → gc → oom) ayrı kart olarak çıkarılır.
+3. **Kök neden:** alarm tipine göre nedensellik önceliği (ağ > disk > veritabanı > dış servis > kaynak > belirti), şiddet, adet, grubun ilk neden-tipi alarmı, bağımlılık yönü (hedef bozulursa kaynak etkilenir), kabin geneli ağ olayı. En iyi üç rakip hipotez puan ve gerekçesiyle **karşı olasılık** olarak karta yazılır.
+4. **Sonuç:** her kart için kök neden gerekçesi, etkilenen servisler, alarm sayısı, zaman aralığı, sahipli ve açık durumlu **ilk aksiyon** (Aksiyonlar sekmesinde kapatılır), Playbook'ta "daha önce görüldü mü", hata haritası; **Gürültü denetimi** sekmesinde elenen her alarmın nedeni ve servis × zaman ısı haritası.
+
+**S-A1 sonucu:** 3.000 alarm → 5 kart · 1.752 alarm gerekçesiyle elendi · analiz 0,4 sn.
+
+| Kart | Zaman | Kök neden hipotezi | İlk aksiyon sahibi | Puan |
+|---|---|---|---|---|
+| dc1/rack-A kabin ağ olayı | 01:33–01:56 | 9 sunucuda link kopması / paket kaybı; DNS ve auth o kabinde, 14 servise yayılan zaman aşımı dalgası | Ağ / veri merkezi ekibi | 0,79 |
+| payment-provider-gw | 02:33–03:01 | Dış ödeme sağlayıcısı erişilemiyor → payment / mobile-bff / order zaman aşımı ve işlem hataları | Ödeme entegrasyon ekibi | 0,78 |
+| billing-db | 02:04–02:26 | Disk dolu → tablespace genişletilemedi → bağlantı havuzu → billing / charging / invoice-batch | DBA ekibi | 0,71 |
+| session-service | 02:24–03:03 | Bellek sızıntısı: gc duraklaması → oom riski (3 sunucu) → auth-service zaman aşımı; yavaş gelişen | Nöbetçi mühendis | 0,44 |
+| batch-scheduler | 03:05–03:30 | Toplu iş penceresi çakışması → subscriber-db bağlantı havuzu → subscriber-service gecikmesi | Batch operasyon | 0,44 |
+
+Neden 5 kart: veride yoğunluğu servisin kendi medyanının 3 katını aşan dört bağımsız zaman-topoloji bölgesi ve şiddeti tırmanan bir yavaş yanma zinciri var; bunun dışındaki dokuz sıcak nokta 15 alarmdan küçük ve denetim görünümünde listelenir.
 
 ## 4. Mimari (Özet)
 
 Detay için [docs/mimari.md](docs/mimari.md).
 
 ```
-[Dosya / API / MCP / Ajan] -> [loader + format_detector + parsers] -> [Observation]
-      -> [analysis: template -> fingerprint -> signal -> incident -> skor + kanıt]
-      -> [Streamlit dashboard | CLI | MCP sunucusu] -> [actions.db, playbook.db]
+[ZIP: alarms + bağımlılık + envanter] -> [loader · format_detector · parsers · tables · dedupe] -> [Observation]
+      -> [storm: sıcak hücreler -> bağlama -> kümeler -> yavaş yanma çıkarımı]
+      -> [analysis: sinyaller -> kök neden + karşı olasılıklar -> puan -> ilk aksiyon]
+      -> [Streamlit: kartlar · gürültü denetimi · hata haritası · aksiyon kanbanı | CLI --enrich | MCP sunucusu]
 ```
 
 ## 5. Yapay Zekâ Kullanımı
 
 | Alan | Nasıl Kullanıldı |
 |------|------------------|
-| Geliştirme | Tüm kod, testler ve belgeler Claude Fable 5.1 (Claude Cowork) ile üretildi; etkinlik günü iş bölümü: veri keşfi ve hipotezler (yoğunluk tabloları) + kümeleme / kök neden kurallarının tasarımı AI ile, eşik ve öncelik kararları (3× medyan, 15 alarm, nedensellik sırası, kart sayısı) insan onayıyla; her adım `docs/AI_LOG.md`'de araç + sürüm + tarih + iş olarak kayıtlı, dosya bazında "AI aracı" sütunu `README.md`'de. |
-| Ürün içi | Çekirdek deterministik, LLM zorunlu değil. İsteğe bağlı: OpenAI uyumlu yerel / bulut LLM ile incident açıklaması ("LLM ile açıkla"), Claude SAKA'ya yapıştırılabilir kanıt paketi (prompt bundle). |
-| Entegrasyon | Motor bir MCP sunucusu olarak dışa açılır (`mcp_server.py`, 8 araç); Claude Desktop veya başka bir MCP istemcisi veri setini analiz ettirebilir. |
+| Geliştirme | Tüm kod, testler ve belgeler Claude Fable 5.1 (Claude Cowork) ile üretildi. Etkinlik günü iş bölümü: veri keşfi (servis × 5 dk yoğunluk tabloları), kümeleme ve kök neden kurallarının tasarımı, kod ve testler AI ile; eşik ve öncelik kararları (3× medyan, 15 alarm, nedensellik sırası, kart sayısı, ağırlıklar) insan onayıyla. İkinci bir AI aracıyla bağımsız çapraz doğrulama yapıldı; kaçırılan beşinci olay ve puanlamadaki doyma sorunu böyle bulundu ve düzeltildi. Her adım `docs/AI_LOG.md`'de araç + sürüm + tarih + iş olarak kayıtlı; dosya bazında "AI aracı" sütunu `README.md`'de. |
+| Ürün içi | Çekirdek deterministiktir, LLM zorunlu değildir. İsteğe bağlı: OpenAI uyumlu yerel / bulut LLM ile incident açıklaması ("LLM ile açıkla"), Claude SAKA'ya yapıştırılabilir kanıt paketi (prompt bundle). |
+| Entegrasyon | Motor MCP sunucusu olarak dışa açılır (`mcp_server.py`, 8 araç); Claude Desktop veya başka bir MCP istemcisi veri setini analiz ettirebilir. |
 
 Kritik prompt'lar: [prompts/](prompts/)
 
 ## 6. Yenilikçilik
 
-- Veri setini önceden bilmeden çalışır: format tanıma, sütun-rol eşleme ve maskeleme sayesinde etkinlik günü verilen set parser değişikliği olmadan (gerekirse yalnız `scenario/` ayarıyla) işlenir.
-- Her karar açıklanabilir: sinyal için "neden bu sinyal", incident için faktör katkıları, kök neden gerekçesi ve satır düzeyinde kanıt.
-- Kendiliğinden düzelen incident'lar tespit edilir ve otomatik "done" aksiyon olarak kaydedilir; playbook aynı hatayı bir sonraki veri setinde "daha önce görüldü" diye hatırlatır.
-- Canlı operasyon sayfası: ortam / sunucu kapsamı, SLO / SLA / hata bütçesi ve her kartın "oranı ne düşürüyor" detayı.
+- Alarm fırtınasında gruplama şablonla değil **yoğunlukla** yapılır: servis × zaman hücrelerinde medyana göre anomali, bağımlılık tablosu ve kabin bilgisiyle bağlama. Sabit hızlı gürültü, yüksek şiddette bile olsa karta giremez.
+- **Yavaş yanma çıkarımı:** şiddeti tırmanan neden-tipi zincirler patlama yapmasa da ayrı kart olur; bağımlılık bağı kullanmadığı için komşu olayları köprüleyemez.
+- Kök neden **nedensellik önceliği + bağımlılık yönü + ilk neden-tipi alarm** ile seçilir; karşı olasılıklar puanlarıyla kartta durur, jüri "neden bu?" sorusunun cevabını ekranda görür.
+- Her elenen alarmın nedeni vardır (**gürültü denetimi**); indirgeme kararı denetlenebilir.
+- Zenginleştirilmiş tek dosya: her alarm satırına envanter, bağımlılık, sıcak hücre, incident, rol ve gürültü nedeni eklenir; yalnız bu dosya yüklendiğinde aynı kartlar çıkar.
 
 ## 7. Teknik Zorluk
 
-Etkinlik günü asıl zorluk alarm fırtınasının yapısıydı: bir olay onlarca alarm tipine ve şiddete yayılırken arka plan gürültüsü her servise sabit hızda ve ERROR / CRITICAL seviyede de geliyordu. Mesaj şablonu bazlı gruplama ortak servis adları üzerinden her şeyi tek karta zincirledi (ilk deneme: 3.000 alarm → 1 kart). Çözüm, gruplamayı şablondan yoğunluğa taşımak oldu: servis × 5 dk hücrelerinde medyana göre anomali, sonra bağımlılık tablosu ve kabin bilgisiyle bağlama; küme içinde normal hızındaki alarm tiplerini gürültüye geri verme; kök neden için "en erken" yerine alarm tipinin nedensellik önceliği + ilk neden-tipi alarm + bağımlılık yönü. Sentetik bir S-A1 paketiyle (samples/make_alarm_storm.py, doğrulama etiketli) gürültü eleme kesinliği %97 ölçüldü.
-
-Önceki zorluk: bilinmeyen formatı bozmadan ve hızlı işlemek oldu: iç içe JSON (Alertmanager) tek kayıt sanılıyordu, zamanı olmayan satırlar grafiği 56 yıla yayıyordu, dateutil ile satır başına tarih parse 31 sn sürüyordu. Çözüm: özyinelemeli kayıt bulma, "zamansız" işaretleyip en erken zamana doldurma, `fromisoformat` → şekil önbellekli `strptime` → dateutil sıralı hızlı yol ve dokuz maskeleme regex'ini tek birleşik regex'e indirme (6 sn). İkinci zorluk ticket ilişkilendirmesinin her ticket'ı her sinyale bağlamasıydı; ortak varlık veya en az iki özgül anahtar kelime şartı ve okunur etiketlerle çözüldü.
+Asıl zorluk alarm fırtınasının yapısıydı: bir olay onlarca alarm tipine ve şiddete yayılırken arka plan gürültüsü her servise sabit hızda ve ERROR / CRITICAL seviyede de geliyordu. Mesaj şablonu bazlı gruplama ortak servis adları üzerinden her şeyi tek karta zincirledi (ilk deneme: 3.000 alarm → 1 kart). Çözüm gruplamayı yoğunluğa taşımak oldu. İkinci zorluk yavaş gelişen olaydı: session-service'in 01:35'ten 02:52'ye tırmanan bellek zinciri servis toplamını medyanın 3 katına çıkarmadığı için görünmüyordu. İlk deneme (genel tırmanma dedektörü) uzun hücrelerle iki olayı köprüleyip yanlış birleştirme yaptı; çözüm, çıkarımı normal kümelemeden sonra, bağımlılık bağı kullanmadan ve o servise yönelik zaman aşımlarını diğer kümelerden geri alarak yapmak oldu. Üçüncü zorluk puanlama: etki alanı faktörü tüm kartlarda doyuyordu ve patlama sinyal düzeyinde ölçülüyordu; olay düzeyi patlama, veri setine göre normalize etki alanı ve envanter iş kritikliği faktörü eklendi.
 
 ## 8. Tamamlanma Durumu
 
 | Özellik | Durum |
 |---------|-------|
-| Loader (ZIP / TAR.GZ / GZ / klasör), format tanıma, 6 parser, sütun-rol eşleme | ✅ Tamam |
-| Gürültü azaltma, ilişkilendirme, kök neden, faktörlü puan, kanıt | ✅ Tamam |
-| Incident flashcard, düzelme tespiti, aksiyon kanbanı, playbook | ✅ Tamam |
-| Canlı operasyon (ajan, simülatör, metrikler, SLO / SLA, kapsam, kart detayları) | ✅ Tamam |
-| ITSM (ServiceNow / Jira / OneDesk / REST) ilişkilendirme | ✅ Tamam |
-| HTTP API / MCP veri kaynağı, MCP sunucusu, Docker | ✅ Tamam |
-| İsteğe bağlı LLM açıklaması | ✅ Tamam |
-| TR / EN arayüz, 32 pytest testi | ✅ Tamam |
-| S-A1 paketi: yan tablolar, tekilleştirme, yoğunluk kümeleme, kök neden + karşı olasılıklar, ilk aksiyon kaydı, gürültü denetimi | ✅ Tamam |
+| 3.000 alarmın tamamı işlenir; json / csv tekilleştirme; yan tablolar | ✅ Tamam |
+| Anlamlı gruplara indirgeme, grup başına tek kart (5 kart ≤ 15) | ✅ Tamam |
+| Kartta kök neden hipotezi + gerekçe, etkilenen servisler, alarm sayısı, zaman aralığı | ✅ Tamam |
+| Kart başına önerilen ilk aksiyon, sahip ve durumla otomatik kayıt | ✅ Tamam |
+| Aksiyonun açılıştan kapanışa izlenmesi (kanban, durum değişimi) | ✅ Tamam |
+| Bonus: karşı olasılıklar, gürültü denetimi görünümü, Playbook ile geçmiş örüntü | ✅ Tamam |
+| Hata haritası (bağımlılık + hata akışı), zenginleştirilmiş tek dosya, CLI, MCP sunucusu | ✅ Tamam |
+| TR / EN arayüz, 32 pytest testi, Docker | ✅ Tamam |
+| Yavaş yanma kartının 01:35–02:20 düşük şiddetli başlangıcını kapsaması | 🚧 Kısmi |
+| Demo videosu | ⬜ Planlandı |
 
 ## 9. Çalıştırma Talimatı
 
@@ -74,9 +85,8 @@ Bkz. [README.md](README.md#kurulum)
 
 ## 10. Bilinen Kısıtlar
 
-- **Yavaş yanma tespiti son anda eklendi:** session-service bellek sızıntısı zinciri (mem_high → gc_pressure → oom_risk, 3 sunucu, 02:24–03:03) ilk sürümde sıcak hücre oluşturmadığı için kaçıyordu; bağımsız çapraz doğrulama ile fark edildi ve `storm.extract_slow_burns` ile ayrı kart olarak çıkarıldı (bağımlılık tablosu üzerinden bağ kurmaz, bu yüzden komşu olayları köprüleyemez). Sonuç 5 kart. Zincirin 01:35–02:20 arasındaki düşük şiddetli başlangıcı kartın dışında kalır.
-
-- Canlı ajan, MCP ve ITSM bağlantıları demo ortamında yerleşik simülatör / demo ticket'larla gösterilir; gerçek sistemlere bağlanmak için yalnız URL ve anahtar gerekir.
-- p95 gecikme, mesajlarda `<n>ms` deseni olduğunda hesaplanır; yoksa kart "veri yok" gösterir.
-- Servis seviyeleri son 15 dakikalık canlı pencere üzerinden hesaplanır; uzun dönem SLO raporu kapsam dışıdır.
-- Playbook benzerlik eşleşmesi token örtüşmesine dayanır (≥ 0.6); anlamsal eşleşme için isteğe bağlı LLM kullanılabilir.
+- Yavaş yanma kartı tırmanmayı ERROR+ seviyesinde yakalar; session-service zincirinin 01:35–02:20 arasındaki düşük şiddetli mem_high başlangıcı kartın dışında kalır.
+- Kartlardaki "kendiliğinden düzeldi" bilgisi alarm verisinde iyileşme kanıtı olmadığı için "son alarmdan sonra sessizlik" sezgisine dayanır.
+- Eşikler (3× medyan, 15 alarm, 5 dk kova, nedensellik öncelikleri) `scenario/` içinde açıktır ve bu veri setine göre seçilmiştir; başka bir kurumun alarm profili için yeniden ayar gerekebilir.
+- Playbook benzerlik eşleşmesi token örtüşmesine dayanır (≥ 0,6); anlamsal eşleşme için isteğe bağlı LLM kullanılabilir.
+- Canlı ajan, MCP ve ITSM bağlantıları demoda yerleşik simülatör / demo ticket'larla gösterilir; gerçek sistemler için yalnız URL ve anahtar gerekir.
