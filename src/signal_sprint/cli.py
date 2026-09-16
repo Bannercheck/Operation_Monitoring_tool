@@ -74,11 +74,23 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--inspect", action="store_true")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--lines", type=int, default=5)
+    ap.add_argument("--enrich", metavar="OUT", help="write the enriched single-file dataset (.csv or .jsonl) + OUT.summary.json and exit")
     args = ap.parse_args(argv)
     if args.inspect:
         inspect(args.path, args.lines)
         return 0
     obs, report = ingest_path(args.path)
+    if args.enrich:
+        from pathlib import Path
+        from .analysis import Analysis
+        from .enrich import enrich, summary, to_csv, to_jsonl
+        a = Analysis(obs, report)
+        rows = enrich(a)
+        out = Path(args.enrich)
+        out.write_text(to_jsonl(rows) if out.suffix == ".jsonl" else to_csv(rows), encoding="utf-8")
+        out.with_suffix(out.suffix + ".summary.json").write_text(json.dumps(summary(a, rows), ensure_ascii=False, indent=1), encoding="utf-8")
+        print(f"{out}: {len(rows)} rows, {len(a.incidents)} incidents; summary -> {out.with_suffix(out.suffix + '.summary.json')}")
+        return 0
     a = Analysis(obs, report)
     prof = profile(obs, report)
     prof.pop("per_minute", None)

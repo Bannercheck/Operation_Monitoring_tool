@@ -44,6 +44,6 @@ def records_to_observations(records: Iterator[tuple[int, dict]], source: str, pa
             timestamp=ts, message=msg, kind=kind, severity=sev, service=service, host=host,
             environment=env or infer_environment(host, service, source, msg),
             origin=str(rec.get(roles["origin"]) or "") if roles.get("origin") else "",
-            attributes={**{k: v for k, v in rec.items() if k not in used and v not in (None, "")}, **({"_no_ts": True} if missing else {})},
+            attributes={**{k: v for k, v in rec.items() if k not in used and v not in (None, "")}, **({"severity_raw": sev_raw} if str(sev_raw).strip().isdigit() else {}), **({"_no_ts": True} if missing else {})},
             source=source, line_no=line_no, parser=parser, parser_confidence=confidence,
             raw=(lines[line_no - 1] if lines and 0 < line_no <= len(lines) else json.dumps(rec, ensure_ascii=False, default=str)))

@@ -424,6 +424,10 @@ class Analysis:
         self.observations, self.report = observations, report
         self.dependencies = tables.dependencies(report)          # declared service dependencies (may be empty)
         self.inventory = tables.inventory(report)                # host -> dc / rack / env / criticality (may be empty)
+        if not self.dependencies:                                # enriched single file: columns carry the graph and the inventory
+            d2, i2 = tables.from_observations(observations)
+            self.dependencies = self.dependencies or d2
+            self.inventory = self.inventory or i2
         fingerprint(observations)
         mode = scenario.CLUSTERING
         self.mode = "density" if mode == "density" or (mode == "auto" and self.dependencies) else "fingerprint"

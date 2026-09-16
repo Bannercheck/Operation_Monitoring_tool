@@ -14,9 +14,14 @@ SAMPLE_LINES = 200
 
 
 def detect_delimiter(lines: list[str]) -> str | None:
+    """Quote-aware: field counts come from csv.reader, so commas inside quoted messages do not break the check."""
+    import csv
     for d in DELIMS:
-        counts = [ln.count(d) for ln in lines[:30]]
-        if counts and min(counts) >= 1 and len(set(counts)) <= 2:
+        try:
+            counts = [len(row) for row in csv.reader(lines[:30], delimiter=d)]
+        except csv.Error:
+            continue
+        if counts and min(counts) >= 2 and len(set(counts)) <= 2:
             return d
     return None
 
@@ -46,7 +51,8 @@ def detect_format(text: str) -> tuple[str, float]:
         return "syslog", round(hits / len(lines), 2)
     d = detect_delimiter(lines)
     if d and len(lines) >= 2:
-        header = lines[0].split(d)
+        import csv as _csv
+        header = next(_csv.reader([lines[0]], delimiter=d))
         alpha = sum(1 for h in header if h.strip().replace("_", "").replace(" ", "").isalpha())
         if alpha / len(header) > 0.6:
             return "csv", 0.9

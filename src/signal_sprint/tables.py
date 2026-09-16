@@ -85,3 +85,33 @@ def inventory(report: list[dict]) -> dict[str, dict]:
             if h:
                 out[h] = {k: str(r.get(col, "") or "").strip() for k, col in cols.items() if col and k != "host"}
     return out
+
+
+def from_observations(observations) -> tuple[list[dict], dict[str, dict]]:
+    """Enriched single-file datasets carry `depends_on` / `dependents` and inventory columns per row:
+    rebuild the dependency list and the host inventory from them (used when the package has no side tables)."""
+    deps: dict[tuple[str, str], dict] = {}
+    inv: dict[str, dict] = {}
+    for o in observations:
+        a = o.attributes
+        svc = o.service
+        crit = {}
+        for part in str(a.get("dependency_criticality") or "").split(","):
+            if ":" in part:
+                t, c = part.split(":", 1)
+                crit[t.strip()] = c.strip()
+        if svc and a.get("depends_on"):
+            for t in str(a["depends_on"]).split(","):
+                t = t.strip()
+                if t:
+                    deps.setdefault((svc, t), {"source": svc, "target": t, "type": "", "criticality": crit.get(t, "")})
+        if svc and a.get("dependents"):
+            for s_ in str(a["dependents"]).split(","):
+                s_ = s_.strip()
+                if s_:
+                    deps.setdefault((s_, svc), {"source": s_, "target": svc, "type": "", "criticality": ""})
+        if o.host and o.host not in inv and (a.get("is_kritikligi") or a.get("inventory_service") or a.get("kabin") or a.get("tags.kabin")):
+            inv[o.host] = {"service": str(a.get("inventory_service") or svc or ""), "dc": str(a.get("tags.veri_merkezi") or a.get("veri_merkezi") or ""),
+                           "rack": str(a.get("tags.kabin") or a.get("kabin") or ""), "env": str(a.get("tags.ortam") or a.get("ortam") or ""),
+                           "criticality": str(a.get("is_kritikligi") or "")}
+    return list(deps.values()), inv
