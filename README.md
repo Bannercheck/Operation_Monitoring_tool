@@ -214,6 +214,7 @@ Dil: sol üstte 🇹🇷 / 🇬🇧 anahtarı; arayüz, anlatı, gerekçe ve ön
 | `.streamlit/config.toml` | 1 GB yükleme sınırı, koyu tema |
 | `Dockerfile`, `docker-compose.yml` | `dashboard` (8501) ve `mcp` (8765) servisleri; `./data` → `/data`, `actions.db` paylaşımı |
 | `samples/demo_mixed.zip` | Üretilmiş demo veri seti |
+| `docs/bulgular.md` | S-A1 paketi bulgu raporu: özet tablo (5 kart, ilk aksiyon, sahip, müdahale sırası) + olay başına ayrıntı (ne oldu, nerede, kök neden gerekçesi, karşı olasılıklar, zaman aşımı hedefleri, nasıl bitti, ilk aksiyon), gürültü analizi, bağımlılık / envanter katkısı, kısıtlar |
 | `docs/plan.md`, `docs/fazlar.md`, `docs/mimari.md`, `docs/AI_LOG.md` | Hedef / kapsam / riskler / demo akışı; fazlar ve etkinlik günü saatleri; mimari, veri modeli, ADR; AI kullanım kaydı |
 | `AI_JURI.md`, `submission.json` | Jüri için yapılandırılmış özet; teslim künyesi |
 | `prompts/` | Uygulamayı şekillendiren 9 kritik prompt (amaç, model, tarih, prompt, çıktı) |

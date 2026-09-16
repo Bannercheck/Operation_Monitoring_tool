@@ -97,7 +97,9 @@ RECOMMENDATIONS: dict[str, list[str]] = {
     "toplu is penceresi": ["Çakışan toplu işleri (reconciliation-batch / report-batch) durdur veya sırala; batch-scheduler pencerelerini ayır",
                            "subscriber-db bağlantı havuzunu geçici olarak artır, uzun süren sorguları sonlandır", "Batch pencereleri için çakışma korumasını zamanlayıcıya ekle"],
     "baglanti havuzu": ["Havuzu tüketen istemciyi bul (batch işleri), gerekirse havuz boyutunu geçici artır", "Uzun süren sorguları sonlandır"],
-    "outofmemory": ["Servisi yeniden başlat, heap limitini artır, bellek sızıntısını araştır"],
+    "outofmemory": ["Servisi kontrollü yeniden başlat (sunucu sunucu), heap limitini artır, bellek sızıntısını araştır (heap dump)", "Bağımlı servislerde (auth-service) session çağrılarına zaman aşımı + devre kesici"],
+    "gc duraklama": ["Servisi kontrollü yeniden başlat (sunucu sunucu), heap limitini artır, bellek sızıntısını araştır (heap dump)", "GC ve heap metriklerinde erken uyarı eşiği ekle"],
+    "heap": ["Servisi kontrollü yeniden başlat, heap limitini artır, sızıntıyı araştır"],
     # generic (English datasets)
     "timeout": ["Check connection pool exhaustion on the dependency", "Verify network path / DNS to the target"],
     "latency": ["Inspect slow queries and locks", "Check CPU / IO saturation on the host"],
