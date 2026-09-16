@@ -19,7 +19,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from signal_sprint.actions import PRIORITIES, STATUSES, ActionStore
-from signal_sprint.analysis import Analysis, interesting, llm_prompt, postmortem_md, signal_dict
+from signal_sprint.analysis import Analysis, interesting, llm_prompt, postmortem_md, signal_dict, suggested_owner
 from signal_sprint.connectors import fetch_http, fetch_mcp, mcp_tools, parse_headers
 from signal_sprint.live import LiveStore, start_receiver, start_simulator
 from signal_sprint.itsm import SYSTEMS, correlate as correlate_tickets, demo_tickets, fetch_generic
@@ -158,6 +158,7 @@ def load(name: str, data: bytes | None = None, path: str | None = None, mapping:
                 "mapping": mapping or {}, "elapsed": time.perf_counter() - t0, "loaded_at": datetime.now(UTC)}
     activate_dataset(key)
     record_auto_recoveries(analysis, key)
+    record_first_actions(analysis, key)
     playbook().record(analysis, key)
     rec = st.session_state.setdefault("recent", [])
     if key not in rec:
@@ -206,6 +207,20 @@ def incident_flashcard(inc, a: Analysis, key: str) -> None:
     rk = rc.get("kind", "unknown")
     rcol = {"restart": "#3ddc84", "self_healed": "#3ddc84", "stopped": "#f2d55c", "ongoing": "#ff5c5c"}.get(rk, "#8b93a1")
     chain = " → ".join([f"{root.id} {esc(root.template[:40])}"] + [f"{x.id} {esc(x.template[:40])}" for x in symptoms[:4]])
+    alts_html = ""
+    if inc.root_cause_alternatives:
+        alts_html = f'<div class="fc-row"><b>{t("fc_alts")}</b><ul style="margin:4px 0 0 18px">' + "".join(
+            f'<li><span class="mono">{esc(x["signal"])}</span> "{esc(x["template"][:70])}" ({esc(", ".join(x["services"][:2]))}) · {t("fc_alt_score")} {x["score"]:.1f} — {esc(reason_text(x["codes"]))}</li>'
+            for x in inc.root_cause_alternatives[:3]) + "</ul></div>"
+    group_html = ""
+    if getattr(a, "mode", "") == "density" and a.storm.get("clusters"):
+        cl = next((c for c in a.storm["clusters"] if any(o.attributes.get("alarm_id") == root.observations[0].attributes.get("alarm_id") for o in c["obs"])), None)
+        if cl:
+            cells = sorted(cl["hot"].items(), key=lambda kv: kv[0][1])
+            t0 = a.storm["t0"]; bm = a.storm["bucket_min"]
+            cell_txt = ", ".join(f"{svc} {(t0 + timedelta(minutes=b * bm)):%H:%M} ({h['count']}, {t('fc_median')} {h['median']:.0f})" for (svc, b), h in cells[:8])
+            more = f" … +{len(cells) - 8}" if len(cells) > 8 else ""
+            group_html = f'<div class="fc-row"><b>{t("fc_group")}</b> · {t("fc_group_how", n=len(cells), m=bm)} {esc(cell_txt)}{more}' + (f' · {t("fc_pruned", n=cl.get("pruned", 0))}' if cl.get("pruned") else "") + "</div>"
     total = sum(a.signal_by_id[x].count for x in inc.signal_ids)
     recs = "".join(f"<li>{esc(recommendation_text(r))}</li>" for r in inc.recommendations)
     resolved = recovery_label(rk) + (f' · {esc(rc.get("recovered_at") or "")[11:19]} · <span class="mono">{esc(rc.get("evidence") or "")}</span> · {esc(rc.get("what") or "")[:120]}' if rc.get("evidence") else "")
@@ -222,7 +237,7 @@ def incident_flashcard(inc, a: Analysis, key: str) -> None:
 <div class="fc-row"><b>{t('fc_where')}</b> · {t('environment')}: {esc(', '.join(f'{e} ({n})' for e, n in og.get('environments', {}).items()))} · {t('services').lower()}: {esc(', '.join(og.get('services', [])) or '-')} · {t('hosts')}: {esc(', '.join(og.get('hosts', [])) or '-')} · {t('sources')}: {esc(', '.join(f'{k} ({v})' for k, v in list(og.get('files', {}).items())[:4]))}{(' · ' + t('origin_col') + ': ' + esc(', '.join(og.get('origins', {})))) if og.get('origins') else ''}</div>
 <div class="fc-row"><b>{t('fc_when')}</b> · {t('fc_started')} <span class="mono">{tm.get('first_signal', '')[11:19]}</span> · {t('fc_last')} <span class="mono">{tm.get('last_error', '')[11:19]}</span> · {t('fc_lasted')} <b>{tm.get('duration_s', 0) / 60:.1f} min</b> · {t('quiet')} {rc.get('quiet_min', 0)} min</div>
 <div class="fc-row"><b>{t('fc_resolved')}</b> · <span style="color:{rcol};font-weight:700">{resolved}</span></div>
-<div class="fc-row"><b>{t('fc_todo')}</b><ul style="margin:4px 0 0 18px">{recs}</ul></div>{seen}</div>""", unsafe_allow_html=True)
+<div class="fc-row"><b>{t('fc_todo')}</b> <span class="muted">· {t('fc_owner')}: {esc(suggested_owner(inc, root))}</span><ul style="margin:4px 0 0 18px">{recs}</ul></div>{alts_html}{group_html}{seen}</div>""", unsafe_allow_html=True)
     b1, b2, _ = st.columns([1, 1, 3])
     if b1.button(t("fc_open"), key=f"fc-open-{key}-{inc.id}", **wide("button")):
         st.session_state["inc_pick"] = inc.id
@@ -252,6 +267,22 @@ def incidents_table(incidents: list, key: str, a: Analysis):
 
 def recovery_label(kind: str) -> str:
     return t("rec_" + kind) if kind in ("restart", "self_healed", "stopped", "ongoing") else t("rec_unknown")
+
+
+def record_first_actions(a: Analysis, dataset: str) -> int:
+    """Every card gets its recommended first action on record: owner + open status (deduplicated per dataset + incident)."""
+    st_ = store()
+    existing = {x["evidence"] for x in st_.list()}
+    n = 0
+    for inc in a.incidents:
+        tag = f"first:{dataset}:{inc.id}"
+        if tag in existing or not inc.recommendations:
+            continue
+        root = a.signal_by_id[inc.root_cause_signal]
+        prio = "P1" if inc.severity == "critical" else "P2" if inc.severity == "high" else "P3"
+        st_.create(inc.id, t("first_action_title", rec=inc.recommendations[0][:110]), prio, suggested_owner(inc, root), inc.recommendations[0], tag)
+        n += 1
+    return n
 
 
 def record_auto_recoveries(a: Analysis, dataset: str) -> int:
@@ -1002,7 +1033,8 @@ a: Analysis = st.session_state["analysis"]
 prof = st.session_state["profile"]
 f = a.funnel()
 st.caption(f"{t('ds_loaded')}: {st.session_state['dataset']} · {st.session_state.get('elapsed', 0):.1f}s")
-tab_over, tab_sig, tab_inc, tab_act = st.tabs([t("tab_overview"), f"{t('tab_signals')} · {f['fingerprints']}", f"{t('tab_incidents')} · {f['incidents']}", f"{t('tab_actions')} · {len(store().list())}"])
+na = a.noise_audit()
+tab_over, tab_sig, tab_inc, tab_act, tab_noise = st.tabs([t("tab_overview"), f"{t('tab_signals')} · {f['fingerprints']}", f"{t('tab_incidents')} · {f['incidents']}", f"{t('tab_actions')} · {len(store().list())}", f"{t('tab_noise')} · {na['eliminated']}"])
 
 # ------------------------------------------------------------------ overview
 @st.cache_data(show_spinner=False)
@@ -1424,3 +1456,42 @@ with tab_act:
                     store().update(act["id"], status=new); st.rerun()
                 if b2.button("✕", key=f"del-{act['id']}"):
                     store().delete(act["id"]); st.rerun()
+
+
+with tab_noise:
+    st.markdown(f"#### {t('tab_noise')} <span class='muted'>· {t('noise_sub')}</span>", unsafe_allow_html=True)
+    k = st.columns(5)
+    k[0].markdown(kpi2(f"{na['total']:,}", t("raw_events"), "📥", "#6b9bd2", ""), unsafe_allow_html=True)
+    k[1].markdown(kpi2(len(a.incidents), t("noise_cards"), "🗂", "#3ddc84", f"{t('inc_cap')} {__import__('signal_sprint.scenario', fromlist=['x']).MAX_INCIDENTS}"), unsafe_allow_html=True)
+    k[2].markdown(kpi2(f"{na['on_cards']:,}", t("noise_on_cards"), "📌", "#ffb347", f"{na['on_cards'] / max(1, na['total']):.0%}"), unsafe_allow_html=True)
+    k[3].markdown(kpi2(f"{na['eliminated']:,}", t("noise_eliminated"), "🧹", "#8b93a1", f"{na['eliminated'] / max(1, na['total']):.0%}"), unsafe_allow_html=True)
+    k[4].markdown(kpi2(f"1 : {na['total'] / max(1, len(a.incidents)):.0f}", t("noise_ratio"), "📉", "#3ddc84", f"{na['total']} → {len(a.incidents)}"), unsafe_allow_html=True)
+    if na["totals"]:
+        st.markdown("**" + t("noise_reason") + "** · " + " · ".join(f"{t(k_)}: **{v:,}**" for k_, v in na["totals"].items()), unsafe_allow_html=True)
+    if getattr(a, "mode", "") == "density" and a.storm.get("cells") is not None:
+        st.markdown(f"**{t('noise_heat')}** <span class='muted'>· {t('noise_heat_sub')}</span>", unsafe_allow_html=True)
+        t0, bm = a.storm["t0"], a.storm["bucket_min"]
+        counts = Counter((o.service or "-", int((o.timestamp - t0).total_seconds() // (bm * 60))) for o in a.observations)
+        hot = a.storm["cells"]
+        heat = pd.DataFrame([{"service": svc, "bucket": (t0 + timedelta(minutes=b * bm)).strftime("%H:%M"), "alarms": n, "hot": (svc, b) in hot,
+                              "threshold": hot.get((svc, b), {}).get("threshold", None)} for (svc, b), n in counts.items()])
+        svc_tot = Counter()
+        for (svc, b), n in counts.items():
+            svc_tot[svc] += n
+        order = [s_ for s_, _ in svc_tot.most_common()]
+        base = alt.Chart(heat).encode(x=alt.X("bucket:O", title=None, axis=alt.Axis(labelAngle=0)), y=alt.Y("service:N", sort=order, title=None))
+        st.altair_chart((base.mark_rect().encode(color=alt.Color("alarms:Q", scale=alt.Scale(scheme="inferno"), legend=alt.Legend(title=t("env_events"))),
+                                                 tooltip=["service", "bucket", "alarms", "hot", "threshold"])
+                         + base.transform_filter(alt.datum.hot == True).mark_rect(fill=None, stroke="#3ddc84", strokeWidth=2.5))
+                        .properties(height=22 * max(8, len(order))).configure_view(strokeWidth=0), **wide("altair_chart"))
+    rows = na["rows"]
+    if rows:
+        df_n = pd.DataFrame([{t("signal_id"): r["signal"], t("noise_reason"): t(r["reason"]), t("severity"): r["severity"], t("od_count"): r["count"],
+                              t("service"): r["services"], t("hosts"): r["hosts"], t("od_first"): r["first"].strftime("%H:%M"), t("od_last"): r["last"].strftime("%H:%M"),
+                              t("od_template"): r["template"]} for r in sorted(rows, key=lambda r: -r["count"])])
+        st.dataframe(df_n, hide_index=True, **wide("dataframe"), height=420)
+    if a.demoted:
+        st.markdown(f"**{t('noise_low_groups')}**")
+        st.dataframe(pd.DataFrame([{"id": i.id, t("severity"): i.severity, t("od_count"): sum(a.signal_by_id[x].count for x in i.signal_ids), t("service"): ", ".join(i.affected_services[:4]),
+                                    t("od_first"): i.started_at.strftime("%H:%M"), t("od_last"): i.ended_at.strftime("%H:%M"), t("od_template"): i.title[:80]} for i in a.demoted]),
+                     hide_index=True, **wide("dataframe"))

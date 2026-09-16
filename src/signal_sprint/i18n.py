@@ -38,6 +38,15 @@ STRINGS: dict[str, dict[str, str]] = {
         "root_cause": "root cause", "symptom": "symptom",
         "r_earliest": "earliest onset in the group", "r_lead": "starts {n} min after the first signal",
         "r_dep": "mentions an infrastructure dependency", "r_fan": "shares entities with {n} other signal(s)",
+        "r_provider": "{n} other signal(s) come from services that depend on it", "r_consumer": "its service depends on {n} other signal(s) in the group (downstream symptom)",
+        "n_demoted": "grouped, but below the card budget", "n_low": "below WARN and no burst (background chatter)", "n_isolated": "no time / entity / dependency link to anything", "n_baseline": "within the service's normal alarm rate (no burst on service or host)", "n_small": "dense spot too small for a card (< 15 alarms or < 3 ERROR+)", "r_cause": "alarm type '{n}' is a typical cause, not a symptom", "r_first_cause": "first cause-type alarm of the group", "r_rack": "rack-wide network event: {n} report link loss / packet loss", "r_rack_hint": "rack {n} also shows network alarms", "cell_link": "same time window, {gap}s apart",
+        "fc_alts": "Counter-hypotheses", "fc_alt_score": "score", "fc_owner": "owner", "fc_group": "Why this group", "fc_median": "median",
+        "fc_group_how": "{n} hot cell(s) of {m}-min buckets where a service or host fired far above its own median rate, linked by same service / declared dependency / same rack:",
+        "fc_pruned": "{n} background alarms of these services were handed back to noise", "first_action_title": "First action: {rec}",
+        "noise_heat": "Service × time density", "noise_heat_sub": "alarms per 5-min bucket; green outline = hot cell (≥ max(4, 3× the service's median)); everything outside hot cells is noise",
+        "noise_low_groups": "Dense spots too small for a card", "signal_id": "signal", "tab_noise": "Noise audit", "noise_sub": "every alarm that is not on a card, and why",
+        "noise_eliminated": "alarms eliminated", "noise_on_cards": "alarms on cards", "noise_cards": "cards", "noise_ratio": "reduction", "noise_reason": "reason",
+        "dep_link": "declared dependency {a} → {b}, {gap}s apart", "inc_cap": "card budget",
         "n_collapsed": "{events} raw events collapsed into {signals} signal(s) between {start} and {end}.",
         "n_origin": "Probable origin: {sig} \"{template}\" because: {reason}.", "n_symptoms": "Downstream symptoms: {items}.",
         "n_links": "Links: {items}.", "shared_entity": "shared entity {ents}, {gap}s apart", "both_burst": "both burst within {gap}s",
@@ -174,6 +183,15 @@ STRINGS: dict[str, dict[str, str]] = {
         "root_cause": "kök neden", "symptom": "belirti",
         "r_earliest": "gruptaki en erken başlangıç", "r_lead": "ilk sinyalden {n} dk sonra başlıyor",
         "r_dep": "bir altyapı bağımlılığından bahsediyor", "r_fan": "{n} başka sinyalle ortak varlık paylaşıyor",
+        "r_provider": "gruptaki {n} sinyal ona bağımlı servislerden geliyor", "r_consumer": "servisi gruptaki {n} sinyalin servisine bağımlı (aşağı akış belirtisi)",
+        "n_demoted": "gruplandı ama kart bütçesinin altında kaldı", "n_low": "WARN altı ve patlama yok (arka plan gürültüsü)", "n_isolated": "hiçbir şeyle zaman / varlık / bağımlılık bağı yok", "n_baseline": "servisinin normal alarm hızı içinde (servis ya da sunucuda patlama yok)", "n_small": "yoğunluk noktası kart için küçük (< 15 alarm ya da < 3 ERROR+)", "r_cause": "'{n}' alarm tipi belirti değil tipik bir neden", "r_first_cause": "grubun ilk neden-tipi alarmı", "r_rack": "kabin geneli ağ olayı: {n} arayüz kopması / paket kaybı bildiriyor", "r_rack_hint": "{n} kabininde de ağ alarmları var", "cell_link": "aynı zaman penceresi, {gap} sn arayla",
+        "fc_alts": "Karşı olasılıklar", "fc_alt_score": "puan", "fc_owner": "sahip", "fc_group": "Neden bu grup", "fc_median": "medyan",
+        "fc_group_how": "{m} dk'lık kovalarda bir servis ya da sunucunun kendi medyan hızının çok üstünde alarm bastığı {n} sıcak hücre; aynı servis / tanımlı bağımlılık / aynı kabin ile bağlandı:",
+        "fc_pruned": "bu servislerin {n} arka plan alarmı gürültüye geri verildi", "first_action_title": "İlk aksiyon: {rec}",
+        "noise_heat": "Servis × zaman yoğunluğu", "noise_heat_sub": "5 dk'lık kovada alarm sayısı; yeşil çerçeve = sıcak hücre (≥ maks(4, servis medyanının 3 katı)); sıcak hücre dışındaki her şey gürültü",
+        "noise_low_groups": "Kart için küçük kalan yoğunluk noktaları", "signal_id": "sinyal", "tab_noise": "Gürültü denetimi", "noise_sub": "karta girmeyen her alarm ve neden girmediği",
+        "noise_eliminated": "elenen alarm", "noise_on_cards": "karttaki alarm", "noise_cards": "kart", "noise_ratio": "indirgeme", "noise_reason": "neden",
+        "dep_link": "tanımlı bağımlılık {a} → {b}, {gap} sn arayla", "inc_cap": "kart bütçesi",
         "n_collapsed": "{events} ham olay, {start} ile {end} arasında {signals} sinyale indirgendi.",
         "n_origin": "Olası kaynak: {sig} \"{template}\", çünkü: {reason}.", "n_symptoms": "Aşağı akış belirtileri: {items}.",
         "n_links": "Bağlar: {items}.", "shared_entity": "ortak varlık {ents}, {gap} sn arayla", "both_burst": "ikisi de {gap} sn içinde patladı",
@@ -348,6 +366,10 @@ def reason_text(codes: list, lang: str | None = None) -> str:
 def link_text(e: dict, lang: str | None = None) -> str:
     if e.get("ents"):
         return t("shared_entity", lang, ents=", ".join(e["ents"]), gap=e["gap"])
+    if e.get("dep"):
+        return t("dep_link", lang, a=e["dep"][0], b=e["dep"][1], gap=e["gap"])
+    if e.get("cell"):
+        return t("cell_link", lang, gap=e["gap"])
     return t("both_burst", lang, gap=e["gap"])
 
 

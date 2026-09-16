@@ -6,13 +6,14 @@ Works without any LLM. `llm_prompt()` builds an evidence bundle for optional enr
 from __future__ import annotations
 
 import hashlib
+import math
 import re
 from collections import Counter, defaultdict
 from dataclasses import asdict
 from datetime import timedelta
 
 from .models import SEV_RANK, Factor, Incident, Observation, Signal
-from . import scenario
+from . import scenario, storm, tables
 from .i18n import link_text, narrative_text, reason_text
 
 # ---------------------------------------------------------------- fingerprint
@@ -67,8 +68,15 @@ def template_of(message: str) -> str:
     return _WS.sub(" ", t).lower()[:200]
 
 
+DEP_PATTERNS = [re.compile(p, re.I) for p in getattr(scenario, "DEP_PATTERNS", [])]
+
+
 def entities_of(o: Observation) -> set[str]:
     ents = {x.lower() for x in ENTITY_RE.findall(o.message)}
+    for pat in DEP_PATTERNS:
+        m = pat.search(o.message)
+        if m:
+            ents.add(m[1].lower())
     ents.update(x for x in (o.service.lower(), o.host.lower()) if x)
     for k, v in o.attributes.items():
         if isinstance(v, str) and re.fullmatch(r"[\w.\-]{3,40}", v) and \
@@ -102,6 +110,11 @@ def build_signals(observations: list[Observation]) -> list[Signal]:
                      entities=ents, first_seen=obs[0].timestamp, last_seen=obs[-1].timestamp, onset=obs[0].timestamp,
                      observations=obs)
         score_burst(sig, span_min)
+        sig.span_share = round(((obs[-1].timestamp - obs[0].timestamp).total_seconds() / 60 + 1) / span_min, 3)
+        racks = {str(o.attributes.get("tags.kabin") or o.attributes.get("kabin") or "") for o in obs[:ENTITY_SAMPLE]}
+        dcs = {str(o.attributes.get("tags.veri_merkezi") or o.attributes.get("veri_merkezi") or "") for o in obs[:ENTITY_SAMPLE]}
+        if len(racks) == 1 and len(dcs) == 1 and racks != {""}:
+            sig.entities.add(f"rack:{dcs.pop()}/{racks.pop()}")      # whole signal sits in one rack: rack-level incidents link on it
         signals.append(sig)
     return signals
 
@@ -123,13 +136,47 @@ def score_burst(sig: Signal, span_min: int) -> None:
 
 
 # ---------------------------------------------------------------- correlation
+def span_share(s: Signal) -> float:
+    """Share of the dataset window this signal stays active in (set by build_signals)."""
+    return getattr(s, "span_share", 0.0)
+
+
+def chronic(s: Signal) -> bool:
+    """Steady chatter over most of the window with no burst: background, not an event (even when ERROR)."""
+    return span_share(s) >= scenario.CHRONIC_SPAN and s.burst_score < 0.3 and s.count >= 8
+
+
+def sustained(s: Signal) -> bool:
+    """Slow-burn candidate: WARN, many alarms, confined to one service, not chronic chatter."""
+    return s.severity == "WARN" and s.count >= scenario.SUSTAINED_MIN and len(s.hosts) <= 2 and not chronic(s)
+
+
 def interesting(s: Signal) -> bool:
-    return SEV_RANK[s.severity] >= SEV_RANK[MIN_SEVERITY] or s.burst_score >= 0.5
+    if chronic(s):
+        return False
+    min_sev = scenario.MIN_SEVERITY or MIN_SEVERITY
+    return SEV_RANK[s.severity] >= SEV_RANK[min_sev] or s.burst_score >= 0.5 or sustained(s)
 
 
-def correlate(signals: list[Signal], window_min: int | None = None) -> list[tuple[list[Signal], list[dict]]]:
-    """Union-find over signals. Edge = onsets within the window AND (shared entity OR both bursting)."""
+def dep_pairs(deps: list[dict] | None) -> set[tuple[str, str]]:
+    return {(d["source"].lower(), d["target"].lower()) for d in (deps or [])}
+
+
+def dep_link(a: Signal, b: Signal, pairs: set[tuple[str, str]]) -> tuple[str, str] | None:
+    """(dependent, provider) if a service of one signal depends on a service of the other (either direction)."""
+    for x in a.services:
+        for y in b.services:
+            if (x.lower(), y.lower()) in pairs:
+                return (x, y)
+            if (y.lower(), x.lower()) in pairs:
+                return (y, x)
+    return None
+
+
+def correlate(signals: list[Signal], window_min: int | None = None, deps: list[dict] | None = None) -> list[tuple[list[Signal], list[dict]]]:
+    """Union-find over signals. Edge = onsets within the window AND (shared entity OR declared dependency OR both bursting)."""
     window_min = window_min or scenario.WINDOW_MIN or WINDOW_MIN
+    pairs = dep_pairs(deps)
     cand = [s for s in signals if interesting(s)]
     parent = {s.id: s.id for s in cand}
 
@@ -143,14 +190,19 @@ def correlate(signals: list[Signal], window_min: int | None = None) -> list[tupl
     win = timedelta(minutes=window_min)
     for i, a in enumerate(cand):
         for b in cand[i + 1:]:
-            if abs(a.onset - b.onset) > win:
+            # time link: activity intervals overlap or sit within the window of each other (slow burns stay linkable)
+            lo, hi = max(a.first_seen, b.first_seen), min(a.last_seen, b.last_seen)
+            if lo - hi > win:
                 continue
             shared = a.entities & b.entities
             gap = abs((a.onset - b.onset).total_seconds())
             edge = None
+            dl = dep_link(a, b, pairs) if pairs else None
             if shared:
                 edge = {"a": a.id, "b": b.id, "ents": sorted(shared)[:3], "gap": f"{gap:.0f}"}
-            elif a.burst_score >= 0.5 and b.burst_score >= 0.5:
+            elif dl:
+                edge = {"a": a.id, "b": b.id, "ents": [], "dep": dl, "gap": f"{gap:.0f}"}
+            elif scenario.LINK_BURST_ONLY and a.burst_score >= 0.5 and b.burst_score >= 0.5:
                 edge = {"a": a.id, "b": b.id, "ents": [], "gap": f"{gap:.0f}"}
             if edge:
                 edge["why"] = link_text(edge, "en")
@@ -166,31 +218,84 @@ def correlate(signals: list[Signal], window_min: int | None = None) -> list[tupl
     return out
 
 
-def pick_root_cause(members: list[Signal]) -> tuple[Signal, list]:
-    """Earliest onset weighs most; then dependency words in the template, fan-out, severity."""
+def pick_root_cause(members: list[Signal], deps: list[dict] | None = None, density: bool = False) -> tuple[Signal, list, list]:
+    """Earliest onset weighs most; then being a provider others depend on, dependency words, fan-out, severity.
+
+    Returns (root, reason codes, alternatives) where alternatives are the runner-up hypotheses with their own codes.
+    """
     words = DEPENDENCY_WORDS + scenario.EXTRA_DEPENDENCY_WORDS
+    pairs = dep_pairs(deps)
     earliest = members[0].onset
+    # storm helpers: the first cause-type alarm of the group, and a rack-wide network event (many hosts of one rack)
+    cause_onsets = [m.onset for m in members if scenario.CAUSE_RANK.get(str(m.observations[0].attributes.get("alarm_type", "")).lower(), 0) >= 2] if density else []
+    first_cause_onset = min(cause_onsets) if cause_onsets else None
+    rack_root = None
+    if density:
+        rack_hosts: dict[str, set] = defaultdict(set)
+        rack_sigs: dict[str, list] = defaultdict(list)
+        for m in members:
+            o0 = m.observations[0]
+            if str(o0.attributes.get("alarm_type", "")).lower() in scenario.INFRA_TYPES and str(o0.attributes.get("alarm_type", "")).lower() != "ntp_drift":
+                rack = f"{o0.attributes.get('tags.veri_merkezi') or o0.attributes.get('veri_merkezi') or ''}/{o0.attributes.get('tags.kabin') or o0.attributes.get('kabin') or ''}"
+                if rack.strip("/"):
+                    rack_hosts[rack] |= set(m.hosts)
+                    rack_sigs[rack].append(m.id)
+        if rack_hosts:
+            rack, hosts = max(rack_hosts.items(), key=lambda kv: len(kv[1]))
+            if len(hosts) >= scenario.RACK_MIN_HOSTS:
+                rack_root = {"rack": rack, "hosts": len(hosts), "signals": set(rack_sigs[rack])}
     ranked = []
     for s in members:
         lead_min = (s.onset - earliest).total_seconds() / 60
         dep = int(any(w in s.template for w in words))
         fan = sum(1 for o in members if o is not s and (o.entities & s.entities))
-        score = -lead_min * 3 + dep * 1.5 + fan * 0.3 + SEV_RANK[s.severity] * 0.3
-        ranked.append((score, s, lead_min, dep, fan))
+        # provider: how many other members' services depend on one of this signal's services (they suffer when it breaks)
+        provider = sum(1 for o in members if o is not s and any((y.lower(), x.lower()) in pairs for x in s.services for y in o.services))
+        consumer = sum(1 for o in members if o is not s and any((x.lower(), y.lower()) in pairs for x in s.services for y in o.services))
+        atype = str(s.observations[0].attributes.get("alarm_type", "")).lower() if s.observations else ""
+        cause = scenario.CAUSE_RANK.get(atype, None)
+        if cause is None:
+            cause = 0.0
+        if density:
+            # storm mode: what kind of alarm it is matters more than who fired first (noise fires first, too)
+            first_cause = 1.5 if cause >= 2 and s.onset == first_cause_onset else 0.0
+            rack_bonus = 2.5 if rack_root and s.id in rack_root["signals"] else 0.0
+            score = (cause * 1.2 + SEV_RANK[s.severity] * 0.8 + math.log1p(s.count) * 0.6 - lead_min * 0.4 + dep * 0.5
+                     + min(provider, 3) * 0.6 - min(consumer, 3) * 0.6 + fan * 0.05 + first_cause + rack_bonus)
+            if first_cause:
+                codes_extra = ["r_first_cause"]
+            else:
+                codes_extra = []
+            if rack_bonus:
+                codes_extra.append(("r_rack", f"{rack_root['rack']} ({rack_root['hosts']} host)"))
+        else:
+            codes_extra = []
+            score = -lead_min * 3 + dep * 1.5 + fan * 0.3 + SEV_RANK[s.severity] * 0.3 + provider * 2.0 - consumer * 1.0
+        codes: list = ["r_earliest"] if lead_min == 0 else [("r_lead", f"{lead_min:.0f}")]
+        codes += codes_extra
+        if cause >= 3:
+            codes.append(("r_cause", atype))
+        if provider:
+            codes.append(("r_provider", provider))
+        if consumer and not provider:
+            codes.append(("r_consumer", consumer))
+        if dep:
+            codes.append("r_dep")
+        if fan:
+            codes.append(("r_fan", fan))
+        ranked.append((round(score, 2), s, codes))
     ranked.sort(key=lambda r: -r[0])
-    _, s, lead, dep, fan = ranked[0]
-    codes: list = ["r_earliest"] if lead == 0 else [("r_lead", f"{lead:.0f}")]
-    if dep:
-        codes.append("r_dep")
-    if fan:
-        codes.append(("r_fan", fan))
-    return s, codes
+    _, s, codes = ranked[0]
+    alts = [{"signal": r[1].id, "score": r[0], "codes": r[2], "template": r[1].template, "services": r[1].services} for r in ranked[1:4]]
+    if rack_root:
+        codes.append(("r_rack_hint", rack_root["rack"])) if not any(isinstance(c, tuple) and c[0] == "r_rack" for c in codes) else None
+    return s, codes, alts
 
 
 # ---------------------------------------------------------------- scoring + explanation
-def build_incident(n: int, members: list[Signal], edges: list[dict]) -> Incident:
+def build_incident(n: int, members: list[Signal], edges: list[dict], deps: list[dict] | None = None, density: bool = False) -> Incident:
     weights = scenario.WEIGHTS or WEIGHTS
-    root, codes = pick_root_cause(members)
+    root, codes, alts = pick_root_cause(members, deps, density)
     why = reason_text(codes, "en")
     services = sorted({x for s in members for x in s.services})
     hosts = sorted({x for s in members for x in s.hosts})
@@ -218,11 +323,14 @@ def build_incident(n: int, members: list[Signal], edges: list[dict]) -> Incident
     recs = [r for key, lst in scenario.RECOMMENDATIONS.items() if key in root.template for r in lst][:4] or \
            ["Investigate the root-cause signal's evidence lines", "Confirm blast radius with service owners"]
     head = root.template or (root.observations[0].raw or root.observations[0].message or "").strip()[:70] or "(no message)"
-    title = head[:70] + (f" ({', '.join(services[:3])})" if services else "")
+    rack = next((c[1] for c in codes if isinstance(c, tuple) and c[0] == "r_rack"), None)
+    if rack:
+        head = f"{rack.split(' (')[0]} kabin ağ olayı: {head}"
+    title = head[:90] + (f" ({', '.join(services[:3])}{'…' if len(services) > 3 else ''})" if services else "")
     inc = Incident(id=f"INC-{n}", title=title, severity=severity, score=score, root_cause_signal=root.id, root_cause_reason=why,
                    affected_services=services, affected_hosts=hosts, started_at=start, ended_at=end,
                    signal_ids=[s.id for s in members], factors=factors, evidence=evidence, timeline=timeline,
-                   links=edges, narrative="", recommendations=recs, root_cause_codes=codes)
+                   links=edges, narrative="", recommendations=recs, root_cause_codes=codes, root_cause_alternatives=alts)
     inc.narrative = narrative_text(inc, {s.id: s for s in members}, "en")
     return inc
 
@@ -290,21 +398,107 @@ def llm_prompt(inc: Incident, signals: dict[str, Signal]) -> str:
 
 
 # ---------------------------------------------------------------- orchestration
+def storm_edges(sigs: list[Signal], c: dict, deps: list[dict]) -> list[dict]:
+    """Explain why each signal of a density cluster belongs with the others (root-first star of links)."""
+    if not sigs:
+        return []
+    pairs = dep_pairs(deps)
+    root = sigs[0]
+    edges = []
+    for s in sigs[1:]:
+        gap = f"{abs((s.onset - root.onset).total_seconds()):.0f}"
+        shared = sorted(root.entities & s.entities)[:3]
+        dl = dep_link(root, s, pairs)
+        if shared:
+            edges.append({"a": root.id, "b": s.id, "ents": shared, "gap": gap})
+        elif dl:
+            edges.append({"a": root.id, "b": s.id, "ents": [], "dep": dl, "gap": gap})
+        else:
+            edges.append({"a": root.id, "b": s.id, "ents": [], "gap": gap, "cell": True})
+        edges[-1]["why"] = link_text(edges[-1], "en")
+    return edges
+
+
 class Analysis:
     def __init__(self, observations: list[Observation], report: list[dict]):
         self.observations, self.report = observations, report
+        self.dependencies = tables.dependencies(report)          # declared service dependencies (may be empty)
+        self.inventory = tables.inventory(report)                # host -> dc / rack / env / criticality (may be empty)
         fingerprint(observations)
-        self.signals = sorted(build_signals(observations), key=lambda s: (-s.burst_score, -SEV_RANK[s.severity], -s.count))
-        comps = [(m, e) for m, e in correlate(self.signals) if len(m) > 1 or SEV_RANK[m[0].severity] >= 3 or m[0].burst_score >= 0.5]
-        incs = sorted((build_incident(i, m, e) for i, (m, e) in enumerate(comps, 1)), key=lambda i: -i.score)
+        mode = scenario.CLUSTERING
+        self.mode = "density" if mode == "density" or (mode == "auto" and self.dependencies) else "fingerprint"
+        self.storm: dict = {}
+        self.noise_obs: list[Observation] = []
+        if self.mode == "density":
+            self.storm = storm.cluster(observations, self.dependencies, self.inventory)
+            self.noise_obs = self.storm["noise"]
+            comps, all_sigs, n = [], [], 0
+            for c in self.storm["clusters"]:
+                if scenario.PRUNE_BACKGROUND:
+                    self.noise_obs += storm.prune_background(c, observations)
+                if len(c["obs"]) < scenario.MIN_CLUSTER_ALARMS or sum(1 for o in c["obs"] if SEV_RANK[o.severity] >= 3) < scenario.MIN_CLUSTER_ERRORS:
+                    c["small"] = True
+                sigs = sorted(build_signals(c["obs"]), key=lambda s: (s.first_seen, -SEV_RANK[s.severity]))
+                for sg in sigs:
+                    n += 1
+                    sg.id = f"S{n}"
+                all_sigs += sigs
+                if sigs:
+                    comps.append((sigs, storm_edges(sigs, c, self.dependencies), c.get("small", False)))
+            noise_sigs = build_signals(self.noise_obs)
+            for sg in noise_sigs:
+                n += 1
+                sg.id = f"S{n}"
+            self.signals = sorted(all_sigs + noise_sigs, key=lambda s: (-s.burst_score, -SEV_RANK[s.severity], -s.count))
+        else:
+            self.signals = sorted(build_signals(observations), key=lambda s: (-s.burst_score, -SEV_RANK[s.severity], -s.count))
+            comps = [(m, e, False) for m, e in correlate(self.signals, deps=self.dependencies)
+                     if len(m) > 1 or SEV_RANK[m[0].severity] >= 3 or m[0].burst_score >= 0.5]
+        built = [(build_incident(i, m, e, self.dependencies, self.mode == "density"), small) for i, (m, e, small) in enumerate(comps, 1)]
+        incs = sorted((inc for inc, small in built if not small), key=lambda i: -i.score)
+        small_incs = [inc for inc, small in built if small]
+        cap = scenario.MAX_INCIDENTS or len(incs)
+        self.demoted = incs[cap:] + small_incs                   # beyond the card budget or too small: audit, not cards
+        incs = incs[:cap]
+        self.small_ids: set[str] = set()
         sig_by_id = {s.id: s for s in self.signals}
         for n, inc in enumerate(incs, 1):
             inc.id = f"INC-{n}"
             explain_incident(inc, [sig_by_id[x] for x in inc.signal_ids], observations)
+        for n, inc in enumerate(self.demoted, 1):
+            inc.id = f"LOW-{n}"
+            if inc in small_incs:
+                self.small_ids.add(inc.id)
         self.incidents = incs
         self.signal_by_id = {s.id: s for s in self.signals}
         self.incident_by_id = {i.id: i for i in self.incidents}
+
         self.obs_by_ref = {o.ref: o for o in observations}
+
+    def noise_audit(self) -> dict:
+        """Why each alarm that is not on a card was left out. Rows per signal, totals per reason."""
+        in_card = {sid for i in self.incidents for sid in i.signal_ids}
+        demoted = {sid: i.id for i in self.demoted for sid in i.signal_ids}
+        rows = []
+        for s in self.signals:
+            if s.id in in_card:
+                continue
+            if s.id in demoted:
+                reason = "n_small" if demoted[s.id] in self.small_ids else "n_demoted"
+            elif self.mode == "density":
+                reason = "n_baseline"                            # inside its service's normal alarm rate: no hot cell
+            elif not interesting(s):
+                reason = "n_low"                                 # below WARN and no burst: background chatter
+            else:
+                reason = "n_isolated"                            # interesting but linked to nothing in its window
+            rows.append({"signal": s.id, "reason": reason, "group": demoted.get(s.id, ""), "severity": s.severity, "count": s.count,
+                         "burst": round(s.burst_score, 2), "services": ", ".join(s.services[:3]), "hosts": len(s.hosts),
+                         "first": s.first_seen, "last": s.last_seen, "template": s.template})
+        totals = Counter()
+        for r in rows:
+            totals[r["reason"]] += r["count"]
+        on_cards = sum(i.total_events if hasattr(i, "total_events") else sum(self.signal_by_id[x].count for x in i.signal_ids) for i in self.incidents)
+        return {"rows": rows, "totals": dict(totals), "eliminated": sum(totals.values()), "on_cards": on_cards, "total": len(self.observations)}
 
     def funnel(self) -> dict:
         return {"raw_events": len(self.observations), "fingerprints": len(self.signals),
@@ -322,3 +516,12 @@ def incident_dict(inc: Incident) -> dict:
     d = asdict(inc)
     d["started_at"], d["ended_at"] = inc.started_at.isoformat(), inc.ended_at.isoformat()
     return d
+
+
+def suggested_owner(inc: Incident, root: Signal) -> str:
+    """Owner of the card's first action, from scenario.OWNERS by root service / rack hint."""
+    key = " ".join(root.services).lower() + (" rack" if any(isinstance(c, tuple) and c[0] == "r_rack" for c in inc.root_cause_codes) else "")
+    for sub, owner in scenario.OWNERS.items():
+        if sub in key:
+            return owner
+    return scenario.DEFAULT_OWNER

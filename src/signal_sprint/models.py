@@ -101,6 +101,7 @@ class Incident:
     narrative: str
     recommendations: list[str] = field(default_factory=list)
     root_cause_codes: list = field(default_factory=list)   # i18n reason codes, e.g. ["r_earliest", ("r_fan", 3)]
+    root_cause_alternatives: list = field(default_factory=list)   # [{"signal": id, "score": float, "codes": [...]}] runner-up hypotheses
     origin: dict = field(default_factory=dict)             # where: {"files": {name: count}, "services": [...], "hosts": [...], "agents": [...]}
     timing: dict = field(default_factory=dict)             # first_signal, last_error, duration_s, quiet_s, dataset_end
     recovery: dict = field(default_factory=dict)           # kind: self_healed | restart | ongoing | unknown; recovered_at; evidence; what

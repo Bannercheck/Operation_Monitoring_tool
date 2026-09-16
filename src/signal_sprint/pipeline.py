@@ -11,7 +11,7 @@ from .loader import iter_bytes, iter_path
 from .models import Observation
 from .normalize import auto_map
 from .parsers import PARSERS
-from . import scenario
+from . import scenario, tables
 
 
 def ingest(files: Iterator[tuple[str, str]], mapping: dict | None = None) -> tuple[list[Observation], list[dict]]:
@@ -19,6 +19,11 @@ def ingest(files: Iterator[tuple[str, str]], mapping: dict | None = None) -> tup
     observations: list[Observation] = []
     report: list[dict] = []
     for fname, text in files:
+        if tables.is_side_table(fname):        # reference data (dependencies, inventory, dictionary): kept, not parsed as events
+            rows = tables.read_table(fname, text)
+            report.append({"file": fname, "format": "table", "confidence": 1.0, "rows": len(rows), "kind": "table",
+                           "keys": list(rows[0].keys()) if rows else [], "roles": {}, "table": rows})
+            continue
         fmt, conf = detect_format(text)
         parser = PARSERS[fmt]
         head = [r for _, r in itertools.islice(parser.records(text), 50)]
@@ -30,9 +35,43 @@ def ingest(files: Iterator[tuple[str, str]], mapping: dict | None = None) -> tup
         observations.extend(rows)
         report.append({"file": fname, "format": fmt, "confidence": conf, "rows": len(rows),
                        "kind": rows[0].kind if rows else "-", "keys": keys, "roles": roles})
+    observations = dedupe(observations, report)
     fill_missing_timestamps(observations)
     observations.sort(key=lambda o: o.timestamp)
     return observations, report
+
+
+def dedupe(observations: list[Observation], report: list[dict]) -> list[Observation]:
+    """The same events shipped in two formats (alarms.json + alarms.csv): keep one per DEDUP_KEY, prefer DEDUP_PREFER."""
+    key = scenario.DEDUP_KEY
+    if not key:
+        return observations
+    keep: dict[str, Observation] = {}
+    order: list[str] = []
+    dropped: dict[str, int] = {}
+    passthrough: list[Observation] = []
+    for o in observations:
+        k = o.attributes.get(key)
+        if k in (None, ""):
+            passthrough.append(o)
+            continue
+        k = str(k)
+        if k not in keep:
+            keep[k] = o
+            order.append(k)
+        else:
+            cur = keep[k]
+            if o.parser == scenario.DEDUP_PREFER and cur.parser != scenario.DEDUP_PREFER:
+                dropped[cur.source] = dropped.get(cur.source, 0) + 1
+                keep[k] = o
+            else:
+                dropped[o.source] = dropped.get(o.source, 0) + 1
+    if not dropped:
+        return observations
+    for entry in report:
+        if entry["file"] in dropped:
+            entry["dedup_dropped"] = dropped[entry["file"]]
+    return passthrough + [keep[k] for k in order]
 
 
 def fill_missing_timestamps(observations: list[Observation]) -> None:

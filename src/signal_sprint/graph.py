@@ -12,6 +12,7 @@ from __future__ import annotations
 import re
 from collections import Counter, defaultdict
 
+from . import scenario
 from .models import SEV_RANK, Observation
 
 DEP_RE = re.compile(
@@ -25,10 +26,16 @@ PALETTE = {"root": "#ff5c5c", "affected": "#ffb347", "erroring": "#f2d55c", "cle
 def dependency_edges(observations: list[Observation], errors_only: bool = True) -> Counter:
     """(service -> dependency) counts from message text. Skips self references."""
     out: Counter = Counter()
+    extra = [re.compile(p, re.I) for p in getattr(scenario, "DEP_PATTERNS", [])]
     for o in observations:
         if errors_only and SEV_RANK[o.severity] < 3:
             continue
         m = DEP_RE.search(o.message)
+        if not m:
+            for pat in extra:
+                m = pat.search(o.message)
+                if m:
+                    break
         if not m or not o.service:
             continue
         target = m[1].lower()
@@ -123,7 +130,10 @@ def build_map(analysis, incident_id: str | None = None, env: str | None = None, 
             chain.append(r)
             nxt += sorted(x for x in rev.get(r, []) if x not in seen)
         frontier = nxt
-    return {"nodes": nodes, "deps": [{"from": s, "to": d, "n": n} for (s, d), n in deps.most_common()],
+    declared = [{"from": d["source"], "to": d["target"], "n": 0, "type": d.get("type", ""), "declared": True}
+                for d in getattr(analysis, "dependencies", []) or []
+                if d["source"] in services and d["target"] in services and (d["source"], d["target"]) not in deps]
+    return {"nodes": nodes, "deps": [{"from": s, "to": d, "n": n} for (s, d), n in deps.most_common()] + declared,
             "corr": [{"a": a, "b": b, "ents": sorted(v["ents"]), "gap": v["gap"]} for (a, b), v in corr.items()],
             "hosts": hosts, "root": sorted(root_svcs), "affected": sorted(affected), "chain": chain,
             "incidents": [i.id for i in incs], "errors_total": sum(errs.values())}
@@ -278,7 +288,7 @@ D.groups.forEach(g=>{const x=D.hpos[g.hosts[0]][0];root.appendChild(el("rect",{x
 function addEdge(a,b,x1,y1,x2,y2,attrs,label,lcolor){const p=el("path",Object.assign({d:curve(x1,y1,x2,y2),class:"edge"},attrs));root.appendChild(p);const t=el("text",{x:(x1+x2)/2,y:(y1+y2)/2-6,class:"elabel","text-anchor":"middle",fill:lcolor||"#c9d1d9"},label);root.appendChild(t);edgeEls.push({a,b,els:[p,t]})}
 D.hosts.forEach(h=>{const [x1,y1]=D.hpos[h.host],[x2,y2]=D.pos[h.service]||[0,0];addEdge(h.host,h.service,x1+60,y1,x2-NW/2,y2,{stroke:"#4a5361","stroke-width":.8+Math.min(h.errors,30)/20,"marker-end":"url(#ag)"},String(h.errors),"#8b93a1")});
 D.corr.forEach(e=>{const [x1,y1]=D.pos[e.a],[x2,y2]=D.pos[e.b];addEdge(e.a,e.b,x1,y1-NH/2,x2,y2-NH/2,{stroke:"#6b9bd2","stroke-width":1.2,"stroke-dasharray":"5 4"},(e.ents.slice(0,2).join(", ")+(e.gap?` · ${e.gap}s`:"")),"#9fb3c8")});
-D.deps.forEach(e=>{const [x1,y1]=D.pos[e.from],[x2,y2]=D.pos[e.to];const left=x1<x2;addEdge(e.from,e.to,left?x1+NW/2:x1-NW/2,y1,left?x2-NW/2:x2+NW/2,y2,{stroke:"#ff5c5c","stroke-width":1+Math.min(e.n,40)/10,"marker-end":"url(#ar)",class:"edge pulse"},`${e.n}× ${L.dep}`,"#ff9b9b")});
+D.deps.forEach(e=>{const [x1,y1]=D.pos[e.from],[x2,y2]=D.pos[e.to];const left=x1<x2;if(e.declared){addEdge(e.from,e.to,left?x1+NW/2:x1-NW/2,y1,left?x2-NW/2:x2+NW/2,y2,{stroke:"#a78bfa","stroke-width":1,"stroke-dasharray":"2 3","marker-end":"url(#ag)"},e.type||"",'#a78bfa')}else{addEdge(e.from,e.to,left?x1+NW/2:x1-NW/2,y1,left?x2-NW/2:x2+NW/2,y2,{stroke:"#ff5c5c","stroke-width":1+Math.min(e.n,40)/10,"marker-end":"url(#ar)",class:"edge pulse"},`${e.n}× ${L.dep}`,"#ff9b9b")}});
 // hosts
 for(const h in D.hpos){const [x,y]=D.hpos[h];const g=el("g",{class:"host node"});g.appendChild(el("ellipse",{cx:x,cy:y,rx:60,ry:17}));g.appendChild(el("text",{x,y:y+4,"text-anchor":"middle"},h));g.addEventListener("click",ev=>{ev.stopPropagation();focus(h)});root.appendChild(g);nodeEls[h]=g}
 // services
@@ -302,8 +312,8 @@ function reset(){sel=null;for(const n in nodeEls)nodeEls[n].classList.remove("di
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
 function show(id){const n=nodeOf[id];let h="";if(n){h+=`<h3>${esc(id)}</h3><span class="pill" style="background:${D.pal[n.kind]}">${esc(L["kind_"+n.kind])}</span> <span style="color:#8b93a1;font-size:12px">${n.errors} ${L.errors}</span>`;
 const out=D.deps.filter(e=>e.from===id),inn=D.deps.filter(e=>e.to===id),hs=D.hosts.filter(x=>x.service===id);
-if(out.length)h+=`<div class="k">${L.depends_on}</div>`+out.map(e=>`<div>→ <b>${esc(e.to)}</b> <span style="color:#ff9b9b">${e.n}×</span></div>`).join("");
-if(inn.length)h+=`<div class="k">${L.depended_by}</div>`+inn.map(e=>`<div>← <b>${esc(e.from)}</b> <span style="color:#ff9b9b">${e.n}×</span></div>`).join("");
+if(out.length)h+=`<div class="k">${L.depends_on}</div>`+out.map(e=>`<div>→ <b>${esc(e.to)}</b> <span style="color:${e.declared?'#a78bfa':'#ff9b9b'}">${e.declared?(e.type||'·'):e.n+'×'}</span></div>`).join("");
+if(inn.length)h+=`<div class="k">${L.depended_by}</div>`+inn.map(e=>`<div>← <b>${esc(e.from)}</b> <span style="color:${e.declared?'#a78bfa':'#ff9b9b'}">${e.declared?(e.type||'·'):e.n+'×'}</span></div>`).join("");
 if(hs.length)h+=`<div class="k">${L.on_hosts}</div><div>`+hs.map(x=>`${esc(x.host)} <span style="color:#8b93a1">(${x.errors})</span>`).join(" · ")+"</div>";
 const sg=D.signals[id]||[];if(sg.length)h+=`<div class="k">${sg.length} ${L.signals}</div>`+sg.map(s=>`<div class="sig"><b style="color:${s.color}">${esc(s.severity)}</b> <span style="color:#8b93a1">×${s.count}${s.hosts?" · "+esc(s.hosts):""}</span><div class="mono">${esc(s.template)}</div></div>`).join("")}
 else{const hs=D.hosts.filter(x=>x.host===id);h+=`<h3>${esc(id)}</h3><span class="pill" style="background:#6b9bd2">${L.host}</span>`+(hs.length?`<div class="k">${L.errors}</div>`+hs.map(x=>`<div><b>${esc(x.service)}</b> <span style="color:#ff9b9b">${x.errors}</span> <span style="color:#8b93a1">· ${esc(x.env)}</span></div>`).join(""):"")}

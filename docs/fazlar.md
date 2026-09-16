@@ -38,7 +38,7 @@
 - [x] Ekran görüntüleri (`demo/`)
 - [ ] Demo videosu
 - [x] `AI_JURI.md` ve `submission.json`
-- [ ] Etkinlik günü veri setine `scenario/` ayarı
+- [x] Etkinlik günü veri setine `scenario/` ayarı (S-A1: şiddet ölçeği, yan tablolar, tekilleştirme, yoğunluk kümeleme, nedensellik öncelikleri, öneriler, sahipler)
 
 **Çıktı:** Teslime hazır paket
 
@@ -46,12 +46,8 @@
 
 | Saat | İş |
 |---|---|
-| 14:20–14:30 | `signal-sprint data.zip --inspect`: dosyalar, formatlar, roller |
-| 14:30–14:45 | Dashboard'a yükle, profil ve rol tahminini kontrol et |
-| 14:45–15:10 | Gerekirse `scenario.MAPPING` / yeni parser |
-| 15:10–15:50 | `scenario`: pencere, ağırlıklar, bağımlılık kelimeleri, maskeler, SLO |
-| 15:50–16:25 | Öneriler, isteğe bağlı LLM zenginleştirme |
-| 16:25–16:50 | Demo verisi ile aksiyon akışı provası |
-| 16:50–17:10 | Edge case, testler |
-| 17:10–17:25 | README, AI_JURI, sunum |
-| 17:25 | Code freeze, push, GitHub doğrulama |
+| 14:30–14:50 | Veri sözlüğü ve briefing okundu; servis × 5 dk yoğunluk tablosuyla 4 olay ve gürültü yapısı çıkarıldı |
+| 14:50–15:40 | Yan tablolar, tekilleştirme, şiddet ölçeği; şablon bazlı gruplamanın tek karta yığdığı görüldü → yoğunluk kümeleyici (`storm.py`) |
+| 15:40–16:10 | Kök neden: nedensellik önceliği, ilk neden-tipi alarm, kabin ağ olayı; karşı olasılıklar; kart eşiği ve arka plan budama |
+| 16:10–16:40 | Arayüz: karşı olasılıklar ve "neden bu grup", sahipli ilk aksiyon kaydı, gürültü denetimi sekmesi ve ısı haritası; tarayıcı doğrulaması |
+| 16:40–17:10 | README / AI_JURI / fazlar, ekran görüntüleri, testler (32), push |

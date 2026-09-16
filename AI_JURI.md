@@ -2,7 +2,9 @@
 
 ## 1. Tek Cümlelik Özet
 
-Signal Sprint, SRE ekiplerinin binlerce log / alarm / metrik satırındaki gürültüyü birkaç gerekçeli incident'a indirip her birini kanıtıyla açıklayan ve aksiyona bağlayan, çalışma zamanında LLM gerektirmeyen bir karar destek uygulamasıdır.
+Signal Sprint, S-A1 alarm fırtınasındaki 3.000 alarmı gerekçeli 4 olay kartına indiren (kök neden + karşı olasılıklar + sahipli ilk aksiyon + gürültü denetimi), çalışma zamanında LLM gerektirmeyen bir SRE karar destek uygulamasıdır.
+
+**S-A1 sonucu:** 3.000 alarm → 4 kart · 1.793 alarm gerekçesiyle elendi · analiz 0,4 sn. Kartlar: (1) 02:33 payment-provider-gw dış servis erişilemiyor → payment-service / mobile-bff / order-service zaman aşımı ve işlem hataları; (2) 02:04 billing-db disk dolu → tablespace genişletilemedi → bağlantı havuzu → billing / charging / invoice-batch; (3) 01:33 dc1/rack-A kabin ağ olayı (9 sunucuda link kopması / paket kaybı; DNS ve auth o kabinde) → 16 servise yayılan zaman aşımı dalgası; (4) 03:05 batch penceresi çakışması → subscriber-db bağlantı havuzu tükenmesi → subscriber-service gecikmesi (yavaş gelişen). Neden 4 kart: veride yoğunluğu servisin kendi medyanının 3 katını aşan dört bağımsız zaman-topoloji bölgesi var; bunun dışındaki her sıcak nokta 15 alarmdan küçük ve kart olmuyor.
 
 ## 2. Problem Tanımı
 
@@ -33,7 +35,7 @@ Detay için [docs/mimari.md](docs/mimari.md).
 
 | Alan | Nasıl Kullanıldı |
 |------|------------------|
-| Geliştirme | Tüm kod, testler ve belgeler Claude Fable 5.1 (Claude Cowork) ile üretildi; her adım `docs/AI_LOG.md`'de araç + sürüm + tarih + iş olarak kayıtlı, dosya bazında "AI aracı" sütunu `README.md`'de. |
+| Geliştirme | Tüm kod, testler ve belgeler Claude Fable 5.1 (Claude Cowork) ile üretildi; etkinlik günü iş bölümü: veri keşfi ve hipotezler (yoğunluk tabloları) + kümeleme / kök neden kurallarının tasarımı AI ile, eşik ve öncelik kararları (3× medyan, 15 alarm, nedensellik sırası, kart sayısı) insan onayıyla; her adım `docs/AI_LOG.md`'de araç + sürüm + tarih + iş olarak kayıtlı, dosya bazında "AI aracı" sütunu `README.md`'de. |
 | Ürün içi | Çekirdek deterministik, LLM zorunlu değil. İsteğe bağlı: OpenAI uyumlu yerel / bulut LLM ile incident açıklaması ("LLM ile açıkla"), Claude SAKA'ya yapıştırılabilir kanıt paketi (prompt bundle). |
 | Entegrasyon | Motor bir MCP sunucusu olarak dışa açılır (`mcp_server.py`, 8 araç); Claude Desktop veya başka bir MCP istemcisi veri setini analiz ettirebilir. |
 
@@ -48,7 +50,9 @@ Kritik prompt'lar: [prompts/](prompts/)
 
 ## 7. Teknik Zorluk
 
-En zor kısım bilinmeyen formatı bozmadan ve hızlı işlemek oldu: iç içe JSON (Alertmanager) tek kayıt sanılıyordu, zamanı olmayan satırlar grafiği 56 yıla yayıyordu, dateutil ile satır başına tarih parse 31 sn sürüyordu. Çözüm: özyinelemeli kayıt bulma, "zamansız" işaretleyip en erken zamana doldurma, `fromisoformat` → şekil önbellekli `strptime` → dateutil sıralı hızlı yol ve dokuz maskeleme regex'ini tek birleşik regex'e indirme (6 sn). İkinci zorluk ticket ilişkilendirmesinin her ticket'ı her sinyale bağlamasıydı; ortak varlık veya en az iki özgül anahtar kelime şartı ve okunur etiketlerle çözüldü.
+Etkinlik günü asıl zorluk alarm fırtınasının yapısıydı: bir olay onlarca alarm tipine ve şiddete yayılırken arka plan gürültüsü her servise sabit hızda ve ERROR / CRITICAL seviyede de geliyordu. Mesaj şablonu bazlı gruplama ortak servis adları üzerinden her şeyi tek karta zincirledi (ilk deneme: 3.000 alarm → 1 kart). Çözüm, gruplamayı şablondan yoğunluğa taşımak oldu: servis × 5 dk hücrelerinde medyana göre anomali, sonra bağımlılık tablosu ve kabin bilgisiyle bağlama; küme içinde normal hızındaki alarm tiplerini gürültüye geri verme; kök neden için "en erken" yerine alarm tipinin nedensellik önceliği + ilk neden-tipi alarm + bağımlılık yönü. Sentetik bir S-A1 paketiyle (samples/make_alarm_storm.py, doğrulama etiketli) gürültü eleme kesinliği %97 ölçüldü.
+
+Önceki zorluk: bilinmeyen formatı bozmadan ve hızlı işlemek oldu: iç içe JSON (Alertmanager) tek kayıt sanılıyordu, zamanı olmayan satırlar grafiği 56 yıla yayıyordu, dateutil ile satır başına tarih parse 31 sn sürüyordu. Çözüm: özyinelemeli kayıt bulma, "zamansız" işaretleyip en erken zamana doldurma, `fromisoformat` → şekil önbellekli `strptime` → dateutil sıralı hızlı yol ve dokuz maskeleme regex'ini tek birleşik regex'e indirme (6 sn). İkinci zorluk ticket ilişkilendirmesinin her ticket'ı her sinyale bağlamasıydı; ortak varlık veya en az iki özgül anahtar kelime şartı ve okunur etiketlerle çözüldü.
 
 ## 8. Tamamlanma Durumu
 
@@ -61,8 +65,8 @@ En zor kısım bilinmeyen formatı bozmadan ve hızlı işlemek oldu: iç içe J
 | ITSM (ServiceNow / Jira / OneDesk / REST) ilişkilendirme | ✅ Tamam |
 | HTTP API / MCP veri kaynağı, MCP sunucusu, Docker | ✅ Tamam |
 | İsteğe bağlı LLM açıklaması | ✅ Tamam |
-| TR / EN arayüz, 30 pytest testi | ✅ Tamam |
-| Etkinlik günü veri setine `scenario/` ayarı | 🚧 Etkinlik günü |
+| TR / EN arayüz, 32 pytest testi | ✅ Tamam |
+| S-A1 paketi: yan tablolar, tekilleştirme, yoğunluk kümeleme, kök neden + karşı olasılıklar, ilk aksiyon kaydı, gürültü denetimi | ✅ Tamam |
 
 ## 9. Çalıştırma Talimatı
 

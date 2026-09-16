@@ -211,3 +211,26 @@ def test_error_map_from_demo():
     dot = to_dot(m, {"root": "KÖK NEDEN"})
     assert dot.startswith("digraph") and "KÖK NEDEN" in dot and '"checkout-api" -> "payment-api"' in dot
     build_map(a, None, env="nope")   # unknown env never raises
+
+
+def test_alert_storm_density_clustering():
+    """S-A1 layout: side tables, dedupe, density clustering, card budget, noise precision on the synthetic storm."""
+    import json
+    obs, rep = ingest_path(str(ROOT / "samples" / "alarm_storm.zip"))
+    assert len(obs) == 3000 and [r for r in rep if r["file"] == "alarms.csv"][0]["dedup_dropped"] == 3000
+    assert [r for r in rep if r["file"] == "service_dependencies.csv"][0]["kind"] == "table"
+    a = an.Analysis(obs, rep)
+    assert a.mode == "density" and len(a.dependencies) == 32 and len(a.inventory) >= 50
+    assert 3 <= len(a.incidents) <= 15
+    truth = json.loads((ROOT / "samples" / "alarm_storm_truth.json").read_text())
+    noise_ids = [o.attributes["alarm_id"] for o in a.noise_obs]
+    assert sum(1 for i in noise_ids if truth[i] == "noise") / len(noise_ids) >= 0.95
+    by_label = {}
+    for inc in a.incidents:
+        ids = [o.attributes["alarm_id"] for sid in inc.signal_ids for o in a.signal_by_id[sid].observations]
+        top = max(set(truth[i] for i in ids), key=lambda l: sum(1 for i in ids if truth[i] == l))
+        by_label[top] = inc
+    root_a = a.signal_by_id[by_label["A"].root_cause_signal]
+    assert root_a.services == ["payment-db"] and by_label["A"].root_cause_alternatives
+    na = a.noise_audit()
+    assert na["eliminated"] + na["on_cards"] == 3000 and set(na["totals"]) <= {"n_baseline", "n_small", "n_demoted"}

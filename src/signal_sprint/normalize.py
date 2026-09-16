@@ -117,6 +117,16 @@ def parse_timestamp(value: Any) -> datetime | None:
     return dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt
 
 
+def column_severity(value: Any, use_scale: bool = True) -> str:
+    """Severity taken from a dataset column: the scenario's own numeric scale wins (S-A1: 1-5), then the generic rules.
+    use_scale=False for parsers whose numbers already have a fixed meaning (syslog PRI)."""
+    from . import scenario
+    s = str(value).strip().lower() if value is not None else ""
+    if use_scale and s in scenario.SEVERITY_MAP:
+        return scenario.SEVERITY_MAP[s]
+    return normalize_severity(value)
+
+
 def normalize_severity(value: Any) -> str:
     if value is None:
         return "INFO"

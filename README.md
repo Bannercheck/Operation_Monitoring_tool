@@ -75,6 +75,20 @@ GPL-3.0 (bkz. `LICENSE`)
 
 # Uygulama kılavuzu
 
+## 0. S-A1 "Alarm Fırtınası" senaryosu nasıl işleniyor
+
+Veri paketi (alarms.json, alarms.csv, service_dependencies.csv, host_inventory.csv, VERI_SOZLUGU.md) tek bir ZIP olarak Datasets sayfasından yüklenir; paket repoya eklenmez.
+
+1. **Yan tablolar** (`tables.py`): adı `depend` / `inventory` / `sozlugu` / `brifing` geçen dosyalar olay değil referans tablosudur; bağımlılık (kaynak → hedef, tip, kritiklik) ve envanter (host → servis, dc, kabin, kritiklik) motorun içine alınır.
+2. **Tekilleştirme** (`pipeline.dedupe`): alarms.json ve alarms.csv aynı 3.000 alarmı taşır; `alarm_id` ile tek kopya tutulur (json tercih), rapor kaç satırın düşüldüğünü yazar. Zorunlu gereksinim 01: 3.000 alarmın tamamı işlenir.
+3. **Şiddet ölçeği** (`scenario.SEVERITY_MAP`): sözlükteki 1 = bilgi … 5 = kritik ölçeği DEBUG…CRITICAL'e eşlenir.
+4. **Yoğunluk kümeleme** (`storm.py`, `scenario.CLUSTERING = "auto"`: bağımlılık tablosu varsa devreye girer): pencere 5 dk'lık kovalara bölünür; bir servis (veya sunucu) kovada kendi medyan hızının 3 katını (en az 4) aşarsa hücre "sıcak"tır. Sıcak hücreler aynı servis / tanımlı bağımlılık / aynı kabin (ağ tipli alarmlar) ile ve en fazla bir kova arayla bağlanır; bağlı hücreler bir olaydır. Olayın alarmları üye servislerin o zaman aralığındaki alarmlarıdır; kendi normal hızında kalan (servis, alarm tipi) çiftleri gürültüye geri verilir. 15 alarmdan az ya da 3 ERROR+ içermeyen yoğunluk noktaları kart olmaz (LOW-n, gürültü denetiminde listelenir). Kart bütçesi `MAX_INCIDENTS = 15`.
+5. **Kök neden** (`analysis.pick_root_cause`, yoğunluk modu): alarm tipine göre nedensellik önceliği (`CAUSE_RANK`: ağ > disk > veritabanı > dış servis > kaynak > uygulama belirtisi) + şiddet + adet + grubun ilk neden-tipi alarmı olma + bağımlılık tablosunda başkalarının ona bağımlı olması − başkasına bağımlı olması − geç başlama. Bir kabinin ≥ 3 sunucusunda ağ alarmı varsa kabin düzeyi ağ olayı sayılır. En iyi 3 rakip hipotez puan ve gerekçesiyle **karşı olasılıklar** olarak karta yazılır.
+6. **İlk aksiyon** (`record_first_actions`): her kart için kök neden şablonuna göre öneri (`scenario.RECOMMENDATIONS`), sahip (`scenario.OWNERS`: DBA / ağ / ödeme entegrasyon / batch / nöbetçi) ve **açık** durumla aksiyon kaydı otomatik açılır; Aksiyonlar sekmesinde durum değiştirilir (gereksinim 04–05).
+7. **Gürültü denetimi** sekmesi: ham olay → kart → karttaki / elenen alarm sayıları, indirgeme oranı, her elenen sinyal için neden (normal hız içinde / küçük yoğunluk noktası / kart bütçesi dışı), servis × zaman ısı haritası (sıcak hücreler çerçeveli), kart için küçük kalan gruplar.
+
+Bu paketle sonuç: 3.000 alarm → 4 kart (02:33 payment-provider-gw dış servis kesintisi; 02:04 billing-db disk dolu → tablespace; 01:33 dc1/rack-A kabin ağ olayı; 03:05 batch penceresi çakışması → subscriber-db bağlantı havuzu), 1.793 alarm gerekçesiyle elendi, analiz 0,4 sn. Kullanılan ek kütüphane yok; korelasyon tamamen bu depodaki kodla yapılır.
+
 ## 1. Kurulum ve çalıştırma
 
     python3 -m venv .venv && source .venv/bin/activate
@@ -169,9 +183,11 @@ Dil: sol üstte 🇹🇷 / 🇬🇧 anahtarı; arayüz, anlatı, gerekçe ve ön
 | `connectors.py` | CF5.1 | Veri kaynağı bağlayıcıları | `fetch_http()` GET / POST, başlıklar, JSON yolu (`dig()`), içerik türünden dosya adı; `McpClient` MCP streamable-HTTP JSON-RPC (initialize → notifications/initialized → tools/list, tools/call; Mcp-Session-Id, SSE cevap); `fetch_mcp()` bir aracın çıktısını veri seti yapar; `mcp_tools()`; `parse_headers()` |
 | `llm.py` | CF5.1 | LLM istemcisi | `LLMConfig` (base_url, model, api_key); `list_models()` `/models`; `chat()` `/chat/completions`; `test_connection()`. Çekirdek buna bağlı değil |
 | `graph.py` | CF5.1 | Hata haritası motoru | `DEP_RE` hata mesajlarından bağımlılık hedefi çıkarır (upstream / to / from / calling + servis adı, db-01, postgres, redis…); `dependency_edges()` (servis → hedef) sayaçları; `build_map(analysis, incident_id, env, host, with_hosts)` düğümler (tür: root / affected / erroring / clean, ERROR+ sayısı), bağımlılık bağları (sunucu adı o sunucudaki incident servisine eşlenir), incident `links`'ten servis-servis ilişki bağları, sunucu → servis bağları (ortamıyla), kök nedenden geriye yürüyen `chain`; `layout()` katmanlı yerleşim (sunucular ortam gruplarında solda, bağımlılar → kök neden sağda); `to_html()` harici kütüphanesiz etkileşimli SVG sayfası (kaydırma / yakınlaştırma, düğüme tıklayınca odaklanma + komşuları vurgulama + detay paneli, seçimi `window.name` ile yeniden çizimler arasında koruma); `to_dot()` Graphviz DOT dışa aktarımı |
+| `storm.py` | CF5.1 | Alarm fırtınası kümeleyici | `cluster()`: 5 dk'lık kovalarda servis ve sunucu başına sayım, medyanın 3 katını aşan sıcak hücreler, aynı servis / bağımlılık / aynı kabin ile bağlama (union-find), olay alarmları ve gürültü; `prune_background()` küme içinde normal hızındaki (servis, tip) çiftlerini gürültüye geri verir |
+| `tables.py` | CF5.1 | Yan tablolar | `is_side_table()` dosya adından referans tablosu tespiti, `read_table()` CSV / JSON okuma, `dependencies()` (kaynak → hedef, tip, kritiklik; sütun adları `scenario.DEP_COLUMNS`), `inventory()` (host → servis, dc, kabin, ortam, kritiklik) |
 | `i18n.py` | CF5.1 | TR / EN metinler | `STRINGS` sözlüğü; `t()` aktif dil; `reason_text()`, `link_text()`, `narrative_text()`, `factor_value()`, `recommendation_text()` motor kodlarını dile çevirir; `RECOMMENDATIONS_TR` |
 | `cli.py` | CF5.1 | Komut satırı | `inspect()` dosya başına format, roller, zaman aralığı, seviye, sütun profili; `summary()`; `main()` `signal-sprint <path> [--inspect] [--json]` |
-| `scenario/__init__.py` | CF5.1 | Yapılandırma | `MAPPING`, `EXTRA_MASKS`, `EXTRA_DEPENDENCY_WORDS`, `WINDOW_MIN`, `WEIGHTS`, `RECOMMENDATIONS`, `SLO`, `SLA`, `METRIC_THRESHOLDS` (cpu 85, gpu 95, memory 90, disk 90). Veri setine özel her ayar burada |
+| `scenario/__init__.py` (S-A1 ayarları: SEVERITY_MAP, SIDE_TABLES, DEDUP_KEY, MAX_INCIDENTS, CLUSTERING / BUCKET_MIN / HOT_MIN / HOT_RATIO / HOST_HOT_MIN / PAD_MIN / INFRA_TYPES / RACK_MIN_HOSTS / MIN_CLUSTER_ALARMS / MIN_CLUSTER_ERRORS / PRUNE_BACKGROUND, CAUSE_RANK, DEP_PATTERNS, RECOMMENDATIONS, OWNERS) | CF5.1 | Yapılandırma | `MAPPING`, `EXTRA_MASKS`, `EXTRA_DEPENDENCY_WORDS`, `WINDOW_MIN`, `WEIGHTS`, `RECOMMENDATIONS`, `SLO`, `SLA`, `METRIC_THRESHOLDS` (cpu 85, gpu 95, memory 90, disk 90). Veri setine özel her ayar burada |
 
 ### Testler (`tests/`)
 

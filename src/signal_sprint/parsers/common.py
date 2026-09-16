@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Iterator
 
 from ..models import Observation
-from ..normalize import UTC, auto_map, infer_environment, normalize_environment, normalize_severity, parse_timestamp, severity_from_text
+from ..normalize import UTC, auto_map, column_severity, infer_environment, normalize_environment, parse_timestamp, severity_from_text
 
 HEAD = 50  # records used to resolve the schema
 MISSING_TS = datetime.fromtimestamp(0, tz=UTC)  # placeholder, replaced in pipeline.ingest
@@ -36,7 +36,7 @@ def records_to_observations(records: Iterator[tuple[int, dict]], source: str, pa
             last_ts = ts
         msg = str(rec.get(roles["message"]) or "") if roles["message"] else " ".join(f"{k}={v}" for k, v in rec.items())
         sev_raw = rec.get(roles["severity"]) if roles["severity"] else None
-        sev = normalize_severity(sev_raw) if sev_raw not in (None, "") else severity_from_text(msg)
+        sev = column_severity(sev_raw, use_scale=parser != "syslog") if sev_raw not in (None, "") else severity_from_text(msg)
         service = str(rec.get(roles["service"]) or "") if roles["service"] else ""
         host = str(rec.get(roles["host"]) or "") if roles["host"] else ""
         env = normalize_environment(rec.get(roles["environment"])) if roles.get("environment") else ""
