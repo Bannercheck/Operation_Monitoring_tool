@@ -1,12 +1,67 @@
 # Signal Sprint
 
-Operasyonel gürültüyü sinyallere, sinyalleri gerekçeli incident'lara, incident'ları takip edilen aksiyonlara çeviren
-SRE karar destek uygulaması. Log / olay / alarm / metrik / ticket verisini dosyadan, API'den, MCP sunucusundan ya da
-canlı ajanlardan alır; deterministik bir motorla analiz eder; her kararı kanıt satırlarıyla açıklar. Çalışma zamanında
-LLM veya bulut servisi gerekmez; LLM opsiyonel zenginleştirmedir.
+## Proje Adı
+
+**Signal Sprint** — operasyonel gürültüyü sinyale, sinyali gerekçeli incident'a, incident'ı takip edilen aksiyona çeviren SRE karar destek uygulaması.
+
+## Problem
+
+Kesinti anında farklı formatlarda (JSON, CSV, syslog, key=value, düz metin, Alertmanager, ticket) on binlerce satır akar. Aynı hatanın tekrarları gerçek sinyali gömer; "neden bu alarm önemli", "ne zaman başladı, düzeldi mi", "kök neden ne" soruları elle ve kanıtsız cevaplanır; aksiyonlar takip edilmez, aynı hata bir sonraki nöbette yeniden öğrenilir.
+
+## Çözüm
+
+Log / olay / alarm / metrik / ticket verisini dosyadan, HTTP API'den, MCP sunucusundan ya da canlı ajanlardan alır; formatı kendisi tanır, sütunları rollere eşler, tek bir kanonik modele indirger. Tekrarları maskeleme + parmak iziyle tek sinyale indirir, patlamaları ölçer, ilişkili sinyalleri incident'ta toplar, kök nedeni ve önem puanını faktörleriyle açıklar; her karar satır düzeyinde kanıt taşır. Incident flashcard'ı (ne oldu / neden / nerede / ne zaman / nasıl düzeldi / ne yapmalı / daha önce görüldü mü), aksiyon kanbanı, playbook, ITSM ticket ilişkilendirmesi ve canlı operasyon sayfası (CPU / GPU / bellek / disk, SLO / SLA, ortam ve sunucu kapsamı, her kartın detayı) sunar. Çekirdek deterministiktir; çalışma zamanında LLM veya bulut servisi gerekmez, LLM isteğe bağlı zenginleştirmedir.
+
+Jüri özeti: [AI_JURI.md](AI_JURI.md) · Mimari: [docs/mimari.md](docs/mimari.md) · Plan ve fazlar: [docs/plan.md](docs/plan.md), [docs/fazlar.md](docs/fazlar.md) · Prompt'lar: [prompts/](prompts/) · Ekran görüntüleri: [demo/](demo/)
+
+## Ekip
+
+| İsim | Rol | İletişim |
+|------|-----|----------|
+| Tayfur | Ürün ve geliştirme | tayfurozkaras@gmail.com |
 
 AI kaydı kuralı: bu depodaki her dosya için "hangi AI aracıyla üretildi" aşağıdaki dosya referansında tutulur.
 **CF5.1** = Claude Fable 5.1 (claude-fable-5-1, Claude Cowork). Adım adım kayıt: `docs/AI_LOG.md`.
+
+## Kurulum
+
+```bash
+git clone <repo-url>
+cd <repo>
+cp .env.example .env                   # isteğe bağlı; uygulama varsayılanlarla çalışır
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev,mcp]"            # dev: pytest · mcp: MCP sunucusu için SDK
+```
+
+## Kullanım
+
+```bash
+streamlit run app.py                   # http://localhost:8501 ; canlı alıcı :8600'de otomatik açılır
+python -m pytest -q                    # 30 test, ağ gerektirmez
+signal-sprint data.zip --inspect       # CLI: dosya başına format / roller / sütunlar
+signal-sprint data.zip                 # CLI: profil + incident özeti (--json ile makine çıktısı)
+python mcp_server.py --http --port 8765   # motor MCP sunucusu olarak (http://localhost:8765/mcp)
+docker compose up                      # dashboard :8501 + mcp :8765
+```
+
+## Teknoloji Yığını
+
+- Python 3.9+ (3.9 ve 3.11'de doğrulandı)
+- Streamlit + Altair (arayüz), pandas (veri), python-dateutil (zaman), pytest (test)
+- stdlib: csv / json / re / zipfile / tarfile / gzip / http.server / urllib / sqlite3
+- mcp ≥ 2 (isteğe bağlı MCP sunucusu), Docker Compose
+
+## Demo
+
+`demo/` klasörüne bakınız (8 ekran görüntüsü + açıklama). Video linki: _(eklenecek)_
+
+## Lisans
+
+GPL-3.0 (bkz. `LICENSE`)
+
+---
+
+# Uygulama kılavuzu
 
 ## 1. Kurulum ve çalıştırma
 
@@ -14,7 +69,7 @@ AI kaydı kuralı: bu depodaki her dosya için "hangi AI aracıyla üretildi" a�
     pip install -e ".[dev,mcp]"            # dev: pytest · mcp: MCP sunucusu için SDK
     streamlit run app.py                   # http://localhost:8501 ; canlı alıcı :8600'de otomatik açılır
 
-    python -m pytest -q                    # 27 test, ağ gerektirmez
+    python -m pytest -q                    # 30 test, ağ gerektirmez
     signal-sprint data.zip --inspect       # CLI: dosya başına format / roller / sütunlar
     signal-sprint data.zip                 # CLI: profil + incident özeti (--json ile makine çıktısı)
     python mcp_server.py --http --port 8765   # motor MCP sunucusu olarak (http://localhost:8765/mcp)
@@ -124,8 +179,12 @@ Dil: sol üstte 🇹🇷 / 🇬🇧 anahtarı; arayüz, anlatı, gerekçe ve ön
 | `.streamlit/config.toml` | 1 GB yükleme sınırı, koyu tema |
 | `Dockerfile`, `docker-compose.yml` | `dashboard` (8501) ve `mcp` (8765) servisleri; `./data` → `/data`, `actions.db` paylaşımı |
 | `samples/demo_mixed.zip` | Üretilmiş demo veri seti |
-| `docs/PLAN.md`, `docs/DECISIONS.md`, `docs/AI_LOG.md` | Hedef listesi ve etkinlik planı, tasarım kararları, AI kullanım kaydı |
-| `CLAUDE.md` | Bu depoda çalışan Claude için kurallar |
+| `docs/plan.md`, `docs/fazlar.md`, `docs/mimari.md`, `docs/AI_LOG.md` | Hedef / kapsam / riskler / demo akışı; fazlar ve etkinlik günü saatleri; mimari, veri modeli, ADR; AI kullanım kaydı |
+| `AI_JURI.md`, `submission.json` | Jüri için yapılandırılmış özet; teslim künyesi |
+| `prompts/` | Uygulamayı şekillendiren 9 kritik prompt (amaç, model, tarih, prompt, çıktı) |
+| `demo/` | Ekran görüntüleri ve açıklamaları |
+| `.env.example` | Ortam değişkeni örnekleri (hiçbiri zorunlu değil) |
+| `CLAUDE.md` | Bu depoda çalışan Claude için proje kuralları |
 
 ## 5. Teknolojiler
 

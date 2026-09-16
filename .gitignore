@@ -1,7 +1,26 @@
+# Sırlar — .env ASLA commit edilmez (.env.example commit edilir)
+.env
+.env.*
+!.env.example
+
+# Bağımlılıklar
+node_modules/
+venv/
+.venv/
 __pycache__/
 *.pyc
+*.egg-info/
+
+# Build / çalışma dosyaları
+dist/
+build/
+*.log
 .pytest_cache/
 *.db
-.venv/
-*.egg-info/
-build/
+data/live/
+
+# Editör / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
