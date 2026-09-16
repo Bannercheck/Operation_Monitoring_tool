@@ -75,7 +75,7 @@ INVENTORY_COLUMNS: dict[str, list[str]] = {"host": ["host", "hostname", "sunucu"
 
 # Correlation window in minutes and scoring weights; None keeps the defaults in analysis.py
 WINDOW_MIN: int | None = 10
-WEIGHTS: dict[str, float] | None = None
+WEIGHTS: dict[str, float] | None = {"burst": 0.30, "severity": 0.20, "blast_radius": 0.20, "duration": 0.15, "criticality": 0.15}
 
 # Recommendation templates: substring of root-cause template -> list of suggested actions
 RECOMMENDATIONS: dict[str, list[str]] = {
@@ -110,6 +110,7 @@ RECOMMENDATIONS: dict[str, list[str]] = {
 OWNERS: dict[str, str] = {"db": "DBA ekibi", "provider": "Ödeme entegrasyon ekibi", "gw": "Entegrasyon ekibi", "batch": "Batch operasyon",
                           "dns": "Ağ ekibi", "network": "Ağ ekibi", "rack": "Ağ / veri merkezi ekibi"}
 DEFAULT_OWNER: str = "Nöbetçi mühendis"
+CRITICAL_LEVELS: set[str] = {"kritik", "yuksek", "critical", "high"}   # inventory is_kritikligi values that count as business-critical
 
 # Service objectives shown on the live page. SLO = internal target, SLA = contractual.
 SLO: dict = {"availability": 0.999, "p95_ms": 300}

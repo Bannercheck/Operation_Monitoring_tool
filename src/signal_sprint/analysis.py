@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+import statistics
 import re
 from collections import Counter, defaultdict
 from dataclasses import asdict
@@ -293,7 +294,8 @@ def pick_root_cause(members: list[Signal], deps: list[dict] | None = None, densi
 
 
 # ---------------------------------------------------------------- scoring + explanation
-def build_incident(n: int, members: list[Signal], edges: list[dict], deps: list[dict] | None = None, density: bool = False) -> Incident:
+def build_incident(n: int, members: list[Signal], edges: list[dict], deps: list[dict] | None = None, density: bool = False,
+                   context: dict | None = None) -> Incident:
     weights = scenario.WEIGHTS or WEIGHTS
     root, codes, alts = pick_root_cause(members, deps, density)
     why = reason_text(codes, "en")
@@ -301,19 +303,38 @@ def build_incident(n: int, members: list[Signal], edges: list[dict], deps: list[
     hosts = sorted({x for s in members for x in s.hosts})
     start, end = min(s.first_seen for s in members), max(s.last_seen for s in members)
     total = sum(s.count for s in members)
-    raw = {"burst": max(s.burst_score for s in members),
+    ctx = context or {}
+    # burst at incident level: peak alarms/min of the whole group vs the member services' median minute outside the group
+    per_min = Counter(o.timestamp.replace(second=0, microsecond=0) for s in members for o in s.observations)
+    peak = float(max(per_min.values())) if per_min else 0.0
+    base = 0.0
+    if ctx.get("svc_minute"):
+        outside = [n for (svc, m), n in ctx["svc_minute"].items() if svc in services and not (start <= m <= end)]
+        base = float(statistics.median(outside)) if outside else 0.0
+    else:
+        base = max(s.baseline_rate for s in members)
+    ratio = peak / (base + 1.0)
+    burst = round(min(1.0, (ratio - 1) / 9), 3) if ratio > 1 else 0.0
+    denom = max(6.0, 0.5 * (ctx.get("n_services", 0) + ctx.get("n_hosts", 0)))
+    inv = ctx.get("inventory") or {}
+    crit_hosts = [h for h in hosts if h in inv]
+    crit_share = (sum(1 for h in crit_hosts if inv[h].get("criticality", "").lower() in scenario.CRITICAL_LEVELS) / len(crit_hosts)) if crit_hosts else 0.0
+    raw = {"burst": burst,
            "severity": sum(s.count for s in members if SEV_RANK[s.severity] >= 3) / total,
-           "blast_radius": min(1.0, (len(services) + len(hosts)) / 6),
-           "duration": min(1.0, (end - start).total_seconds() / 3600)}
-    labels = {"burst": f"peak {max(s.peak_rate for s in members):.0f}/min vs baseline {max(s.baseline_rate for s in members):.0f}/min",
+           "blast_radius": min(1.0, (len(services) + len(hosts)) / denom),
+           "duration": min(1.0, (end - start).total_seconds() / 3600),
+           "criticality": crit_share}
+    labels = {"burst": f"peak {peak:.0f}/min vs baseline {base:.0f}/min",
               "severity": f"{raw['severity']:.0%} of {total} events are ERROR+",
-              "blast_radius": f"{len(services)} service(s), {len(hosts)} host(s)",
-              "duration": f"{(end - start).total_seconds() / 60:.0f} min"}
-    data = {"burst": {"peak": f"{max(s.peak_rate for s in members):.0f}", "base": f"{max(s.baseline_rate for s in members):.0f}"},
+              "blast_radius": f"{len(services)} service(s), {len(hosts)} host(s) of {denom * 2:.0f}",
+              "duration": f"{(end - start).total_seconds() / 60:.0f} min",
+              "criticality": f"{crit_share:.0%} of hosts business-critical" if crit_hosts else "no inventory"}
+    data = {"burst": {"peak": f"{peak:.0f}", "base": f"{base:.0f}"},
             "severity": {"share": f"{raw['severity']:.0%}", "total": total},
             "blast_radius": {"services": len(services), "hosts": len(hosts)},
-            "duration": {"minutes": f"{(end - start).total_seconds() / 60:.0f}"}}
-    factors = [Factor(k, weights[k], labels[k], round(weights[k] * raw[k], 3), data[k]) for k in weights]
+            "duration": {"minutes": f"{(end - start).total_seconds() / 60:.0f}"},
+            "criticality": {"share": f"{crit_share:.0%}", "hosts": len(crit_hosts)}}
+    factors = [Factor(k, weights[k], labels[k], round(weights[k] * raw[k], 3), data[k]) for k in weights if k in raw]
     score = round(sum(f.contribution for f in factors), 3)
     top_sev = max((s.severity for s in members), key=lambda x: SEV_RANK[x])
     severity = "critical" if score >= 0.6 or top_sev == "CRITICAL" else "high" if score >= 0.4 else "medium" if score >= 0.2 else "low"
@@ -458,7 +479,10 @@ class Analysis:
             self.signals = sorted(build_signals(observations), key=lambda s: (-s.burst_score, -SEV_RANK[s.severity], -s.count))
             comps = [(m, e, False) for m, e in correlate(self.signals, deps=self.dependencies)
                      if len(m) > 1 or SEV_RANK[m[0].severity] >= 3 or m[0].burst_score >= 0.5]
-        built = [(build_incident(i, m, e, self.dependencies, self.mode == "density"), small) for i, (m, e, small) in enumerate(comps, 1)]
+        ctx = {"svc_minute": Counter((o.service, o.timestamp.replace(second=0, microsecond=0)) for o in observations if o.service),
+               "n_services": len({o.service for o in observations if o.service}), "n_hosts": len({o.host for o in observations if o.host}),
+               "inventory": self.inventory}
+        built = [(build_incident(i, m, e, self.dependencies, self.mode == "density", ctx), small) for i, (m, e, small) in enumerate(comps, 1)]
         incs = sorted((inc for inc, small in built if not small), key=lambda i: -i.score)
         small_incs = [inc for inc, small in built if small]
         cap = scenario.MAX_INCIDENTS or len(incs)

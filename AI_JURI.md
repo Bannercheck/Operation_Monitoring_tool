@@ -74,6 +74,8 @@ Bkz. [README.md](README.md#kurulum)
 
 ## 10. Bilinen Kısıtlar
 
+- **Kaçırılan yavaş yanma:** session-service'te 01:35–02:52 arasında şiddeti kademeli yükselen bir bellek sızıntısı zinciri (mem_high → gc_pressure → oom_risk, 3 sunucu) ve ona bağlı ~30 timeout var; servis toplamı kendi medyanının 3 katına ulaşmadığı için sıcak hücre oluşmadı, timeout'ların bir kısmı 02:33 ödeme olayına atandı. Bağımsız çapraz doğrulama ile tespit edildi; şiddet tırmanması tabanlı bir dedektör denendi ancak uzun süreye yayılan hücreler iki olayı köprüledi (yanlış birleştirme), teslim öncesi geri alındı. Kartlardaki karşı olasılıklar bu durumu görünür kılar.
+
 - Canlı ajan, MCP ve ITSM bağlantıları demo ortamında yerleşik simülatör / demo ticket'larla gösterilir; gerçek sistemlere bağlanmak için yalnız URL ve anahtar gerekir.
 - p95 gecikme, mesajlarda `<n>ms` deseni olduğunda hesaplanır; yoksa kart "veri yok" gösterir.
 - Servis seviyeleri son 15 dakikalık canlı pencere üzerinden hesaplanır; uzun dönem SLO raporu kapsam dışıdır.
