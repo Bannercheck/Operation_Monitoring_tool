@@ -43,3 +43,4 @@ Sadece geliştirme adımları. Format: araç + sürüm · tarih · yapılan iş.
 | Araç + sürüm | Tarih | Yapılan düzeltme / geliştirme |
 |---|---|---|
 | Claude Fable 5.1 (Cowork) | 2026-09-16 | Depo AO Hackathon 2026 Enterprise şablon yapısına getirildi: README şablon bölümleri (Proje / Problem / Çözüm / Ekip / Kurulum / Kullanım / Teknoloji / Demo / Lisans), AI_JURI.md, submission.json, .env.example, .gitignore, CLAUDE.md şablon başlıkları, docs/plan.md + fazlar.md + mimari.md (PLAN.md / DECISIONS.md devredildi), prompts/ (9 prompt), demo/ (8 ekran görüntüsü) |
+| Claude Fable 5.1 (Cowork) | 2026-09-16 | requirements.txt eklendi; README Kurulum bölümüne Windows (PowerShell) adımları |

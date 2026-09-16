@@ -1,0 +1,11 @@
+# Signal Sprint - çalışma zamanı bağımlılıkları (Python 3.9+)
+# Kurulum: pip install -r requirements.txt  ve ardından  pip install -e .
+streamlit>=1.35
+pandas>=1.5
+python-dateutil>=2.8
+
+# Geliştirme / test
+pytest>=8
+
+# İsteğe bağlı: MCP sunucusu (python mcp_server.py) için. Python 3.10+ ister.
+# mcp>=2

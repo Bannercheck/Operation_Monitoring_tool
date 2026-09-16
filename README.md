@@ -33,6 +33,18 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev,mcp]"            # dev: pytest · mcp: MCP sunucusu için SDK
 ```
 
+Windows (PowerShell):
+
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1            # "running scripts is disabled" derse: Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+pip install -e .                       # motor paketini (src\signal_sprint) ortama tanıtır
+python -m pytest -q                    # 30 passed beklenir
+streamlit run app.py
+```
+
 ## Kullanım
 
 ```bash
@@ -175,6 +187,7 @@ Dil: sol üstte 🇹🇷 / 🇬🇧 anahtarı; arayüz, anlatı, gerekçe ve ön
 | Dosya | Ne yapar |
 |---|---|
 | `pyproject.toml` | Paket tanımı, bağımlılıklar (streamlit, pandas, python-dateutil), `signal-sprint` CLI, `dev` / `mcp` ekstraları |
+| `requirements.txt` | Aynı bağımlılıkların düz listesi (`pip install -r requirements.txt` + `pip install -e .`); Windows adımları README Kurulum bölümünde |
 | `Makefile` | `make run / test / demo / inspect DS=x / analyze DS=x` |
 | `.streamlit/config.toml` | 1 GB yükleme sınırı, koyu tema |
 | `Dockerfile`, `docker-compose.yml` | `dashboard` (8501) ve `mcp` (8765) servisleri; `./data` → `/data`, `actions.db` paylaşımı |
