@@ -16,6 +16,7 @@ from pathlib import Path
 import altair as alt
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 
 from signal_sprint.actions import PRIORITIES, STATUSES, ActionStore
 from signal_sprint.analysis import Analysis, interesting, llm_prompt, postmortem_md, signal_dict
@@ -24,7 +25,7 @@ from signal_sprint.live import LiveStore, start_receiver, start_simulator
 from signal_sprint.itsm import SYSTEMS, correlate as correlate_tickets, demo_tickets, fetch_generic
 from signal_sprint.analysis import template_of
 from signal_sprint.compare import compare as compare_datasets
-from signal_sprint.graph import build_map, to_dot
+from signal_sprint.graph import build_map, to_html
 from signal_sprint.playbook import Playbook
 from signal_sprint.llm import LLMConfig, chat as llm_chat, test_connection as llm_test
 from signal_sprint.i18n import factor_value, narrative_text, reason_text, recommendation_text, link_text, t
@@ -674,56 +675,70 @@ def page_map() -> None:
     sources = list(reg) + ["__live__"]
     fmt = lambda k: t("map_live") if k == "__live__" else k
     default = st.session_state.get("dataset") if st.session_state.get("dataset") in reg else sources[0]
-    c1, c2, c3, c4 = st.columns([1.6, 1.8, 1, 1])
-    src = c1.selectbox(t("map_source"), sources, index=sources.index(default), format_func=fmt, key="map_src")
-    if src == "__live__":
-        a = live_analysis(live_store().received)
-    else:
-        a = reg[src]["analysis"]
-    if a is None or not a.observations:
-        st.info(t("map_empty")); return
-    inc_ids = [i.id for i in a.incidents]
-    opts = ["__all__"] + inc_ids
-    want = st.session_state.pop("map_inc", None)
-    if want in inc_ids:
-        st.session_state["map_pick"] = want
-    if st.session_state.get("map_pick") not in opts:
-        st.session_state["map_pick"] = inc_ids[0] if inc_ids else "__all__"
-    inc_pick = c2.selectbox(t("map_incident"), opts, key="map_pick",
-                            format_func=lambda x: t("map_all_inc") if x == "__all__" else f"{x} · {a.incident_by_id[x].title[:48]}" if hasattr(a, "incident_by_id") else x)
-    envs = sorted({o.environment or "unknown" for o in a.observations})
-    env = c3.selectbox(t("ops_env"), [t("ops_all")] + envs, key="map_env")
-    env = None if env == t("ops_all") else env
-    with_hosts = c4.toggle(t("map_hosts"), value=True, key="map_hosts_toggle")
-    m = build_map(a, None if inc_pick == "__all__" else inc_pick, env=env, with_hosts=with_hosts)
-    if not m["nodes"]:
-        st.info(t("map_empty")); return
-    k = st.columns(5)
-    k[0].markdown(kpi2(len(m["nodes"]), t("map_k_services"), "🧩", "#6b9bd2", f"{len(m['hosts'])} {t('env_hosts')}"), unsafe_allow_html=True)
-    k[1].markdown(kpi2(len(m["deps"]), t("map_k_deps"), "🔗", "#ff5c5c" if m["deps"] else "#8b93a1", f"{sum(e['n'] for e in m['deps'])} {t('map_k_dep_events')}"), unsafe_allow_html=True)
-    k[2].markdown(kpi2(len(m["corr"]), t("map_k_corr"), "🧭", "#6b9bd2", t("map_k_corr_sub")), unsafe_allow_html=True)
-    k[3].markdown(kpi2(", ".join(m["root"]) or "—", t("map_k_root"), "⚑", "#ff5c5c" if m["root"] else "#8b93a1", ", ".join(m["incidents"][:3])), unsafe_allow_html=True)
-    k[4].markdown(kpi2(m["errors_total"], t("map_k_errors"), "🔥", "#ffb347", f"{len(m['affected'])} {t('map_k_affected')}"), unsafe_allow_html=True)
-    g, side = st.columns([3.2, 1.1], gap="medium")
-    with g:
-        st.graphviz_chart(to_dot(m, {"root": t("map_l_root_tag"), "dep": t("map_dep_lbl"), "hosts": t("env_hosts"), "errors": "ERROR+"}), **wide("graphviz_chart"))
-        if len(m["chain"]) > 1:
-            st.markdown(f"**{t('map_chain')}** · " + " → ".join(f"<span class='pill' style='background:{PALETTE['root'] if i == 0 else PALETTE['affected']}'>{esc(x)}</span>" for i, x in enumerate(m["chain"])),
-                        unsafe_allow_html=True)
-    with side:
-        st.markdown(f"**{t('map_legend')}**")
-        st.markdown("".join(f"<div><span style='display:inline-block;width:12px;height:12px;border-radius:3px;background:{PALETTE[k_]};margin-right:6px'></span>{t(key)}</div>" for k_, key in MAP_LEGEND)
-                    + f"<div class='muted' style='margin-top:6px'>{t('map_l_edges')}</div>", unsafe_allow_html=True)
-        st.markdown("---")
-        node = st.selectbox(t("map_node"), [n["id"] for n in m["nodes"]], key="map_node")
-        sigs = [s_ for s_ in a.signals if node in s_.services]
-        st.markdown(f"**{esc(node)}** · {len(sigs)} {t('signals_n')}")
-        for s_ in sigs[:6]:
-            st.markdown(f"<div class='card' style='padding:8px 10px;margin-bottom:6px'><span style='color:{SEV_COLORS.get(s_.severity, '#8b93a1')};font-weight:700'>{s_.severity}</span> "
-                        f"<span class='muted'>×{s_.count} · {', '.join(sorted(s_.hosts)[:3])}</span><br><span class='mono' style='font-size:12px'>{esc(s_.template[:90])}</span></div>", unsafe_allow_html=True)
-        outs = [e for e in m["deps"] if e["from"] == node]; ins = [e for e in m["deps"] if e["to"] == node]
-        if outs: st.markdown(f"**{t('map_depends_on')}** " + ", ".join(f"{e['to']} ({e['n']})" for e in outs))
-        if ins: st.markdown(f"**{t('map_depended_by')}** " + ", ".join(f"{e['from']} ({e['n']})" for e in ins))
+    if st.session_state.get("map_src") not in sources:
+        st.session_state["map_src"] = default
+    src = st.selectbox(t("map_source"), sources, format_func=fmt, key="map_src")
+    live = src == "__live__"
+
+    @st.fragment(run_every="5s" if live else None)
+    def _map():
+        a = live_analysis(live_store().received) if live else reg[src]["analysis"]
+        if a is None or not a.observations:
+            st.info(t("map_empty")); return
+        inc_ids = [i.id for i in a.incidents]
+        opts = ["__all__"] + inc_ids
+        want = st.session_state.pop("map_inc", None)
+        if want in inc_ids:
+            st.session_state["map_pick"] = want
+        if st.session_state.get("map_pick") not in opts:
+            st.session_state["map_pick"] = inc_ids[0] if inc_ids else "__all__"
+        envs = sorted({o.environment or "unknown" for o in a.observations})
+        hosts_all = sorted({o.host for o in a.observations if o.host})
+        c2, c3, c4, c5 = st.columns([2.2, 1, 1.2, 0.8], vertical_alignment="bottom")
+        inc_pick = c2.selectbox(t("map_incident"), opts, key="map_pick",
+                                format_func=lambda x: t("map_all_inc") if x == "__all__" else f"{x} · {a.incident_by_id[x].title[:48]}")
+        with c3:
+            env = picker(t("ops_env"), envs, "map_env")
+        with c4:
+            host = picker(t("ops_hosts"), [h for h in hosts_all if not env or any((o.host == h and (o.environment or "unknown") == env) for o in a.observations[:5000])] or hosts_all, "map_host")
+        with_hosts = c5.toggle(t("map_draw_hosts"), value=True, key="map_hosts_toggle")
+        m = build_map(a, None if inc_pick == "__all__" else inc_pick, env=env, host=host, with_hosts=with_hosts)
+        if not m["nodes"]:
+            st.info(t("map_empty")); return
+        k = st.columns(5)
+        k[0].markdown(kpi2(len(m["nodes"]), t("map_k_services"), "🧩", "#6b9bd2", f"{len({h['host'] for h in m['hosts']})} {t('env_hosts')}"), unsafe_allow_html=True)
+        k[1].markdown(kpi2(len(m["deps"]), t("map_k_deps"), "🔗", "#ff5c5c" if m["deps"] else "#8b93a1", f"{sum(e['n'] for e in m['deps'])} {t('map_k_dep_events')}"), unsafe_allow_html=True)
+        k[2].markdown(kpi2(len(m["corr"]), t("map_k_corr"), "🧭", "#6b9bd2", t("map_k_corr_sub")), unsafe_allow_html=True)
+        k[3].markdown(kpi2(", ".join(m["root"]) or "—", t("map_k_root"), "⚑", "#ff5c5c" if m["root"] else "#8b93a1", ", ".join(m["incidents"][:3])), unsafe_allow_html=True)
+        k[4].markdown(kpi2(m["errors_total"], t("map_k_errors"), "🔥", "#ffb347", f"{len(m['affected'])} {t('map_k_affected')}"), unsafe_allow_html=True)
+        sig_by_svc: dict[str, list[dict]] = {}
+        for s_ in a.signals:
+            for svc in s_.services:
+                if any(n["id"] == svc for n in m["nodes"]) and len(sig_by_svc.setdefault(svc, [])) < 6:
+                    sig_by_svc[svc].append({"severity": s_.severity, "count": s_.count, "template": s_.template[:110],
+                                            "hosts": ", ".join(sorted(s_.hosts)[:3]), "color": SEV_COLORS.get(s_.severity, "#8b93a1")})
+        labels = {"root": t("map_l_root_tag"), "dep": t("map_dep_lbl"), "hosts": t("env_hosts"), "errors": "ERROR+", "signals": t("signals_n"),
+                  "depends_on": t("map_depends_on").rstrip(":"), "depended_by": t("map_depended_by").rstrip(":"), "on_hosts": t("ops_hosts"),
+                  "reset": t("map_reset"), "hint": t("map_hint"), "kind_root": t("map_l_root"), "kind_affected": t("map_l_affected"),
+                  "kind_erroring": t("map_l_erroring"), "kind_clean": t("map_l_clean"), "host": t("host")}
+        html_ = to_html(m, labels, sig_by_svc, height=640)
+        if hasattr(st, "iframe"):
+            st.iframe(html_, height=660)
+        else:
+            components.html(html_, height=660, scrolling=False)
+        c1, c2_ = st.columns([3, 2])
+        with c1:
+            if len(m["chain"]) > 1:
+                st.markdown(f"**{t('map_chain')}** · " + " → ".join(f"<span class='pill' style='background:{PALETTE['root'] if i == 0 else PALETTE['affected']}'>{esc(x)}</span>" for i, x in enumerate(m["chain"])),
+                            unsafe_allow_html=True)
+        with c2_:
+            st.markdown("".join(f"<span style='display:inline-block;margin-right:12px'><span style='display:inline-block;width:10px;height:10px;border-radius:3px;background:{PALETTE[k_]};margin-right:5px'></span>{t(key)}</span>" for k_, key in MAP_LEGEND)
+                        + f"<div class='muted' style='font-size:12px;margin-top:4px'>{t('map_l_edges')}</div>", unsafe_allow_html=True)
+        if live:
+            st.caption(f"⟳ {t('map_live_note')} · {live_store().received:,} events")
+
+    _map()
+
 
 # ------------------------------------------------------------------ page: Playbook
 def page_playbook() -> None:
