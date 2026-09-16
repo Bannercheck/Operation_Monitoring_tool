@@ -2,9 +2,9 @@
 
 ## 1. Tek Cümlelik Özet
 
-Signal Sprint, S-A1 alarm fırtınasındaki 3.000 alarmı gerekçeli 4 olay kartına indiren (kök neden + karşı olasılıklar + sahipli ilk aksiyon + gürültü denetimi), çalışma zamanında LLM gerektirmeyen bir SRE karar destek uygulamasıdır.
+Signal Sprint, S-A1 alarm fırtınasındaki 3.000 alarmı gerekçeli 5 olay kartına indiren (kök neden + karşı olasılıklar + sahipli ilk aksiyon + gürültü denetimi), çalışma zamanında LLM gerektirmeyen bir SRE karar destek uygulamasıdır.
 
-**S-A1 sonucu:** 3.000 alarm → 4 kart · 1.793 alarm gerekçesiyle elendi · analiz 0,4 sn. Kartlar: (1) 02:33 payment-provider-gw dış servis erişilemiyor → payment-service / mobile-bff / order-service zaman aşımı ve işlem hataları; (2) 02:04 billing-db disk dolu → tablespace genişletilemedi → bağlantı havuzu → billing / charging / invoice-batch; (3) 01:33 dc1/rack-A kabin ağ olayı (9 sunucuda link kopması / paket kaybı; DNS ve auth o kabinde) → 16 servise yayılan zaman aşımı dalgası; (4) 03:05 batch penceresi çakışması → subscriber-db bağlantı havuzu tükenmesi → subscriber-service gecikmesi (yavaş gelişen). Neden 4 kart: veride yoğunluğu servisin kendi medyanının 3 katını aşan dört bağımsız zaman-topoloji bölgesi var; bunun dışındaki her sıcak nokta 15 alarmdan küçük ve kart olmuyor.
+**S-A1 sonucu:** 3.000 alarm → 5 kart · 1.752 alarm gerekçesiyle elendi · analiz 0,4 sn. Kartlar: (1) 02:33 payment-provider-gw dış servis erişilemiyor → payment-service / mobile-bff / order-service zaman aşımı ve işlem hataları; (2) 02:04 billing-db disk dolu → tablespace genişletilemedi → bağlantı havuzu → billing / charging / invoice-batch; (3) 01:33 dc1/rack-A kabin ağ olayı (9 sunucuda link kopması / paket kaybı; DNS ve auth o kabinde) → 16 servise yayılan zaman aşımı dalgası; (4) 03:05 batch penceresi çakışması → subscriber-db bağlantı havuzu tükenmesi → subscriber-service gecikmesi (yavaş gelişen). Neden 4 kart: veride yoğunluğu servisin kendi medyanının 3 katını aşan dört bağımsız zaman-topoloji bölgesi var; bunun dışındaki her sıcak nokta 15 alarmdan küçük ve kart olmuyor.
 
 ## 2. Problem Tanımı
 
@@ -74,7 +74,7 @@ Bkz. [README.md](README.md#kurulum)
 
 ## 10. Bilinen Kısıtlar
 
-- **Kaçırılan yavaş yanma:** session-service'te 01:35–02:52 arasında şiddeti kademeli yükselen bir bellek sızıntısı zinciri (mem_high → gc_pressure → oom_risk, 3 sunucu) ve ona bağlı ~30 timeout var; servis toplamı kendi medyanının 3 katına ulaşmadığı için sıcak hücre oluşmadı, timeout'ların bir kısmı 02:33 ödeme olayına atandı. Bağımsız çapraz doğrulama ile tespit edildi; şiddet tırmanması tabanlı bir dedektör denendi ancak uzun süreye yayılan hücreler iki olayı köprüledi (yanlış birleştirme), teslim öncesi geri alındı. Kartlardaki karşı olasılıklar bu durumu görünür kılar.
+- **Yavaş yanma tespiti son anda eklendi:** session-service bellek sızıntısı zinciri (mem_high → gc_pressure → oom_risk, 3 sunucu, 02:24–03:03) ilk sürümde sıcak hücre oluşturmadığı için kaçıyordu; bağımsız çapraz doğrulama ile fark edildi ve `storm.extract_slow_burns` ile ayrı kart olarak çıkarıldı (bağımlılık tablosu üzerinden bağ kurmaz, bu yüzden komşu olayları köprüleyemez). Sonuç 5 kart. Zincirin 01:35–02:20 arasındaki düşük şiddetli başlangıcı kartın dışında kalır.
 
 - Canlı ajan, MCP ve ITSM bağlantıları demo ortamında yerleşik simülatör / demo ticket'larla gösterilir; gerçek sistemlere bağlanmak için yalnız URL ve anahtar gerekir.
 - p95 gecikme, mesajlarda `<n>ms` deseni olduğunda hesaplanır; yoksa kart "veri yok" gösterir.

@@ -455,7 +455,7 @@ class Analysis:
         self.storm: dict = {}
         self.noise_obs: list[Observation] = []
         if self.mode == "density":
-            self.storm = storm.cluster(observations, self.dependencies, self.inventory)
+            self.storm = storm.extract_slow_burns(storm.cluster(observations, self.dependencies, self.inventory), observations)
             self.noise_obs = self.storm["noise"]
             comps, all_sigs, n = [], [], 0
             for c in self.storm["clusters"]:

@@ -165,3 +165,72 @@ def prune_background(c: dict, observations: list[Observation]) -> list[Observati
     c["obs"] = keep
     c["pruned"] = len(dropped)
     return dropped
+
+
+_DEP_PATTERNS = None
+
+
+def _mentioned(o: Observation, services: set[str]) -> str:
+    """Provider named in the message ("X servisine yapilan cagri"), when it is a known service."""
+    global _DEP_PATTERNS
+    if _DEP_PATTERNS is None:
+        import re
+        _DEP_PATTERNS = [re.compile(p, re.I) for p in getattr(scenario, "DEP_PATTERNS", [])]
+    for pat in _DEP_PATTERNS:
+        m = pat.search(o.message)
+        if m and m[1].lower() in services and m[1].lower() != (o.service or "").lower():
+            return m[1].lower()
+    return ""
+
+
+def extract_slow_burns(result: dict, observations: list[Observation]) -> dict:
+    """Slow burn = a cause-type alarm of one service escalating to ERROR+ on >= 2 hosts inside 15 min while the
+    service's total never crosses its 3x-median line (memory leak -> gc pressure -> oom risk). Such a chain becomes
+    its own cluster: the service's cause-type alarms over the chain, plus the timeouts other services raised
+    *against this service* in that span (pulled back out of whichever cluster grabbed them). No dependency-table
+    links are used, so a long chain can never bridge two unrelated incidents."""
+    from .models import SEV_RANK
+    t0, size = result["t0"], result["bucket_min"]
+    if not t0:
+        return result
+    services = {o.service.lower() for o in observations if o.service}
+    svc_map = {o.service.lower(): o.service for o in observations if o.service}
+    roots = {s for c in result["clusters"] for s in c["services"]}
+    by_svc_type: dict[tuple[str, str], list] = defaultdict(list)
+    for o in observations:
+        typ = str(o.attributes.get("alarm_type", "")).lower()
+        if o.service and scenario.CAUSE_RANK.get(typ, 0) >= scenario.ESCALATION_MIN_RANK and SEV_RANK[o.severity] >= 3:
+            by_svc_type[(o.service, typ)].append(o)
+    chains: dict[str, list] = defaultdict(list)          # service -> escalating (type, alarms)
+    for (svc, typ), items in by_svc_type.items():
+        items.sort(key=lambda o: o.timestamp)
+        for i, o in enumerate(items):
+            win = [x for x in items if o.timestamp <= x.timestamp <= o.timestamp + timedelta(minutes=15)]
+            if len(win) >= scenario.ESCALATION_MIN and len({x.host for x in win}) >= scenario.ESCALATION_MIN_HOSTS:
+                chains[svc].append((typ, items))
+                break
+    new_clusters = []
+    for svc, parts in chains.items():
+        # only services that are not already the root/member of a card explain something new
+        if any(svc in c["services"] and any(k == svc for k, _ in c["cells"]) for c in result["clusters"]):
+            continue
+        chain_obs = [o for _, items in parts for o in items]
+        lo = min(o.timestamp for o in chain_obs) - timedelta(minutes=scenario.PAD_MIN)
+        hi = max(o.timestamp for o in chain_obs) + timedelta(minutes=scenario.PAD_MIN + 10)
+        mine = [o for o in observations if lo <= o.timestamp <= hi and (o.service == svc or _mentioned(o, services) == svc.lower())]
+        if len(mine) < scenario.MIN_CLUSTER_ALARMS:
+            continue
+        ids = {id(o) for o in mine}
+        for c in result["clusters"]:                    # take these alarms back from other clusters / noise
+            c["obs"] = [o for o in c["obs"] if id(o) not in ids]
+            c["services"] = sorted({o.service for o in c["obs"] if o.service})
+        result["noise"] = [o for o in result["noise"] if id(o) not in ids]
+        cells = sorted({(svc, _bucket(o, t0, size)) for o in chain_obs})
+        hot = {c: {"count": sum(1 for o in mine if o.service == svc and _bucket(o, t0, size) == c[1]), "median": None, "threshold": None,
+                   "by": "escalation " + "/".join(sorted({t for t, _ in parts}))} for c in cells}
+        result["cells"].update(hot)
+        new_clusters.append({"obs": mine, "cells": cells, "hot": hot, "services": sorted({o.service for o in mine if o.service}),
+                             "span": (lo, hi), "edges": [], "slow_burn": True})
+    result["clusters"] = [c for c in result["clusters"] if c["obs"]] + new_clusters
+    result["clusters"].sort(key=lambda c: -len(c["obs"]))
+    return result

@@ -41,6 +41,9 @@ HOT_RATIO: float = 3.0
 HOST_HOT_MIN: int = 5        # a single host firing this many alarms in one bucket lights its service cell
 PAD_MIN: int = 2             # minutes added around the hot span when collecting the incident's alarms
 INFRA_TYPES: set[str] = {"network_down", "network_flap", "pkt_loss", "ntp_drift"}   # rack-level linking only for these
+ESCALATION_MIN_RANK: float = 1.5  # slow burn: cause / resource alarm types (mem_high, gc_pressure, oom_risk, disk_warn ...)
+ESCALATION_MIN: int = 4          # ... reaching ERROR+ at least this many times inside 15 min
+ESCALATION_MIN_HOSTS: int = 2    # ... on at least this many hosts of the service
 RACK_MIN_HOSTS: int = 3          # infra alarms on this many hosts of one rack = rack-level network root cause
 MIN_CLUSTER_ALARMS: int = 15     # smaller dense spots are coincidences of background chatter -> LOW-n, not a card
 MIN_CLUSTER_ERRORS: int = 3      # a card needs at least this many ERROR+ alarms
