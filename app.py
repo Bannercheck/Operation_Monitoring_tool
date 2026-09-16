@@ -218,7 +218,8 @@ def incident_flashcard(inc, a: Analysis, key: str) -> None:
         if cl:
             cells = sorted(cl["hot"].items(), key=lambda kv: kv[0][1])
             t0 = a.storm["t0"]; bm = a.storm["bucket_min"]
-            cell_txt = ", ".join(f"{svc} {(t0 + timedelta(minutes=b * bm)):%H:%M} ({h['count']}, {t('fc_median')} {h['median']:.0f})" for (svc, b), h in cells[:8])
+            cell_txt = ", ".join(f"{svc} {(t0 + timedelta(minutes=b * bm)):%H:%M} ({h['count']}" + (f", {t('fc_median')} {h['median']:.0f})" if h.get("median") is not None else f", {h.get('by', '')})")
+                                 for (svc, b), h in cells[:8])
             more = f" … +{len(cells) - 8}" if len(cells) > 8 else ""
             group_html = f'<div class="fc-row"><b>{t("fc_group")}</b> · {t("fc_group_how", n=len(cells), m=bm)} {esc(cell_txt)}{more}' + (f' · {t("fc_pruned", n=cl.get("pruned", 0))}' if cl.get("pruned") else "") + "</div>"
     total = sum(a.signal_by_id[x].count for x in inc.signal_ids)
