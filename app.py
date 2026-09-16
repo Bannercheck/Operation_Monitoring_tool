@@ -732,7 +732,7 @@ def page_map() -> None:
             env = picker(t("ops_env"), envs, "map_env")
         with c4:
             host = picker(t("ops_hosts"), [h for h in hosts_all if not env or any((o.host == h and (o.environment or "unknown") == env) for o in a.observations[:5000])] or hosts_all, "map_host")
-        with_hosts = c5.toggle(t("map_draw_hosts"), value=True, key="map_hosts_toggle")
+        with_hosts = c5.toggle(t("map_draw_hosts"), value=len(hosts_all) <= 12, key="map_hosts_toggle")   # dozens of hosts squash the map: off by default
         m = build_map(a, None if inc_pick == "__all__" else inc_pick, env=env, host=host, with_hosts=with_hosts)
         if not m["nodes"]:
             st.info(t("map_empty")); return
