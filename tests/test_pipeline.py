@@ -194,3 +194,20 @@ def test_environment_and_origin_roles():
     assert p["environments"]["prod"]["events"] > 500 and 0 < p["environments"]["prod"]["error_rate"] < 1
     a = an.Analysis(obs, rep)
     assert "prod" in a.incidents[0].origin["environments"]
+
+
+def test_error_map_from_demo():
+    from signal_sprint.graph import build_map, to_dot, dependency_edges
+    obs, rep = ingest_path(str(ROOT / "samples" / "demo_mixed.zip"))
+    a = an.Analysis(obs, rep)
+    deps = dependency_edges(obs)
+    assert deps[("checkout-api", "payment-api")] >= 30
+    m = build_map(a, a.incidents[0].id)
+    ids = {n["id"] for n in m["nodes"]}
+    assert {"checkout-api", "payment-api", "postgres"} <= ids
+    assert m["root"] == ["postgres"] and m["chain"][0] == "postgres" and "payment-api" in m["chain"]
+    assert any(e["from"] == "checkout-api" and e["to"] == "payment-api" for e in m["deps"])
+    assert m["hosts"] and all(h["env"] for h in m["hosts"])
+    dot = to_dot(m, {"root": "KÖK NEDEN"})
+    assert dot.startswith("digraph") and "KÖK NEDEN" in dot and '"checkout-api" -> "payment-api"' in dot
+    build_map(a, None, env="nope")   # unknown env never raises

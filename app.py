@@ -24,6 +24,7 @@ from signal_sprint.live import LiveStore, start_receiver, start_simulator
 from signal_sprint.itsm import SYSTEMS, correlate as correlate_tickets, demo_tickets, fetch_generic
 from signal_sprint.analysis import template_of
 from signal_sprint.compare import compare as compare_datasets
+from signal_sprint.graph import build_map, to_dot
 from signal_sprint.playbook import Playbook
 from signal_sprint.llm import LLMConfig, chat as llm_chat, test_connection as llm_test
 from signal_sprint.i18n import factor_value, narrative_text, reason_text, recommendation_text, link_text, t
@@ -221,10 +222,15 @@ def incident_flashcard(inc, a: Analysis, key: str) -> None:
 <div class="fc-row"><b>{t('fc_when')}</b> · {t('fc_started')} <span class="mono">{tm.get('first_signal', '')[11:19]}</span> · {t('fc_last')} <span class="mono">{tm.get('last_error', '')[11:19]}</span> · {t('fc_lasted')} <b>{tm.get('duration_s', 0) / 60:.1f} min</b> · {t('quiet')} {rc.get('quiet_min', 0)} min</div>
 <div class="fc-row"><b>{t('fc_resolved')}</b> · <span style="color:{rcol};font-weight:700">{resolved}</span></div>
 <div class="fc-row"><b>{t('fc_todo')}</b><ul style="margin:4px 0 0 18px">{recs}</ul></div>{seen}</div>""", unsafe_allow_html=True)
-    if st.button(t("fc_open"), key=f"fc-open-{key}-{inc.id}"):
+    b1, b2, _ = st.columns([1, 1, 3])
+    if b1.button(t("fc_open"), key=f"fc-open-{key}-{inc.id}", **wide("button")):
         st.session_state["inc_pick"] = inc.id
         st.session_state["detail"] = None
         st.rerun()
+    def _to_map(i=inc.id):
+        st.session_state["page"] = "map"
+        st.session_state["map_inc"] = i
+    b2.button(f"🕸 {t('fc_map')}", key=f"fc-map-{key}-{inc.id}", **wide("button"), on_click=_to_map)
 
 
 def incidents_table(incidents: list, key: str, a: Analysis):
@@ -283,8 +289,8 @@ def minute_chart(df: pd.DataFrame, incidents=None, height=200):
 # ------------------------------------------------------------------ sidebar navigation
 demo = Path(__file__).with_name("samples") / "demo_mixed.zip"
 LIVE_PORT = int(os.environ.get("LIVE_PORT", "8600"))
-PAGES = ["ops", "data", "pb", "itsm", "conn", "readme"]
-PAGE_KEYS = {"ops": "sb_ops", "data": "sb_data", "pb": "sb_pb", "itsm": "sb_itsm", "conn": "sb_conn", "readme": "sb_readme"}
+PAGES = ["ops", "data", "map", "pb", "itsm", "conn", "readme"]
+PAGE_KEYS = {"ops": "sb_ops", "data": "sb_data", "map": "sb_map", "pb": "sb_pb", "itsm": "sb_itsm", "conn": "sb_conn", "readme": "sb_readme"}
 with st.sidebar:
     st.markdown("## 📡 Signal Sprint")
     st.radio("Language", ["tr", "en"], horizontal=True, label_visibility="collapsed",
@@ -648,6 +654,77 @@ def page_ops() -> None:
         st.rerun()
 
 
+
+# ------------------------------------------------------------------ page: Error map
+MAP_LEGEND = [("root", "map_l_root"), ("affected", "map_l_affected"), ("erroring", "map_l_erroring"), ("clean", "map_l_clean")]
+
+
+@st.cache_resource(show_spinner=False)
+def live_analysis(n_received: int) -> Analysis | None:
+    """Analysis over the live buffer, recomputed only when new events arrived (keyed by received count)."""
+    ls = live_store()
+    obs = ls.snapshot()
+    return Analysis(list(obs), []) if obs else None
+
+
+def page_map() -> None:
+    from signal_sprint.graph import PALETTE
+    st.markdown(f"## 🕸 {t('map_title')} <span class='muted' style='font-size:13px'>· {t('map_sub')}</span>", unsafe_allow_html=True)
+    reg = st.session_state.get("datasets", {})
+    sources = list(reg) + ["__live__"]
+    fmt = lambda k: t("map_live") if k == "__live__" else k
+    default = st.session_state.get("dataset") if st.session_state.get("dataset") in reg else sources[0]
+    c1, c2, c3, c4 = st.columns([1.6, 1.8, 1, 1])
+    src = c1.selectbox(t("map_source"), sources, index=sources.index(default), format_func=fmt, key="map_src")
+    if src == "__live__":
+        a = live_analysis(live_store().received)
+    else:
+        a = reg[src]["analysis"]
+    if a is None or not a.observations:
+        st.info(t("map_empty")); return
+    inc_ids = [i.id for i in a.incidents]
+    opts = ["__all__"] + inc_ids
+    want = st.session_state.pop("map_inc", None)
+    if want in inc_ids:
+        st.session_state["map_pick"] = want
+    if st.session_state.get("map_pick") not in opts:
+        st.session_state["map_pick"] = inc_ids[0] if inc_ids else "__all__"
+    inc_pick = c2.selectbox(t("map_incident"), opts, key="map_pick",
+                            format_func=lambda x: t("map_all_inc") if x == "__all__" else f"{x} · {a.incident_by_id[x].title[:48]}" if hasattr(a, "incident_by_id") else x)
+    envs = sorted({o.environment or "unknown" for o in a.observations})
+    env = c3.selectbox(t("ops_env"), [t("ops_all")] + envs, key="map_env")
+    env = None if env == t("ops_all") else env
+    with_hosts = c4.toggle(t("map_hosts"), value=True, key="map_hosts_toggle")
+    m = build_map(a, None if inc_pick == "__all__" else inc_pick, env=env, with_hosts=with_hosts)
+    if not m["nodes"]:
+        st.info(t("map_empty")); return
+    k = st.columns(5)
+    k[0].markdown(kpi2(len(m["nodes"]), t("map_k_services"), "🧩", "#6b9bd2", f"{len(m['hosts'])} {t('env_hosts')}"), unsafe_allow_html=True)
+    k[1].markdown(kpi2(len(m["deps"]), t("map_k_deps"), "🔗", "#ff5c5c" if m["deps"] else "#8b93a1", f"{sum(e['n'] for e in m['deps'])} {t('map_k_dep_events')}"), unsafe_allow_html=True)
+    k[2].markdown(kpi2(len(m["corr"]), t("map_k_corr"), "🧭", "#6b9bd2", t("map_k_corr_sub")), unsafe_allow_html=True)
+    k[3].markdown(kpi2(", ".join(m["root"]) or "—", t("map_k_root"), "⚑", "#ff5c5c" if m["root"] else "#8b93a1", ", ".join(m["incidents"][:3])), unsafe_allow_html=True)
+    k[4].markdown(kpi2(m["errors_total"], t("map_k_errors"), "🔥", "#ffb347", f"{len(m['affected'])} {t('map_k_affected')}"), unsafe_allow_html=True)
+    g, side = st.columns([3.2, 1.1], gap="medium")
+    with g:
+        st.graphviz_chart(to_dot(m, {"root": t("map_l_root_tag"), "dep": t("map_dep_lbl"), "hosts": t("env_hosts"), "errors": "ERROR+"}), **wide("graphviz_chart"))
+        if len(m["chain"]) > 1:
+            st.markdown(f"**{t('map_chain')}** · " + " → ".join(f"<span class='pill' style='background:{PALETTE['root'] if i == 0 else PALETTE['affected']}'>{esc(x)}</span>" for i, x in enumerate(m["chain"])),
+                        unsafe_allow_html=True)
+    with side:
+        st.markdown(f"**{t('map_legend')}**")
+        st.markdown("".join(f"<div><span style='display:inline-block;width:12px;height:12px;border-radius:3px;background:{PALETTE[k_]};margin-right:6px'></span>{t(key)}</div>" for k_, key in MAP_LEGEND)
+                    + f"<div class='muted' style='margin-top:6px'>{t('map_l_edges')}</div>", unsafe_allow_html=True)
+        st.markdown("---")
+        node = st.selectbox(t("map_node"), [n["id"] for n in m["nodes"]], key="map_node")
+        sigs = [s_ for s_ in a.signals if node in s_.services]
+        st.markdown(f"**{esc(node)}** · {len(sigs)} {t('signals_n')}")
+        for s_ in sigs[:6]:
+            st.markdown(f"<div class='card' style='padding:8px 10px;margin-bottom:6px'><span style='color:{SEV_COLORS.get(s_.severity, '#8b93a1')};font-weight:700'>{s_.severity}</span> "
+                        f"<span class='muted'>×{s_.count} · {', '.join(sorted(s_.hosts)[:3])}</span><br><span class='mono' style='font-size:12px'>{esc(s_.template[:90])}</span></div>", unsafe_allow_html=True)
+        outs = [e for e in m["deps"] if e["from"] == node]; ins = [e for e in m["deps"] if e["to"] == node]
+        if outs: st.markdown(f"**{t('map_depends_on')}** " + ", ".join(f"{e['to']} ({e['n']})" for e in outs))
+        if ins: st.markdown(f"**{t('map_depended_by')}** " + ", ".join(f"{e['from']} ({e['n']})" for e in ins))
+
 # ------------------------------------------------------------------ page: Playbook
 def page_playbook() -> None:
     pb = playbook()
@@ -883,6 +960,9 @@ def compare_view(da: dict, db: dict, ka: str, kb: str) -> None:
 
 if page == "ops":
     page_ops()
+    st.stop()
+if page == "map":
+    page_map()
     st.stop()
 if page == "pb":
     page_playbook()
