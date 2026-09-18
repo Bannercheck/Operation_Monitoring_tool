@@ -74,7 +74,7 @@ def fallback_answer(question: str, analysis, kb, lang: str = "tr") -> str:
         wanted = {m.upper() for m in INC_RE.findall(question)}
         hits = [i for i in analysis.incidents if i.id.upper() in wanted] or \
                [i for i in analysis.incidents if any(w in (i.title + " " + " ".join(i.affected_services)).lower() for w in terms)]
-        if not hits and any(w in q for w in ("incident", "olay", "kart", "kaç", "how many", "özet", "summary", "durum")):
+        if not hits:                                   # a general question ("what happened tonight?"): the cards themselves are the answer
             hits = analysis.incidents[:5]
         for inc in hits[:5]:
             lines.append("- " + _inc_line(analysis, inc, lang))
