@@ -8,6 +8,7 @@ under another host's name and ten servers never blend into one series. The legac
 from __future__ import annotations
 
 import hashlib
+import hmac
 import time
 import secrets
 from datetime import datetime, timezone
@@ -44,6 +45,36 @@ class AgentRegistry:
                               (name.strip(), _hash(token), env.strip().lower(), site.strip(), tags.strip(), _now(), note.strip()))
         self._cache.clear(); self._active = None
         return self.get(aid), token
+
+    # ---- fleet enrolment key: servers enrol themselves with it and receive their own token (no per-server copy/paste)
+    def enroll_key(self, create: bool = True) -> str:
+        """Current enrolment key ('wk_…'), created on first use; '' when disabled."""
+        self.kb._exec("CREATE TABLE IF NOT EXISTS agent_settings (key TEXT PRIMARY KEY, value TEXT)")
+        rows = self.kb._exec("SELECT value FROM agent_settings WHERE key='enroll_key'")
+        if rows:
+            return rows[0]["value"] or ""
+        if not create:
+            return ""
+        return self.rotate_enroll_key()
+
+    def rotate_enroll_key(self) -> str:
+        key = "wk_" + secrets.token_urlsafe(24)
+        self._set_enroll_key(key); return key
+
+    def disable_enroll_key(self) -> None:
+        self._set_enroll_key("")
+
+    def _set_enroll_key(self, value: str) -> None:
+        self.kb._exec("CREATE TABLE IF NOT EXISTS agent_settings (key TEXT PRIMARY KEY, value TEXT)")
+        self.kb._exec("DELETE FROM agent_settings WHERE key='enroll_key'")
+        self.kb._exec("INSERT INTO agent_settings (key, value) VALUES ('enroll_key', ?)", (value,))
+
+    def self_enroll(self, key: str, name: str, env: str = "", site: str = "", tags: str = "") -> tuple[dict, str]:
+        """Enrol a server that presents the fleet key. Raises PermissionError (bad/disabled key) or ValueError (name taken)."""
+        cur = self.enroll_key(create=False)
+        if not cur or not key or not hmac.compare_digest(key.encode(), cur.encode()):
+            raise PermissionError("enrolment key is wrong or disabled")
+        return self.enroll(name, env, site, tags, note="self-enrolled")
 
     def get(self, aid: int) -> dict | None:
         rows = self.kb._exec("SELECT * FROM agents WHERE id=?", (aid,))

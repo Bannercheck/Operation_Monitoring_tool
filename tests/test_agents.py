@@ -201,3 +201,39 @@ def test_agent_sender_drops_permanent_errors(tmp_path):
         assert oct((tmp_path / "spool").stat().st_mode)[-3:] == "700"
     finally:
         srv.shutdown(); srv.server_close()
+
+
+def test_self_enrolment(tmp_path):
+    """A server presents the fleet key to /enroll and gets its own token; wrong key 401, duplicate name 409, disabled key 401."""
+    import subprocess, shutil
+    kb = Knowledge(str(tmp_path / "k.db")); reg = AgentRegistry(kb)
+    assert reg.enroll_key(create=False) == ""
+    key = reg.enroll_key(); assert key.startswith("wk_") and reg.enroll_key() == key
+    store = LiveStore(); srv = start_receiver(store, 0, None, reg); port = srv.server_address[1]
+
+    def enroll(k, body):
+        req = urllib.request.Request(f"http://127.0.0.1:{port}/enroll", data=json.dumps(body).encode(), headers={"Authorization": f"Bearer {k}"}, method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=5) as r:
+                return r.status, json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            return e.code, {}
+    try:
+        code, out = enroll(key, {"name": "web-07", "env": "PROD", "site": "IST"})
+        assert code == 200 and out["token"].startswith("wo_") and out["env"] == "prod"
+        assert reg.verify(out["token"])["name"] == "web-07" and reg.get(reg.verify(out["token"])["id"])["note"] == "self-enrolled"
+        assert enroll(key, {"name": "web-07"})[0] == 409                     # already enrolled: rotate instead
+        assert enroll("wk_wrong", {"name": "x"})[0] == 401
+        assert _post(port, b'{"msg":"hi"}\n', out["token"]) == 200              # the issued token ingests
+        assert _post(port, b'{"msg":"hi"}\n', key) == 401                     # the fleet key itself never ingests
+        if shutil.which("bash"):                                             # installer path: --enroll-key issues and stores the token
+            r = subprocess.run(["bash", str(ROOT / "scripts" / "agent-install.sh"), "--url", f"http://127.0.0.1:{port}/ingest", "--enroll-key", key,
+                                "--name", "app-09", "--env", "staging", "--dir", str(tmp_path / "a9"), "--no-service"], capture_output=True, text=True, timeout=120)
+            assert r.returncode == 0, r.stdout + r.stderr
+            assert "WATCHOVER_TOKEN='wo_" in (tmp_path / "a9" / "agent.env").read_text() and reg.verify(None) is None
+            assert [a["name"] for a in reg.list() if a["name"] == "app-09"]
+        reg.disable_enroll_key()
+        assert enroll(key, {"name": "y"})[0] == 401 and reg.enroll_key(create=False) == ""
+    finally:
+        srv.shutdown(); srv.server_close()
+

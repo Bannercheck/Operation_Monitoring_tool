@@ -340,6 +340,8 @@ def make_handler(store: LiveStore, api_key: str | None, registry=None):
             self._send(404, {"error": "not found"})
 
         def do_POST(self):
+            if self.path.startswith("/enroll"):
+                return self._enroll()
             if not self.path.startswith("/ingest"):
                 return self._send(404, {"error": "not found"})
             if not self._authorized():
@@ -368,6 +370,24 @@ def make_handler(store: LiveStore, api_key: str | None, registry=None):
                 except Exception:  # noqa: BLE001
                     pass
             self._send(200, {"accepted": count, "agent": agent, "identity": "token" if rec else ("key" if api_key else "open")})
+
+        def _enroll(self):
+            """A server presents the fleet enrolment key and gets its own token: {name, env, site, tags} in a JSON body."""
+            if registry is None:
+                return self._send(404, {"error": "no registry"})
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+                body = json.loads(self.rfile.read(min(max(n, 0), 64 * 1024)) or b"{}")
+            except (ValueError, json.JSONDecodeError):
+                return self._send(400, {"error": "bad body"})
+            name = str(body.get("name") or self.headers.get("X-Agent") or self.client_address[0])[:120]
+            try:
+                rec, token = registry.self_enroll(self._token(), name, str(body.get("env", ""))[:40], str(body.get("site", ""))[:80], str(body.get("tags", ""))[:200])
+            except PermissionError:
+                return self._send(401, {"error": "enrolment key is wrong or disabled"})
+            except ValueError as e:
+                return self._send(409, {"error": str(e)})
+            self._send(200, {"token": token, "agent": rec["name"], "env": rec["env"], "site": rec["site"]})
 
     return H
 

@@ -580,6 +580,26 @@ def agents_panel(port: int, wizard: bool = False) -> None:
         if st.button(t("ag_done"), key="ag-done"):
             ss.pop("ag_new", None); st.rerun()
 
+    with st.container(border=True):
+        st.markdown(f"**🚀 {t('ag_fleet_title')}**")
+        st.caption(t("ag_fleet_body"))
+        ekey = reg.enroll_key(create=True) if ss.get("ag_fleet_first", True) else reg.enroll_key(create=False)
+        ss["ag_fleet_first"] = False
+        fc = st.columns([1, 1, 4])
+        if ekey:
+            if fc[0].button(f"↻ {t('ag_fleet_rotate')}", key="ag-fleet-rot"):
+                reg.rotate_enroll_key(); st.rerun()
+            if fc[1].button(f"⏏ {t('ag_fleet_off')}", key="ag-fleet-off"):
+                reg.disable_enroll_key(); st.rerun()
+            url = receiver_url(port); base = url[: -len("/ingest")]
+            st.markdown(f"**{t('ag_fleet_cmd')}**")
+            st.code(f"curl -fsSL {base}/agent/install.sh | sudo bash -s -- --url {url} --enroll-key {ekey} --env prod", language="bash")
+            st.caption(t("ag_fleet_opts"))
+        else:
+            st.warning(t("ag_fleet_disabled"))
+            if fc[0].button(t("ag_fleet_on"), key="ag-fleet-on"):
+                reg.rotate_enroll_key(); st.rerun()
+
     @st.fragment(run_every="5s")
     def _agent_rows():
         rows = reg.list()
