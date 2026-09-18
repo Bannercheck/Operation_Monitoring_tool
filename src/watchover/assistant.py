@@ -7,6 +7,7 @@ so the chat never goes dark.
 """
 from __future__ import annotations
 
+import json
 import re
 from datetime import datetime
 
@@ -101,3 +102,107 @@ def answer(cfg: LLMConfig | None, question: str, history: list[dict], analysis, 
         except Exception as e:  # noqa: BLE001 - fall back, never break the chat
             return {"text": fallback_answer(question, analysis, kb, lang), "sources": sources, "context": ctx, "used_llm": False, "error": str(e)}
     return {"text": fallback_answer(question, analysis, kb, lang), "sources": sources, "context": ctx, "used_llm": False, "error": ""}
+
+
+# ---------------------------------------------------------------- rule proposals by the model (a human still approves)
+RULE_PROMPT = {
+    "tr": ("Aşağıdaki BAĞLAM'a bakarak Watchover'ın deterministik motoru için kural önerileri üret. Yalnız JSON dizisi döndür, başka hiçbir şey yazma. "
+           "Her öğe: {\"kind\": ..., \"key\": ..., \"value\": ..., \"reason\": ...}. İzin verilen kind değerleri ve anlamları:\n"
+           "- owner: key = servis adı ya da kök kelime (billing, payment), value = sorumlu ekip\n"
+           "- cause_rank: key = alarm tipi (BAĞLAM'daki alarm tiplerinden), value = 0-6 arası sayı; yüksek = daha çok kök neden, 0 = belirti\n"
+           "- noise_type: key = alarm tipi, value = \"1\"; bu tip hiçbir zaman incident olmamalı\n"
+           "- dependency: key = \"kaynak->hedef\" (BAĞLAM'daki servisler), value = senkron|asenkron\n"
+           "- recommendation: key = kök neden kelimesi (disk, tablespace, timeout), value = tek cümlelik ilk aksiyon\n"
+           "Sadece bağlamdaki kanıtla desteklenen, ekip kararlarıyla (👎 / doğru kök neden) tutarlı öneriler ver; en fazla 8 öneri; reason alanında kanıtı kısaca yaz."),
+    "en": ("From the CONTEXT below, propose rules for Watchover's deterministic engine. Return ONLY a JSON array, nothing else. "
+           "Each item: {\"kind\": ..., \"key\": ..., \"value\": ..., \"reason\": ...}. Allowed kinds:\n"
+           "- owner: key = service name or stem (billing, payment), value = owning team\n"
+           "- cause_rank: key = alarm type (from the CONTEXT), value = number 0-6; high = more of a cause, 0 = symptom\n"
+           "- noise_type: key = alarm type, value = \"1\"; this type must never become an incident\n"
+           "- dependency: key = \"source->target\" (services from the CONTEXT), value = sync|async\n"
+           "- recommendation: key = root-cause word (disk, tablespace, timeout), value = a one-sentence first action\n"
+           "Only rules backed by evidence in the context and consistent with the team's verdicts (👎 / correct root cause); at most 8; put the evidence in reason."),
+}
+
+
+def rule_context(analysis, kb, lang: str = "tr") -> str:
+    parts = []
+    if analysis is not None:
+        types = sorted({str(o.attributes.get("alarm_type", "")).lower() for o in analysis.observations if o.attributes.get("alarm_type")})
+        services = sorted({o.service for o in analysis.observations if o.service})
+        parts.append("## ALARM TYPES\n" + ", ".join(types[:80]) if types else "## ALARM TYPES\n(none: log data)")
+        parts.append("## SERVICES\n" + ", ".join(services[:80]))
+        parts.append("## INCIDENTS")
+        for inc in analysis.incidents[:15]:
+            parts.append(_inc_line(analysis, inc, lang))
+            for x in inc.root_cause_alternatives[:3]:
+                parts.append(f"   alt: {x['template'][:80]} ({', '.join(x['services'])}) score {x['score']}")
+        if analysis.demoted:
+            parts.append("## SMALL GROUPS NOT ON CARDS\n" + "; ".join(f"{d.title[:60]} ({d.severity})" for d in analysis.demoted[:10]))
+    if kb is not None:
+        fb = kb.all("feedback", limit=30)
+        if fb:
+            parts.append("## TEAM VERDICTS\n" + "\n".join(f"[L{d['id']}] {d['text'][:300]}" for d in fb))
+        notes = kb.all("note", limit=15) + kb.all("doc", limit=10)
+        if notes:
+            parts.append("## NOTES\n" + "\n".join(f"[L{d['id']}] {d['title'][:60]}: {d['text'][:240]}" for d in notes))
+        cur = kb.rules("approved") + kb.rules("proposed")
+        if cur:
+            parts.append("## EXISTING RULES (do not repeat)\n" + "\n".join(f"{r['kind']} {r['key']} = {r['value']} [{r['status']}]" for r in cur[:40]))
+    return "\n".join(parts)
+
+
+def _extract_json(text: str) -> list:
+    m = re.search(r"\[.*\]", text, re.S)
+    if not m:
+        return []
+    try:
+        data = json.loads(m[0])
+    except ValueError:
+        return []
+    return data if isinstance(data, list) else []
+
+
+def validate_rules(items: list, analysis) -> tuple[list[dict], list[str]]:
+    """Keep only well-formed proposals whose keys exist in the data; report why the rest were dropped."""
+    from .knowledge import RULE_KINDS
+    types = {str(o.attributes.get("alarm_type", "")).lower() for o in analysis.observations if o.attributes.get("alarm_type")} if analysis is not None else set()
+    services = {o.service.lower() for o in analysis.observations if o.service} if analysis is not None else set()
+    ok, dropped = [], []
+    for it in items:
+        if not isinstance(it, dict):
+            dropped.append("not an object"); continue
+        kind, key, val, reason = str(it.get("kind", "")).strip().lower(), str(it.get("key", "")).strip(), str(it.get("value", "")).strip(), str(it.get("reason", "")).strip()
+        if kind not in RULE_KINDS or kind == "noise_template" or not key:
+            dropped.append(f"{kind}:{key} (kind)"); continue
+        if kind in ("cause_rank", "noise_type"):
+            key = key.lower()
+            if types and key not in types:
+                dropped.append(f"{kind}:{key} (unknown alarm type)"); continue
+            if kind == "cause_rank":
+                try:
+                    v = float(val); assert 0 <= v <= 6
+                except (ValueError, AssertionError):
+                    dropped.append(f"{kind}:{key} (value {val})"); continue
+                val = str(v)
+            else:
+                val = "1"
+        elif kind == "dependency":
+            src, _, tgt = key.replace(" ", "").partition("->")
+            if not src or not tgt or (services and (src.lower() not in services or tgt.lower() not in services)):
+                dropped.append(f"{kind}:{key} (unknown service)"); continue
+            key = f"{src}->{tgt}"; val = "asenkron" if val.lower().startswith("as") else "senkron"
+        elif not val:
+            dropped.append(f"{kind}:{key} (empty value)"); continue
+        ok.append({"kind": kind, "key": key[:200], "value": val[:300], "reason": reason[:300]})
+    return ok, dropped
+
+
+def propose_rules(cfg: LLMConfig, analysis, kb, lang: str = "tr") -> dict:
+    """Ask the model for rule proposals, validate them against the data, store them as *proposed* (never applied by itself)."""
+    ctx = rule_context(analysis, kb, lang)
+    msgs = [{"role": "system", "content": SYSTEM.get(lang, SYSTEM["en"])}, {"role": "user", "content": RULE_PROMPT.get(lang, RULE_PROMPT["en"]) + "\n\nCONTEXT:\n" + ctx[:14000]}]
+    raw = chat_messages(cfg, msgs, temperature=0.1, max_tokens=1200)
+    items, dropped = validate_rules(_extract_json(raw), analysis)
+    ids = [kb.propose(it["kind"], it["key"], it["value"], it["reason"] or "llm", f"llm:{cfg.model}") for it in items]
+    return {"proposed": ids, "items": items, "dropped": dropped, "raw": raw}

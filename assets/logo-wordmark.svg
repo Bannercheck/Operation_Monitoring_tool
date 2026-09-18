@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 64" width="300" height="64" role="img" aria-label="Watchover">
+  <defs>
+    <linearGradient id="wm-g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2dd4bf"/><stop offset="1" stop-color="#60a5fa"/></linearGradient>
+    <linearGradient id="wm-t" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#2dd4bf"/><stop offset="1" stop-color="#60a5fa"/></linearGradient>
+    <radialGradient id="wm-glow" cx=".5" cy=".55" r=".5"><stop offset="0" stop-color="#2dd4bf" stop-opacity=".38"/><stop offset="1" stop-color="#2dd4bf" stop-opacity="0"/></radialGradient>
+  </defs>
+  <g>
+    <rect x="2" y="2" width="60" height="60" rx="16" fill="#0e1420" stroke="url(#wm-g)" stroke-width="2"/>
+    <circle cx="32" cy="35" r="19" fill="url(#wm-glow)"/>
+    <path d="M9 35 Q32 13 55 35 Q32 57 9 35 Z" fill="none" stroke="url(#wm-g)" stroke-width="3" stroke-linejoin="round"/>
+    <circle cx="32" cy="35" r="9.5" fill="none" stroke="url(#wm-g)" stroke-width="2.4" opacity=".55"/>
+    <path d="M32 25.5 a9.5 9.5 0 0 1 9.5 9.5" fill="none" stroke="#e6fffa" stroke-width="2.6" stroke-linecap="round"/>
+    <path d="M32 35 L38.8 28.2" stroke="#e6fffa" stroke-width="2.2" stroke-linecap="round" opacity=".9"/>
+    <circle cx="32" cy="35" r="3.4" fill="url(#wm-g)"/>
+    <path d="M45 13.5 a10 10 0 0 1 6.5 6.5" fill="none" stroke="url(#wm-g)" stroke-width="2.2" stroke-linecap="round" opacity=".85"/>
+    <path d="M48.5 8.5 a15.5 15.5 0 0 1 8 8" fill="none" stroke="url(#wm-g)" stroke-width="2.2" stroke-linecap="round" opacity=".45"/>
+  </g>
+  <text x="76" y="41" font-family="Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="30" font-weight="800" letter-spacing="-1" fill="url(#wm-t)">Watchover</text>
+  <text x="77" y="56" font-family="Inter, ui-sans-serif, system-ui, sans-serif" font-size="9.5" font-weight="600" letter-spacing="1.6" fill="#8b98ad">OPERATIONS SIGNAL DESK</text>
+</svg>

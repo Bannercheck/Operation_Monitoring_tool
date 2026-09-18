@@ -129,3 +129,40 @@ def test_noise_template_rule_for_log_data_without_alarm_types(tmp_path):
     finally:
         kb.decide(r["id"], False); kb.apply_rules()
         assert not scenario.NOISE_TEMPLATES
+
+
+class FakeRuleLLM(BaseHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+
+    def do_POST(self):
+        self.rfile.read(int(self.headers["Content-Length"]))
+        content = ("Öneriler:\n[{\"kind\": \"cause_rank\", \"key\": \"DISK_FULL\", \"value\": 5.5, \"reason\": \"[INC-2] disk full preceded every symptom\"},"
+                   " {\"kind\": \"owner\", \"key\": \"payment\", \"value\": \"Ödeme ekibi\", \"reason\": \"[L2]\"},"
+                   " {\"kind\": \"noise_type\", \"key\": \"NOT_A_TYPE\", \"value\": \"1\", \"reason\": \"x\"},"
+                   " {\"kind\": \"dependency\", \"key\": \"checkout-api -> payment-api\", \"value\": \"sync\", \"reason\": \"[INC-1]\"},"
+                   " {\"kind\": \"delete_everything\", \"key\": \"*\", \"value\": \"1\"}]")
+        data = json.dumps({"choices": [{"message": {"role": "assistant", "content": content}}]}).encode()
+        self.send_response(200); self.send_header("Content-Type", "application/json"); self.send_header("Content-Length", str(len(data))); self.end_headers()
+        self.wfile.write(data)
+
+
+def test_llm_rule_proposals_are_validated_and_only_proposed(tmp_path):
+    from watchover.assistant import propose_rules, rule_context
+    kb = Knowledge(str(tmp_path / "k.db"))
+    a = _storm()
+    kb.record(a, "storm.zip")
+    ctx = rule_context(a, kb, "tr")
+    assert "## ALARM TYPES" in ctx and "disk_full" in ctx and "## INCIDENTS" in ctx
+    srv = HTTPServer(("127.0.0.1", 0), FakeRuleLLM)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        out = propose_rules(LLMConfig(f"http://127.0.0.1:{srv.server_address[1]}/v1", "llama3.1"), a, kb, "tr")
+    finally:
+        srv.shutdown()
+    kinds = sorted((it["kind"], it["key"]) for it in out["items"])
+    assert kinds == [("cause_rank", "disk_full"), ("dependency", "checkout-api->payment-api"), ("owner", "payment")]
+    assert len(out["dropped"]) == 2 and len(out["proposed"]) == 3
+    rules = kb.rules("proposed")
+    assert all(r["source"] == "llm:llama3.1" for r in rules) and not kb.rules("approved")   # nothing applied without a human
+    assert scenario.CAUSE_RANK.get("disk_full") != 5.5

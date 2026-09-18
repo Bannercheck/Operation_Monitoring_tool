@@ -40,7 +40,15 @@ from watchover.pipeline import ingest_bytes, ingest_path
 from watchover.profiler import profile
 from watchover import stamp as wo_stamp
 
-st.set_page_config(page_title="Watchover", page_icon="📡", layout="wide", initial_sidebar_state="expanded")
+ASSETS = Path(__file__).with_name("assets")
+LOGO_PNG = str(ASSETS / "logo-64.png")
+LOGO_SVG = (ASSETS / "logo.svg").read_text(encoding="utf-8") if (ASSETS / "logo.svg").exists() else ""
+
+
+def logo(size: int) -> str:
+    """The SVG mark at a given pixel size (inline, so it renders inside markdown)."""
+    return LOGO_SVG.replace('width="64" height="64"', f'width="{size}" height="{size}"')
+st.set_page_config(page_title="Watchover", page_icon=LOGO_PNG if (ASSETS / "logo-64.png").exists() else "📡", layout="wide", initial_sidebar_state="expanded")
 
 # ---- Streamlit version compatibility: `width="stretch"` (>=1.5x) vs `use_container_width=True` (older)
 _WIDE_CACHE: dict = {}
@@ -484,15 +492,10 @@ demo = Path(__file__).with_name("samples") / "demo_mixed.zip"
 LIVE_PORT = int(os.environ.get("LIVE_PORT", "8600"))
 PAGES = ["ops", "data", "map", "assist", "pb", "itsm", "conn", "readme"]
 PAGE_KEYS = {"ops": "sb_ops", "data": "sb_data", "map": "sb_map", "assist": "sb_assist", "pb": "sb_pb", "itsm": "sb_itsm", "conn": "sb_conn", "readme": "sb_readme"}
-LOGO_SVG = ('<svg width="36" height="36" viewBox="0 0 34 34" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="wo" x1="0" y1="0" x2="1" y2="1">'
-            '<stop offset="0" stop-color="#2dd4bf"/><stop offset="1" stop-color="#60a5fa"/></linearGradient></defs>'
-            '<circle cx="17" cy="17" r="15" fill="none" stroke="url(#wo)" stroke-width="2" opacity=".3"/>'
-            '<path d="M17 5a12 12 0 0 1 12 12" fill="none" stroke="url(#wo)" stroke-width="2.6" stroke-linecap="round"/>'
-            '<path d="M17 10.5a6.5 6.5 0 0 1 6.5 6.5" fill="none" stroke="url(#wo)" stroke-width="2.6" stroke-linecap="round" opacity=".75"/>'
-            '<circle cx="17" cy="17" r="3.2" fill="url(#wo)"/></svg>')
+
 
 with st.sidebar:
-    st.markdown(f'<div class="wo-brand">{LOGO_SVG}<div><div class="name">Watchover</div><div class="tag">{upper(t("brand_tag"))}</div></div></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="wo-brand">{logo(40)}<div><div class="name">Watchover</div><div class="tag">{upper(t("brand_tag"))}</div></div></div>', unsafe_allow_html=True)
     st.radio("Language", ["tr", "en"], horizontal=True, label_visibility="collapsed",
              format_func=lambda x: {"tr": "TR", "en": "EN"}[x], key="lang")
     st.markdown(f'<div class="sb-cap">{upper(t("sb_nav"))}</div>', unsafe_allow_html=True)
@@ -1117,7 +1120,8 @@ def page_assist() -> None:
     kb = kb_with_embedder()
     a = st.session_state.get("analysis")
     cfg = llm_cfg()
-    st.markdown(f"## {t('as_title')}")
+    st.markdown(f'<div class="wo-brand" style="padding:0 0 6px"><span style="display:inline-block;width:44px">{logo(44)}</span>'
+                f'<div><div class="name" style="font-size:30px">{t("as_title_plain")}</div><div class="tag">{upper(t("as_title_tag"))}</div></div></div>', unsafe_allow_html=True)
     stt = kb.stats()
     chips = [("#2dd4bf" if cfg.enabled else "#64748b", f"LLM: {cfg.model or t('as_no_llm')}"), ("#60a5fa", f"{sum(stt['lessons'].values())} {t('kb_lessons')}"),
              ("#a78bfa", f"{stt['rules'].get('approved', 0)} {t('kb_rules_on')} · {stt['rules'].get('proposed', 0)} {t('kb_rules_wait')}"),
@@ -1134,7 +1138,7 @@ def page_assist() -> None:
                 if ex[i].button(q_, key=f"as-ex-{i}", **wide("button")):
                     st.session_state["as_pending"] = q_; st.rerun()
         for i, m in enumerate(hist):
-            with st.chat_message(m["role"], avatar="🛰️" if m["role"] == "assistant" else "🧑‍💻"):
+            with st.chat_message(m["role"], avatar=LOGO_PNG if m["role"] == "assistant" else "🧑‍💻"):
                 st.markdown(m["content"])
                 if m["role"] == "assistant":
                     meta = m.get("meta", {})
@@ -1160,7 +1164,7 @@ def page_assist() -> None:
             hist.append({"role": "user", "content": q})
             with st.chat_message("user", avatar="🧑‍💻"):
                 st.markdown(q)
-            with st.chat_message("assistant", avatar="🛰️"):
+            with st.chat_message("assistant", avatar=LOGO_PNG):
                 with st.spinner(t("as_thinking")):
                     res = wo_assistant.answer(cfg, q, hist[:-1], a, kb, current_lang())
                 st.markdown(res["text"])
@@ -1225,13 +1229,32 @@ def page_assist() -> None:
 
     with tab_rules:
         st.caption(t("rules_hint"))
+        lc, lh = st.columns([1.4, 4])
+        if lc.button(f"🤖 {t('rules_ask_llm')}", key="rules-llm", disabled=not cfg.enabled, help=t("rules_ask_llm_help"), **wide("button")):
+            with st.spinner(t("as_thinking")):
+                try:
+                    out = wo_assistant.propose_rules(cfg, a, kb, current_lang())
+                    st.session_state["rules_llm_out"] = out
+                except Exception as e:  # noqa: BLE001
+                    st.session_state["rules_llm_out"] = {"error": str(e)}
+            st.rerun()
+        if not cfg.enabled:
+            lh.caption(t("rules_llm_off"))
+        out = st.session_state.pop("rules_llm_out", None)
+        if out:
+            if out.get("error"):
+                st.error(out["error"])
+            else:
+                st.success(t("rules_llm_done", n=len(out["proposed"]), d=len(out["dropped"])))
+                if out["dropped"]:
+                    st.caption(", ".join(out["dropped"][:8]))
         prop = kb.rules("proposed")
         st.markdown(f"#### {t('rules_proposed')} · {len(prop)}")
         if not prop:
             st.caption(t("rules_none"))
         for r_ in prop:
             c = st.columns([1.3, 2, 2, 3, 1, 1])
-            c[0].markdown(f'<span class="pill" style="background:#fbbf24">{t("rule_" + r_["kind"])}</span>', unsafe_allow_html=True)
+            c[0].markdown(f'<span class="pill" style="background:{"#a78bfa" if str(r_["source"]).startswith("llm:") else "#fbbf24"}">{("🤖 " if str(r_["source"]).startswith("llm:") else "") + t("rule_" + r_["kind"])}</span>', unsafe_allow_html=True)
             c[1].code(r_["key"][:80], language=None); c[2].markdown(f"→ **{esc(r_['value'])}**"); c[3].caption(f"{r_['reason'][:120]} · {r_['source']}")
             if c[4].button("✓", key=f"rule-ok-{r_['id']}", help=t("rules_approve"), type="primary"):
                 kb.decide(r_["id"], True); reanalyze(); st.toast(t("rules_applied"), icon="✅"); st.rerun()
