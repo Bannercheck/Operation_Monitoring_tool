@@ -17,6 +17,8 @@ def test_pipeline_smoke():
 def test_streamlit_app_renders(tmp_path, monkeypatch):
     monkeypatch.setenv("ACTIONS_DB", str(tmp_path / "a.db"))
     monkeypatch.setenv("KNOWLEDGE_DB", str(tmp_path / "k.db"))
+    monkeypatch.setenv("WATCHOVER_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("WATCHOVER_SKIP_SETUP", "1")
     monkeypatch.setenv("PLAYBOOK_DB", str(tmp_path / "pb.db"))
     monkeypatch.setenv("LIVE_SPOOL", str(tmp_path / "live.jsonl"))
     monkeypatch.setenv("LIVE_PORT", "8699")
@@ -35,6 +37,8 @@ def test_streamlit_app_renders(tmp_path, monkeypatch):
 def test_multi_dataset_registry_and_compare(tmp_path, monkeypatch):
     monkeypatch.setenv("ACTIONS_DB", str(tmp_path / "a.db"))
     monkeypatch.setenv("KNOWLEDGE_DB", str(tmp_path / "k.db"))
+    monkeypatch.setenv("WATCHOVER_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("WATCHOVER_SKIP_SETUP", "1")
     monkeypatch.setenv("PLAYBOOK_DB", str(tmp_path / "pb.db"))
     monkeypatch.setenv("LIVE_SPOOL", str(tmp_path / "live.jsonl"))
     monkeypatch.setenv("LIVE_PORT", "8698")

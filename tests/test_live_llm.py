@@ -23,7 +23,7 @@ def test_receiver_auth_formats_and_stats(tmp_path):
             req = urllib.request.Request(url, data=body, headers=headers, method="POST")
             with urllib.request.urlopen(req) as r:
                 return json.loads(r.read())
-        assert post(simulate_batch(random.Random(1), 5), {"X-API-Key": "k1", "X-Agent": "host-a"}) == {"accepted": 5}
+        assert post(simulate_batch(random.Random(1), 5), {"X-API-Key": "k1", "X-Agent": "host-a"})["accepted"] == 5
         syslog = b"Sep 16 14:31:02 db-01 postgres[123]: latency increased\n"
         assert post(syslog, {"Authorization": "Bearer k1", "X-File-Name": "db.log"})["accepted"] == 1
         try:

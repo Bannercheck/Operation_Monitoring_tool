@@ -47,7 +47,7 @@ class LiveStore:
         if self.spool:
             self.spool.parent.mkdir(parents=True, exist_ok=True)
 
-    def ingest(self, name: str, data: bytes, agent: str = "unknown") -> int:
+    def ingest(self, name: str, data: bytes, agent: str = "unknown", env: str = "", site: str = "", agent_id: int | None = None) -> int:
         obs, _ = ingest_bytes(name, data)
         now = datetime.now(UTC)
         metric_rows: list[tuple] = []
@@ -56,6 +56,12 @@ class LiveStore:
             if o.attributes.pop("_no_ts", False) or o.timestamp.year < 2000:
                 o.timestamp = now
             o.attributes["agent"] = agent
+            if env and not o.environment:                    # the registered environment wins over guessing from host names
+                o.environment = env
+            if site:
+                o.attributes["site"] = site
+            if agent_id is not None:
+                o.attributes["agent_id"] = agent_id
             m = metric_of(o)
             if m:
                 metric_rows.extend(m)
@@ -267,8 +273,12 @@ def metric_of(o: Observation) -> list[tuple] | None:
     return out or None
 
 
-def make_handler(store: LiveStore, api_key: str | None):
+def make_handler(store: LiveStore, api_key: str | None, registry=None):
+    """Auth order: per-agent token from the registry (identity = the registered record) > legacy shared key > open when no key is set."""
     class H(BaseHTTPRequestHandler):
+        def _token(self) -> str:
+            auth = self.headers.get("Authorization", "")
+            return self.headers.get("X-API-Key") or (auth[7:] if auth.startswith("Bearer ") else "")
         def log_message(self, *a):
             pass
 
@@ -281,10 +291,17 @@ def make_handler(store: LiveStore, api_key: str | None):
             self.wfile.write(data)
 
         def _authorized(self) -> bool:
+            tok = self._token()
+            if registry is not None and tok:
+                self.agent_rec = registry.verify(tok)
+                if self.agent_rec:
+                    return True
+                if tok.startswith("wo_"):                    # an agent token that is unknown or revoked: never fall back to the shared key
+                    return False
+            self.agent_rec = None
             if not api_key:
                 return True
-            auth = self.headers.get("Authorization", "")
-            return self.headers.get("X-API-Key") == api_key or auth == f"Bearer {api_key}"
+            return tok == api_key
 
         def do_GET(self):
             if self.path.startswith("/health"):
@@ -295,24 +312,30 @@ def make_handler(store: LiveStore, api_key: str | None):
             if not self.path.startswith("/ingest"):
                 return self._send(404, {"error": "not found"})
             if not self._authorized():
-                return self._send(401, {"error": "invalid api key"})
+                return self._send(401, {"error": "invalid or revoked token"})
             n = int(self.headers.get("Content-Length") or 0)
             data = self.rfile.read(n)
             if not data:
                 return self._send(400, {"error": "empty body"})
-            agent = self.headers.get("X-Agent", self.client_address[0])
+            rec = getattr(self, "agent_rec", None)
+            agent = rec["name"] if rec else self.headers.get("X-Agent", self.client_address[0])
             name = self.headers.get("X-File-Name", "agent.log")
             try:
-                count = store.ingest(name, data, agent)
+                count = store.ingest(name, data, agent, env=(rec or {}).get("env", ""), site=(rec or {}).get("site", ""), agent_id=(rec or {}).get("id"))
             except Exception as e:  # noqa: BLE001
                 return self._send(400, {"error": str(e)})
-            self._send(200, {"accepted": count})
+            if rec and registry is not None:
+                try:
+                    registry.touch(rec["id"], self.client_address[0], count)
+                except Exception:  # noqa: BLE001
+                    pass
+            self._send(200, {"accepted": count, "agent": agent, "identity": "token" if rec else ("key" if api_key else "open")})
 
     return H
 
 
-def start_receiver(store: LiveStore, port: int = 8600, api_key: str | None = None) -> ThreadingHTTPServer:
-    server = ThreadingHTTPServer(("0.0.0.0", port), make_handler(store, api_key))
+def start_receiver(store: LiveStore, port: int = 8600, api_key: str | None = None, registry=None) -> ThreadingHTTPServer:
+    server = ThreadingHTTPServer(("0.0.0.0", port), make_handler(store, api_key, registry))
     threading.Thread(target=server.serve_forever, daemon=True, name=f"live-receiver-{port}").start()
     return server
 

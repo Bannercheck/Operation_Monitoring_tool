@@ -32,6 +32,8 @@ from watchover.compare import compare as compare_datasets
 from watchover.graph import build_map, to_html
 from watchover.playbook import Playbook
 from watchover.knowledge import Knowledge, RULE_KINDS
+from watchover.agents import AgentRegistry
+from watchover import settings as wo_settings
 from watchover import assistant as wo_assistant
 from watchover.llm import LLMConfig, PROVIDERS, chat as llm_chat, embed as llm_embed, list_models as llm_models, set_sink as llm_set_sink, test_connection as llm_test
 from watchover import ollama as wo_ollama
@@ -42,6 +44,12 @@ from watchover.pipeline import ingest_bytes, ingest_path
 from watchover.profiler import profile
 from watchover import stamp as wo_stamp
 
+if "cfg_loaded" not in st.session_state:                      # persisted settings become the session's defaults, once
+    _cfg = wo_settings.load()
+    for _k in wo_settings.SESSION_KEYS:
+        if _k not in st.session_state and _cfg.get(_k) not in (None, ""):
+            st.session_state[_k] = _cfg[_k]
+    st.session_state["cfg_loaded"] = True
 ASSETS = Path(__file__).with_name("assets")
 LOGO_PNG = str(ASSETS / "logo-64.png")
 LOGO_SVG = (ASSETS / "logo.svg").read_text(encoding="utf-8") if (ASSETS / "logo.svg").exists() else ""
@@ -294,10 +302,15 @@ def live_store() -> LiveStore:
 
 
 @st.cache_resource
+def agents() -> AgentRegistry:
+    return AgentRegistry(knowledge())
+
+
+@st.cache_resource
 def receiver(port: int, api_key: str):
     """One receiver per (port, key) for the life of the process; a port clash returns the OSError to display."""
     try:
-        return start_receiver(live_store(), port, api_key or None)
+        return start_receiver(live_store(), port, api_key or None, agents())
     except OSError as e:
         return e
 
@@ -490,6 +503,45 @@ def learning_panel(inc, a: Analysis) -> None:
                 st.toast(t("fb_saved", n=len(out["proposals"])), icon="✅")
 
 
+def agents_panel(port: int) -> None:
+    """Enrol collectors, hand out one-time tokens, watch last-seen, revoke."""
+    reg = agents()
+    st.markdown(f"#### {t('ag_title')}")
+    st.caption(t("ag_hint"))
+    with st.form("ag-enroll", border=True):
+        c = st.columns([2, 1.2, 1.2, 2])
+        name = c[0].text_input(t("ag_name"), placeholder="db-01")
+        env = c[1].selectbox(t("environment"), ["prod", "staging", "test", "dev", "qa", "dr"])
+        site = c[2].text_input(t("ag_site"), placeholder="IST-DC1")
+        tags = c[3].text_input(t("ag_tags"), placeholder="oracle, core")
+        if st.form_submit_button(f"➕ {t('ag_enroll')}", **wide("button")) and name.strip():
+            rec, tok = reg.enroll(name, env, site, tags)
+            st.session_state["ag_new"] = (rec, tok)
+    if st.session_state.get("ag_new"):
+        rec, tok = st.session_state.pop("ag_new")
+        st.success(t("ag_token_once", n=rec["name"]))
+        st.code(tok, language=None)
+        st.code(f"export WATCHOVER_TOKEN={tok}\npython agent.py --url http://<dashboard-host>:{port}/ingest --metrics --interval 10\n"
+                f"python agent.py --url http://<dashboard-host>:{port}/ingest --tail /var/log/app.log", language="bash")
+    rows = reg.list()
+    if not rows:
+        st.caption(t("ag_none")); return
+    for r in rows:
+        c = st.columns([2, 1, 1.2, 1.6, 1, 0.8, 0.8])
+        dot = "#2dd4bf" if r["status"] == "active" else "#f87171"
+        c[0].markdown(f'<span class="dot" style="display:inline-block;width:8px;height:8px;border-radius:4px;background:{dot};margin-right:6px"></span><b>{esc(r["name"])}</b>', unsafe_allow_html=True)
+        c[1].caption(r["env"] or "-"); c[2].caption(r["site"] or "-")
+        c[3].caption(f"{(r['last_seen'] or '-')[:16]} · {r['last_ip'] or ''}")
+        c[4].caption(f"{r['events']:,} {t('events_n')}")
+        if r["status"] == "active":
+            if c[5].button("⏏", key=f"ag-rev-{r['id']}", help=t("ag_revoke")):
+                reg.revoke(r["id"]); st.rerun()
+        elif c[5].button("↻", key=f"ag-rot-{r['id']}", help=t("ag_rotate")):
+            st.session_state["ag_new"] = (r, reg.rotate(r["id"])); st.rerun()
+        if c[6].button("🗑", key=f"ag-del-{r['id']}", help=t("ag_delete")):
+            reg.delete(r["id"]); st.rerun()
+
+
 def recovery_label(kind: str) -> str:
     return t("rec_" + kind) if kind in ("restart", "self_healed", "stopped", "ongoing") else t("rec_unknown")
 
@@ -549,6 +601,97 @@ LIVE_PORT = int(os.environ.get("LIVE_PORT", "8600"))
 PAGES = ["ops", "data", "map", "assist", "llm", "pb", "itsm", "conn", "readme"]
 PAGE_KEYS = {"ops": "sb_ops", "data": "sb_data", "map": "sb_map", "assist": "sb_assist", "llm": "sb_llm", "pb": "sb_pb", "itsm": "sb_itsm", "conn": "sb_conn", "readme": "sb_readme"}
 
+
+# ------------------------------------------------------------------ first-run setup wizard
+def page_setup() -> None:
+    ss = st.session_state
+    step = ss.setdefault("setup_step", 0)
+    steps = [t("su_s1"), t("su_s2"), t("su_s3"), t("su_s4")]
+    st.markdown(f'<div class="wo-brand" style="padding:6px 0 4px"><span style="display:inline-block;width:52px">{logo(52)}</span>'
+                f'<div><div class="name" style="font-size:32px">Watchover</div><div class="tag">{upper(t("su_title"))}</div></div></div>', unsafe_allow_html=True)
+    st.markdown('<div class="chips">' + "".join(f'<span class="chip" style="{"border-color:#2dd4bf;color:#e6fffa" if i == step else ""}"><span class="d" style="background:{"#2dd4bf" if i <= step else "#3b4b66"}"></span>{i + 1}. {esc(x)}</span>' for i, x in enumerate(steps)) + "</div>", unsafe_allow_html=True)
+    st.progress((step + 1) / len(steps))
+    with st.container(border=True):
+        if step == 0:
+            st.markdown(f"### {t('su_s1')}")
+            st.caption(t("su_s1_hint"))
+            st.radio(t("su_lang"), ["tr", "en"], horizontal=True, key="lang", format_func=lambda x: {"tr": "🇹🇷 Türkçe", "en": "🇬🇧 English"}[x])
+            st.text_input(t("su_workspace"), key="su_workspace", placeholder="Turkcell NOC")
+            st.number_input(t("live_port"), 1024, 65535, int(ss.get("live_port", LIVE_PORT)), key="su_port")
+            st.toggle(t("live_sim"), value=ss.get("sim_on", True), key="su_sim")
+        elif step == 1:
+            st.markdown(f"### {t('su_s2')}")
+            st.caption(t("su_s2_hint"))
+            found = wo_ollama.discover()
+            if found:
+                st.success(t("llm_found", u=found))
+                inst = wo_ollama.installed(found)
+                names = [m["name"] for m in inst]
+                chat_opts = [n for n in names if not any(e in n for e in ("embed", "bge"))]
+                emb_opts = [n for n in names if any(e in n for e in ("embed", "bge"))]
+                ss.setdefault("llm_base", found); ss["llm_provider"] = "ollama"
+                c1, c2 = st.columns(2)
+                c1.selectbox(t("llm_model"), chat_opts + [x["name"] for x in wo_ollama.RECOMMENDED if x["role"] == "chat" and x["name"] not in chat_opts], key="su_chat")
+                c2.selectbox(t("llm_embed"), [""] + emb_opts + [x["name"] for x in wo_ollama.RECOMMENDED if x["role"] == "embed" and x["name"] not in emb_opts], key="su_embed")
+                need = [m for m in (ss.get("su_chat"), ss.get("su_embed")) if m and m not in names]
+                if need:
+                    st.warning(t("su_need_pull", m=", ".join(need)))
+                    if st.button(f"⬇ {t('llm_pull')} · {', '.join(need)}", key="su-pull"):
+                        for name in need:
+                            bar = st.progress(0.0, text=f"{t('llm_pulling')} {name}")
+                            try:
+                                for ev in wo_ollama.pull(found, name):
+                                    if ev.get("error"):
+                                        raise RuntimeError(ev["error"])
+                                    if ev["pct"] is not None:
+                                        bar.progress(min(1.0, ev["pct"]), text=f"{t('llm_pulling')} {name} · {ev['pct']:.0%}")
+                                bar.progress(1.0, text=t("llm_pulled", m=name))
+                            except Exception as e:  # noqa: BLE001
+                                st.error(f"{name}: {e}")
+                        st.rerun()
+                ss["llm_model"], ss["llm_embed"] = ss.get("su_chat", ""), ss.get("su_embed", "")
+            else:
+                st.info(t("su_no_ollama"))
+                st.code("brew install --cask ollama   # macOS\ncurl -fsSL https://ollama.com/install.sh | sh   # Linux", language="bash")
+                with st.expander(t("su_external")):
+                    st.selectbox(t("llm_provider"), list(PROVIDERS), key="llm_provider", format_func=lambda x: t("prov_" + x))
+                    st.text_input(t("llm_base"), key="llm_base"); st.text_input(t("llm_model"), key="llm_model"); st.text_input(t("llm_key"), key="llm_key", type="password")
+                if st.button(f"🔄 {t('su_recheck')}", key="su-recheck"):
+                    st.rerun()
+        elif step == 2:
+            st.markdown(f"### {t('su_s3')}")
+            st.caption(t("su_s3_hint"))
+            agents_panel(int(ss.get("su_port", LIVE_PORT)))
+        else:
+            st.markdown(f"### {t('su_s4')}")
+            st.caption(t("su_s4_hint"))
+            st.toggle(t("su_demo"), value=True, key="su_demo")
+            cfg = llm_cfg()
+            st.markdown(f'<div class="card"><b>{t("su_summary")}</b><br><span class="muted">{t("su_lang")}: {ss.get("lang", "tr")} · {t("live_port")}: {ss.get("su_port", LIVE_PORT)} · LLM: {cfg.kind} / {cfg.model or t("as_no_llm")} · {t("llm_embed")}: {cfg.embed_model or "-"} · {t("ag_title")}: {len(agents().list())}</span></div>', unsafe_allow_html=True)
+    b1, b2, b3 = st.columns([1, 1, 4])
+    if step > 0 and b1.button(f"← {t('su_back')}", key="su-back", **wide("button")):
+        ss["setup_step"] = step - 1; st.rerun()
+    if step < len(steps) - 1:
+        if b2.button(f"{t('su_next')} →", key="su-next", type="primary", **wide("button")):
+            if step == 0:                                    # widgets vanish with their step: keep what matters in plain session keys
+                ss["live_port"], ss["sim_on"], ss["workspace"] = int(ss.get("su_port", LIVE_PORT)), bool(ss.get("su_sim", True)), ss.get("su_workspace", "")
+            ss["setup_step"] = step + 1; st.rerun()
+    elif b2.button(f"✓ {t('su_finish')}", key="su-finish", type="primary", **wide("button")):
+        wo_settings.save({"setup_done": True, "lang": ss.get("lang", "tr"), "workspace": ss.get("workspace", ""), "live_port": int(ss.get("live_port", LIVE_PORT)),
+                          "sim_on": bool(ss.get("sim_on", True)), "demo_on_start": bool(ss.get("su_demo", True)),
+                          **{k: ss.get(k, "") for k in ("llm_provider", "llm_base", "llm_model", "llm_key", "llm_embed")}})
+        ss["setup_done"] = True
+        if ss.get("su_demo", True) and "analysis" not in ss and demo.exists():
+            load("demo_mixed.zip", path=str(demo))
+        st.rerun()
+    if b3.button(t("su_skip"), key="su-skip"):
+        wo_settings.save({"setup_done": True}); ss["setup_done"] = True; st.rerun()
+
+
+
+if not (st.session_state.get("setup_done") or wo_settings.setup_done()):
+    page_setup()
+    st.stop()
 
 with st.sidebar:
     st.markdown(f'<div class="wo-brand">{logo(40)}<div><div class="name">Watchover</div><div class="tag">{upper(t("brand_tag"))}</div></div></div>', unsafe_allow_html=True)
@@ -1163,11 +1306,14 @@ def page_conn() -> None:
         st.toggle(t("live_sim"), value=st.session_state.get("sim_on", True), key="sim_on")
         srv = receiver(int(port), key)
         (st.error(str(srv)) if isinstance(srv, OSError) else st.success(t("live_running", port=int(port))))
-        st.caption(t("live_agent_cmd"))
-        st.code(f"python agent.py --url http://<dashboard-host>:{int(port)}/ingest{' --key ' + key if key else ''} --tail /var/log/app.log\n"
-                f"python agent.py --url http://<dashboard-host>:{int(port)}/ingest{' --key ' + key if key else ''} --metrics --interval 10", language="bash")
+        if st.button(t("cfg_save"), key="live-save"):
+            wo_settings.save({"live_port": int(port), "live_key": key, "sim_on": st.session_state.get("sim_on", True)}); st.toast(t("cfg_saved"), icon="💾")
+        st.caption(t("live_key_legacy"))
+        agents_panel(int(port))
     with tab_llm:
         st.info(t("llm_moved"))
+    if st.button(f"🧭 {t('su_rerun')}", key="su-rerun"):
+        wo_settings.save({"setup_done": False}); st.session_state["setup_done"] = False; st.session_state["setup_step"] = 0; st.rerun()
 
 
 # ------------------------------------------------------------------ page: LLM (connection, models, quality)
@@ -1204,7 +1350,9 @@ def page_llm() -> None:
                 if pick and pick != ss.get("llm_model"):
                     ss["llm_model"] = pick; st.rerun()
             st.text_input(t("llm_embed"), key="llm_embed", placeholder="bge-m3", help=t("llm_embed_help"))
-            b1, b2 = st.columns(2)
+            b1, b2, b3 = st.columns(3)
+            if b3.button(f"💾 {t('cfg_save')}", key="llm-save", **wide("button")):
+                wo_settings.save({k: ss.get(k, "") for k in ("llm_provider", "llm_base", "llm_model", "llm_key", "llm_embed")}); st.toast(t("cfg_saved"), icon="💾")
             if b1.button(t("llm_test"), key="llm_test_btn", **wide("button")):
                 ok, info = llm_test(llm_cfg())
                 (st.success if ok else st.error)(t("llm_ok", info=info) if ok else t("llm_fail", e=info))

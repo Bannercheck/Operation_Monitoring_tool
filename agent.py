@@ -91,7 +91,7 @@ def tail(path: Path, url: str, key: str, agent: str, batch_secs: float = 1.0) ->
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--url", default="http://localhost:8600/ingest")
-    ap.add_argument("--key", default=None, help="API key configured in Connection Settings")
+    ap.add_argument("--key", "--token", dest="key", default=os.environ.get("WATCHOVER_TOKEN"), help="this agent's token (Connection settings › Agents) or the legacy shared key; env WATCHOVER_TOKEN")
     ap.add_argument("--agent", default=socket.gethostname())
     ap.add_argument("--env", default=os.environ.get("AGENT_ENV", ""), help="environment tag for this host (prod / test / dev / staging)")
     g = ap.add_mutually_exclusive_group(required=True)
