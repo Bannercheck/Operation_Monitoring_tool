@@ -268,10 +268,26 @@ def playbook() -> Playbook:
 
 
 @st.cache_resource
+def _singletons() -> dict:
+    return {}
+
+
+def _singleton(key: str, cls, make):
+    """One instance per process. Rebuilt when the class object changed, i.e. the module was hot-reloaded while developing:
+    a cached instance of the old class would lack methods added since (AttributeError on the settings page)."""
+    h = _singletons()
+    obj = h.get(key)
+    if type(obj) is not cls:
+        obj = h[key] = make()
+    return obj
+
+
 def knowledge() -> Knowledge:
-    kb = Knowledge(os.environ.get("DATABASE_URL") or os.environ.get("KNOWLEDGE_DB", "knowledge.db"))
-    kb.apply_rules()                                   # approved rules shape the engine from the first analysis on
-    return kb
+    def make():
+        kb = Knowledge(os.environ.get("DATABASE_URL") or os.environ.get("KNOWLEDGE_DB", "knowledge.db"))
+        kb.apply_rules()                               # approved rules shape the engine from the first analysis on
+        return kb
+    return _singleton("kb", Knowledge, make)
 
 
 def kb_with_embedder() -> Knowledge:
@@ -301,9 +317,8 @@ def live_store() -> LiveStore:
     return LiveStore(spool=os.environ.get("LIVE_SPOOL", "data/live/events.jsonl"))
 
 
-@st.cache_resource
 def agents() -> AgentRegistry:
-    return AgentRegistry(knowledge())
+    return _singleton("agents", AgentRegistry, lambda: AgentRegistry(knowledge()))
 
 
 @st.cache_resource
