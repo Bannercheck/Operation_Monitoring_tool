@@ -66,7 +66,7 @@ fi
 
 log "Launcher: $DIR/bin/watchover"
 mkdir -p "$DIR/bin"
-sed "s#__DIR__#$DIR#g; s#__SRC__#$SRC_DIR#g; s#__PORT__#$PORT#g" "$SRC_DIR/scripts/watchover-launcher.sh" > "$DIR/bin/watchover"
+sed "s#__DIR__#$DIR#g; s#__SRC__#$SRC_DIR#g; s#__PORT__#$PORT#g; s#__REPO__#$REPO#g; s#__BRANCH__#$BRANCH#g" "$SRC_DIR/scripts/watchover-launcher.sh" > "$DIR/bin/watchover"
 chmod +x "$DIR/bin/watchover"
 for b in "$HOME/.local/bin" /usr/local/bin /opt/homebrew/bin; do
   if [[ -d "$b" && -w "$b" ]]; then ln -sf "$DIR/bin/watchover" "$b/watchover"; log "Command 'watchover' linked into $b"; break; fi

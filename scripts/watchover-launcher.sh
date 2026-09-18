@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Watchover launcher (installed by scripts/install.sh). Usage: watchover start|stop|restart|status|run|open|update|logs|agent
-DIR="__DIR__"; SRC="__SRC__"; PORT="__PORT__"
+DIR="__DIR__"; SRC="__SRC__"; PORT="__PORT__"; REPO="__REPO__"; BRANCH="__BRANCH__"
 export WATCHOVER_HOME="$DIR/data"
 [[ -f "$DIR/data/.env" ]] && set -a && . "$DIR/data/.env" && set +a
 ADDR="${WATCHOVER_UI_ADDRESS:-127.0.0.1}"   # dashboard UI: loopback by default; WATCHOVER_UI_ADDRESS=0.0.0.0 in data/.env to expose it (put TLS/SSO in front)
@@ -23,7 +23,11 @@ case "${1:-start}" in
       [[ -f "$NEW/app.py" && -d "$NEW/src/watchover" ]] || { echo "no Watchover code in $2"; exit 1; }
       (cd "$NEW" && tar cf - --exclude=.env --exclude='*.db' --exclude=data .) | (cd "$SRC" && tar xf -); rm -rf "$TMP"
       echo "code updated from $2 → $SRC"
-    elif [[ -d "$SRC/.git" ]]; then git -C "$SRC" pull --ff-only
+    elif [[ -d "$SRC/.git" ]]; then
+      git -C "$SRC" remote get-url origin >/dev/null 2>&1 || git -C "$SRC" remote add origin "$REPO"
+      git -C "$SRC" fetch -q origin "$BRANCH" || { echo "cannot reach $REPO — use: watchover update /path/to/watchover.zip"; exit 1; }
+      if [[ -n "$(git -C "$SRC" status --porcelain)" ]]; then git -C "$SRC" stash push -q -u -m "watchover update $(date +%F)"; echo "local changes stashed (git stash list)"; fi
+      git -C "$SRC" checkout -q -B "$BRANCH" "origin/$BRANCH" && echo "code updated → $(git -C "$SRC" log -1 --format='%h %s')"
     else echo "$SRC is not a git checkout: run  watchover update /path/to/watchover.zip  with the new archive"; exit 1; fi
     "$DIR/.venv/bin/pip" install -q -e "$SRC[mcp]" && "$0" restart;;
   logs) tail -f "$LOG";;
