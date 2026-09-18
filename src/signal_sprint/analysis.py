@@ -126,9 +126,11 @@ def score_burst(sig: Signal, span_min: int) -> None:
     Steady background traffic: baseline ~= peak -> burst 0. Silent-then-spike: baseline 0 -> burst high.
     """
     per_min = Counter(o.timestamp.replace(second=0, microsecond=0) for o in sig.observations)
-    rates = sorted(list(per_min.values()) + [0] * max(0, span_min - len(per_min)))
-    sig.peak_rate = float(rates[-1])
-    sig.baseline_rate = float(rates[len(rates) // 2])
+    vals = sorted(per_min.values())
+    zeros = max(0, span_min - len(per_min))                  # quiet minutes are not materialised (a 4-year SAP log has ~2M of them)
+    mid = (len(vals) + zeros) // 2
+    sig.peak_rate = float(vals[-1])
+    sig.baseline_rate = 0.0 if mid < zeros else float(vals[mid - zeros])
     peak_minute = max(per_min, key=per_min.get)
     threshold = max(1.0, sig.baseline_rate * 2)
     sig.onset = min(m for m, c in per_min.items() if c >= threshold or m == peak_minute)

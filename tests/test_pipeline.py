@@ -240,7 +240,8 @@ def test_sap_log_family():
     """SAP logs of any extension (.log .lst .jvm .out .trc .file or none): dev traces, HANA, NetWeaver Java, JUL, GC, tp / transport, SM21."""
     obs, rep = ingest_path(str(ROOT / "samples" / "sap_logs.zip"))
     by_file = {r["file"].rsplit("/", 1)[-1]: r for r in rep}
-    assert set(by_file) == {"dev_w0", "indexserver_sapprd01.30003.000.trc", "defaultTrace.0.trc", "std_server0.out", "sapjvm_gc.jvm", "R3trans.log", "SLOG2638.PRD.lst", "sm21_export.file"}
+    assert set(by_file) == {"dev_w0", "indexserver_sapprd01.30003.000.trc", "defaultTrace.0.trc", "std_server0.out", "sapjvm_gc.jvm", "R3trans.log", "SLOG2638.PRD.lst", "sm21_export.file",
+                            "available.log", "bootstrap.jvm", "class_prefetch.lst", "deploy.0.log"}
     assert all(r["format"] == "sap" for r in by_file.values())
     o = {(x.source.rsplit("/", 1)[-1], x.line_no): x for x in obs}
     dev = o[("dev_w0", 15)]                       # timestamp inherited from the "M Wed Sep 16 02:14:09:501 2026" line
@@ -266,6 +267,19 @@ def test_sap_log_family():
     sm = o[("sm21_export.file", 3)]
     assert sm.severity == "CRITICAL" and sm.service == "sap-upd" and sm.attributes["sap.user"] == "BATCHUSR" and sm.timestamp.strftime("%Y-%m-%d %H:%M:%S") == "2026-09-16 02:14:51"
     assert o[("sm21_export.file", 4)].severity == "INFO"
+    # real NetWeaver 7.50 ListFormatter (deploy.0.log excerpt: "#2.0<BS>#" version, <!--LOGHEADER-->, 3-line records ending at a blank line)
+    dep = o[("deploy.0.log", 13)]
+    assert dep.severity == "INFO" and dep.service == "sap-deployment" and dep.message.startswith("[Server 00 00_85596] (301) :Operation undeploy")
+    assert dep.attributes["sap.sid"] == "TPD" and dep.attributes["sap.msg_id"] == "com.sap.ASJ.dpl_dc.000564" and dep.attributes["sap.user"] == "Administrator"
+    err = o[("deploy.0.log", 26)]
+    assert err.severity == "ERROR" and "Entered illegal state" in err.message and "sdu file path" in err.message and by_file["deploy.0.log"]["rows"] == 5
+    assert not any(x.message.startswith("<!--") for x in obs)                    # log headers are meta, not events
+    # sapstartsrv availability log, SAP JVM property snapshot, class prefetch list
+    av = o[("available.log", 1)]
+    assert av.severity == "ERROR" and av.attributes["avail.duration_min"] == 43 and av.timestamp.strftime("%d.%m.%Y %H:%M:%S") == "24.10.2021 18:51:33" and o[("available.log", 2)].severity == "INFO"
+    jvm = o[("bootstrap.jvm", 1)]
+    assert by_file["bootstrap.jvm"]["rows"] == 1 and jvm.service == "sap-tpd" and jvm.attributes["jvm.version"] == "1.8.0_241" and jvm.timestamp.strftime("%Y-%m-%d %H:%M:%S") == "2021-10-24 18:52:12"
+    assert by_file["class_prefetch.lst"]["rows"] == 1 and o[("class_prefetch.lst", 1)].attributes["jvm.class_count"] == 12
     # the SAP files run through the normal engine
     a = an.Analysis(obs, rep)
     assert a.funnel()["raw_events"] == len(obs) and sum(1 for x in obs if x.severity in ("ERROR", "CRITICAL")) >= 10
@@ -273,3 +287,19 @@ def test_sap_log_family():
     assert detect_format(TEXT)[0] == "text" and detect_format(SYSLOG)[0] == "syslog"
     t = parse("text", "Wed Sep 16 02:14:07 2026 ERROR foo: bar\n16.09.2026 02:14:08 WARN baz\nSep 16, 2026 2:14:09 AM SEVERE: qux\n")
     assert [x.timestamp.strftime("%H:%M:%S") for x in t] == ["02:14:07", "02:14:08", "02:14:09"] and [x.severity for x in t] == ["ERROR", "WARN", "CRITICAL"]
+
+
+def test_burst_score_is_span_independent():
+    """A signal in a 4-year log must not materialise one entry per quiet minute (was 60 s+ on a real deploy.log)."""
+    from datetime import datetime, timedelta, timezone
+    from signal_sprint.models import Observation, Signal
+    t0 = datetime(2021, 1, 1, tzinfo=timezone.utc)
+    obs = [Observation(timestamp=t0 + timedelta(minutes=i), message="x") for i in range(10)]
+    sig = Signal(id="S1", fingerprint="f", template="x", severity="INFO", count=10, services=[], hosts=[], entities=set(),
+                 first_seen=obs[0].timestamp, last_seen=obs[-1].timestamp, onset=obs[0].timestamp, observations=obs)
+    import time
+    t = time.time(); an.score_burst(sig, 4 * 365 * 24 * 60); assert time.time() - t < 0.05
+    assert sig.baseline_rate == 0.0 and sig.peak_rate == 1.0 and sig.burst_score == 0.0      # ratio 1/(0+1) = 1 -> no burst
+    obs2 = obs + [Observation(timestamp=t0 + timedelta(minutes=3, seconds=s), message="x") for s in range(1, 10)]
+    sig.observations = obs2; an.score_burst(sig, 10)
+    assert sig.peak_rate == 10.0 and sig.baseline_rate == 1.0 and sig.burst_score == 0.444

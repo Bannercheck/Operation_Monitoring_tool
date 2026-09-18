@@ -1,0 +1,16 @@
+#================================================================================
+# created at Sun Oct 24 18:52:12 2021
+#================================================================================
+checksum = -6263965581564718985
+cpu = amd64
+dllName = libjvm.so
+exePath = /usr/sap/TPD/J00/exe/sapjvm_8/bin
+home = /usr/sap/TPD/J00/exe/sapjvm_8
+libPath = /usr/sap/TPD/J00/exe/sapjvm_8/jre/lib/amd64/server:/usr/sap/TPD/J00/exe/sapjvm_8/jre/lib/amd64
+name = SAP Java Server VM
+sapversion = 10
+type = server
+vendor = SAP AG
+version = 1.8.0_241
+vmVersion = 8.1.061 10.0.2+000
+#================================================================================
