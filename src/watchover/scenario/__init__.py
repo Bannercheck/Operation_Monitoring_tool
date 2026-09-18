@@ -122,3 +122,8 @@ SLO: dict = {"availability": 0.999, "p95_ms": 300}
 SLA: dict = {"availability": 0.995}
 # Infra metric thresholds (percent) that count as anomalies for ticket correlation and tile colouring
 METRIC_THRESHOLDS: dict = {"cpu": 85, "gpu": 95, "memory": 90, "disk": 90}
+
+# ---- learned overlays (filled by knowledge.apply_rules from human-approved rules; empty by default)
+NOISE_TYPES: set[str] = set()                      # alarm types the team marked as noise: never on a card, audit reason n_rule
+NOISE_TEMPLATES: set[str] = set()                  # message templates marked as noise (log data without alarm types)
+EXTRA_DEPENDENCIES: list[dict] = []                # {"source", "target", "type", "criticality"} rows added by rules

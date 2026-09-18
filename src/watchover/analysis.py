@@ -446,7 +446,7 @@ class Analysis:
     def __init__(self, observations: list[Observation], report: list[dict]):
         self.report = report
         self.observations, self.report = observations, report
-        self.dependencies = tables.dependencies(report)          # declared service dependencies (may be empty)
+        self.dependencies = tables.dependencies(report) + [d for d in getattr(scenario, "EXTRA_DEPENDENCIES", []) if d not in tables.dependencies(report)]
         self.inventory = tables.inventory(report)                # host -> dc / rack / env / criticality (may be empty)
         if not self.dependencies:                                # enriched single file: columns carry the graph and the inventory
             d2, i2 = tables.from_observations(observations)
@@ -457,9 +457,16 @@ class Analysis:
         self.mode = "density" if mode == "density" or (mode == "auto" and self.dependencies) else "fingerprint"
         self.storm: dict = {}
         self.noise_obs: list[Observation] = []
+        rule_types = {x.lower() for x in getattr(scenario, "NOISE_TYPES", set())}
+        rule_tpls = set(getattr(scenario, "NOISE_TEMPLATES", set()))
+        self.rule_noise: list[Observation] = [o for o in observations if (rule_types and str(o.attributes.get("alarm_type", "")).lower() in rule_types)
+                                              or (rule_tpls and o.template in rule_tpls)] if (rule_types or rule_tpls) else []
+        if self.rule_noise:
+            skip = {id(o) for o in self.rule_noise}
+            observations = [o for o in observations if id(o) not in skip]
         if self.mode == "density":
             self.storm = storm.extract_slow_burns(storm.cluster(observations, self.dependencies, self.inventory), observations)
-            self.noise_obs = self.storm["noise"]
+            self.noise_obs = self.storm["noise"] + self.rule_noise
             comps, all_sigs, n = [], [], 0
             for c in self.storm["clusters"]:
                 if scenario.PRUNE_BACKGROUND:
@@ -482,6 +489,12 @@ class Analysis:
             self.signals = sorted(build_signals(observations), key=lambda s: (-s.burst_score, -SEV_RANK[s.severity], -s.count))
             comps = [(m, e, False) for m, e in correlate(self.signals, deps=self.dependencies)
                      if len(m) > 1 or SEV_RANK[m[0].severity] >= 3 or m[0].burst_score >= 0.5]
+            if self.rule_noise:                                  # rule noise still counts in the funnel and the audit
+                extra = build_signals(self.rule_noise)
+                for k, sg in enumerate(extra, len(self.signals) + 1):
+                    sg.id = f"S{k}"
+                self.signals += extra
+        self._rule_ids = {id(o) for o in self.rule_noise}
         ctx = {"svc_minute": Counter((o.service, o.timestamp.replace(second=0, microsecond=0)) for o in observations if o.service),
                "n_services": len({o.service for o in observations if o.service}), "n_hosts": len({o.host for o in observations if o.host}),
                "inventory": self.inventory}
@@ -516,6 +529,8 @@ class Analysis:
                 continue
             if s.id in demoted:
                 reason = "n_small" if demoted[s.id] in self.small_ids else "n_demoted"
+            elif self._rule_ids and all(id(o) in self._rule_ids for o in s.observations[:5]):
+                reason = "n_rule"                                # alarm type marked as noise by an approved rule
             elif self.mode == "density":
                 reason = "n_baseline"                            # inside its service's normal alarm rate: no hot cell
             elif not interesting(s):

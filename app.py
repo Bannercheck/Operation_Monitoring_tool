@@ -31,7 +31,9 @@ from watchover.analysis import template_of
 from watchover.compare import compare as compare_datasets
 from watchover.graph import build_map, to_html
 from watchover.playbook import Playbook
-from watchover.llm import LLMConfig, chat as llm_chat, test_connection as llm_test
+from watchover.knowledge import Knowledge, RULE_KINDS
+from watchover import assistant as wo_assistant
+from watchover.llm import LLMConfig, chat as llm_chat, embed as llm_embed, test_connection as llm_test
 from watchover.i18n import current_lang, factor_value, narrative_text, reason_text, recommendation_text, link_text, t
 from watchover.models import SEV_RANK
 from watchover.pipeline import ingest_bytes, ingest_path
@@ -204,6 +206,34 @@ def playbook() -> Playbook:
 
 
 @st.cache_resource
+def knowledge() -> Knowledge:
+    kb = Knowledge(os.environ.get("DATABASE_URL") or os.environ.get("KNOWLEDGE_DB", "knowledge.db"))
+    kb.apply_rules()                                   # approved rules shape the engine from the first analysis on
+    return kb
+
+
+def kb_with_embedder() -> Knowledge:
+    """The knowledge base, with the session's embedding model attached when one is configured."""
+    kb = knowledge()
+    cfg = llm_cfg()
+    kb.embedder = (lambda texts, c=cfg: llm_embed(c, texts)) if cfg.base_url and cfg.embed_model else None
+    return kb
+
+
+def reanalyze() -> None:
+    """Rules changed: rebuild the analysis of every loaded dataset from its observations (fast, no re-parse)."""
+    knowledge().apply_rules()
+    for key, d in st.session_state.get("datasets", {}).items():
+        old = d["analysis"]
+        d["analysis"] = Analysis(old.observations, old.report)
+    if st.session_state.get("dataset") in st.session_state.get("datasets", {}):
+        activate_dataset(st.session_state["dataset"])
+    for fn in (globals().get("frames"), globals().get("search_frame")):   # defined further down; absent on pages that stop early
+        if fn is not None:
+            fn.clear()
+
+
+@st.cache_resource
 def live_store() -> LiveStore:
     return LiveStore(spool=os.environ.get("LIVE_SPOOL", "data/live/events.jsonl"))
 
@@ -223,7 +253,8 @@ def simulator():
 
 
 def llm_cfg() -> LLMConfig:
-    return LLMConfig(st.session_state.get("llm_base", ""), st.session_state.get("llm_model", ""), st.session_state.get("llm_key", ""))
+    return LLMConfig(st.session_state.get("llm_base", "") or os.environ.get("LLM_BASE_URL", ""), st.session_state.get("llm_model", "") or os.environ.get("LLM_MODEL", ""),
+                     st.session_state.get("llm_key", "") or os.environ.get("LLM_API_KEY", ""), embed_model=st.session_state.get("llm_embed", "") or os.environ.get("LLM_EMBED_MODEL", ""))
 
 
 def load(name: str, data: bytes | None = None, path: str | None = None, mapping: dict | None = None) -> None:
@@ -249,6 +280,7 @@ def load(name: str, data: bytes | None = None, path: str | None = None, mapping:
     record_auto_recoveries(analysis, key)
     record_first_actions(analysis, key)
     playbook().record(analysis, key)
+    kb_with_embedder().record(analysis, key, current_lang())
     rec = st.session_state.setdefault("recent", [])
     if key not in rec:
         rec.append(key)
@@ -355,6 +387,45 @@ def incidents_table(incidents: list, key: str, a: Analysis):
         incident_flashcard(a.incident_by_id[chosen], a, key)
 
 
+def learning_panel(inc, a: Analysis) -> None:
+    """Under the flashcard: what the knowledge base remembers about this kind of incident, and the team's verdict on the card."""
+    kb = kb_with_embedder()
+    root = a.signal_by_id[inc.root_cause_signal]
+    rel = kb.related(inc, root)
+    l, r = st.columns([3, 2], gap="medium")
+    with l:
+        st.markdown(f"**🧠 {t('kb_related')}**")
+        if not rel:
+            st.caption(t("kb_related_none"))
+        for d in rel:
+            refs = ", ".join(f"{x.get('dataset')}/{x.get('incident')}" for x in d.get("refs", [])[:3])
+            st.markdown(f'<div class="card" style="padding:10px 14px"><span class="pill" style="background:#60a5fa">L{d["id"]}</span> '
+                        f'<span class="muted">{d["kind"]} · ×{d.get("occurrences", 1)} · {t("fc_score")} {d.get("score", 0)}</span><br><b>{esc(d["title"][:110])}</b>'
+                        f'<br><span class="muted">{esc(d["text"][:260])}</span>' + (f'<br><span class="mono muted">{esc(refs)}</span>' if refs else "") + "</div>", unsafe_allow_html=True)
+    with r:
+        st.markdown(f"**✍️ {t('fb_title')}**")
+        with st.form(key=f"fb-{inc.id}", border=True):
+            verdict = st.radio(t("fb_verdict"), ["up", "down"], horizontal=True, format_func=lambda v: t("fb_up") if v == "up" else t("fb_down"), label_visibility="collapsed")
+            alts = [(x["template"][:80], x["services"]) for x in inc.root_cause_alternatives[:4]]
+            opts = ["__keep__"] + [f"alt{i}" for i in range(len(alts))] + ["__noise__", "__other__"]
+            labels = {"__keep__": t("fb_keep"), "__noise__": t("fb_noise"), "__other__": t("fb_other"), **{f"alt{i}": f"{tpl} ({', '.join(sv)})" for i, (tpl, sv) in enumerate(alts)}}
+            correct = st.selectbox(t("fb_correct"), opts, format_func=lambda k: labels[k])
+            comment = st.text_area(t("fb_comment"), height=70, placeholder=t("fb_comment_ph"))
+            if st.form_submit_button(t("fb_send"), **wide("button")):
+                root_type = str(root.observations[0].attributes.get("alarm_type", "")).lower() if root.observations else ""
+                alt_type = ""
+                if correct.startswith("alt"):
+                    x = inc.root_cause_alternatives[int(correct[3:])]
+                    sig = a.signal_by_id.get(x.get("signal", "")) if isinstance(x, dict) else None
+                    alt_type = str(sig.observations[0].attributes.get("alarm_type", "")).lower() if sig and sig.observations else ""
+                    correct_txt = labels[correct]
+                else:
+                    correct_txt = {"__keep__": "", "__noise__": "noise", "__other__": comment}[correct]
+                out = kb.add_feedback(st.session_state.get("dataset", ""), inc, root, verdict, correct=correct_txt, comment=comment,
+                                      alt_type=alt_type, root_type=root_type, mark_noise=(correct == "__noise__"))
+                st.toast(t("fb_saved", n=len(out["proposals"])), icon="✅")
+
+
 def recovery_label(kind: str) -> str:
     return t("rec_" + kind) if kind in ("restart", "self_healed", "stopped", "ongoing") else t("rec_unknown")
 
@@ -411,8 +482,8 @@ def minute_chart(df: pd.DataFrame, incidents=None, height=200):
 # ------------------------------------------------------------------ sidebar navigation
 demo = Path(__file__).with_name("samples") / "demo_mixed.zip"
 LIVE_PORT = int(os.environ.get("LIVE_PORT", "8600"))
-PAGES = ["ops", "data", "map", "pb", "itsm", "conn", "readme"]
-PAGE_KEYS = {"ops": "sb_ops", "data": "sb_data", "map": "sb_map", "pb": "sb_pb", "itsm": "sb_itsm", "conn": "sb_conn", "readme": "sb_readme"}
+PAGES = ["ops", "data", "map", "assist", "pb", "itsm", "conn", "readme"]
+PAGE_KEYS = {"ops": "sb_ops", "data": "sb_data", "map": "sb_map", "assist": "sb_assist", "pb": "sb_pb", "itsm": "sb_itsm", "conn": "sb_conn", "readme": "sb_readme"}
 LOGO_SVG = ('<svg width="36" height="36" viewBox="0 0 34 34" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="wo" x1="0" y1="0" x2="1" y2="1">'
             '<stop offset="0" stop-color="#2dd4bf"/><stop offset="1" stop-color="#60a5fa"/></linearGradient></defs>'
             '<circle cx="17" cy="17" r="15" fill="none" stroke="url(#wo)" stroke-width="2" opacity=".3"/>'
@@ -1035,9 +1106,145 @@ def page_conn() -> None:
         st.text_input(t("llm_base"), key="llm_base", placeholder="http://localhost:3000/v1")
         st.text_input(t("llm_model"), key="llm_model", placeholder="llama3.1")
         st.text_input(t("llm_key"), key="llm_key", type="password")
+        st.text_input(t("llm_embed"), key="llm_embed", placeholder="nomic-embed-text", help=t("llm_embed_help"))
         if st.button(t("llm_test"), key="llm_test_btn"):
             ok, info = llm_test(llm_cfg())
             (st.success if ok else st.error)(t("llm_ok", info=info) if ok else t("llm_fail", e=info))
+
+
+# ------------------------------------------------------------------ page: Ask Watchover (chat + knowledge base + rules)
+def page_assist() -> None:
+    kb = kb_with_embedder()
+    a = st.session_state.get("analysis")
+    cfg = llm_cfg()
+    st.markdown(f"## {t('as_title')}")
+    stt = kb.stats()
+    chips = [("#2dd4bf" if cfg.enabled else "#64748b", f"LLM: {cfg.model or t('as_no_llm')}"), ("#60a5fa", f"{sum(stt['lessons'].values())} {t('kb_lessons')}"),
+             ("#a78bfa", f"{stt['rules'].get('approved', 0)} {t('kb_rules_on')} · {stt['rules'].get('proposed', 0)} {t('kb_rules_wait')}"),
+             ("#fbbf24" if a is None else "#2dd4bf", st.session_state.get("dataset") or t("as_no_dataset"))]
+    st.markdown('<div class="chips">' + "".join(f'<span class="chip"><span class="d" style="background:{c}"></span>{esc(str(x))}</span>' for c, x in chips) + "</div>", unsafe_allow_html=True)
+    tab_chat, tab_kb, tab_rules = st.tabs([t("as_tab_chat"), f"{t('as_tab_kb')} · {sum(stt['lessons'].values())}", f"{t('as_tab_rules')} · {stt['rules'].get('proposed', 0)}"])
+
+    with tab_chat:
+        hist = st.session_state.setdefault("chat", [])
+        if not hist:
+            st.markdown(f'<div class="card"><b>{t("as_hello")}</b><br><span class="muted">{t("as_hello_sub")}</span></div>', unsafe_allow_html=True)
+            ex = st.columns(3)
+            for i, q_ in enumerate((t("as_ex1"), t("as_ex2"), t("as_ex3"))):
+                if ex[i].button(q_, key=f"as-ex-{i}", **wide("button")):
+                    st.session_state["as_pending"] = q_; st.rerun()
+        for i, m in enumerate(hist):
+            with st.chat_message(m["role"], avatar="🛰️" if m["role"] == "assistant" else "🧑‍💻"):
+                st.markdown(m["content"])
+                if m["role"] == "assistant":
+                    meta = m.get("meta", {})
+                    cap = (t("as_via_llm", m=cfg.model) if meta.get("used_llm") else t("as_via_ctx")) + (f" · ⚠ {meta['error'][:80]}" if meta.get("error") else "")
+                    st.caption(cap)
+                    if meta.get("sources"):
+                        with st.expander(f"📎 {t('as_sources')} · {len(meta['sources'])}"):
+                            for src_ in meta["sources"]:
+                                st.markdown(f'<div class="card" style="padding:8px 12px"><span class="pill" style="background:{"#f87171" if src_["kind"] == "incident" else "#60a5fa"}">{esc(src_["id"])}</span> '
+                                            f'<b>{esc(src_["title"][:100])}</b><br><span class="muted">{esc(src_["text"][:300])}</span></div>', unsafe_allow_html=True)
+                    if meta.get("context"):
+                        with st.expander(f"🔍 {t('as_context')}"):
+                            st.code(meta["context"][:6000], language=None)
+                    if i == len(hist) - 1:
+                        c1_, c2_ = st.columns([1.6, 4])
+                        if c1_.button(t("as_save"), key=f"as-save-{i}", help=t("as_save_help")):
+                            q_prev = hist[i - 1]["content"] if i and hist[i - 1]["role"] == "user" else ""
+                            kb.add("chat", q_prev[:80] or "chat", f"Q: {q_prev}\nA: {m['content']}", tags=["chat"])
+                            st.toast(t("as_saved"), icon="✅")
+        pending = st.session_state.pop("as_pending", None)
+        q = st.chat_input(t("as_input")) or pending
+        if q:
+            hist.append({"role": "user", "content": q})
+            with st.chat_message("user", avatar="🧑‍💻"):
+                st.markdown(q)
+            with st.chat_message("assistant", avatar="🛰️"):
+                with st.spinner(t("as_thinking")):
+                    res = wo_assistant.answer(cfg, q, hist[:-1], a, kb, current_lang())
+                st.markdown(res["text"])
+            hist.append({"role": "assistant", "content": res["text"], "meta": {k: res[k] for k in ("sources", "context", "used_llm", "error")}})
+            st.rerun()
+        if hist and st.button(t("as_clear"), key="as-clear"):
+            st.session_state["chat"] = []; st.rerun()
+
+    with tab_kb:
+        k = st.columns(5)
+        for i, (kind, ic, col) in enumerate((("pattern", "🧩", "#2dd4bf"), ("note", "📝", "#60a5fa"), ("doc", "📄", "#a78bfa"), ("feedback", "✍️", "#fbbf24"))):
+            k[i].markdown(kpi2(stt["lessons"].get(kind, 0), t("kb_" + kind), ic, col, ""), unsafe_allow_html=True)
+        k[4].markdown(kpi2(f"{stt['bytes'] / 1024:.0f} KB" if stt["bytes"] else "-", t("kb_size"), "💾", "#8b98ad", t("kb_size_sub")), unsafe_allow_html=True)
+        st.markdown("")
+        f1, f2 = st.columns(2, gap="medium")
+        with f1, st.form("kb-note", border=True):
+            st.markdown(f"**📝 {t('kb_add_note')}**")
+            ttl = st.text_input(t("kb_note_title"))
+            body = st.text_area(t("kb_note_text"), height=120, placeholder=t("kb_note_ph"))
+            tags = st.text_input(t("kb_tags"), placeholder="db, payment, runbook")
+            if st.form_submit_button(t("kb_save"), **wide("button")) and body.strip():
+                kb.add_note(ttl, body, [x.strip() for x in tags.split(",") if x.strip()])
+                st.toast(t("kb_saved"), icon="✅"); st.rerun()
+        with f2:
+            with st.container(border=True):
+                st.markdown(f"**📄 {t('kb_add_doc')}**")
+                st.caption(t("kb_doc_hint"))
+                ups = st.file_uploader(t("kb_add_doc"), type=["txt", "md", "log", "json", "csv", "yaml", "yml"], accept_multiple_files=True, key="kb_docs", label_visibility="collapsed")
+                if ups and st.button(t("kb_ingest"), key="kb-ingest", **wide("button")):
+                    n = 0
+                    for up in ups:
+                        try:
+                            n += len(kb.add_doc(up.name, up.getvalue().decode("utf-8", "replace")))
+                        except Exception as e:  # noqa: BLE001
+                            st.error(f"{up.name}: {e}")
+                    st.toast(t("kb_doc_saved", n=n), icon="✅")
+            with st.form("kb-fact", border=True):
+                st.markdown(f"**📌 {t('kb_add_fact')}**")
+                st.caption(t("kb_fact_hint"))
+                fk = st.selectbox(t("kb_fact_kind"), list(RULE_KINDS), format_func=lambda x: t("rule_" + x))
+                fkey = st.text_input(t("kb_fact_key"), placeholder="billing · disk_full · payment-api->payment-db")
+                fval = st.text_input(t("kb_fact_value"), placeholder="Faturalama ekibi · 5 · senkron")
+                if st.form_submit_button(t("kb_propose"), **wide("button")) and fkey.strip():
+                    kb.propose(fk, fkey.strip(), fval.strip() or "1", t("kb_fact_reason"), "manual")
+                    st.toast(t("kb_proposed"), icon="📌"); st.rerun()
+        st.markdown(f"#### {t('kb_browse')}")
+        b1, b2 = st.columns([4, 1])
+        qk = b1.text_input(t("kb_search"), key="kb_q", label_visibility="collapsed", placeholder=t("kb_search"))
+        kind = b2.selectbox(t("kb_kind"), ["", "pattern", "note", "doc", "feedback", "chat"], format_func=lambda x: t("kb_" + x) if x else t("ops_all"), label_visibility="collapsed")
+        rows = kb.search(qk, k=30, kinds=(kind,) if kind else None) if qk else kb.all(kind or None, limit=60)
+        if not rows:
+            st.caption(t("kb_empty"))
+        for d in rows:
+            with st.container(border=True):
+                h, x = st.columns([8, 1])
+                refs = ", ".join(f"{r_.get('dataset')}/{r_.get('incident')}" for r_ in d.get("refs", [])[:4])
+                h.markdown(f'<span class="pill" style="background:#60a5fa">L{d["id"]}</span> <b>{esc(d["title"][:120])}</b> <span class="muted">· {t("kb_" + d["kind"]) if d["kind"] in ("pattern","note","doc","feedback","chat") else d["kind"]} · ×{d.get("occurrences", 1)} · {str(d.get("updated_at", ""))[:16]}'
+                           + (f" · {t('fc_score')} {d['score']}" if d.get("score") is not None else "") + "</span>", unsafe_allow_html=True)
+                if x.button("🗑", key=f"kb-del-{d['id']}", help=t("kb_delete")):
+                    kb.delete(d["id"]); st.rerun()
+                st.markdown(f'<div class="mono muted" style="white-space:pre-wrap;font-size:12px">{esc(d["text"][:900])}</div>' + (f'<div class="muted" style="font-size:11px">{esc(refs)}</div>' if refs else ""), unsafe_allow_html=True)
+
+    with tab_rules:
+        st.caption(t("rules_hint"))
+        prop = kb.rules("proposed")
+        st.markdown(f"#### {t('rules_proposed')} · {len(prop)}")
+        if not prop:
+            st.caption(t("rules_none"))
+        for r_ in prop:
+            c = st.columns([1.3, 2, 2, 3, 1, 1])
+            c[0].markdown(f'<span class="pill" style="background:#fbbf24">{t("rule_" + r_["kind"])}</span>', unsafe_allow_html=True)
+            c[1].code(r_["key"][:80], language=None); c[2].markdown(f"→ **{esc(r_['value'])}**"); c[3].caption(f"{r_['reason'][:120]} · {r_['source']}")
+            if c[4].button("✓", key=f"rule-ok-{r_['id']}", help=t("rules_approve"), type="primary"):
+                kb.decide(r_["id"], True); reanalyze(); st.toast(t("rules_applied"), icon="✅"); st.rerun()
+            if c[5].button("✕", key=f"rule-no-{r_['id']}", help=t("rules_reject")):
+                kb.decide(r_["id"], False); st.rerun()
+        appr = kb.rules("approved")
+        st.markdown(f"#### {t('rules_active')} · {len(appr)}")
+        for r_ in appr:
+            c = st.columns([1.3, 2, 2, 3, 1])
+            c[0].markdown(f'<span class="pill" style="background:#2dd4bf">{t("rule_" + r_["kind"])}</span>', unsafe_allow_html=True)
+            c[1].code(r_["key"][:80], language=None); c[2].markdown(f"→ **{esc(r_['value'])}**"); c[3].caption(f"{r_['reason'][:120]} · {str(r_.get('decided_at', ''))[:16]}")
+            if c[4].button("⏏", key=f"rule-off-{r_['id']}", help=t("rules_revoke")):
+                kb.decide(r_["id"], False); reanalyze(); st.rerun()
 
 
 # ------------------------------------------------------------------ page: Datasets (upload + log analysis)
@@ -1122,6 +1329,9 @@ if page == "ops":
     st.stop()
 if page == "map":
     page_map()
+    st.stop()
+if page == "assist":
+    page_assist()
     st.stop()
 if page == "pb":
     page_playbook()
@@ -1574,6 +1784,7 @@ with tab_inc:
                            format_func=lambda i: f"{i} · {a.incident_by_id[i].severity} · {a.incident_by_id[i].score} · {a.incident_by_id[i].title[:70]}")
         inc = a.incident_by_id[iid]
         incident_flashcard(inc, a, "tab")
+        learning_panel(inc, a)
         st.markdown(f'### {inc.id} &nbsp;{pill(inc.severity)} &nbsp;<span class="muted">{t("score")} {inc.score} · {inc.started_at:%H:%M:%S} → {inc.ended_at:%H:%M:%S}</span>', unsafe_allow_html=True)
         st.markdown(f'<div class="card hot"><b>{t("probable_origin")}</b> · <span class="mono">{inc.root_cause_signal}</span> "{esc(a.signal_by_id[inc.root_cause_signal].template)}"'
                     f'<br><span class="muted">{t("because")}: {reason_text(inc.root_cause_codes)}</span><br><br>'

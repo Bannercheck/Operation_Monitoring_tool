@@ -1,0 +1,343 @@
+"""Knowledge base: what Watchover learned from every dataset plus what the team taught it by hand.
+
+Design (kept small on purpose, so the store never bloats):
+  * one **pattern lesson** per distinct root cause (template + services), not one row per incident: repeats only bump
+    `occurrences` and append a (dataset, incident) reference. 1.000 incidents a year -> a few hundred rows, ~1-2 KB each.
+  * raw alarms are never copied here; a lesson keeps evidence *references* (file:line) and the dataset's input id.
+  * notes and documents are content-hashed (same text twice = one row); documents are chunked to ~900 chars.
+  * embeddings are optional, stored as float16 bytes next to the lesson (768 dims ~ 1.5 KB) and only for lessons.
+  * rules are tiny (kind, key, value) and change the deterministic engine only after a human approves them.
+
+Storage: SQLite by default (KNOWLEDGE_DB, default knowledge.db). Set DATABASE_URL=postgresql://... (psycopg installed)
+to use PostgreSQL; the SQL below is written for both (placeholders are translated).
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import re
+import sqlite3
+import struct
+from collections import Counter
+from datetime import datetime, timezone
+from typing import Callable
+
+from . import scenario
+from .playbook import _tokens, similarity
+
+UTC = timezone.utc
+KINDS = ("pattern", "feedback", "note", "doc", "chat")
+RULE_KINDS = ("owner", "cause_rank", "noise_type", "noise_template", "dependency", "recommendation")
+CHUNK = 900
+
+
+def _now() -> str:
+    return datetime.now(UTC).isoformat(timespec="seconds")
+
+
+def _pack(vec: list[float]) -> bytes:
+    return struct.pack(f"<{len(vec)}e", *vec)
+
+
+def _unpack(blob: bytes) -> list[float]:
+    return list(struct.unpack(f"<{len(blob) // 2}e", blob))
+
+
+def cosine(a: list[float], b: list[float]) -> float:
+    dot = sum(x * y for x, y in zip(a, b))
+    na = sum(x * x for x in a) ** 0.5
+    nb = sum(y * y for y in b) ** 0.5
+    return dot / (na * nb) if na and nb else 0.0
+
+
+def chunk_text(text: str, size: int = CHUNK) -> list[str]:
+    """Split on headings / blank lines, then pack paragraphs into ~size chunks (never splits a sentence in half)."""
+    paras = [p.strip() for p in re.split(r"\n\s*\n|\n(?=#+ )", text) if p.strip()]
+    out, cur = [], ""
+    for p in paras:
+        if cur and len(cur) + len(p) + 2 > size:
+            out.append(cur); cur = ""
+        while len(p) > size:                          # one giant paragraph: cut at sentence ends
+            cut = max(p.rfind(". ", 0, size), p.rfind("\n", 0, size), size // 2)
+            out.append((cur + "\n\n" + p[:cut + 1]).strip()); cur = ""; p = p[cut + 1:].strip()
+        cur = (cur + "\n\n" + p).strip() if cur else p
+    if cur:
+        out.append(cur)
+    return out
+
+
+class Knowledge:
+    def __init__(self, url: str | None = None, embedder: Callable[[list[str]], list[list[float]]] | None = None):
+        url = url or os.environ.get("DATABASE_URL") or os.environ.get("KNOWLEDGE_DB", "knowledge.db")
+        self.pg = url.startswith(("postgres://", "postgresql://"))
+        self.embedder = embedder
+        if self.pg:
+            import psycopg  # type: ignore
+            self.conn = psycopg.connect(url, autocommit=True)
+        else:
+            self.conn = sqlite3.connect(url, check_same_thread=False)
+            self.conn.row_factory = sqlite3.Row
+        self._schema()
+        self._base: dict | None = None
+
+    # ---------------------------------------------------------------- sql helpers
+    def _q(self, sql: str) -> str:
+        return sql.replace("?", "%s") if self.pg else sql
+
+    def _exec(self, sql: str, params: tuple = ()) -> list[dict]:
+        cur = self.conn.execute(self._q(sql), params)
+        if self.pg:
+            if cur.description:
+                cols = [d[0] for d in cur.description]
+                return [dict(zip(cols, r)) for r in cur.fetchall()]
+            return []
+        rows = [dict(r) for r in cur.fetchall()] if cur.description else []
+        self.conn.commit()
+        return rows
+
+    def _insert(self, sql: str, params: tuple) -> int:
+        if self.pg:
+            return self._exec(sql + " RETURNING id", params)[0]["id"]
+        cur = self.conn.execute(sql, params); self.conn.commit()
+        return int(cur.lastrowid)
+
+    def _schema(self) -> None:
+        pk = "SERIAL PRIMARY KEY" if self.pg else "INTEGER PRIMARY KEY AUTOINCREMENT"
+        blob = "BYTEA" if self.pg else "BLOB"
+        self._exec(f"""CREATE TABLE IF NOT EXISTS lessons (
+            id {pk}, kind TEXT NOT NULL, key TEXT, title TEXT NOT NULL, text TEXT NOT NULL, tokens TEXT DEFAULT '',
+            dataset TEXT DEFAULT '', incident_id TEXT DEFAULT '', root_cause TEXT DEFAULT '', services TEXT DEFAULT '[]',
+            recovery TEXT DEFAULT '', tags TEXT DEFAULT '[]', refs TEXT DEFAULT '[]', occurrences INTEGER DEFAULT 1,
+            content_hash TEXT DEFAULT '', embedding {blob}, meta TEXT DEFAULT '{{}}', created_at TEXT, updated_at TEXT)""")
+        self._exec("CREATE INDEX IF NOT EXISTS lessons_kind ON lessons(kind)")
+        self._exec("CREATE INDEX IF NOT EXISTS lessons_key ON lessons(key)")
+        self._exec("CREATE INDEX IF NOT EXISTS lessons_hash ON lessons(content_hash)")
+        self._exec(f"""CREATE TABLE IF NOT EXISTS rules (
+            id {pk}, kind TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, reason TEXT DEFAULT '', source TEXT DEFAULT '',
+            status TEXT DEFAULT 'proposed', created_at TEXT, decided_at TEXT)""")
+
+    # ---------------------------------------------------------------- write
+    def _embed(self, text: str) -> bytes | None:
+        if not self.embedder:
+            return None
+        try:
+            return _pack(self.embedder([text[:2000]])[0])
+        except Exception:  # noqa: BLE001 - embeddings are optional, never block a write
+            return None
+
+    def add(self, kind: str, title: str, text: str, *, key: str = "", dataset: str = "", incident_id: str = "", root_cause: str = "",
+            services: list | None = None, recovery: str = "", tags: list | None = None, refs: list | None = None, meta: dict | None = None) -> int:
+        """Insert one lesson; identical (kind, title, text) is a no-op that returns the existing id."""
+        h = hashlib.sha256(f"{kind}|{title}|{text}".encode()).hexdigest()[:16]
+        ex = self._exec("SELECT id FROM lessons WHERE content_hash=?", (h,))
+        if ex:
+            return int(ex[0]["id"])
+        toks = " ".join(sorted(_tokens(f"{title} {text} {' '.join(services or [])} {' '.join(tags or [])}")))
+        return self._insert(
+            "INSERT INTO lessons (kind, key, title, text, tokens, dataset, incident_id, root_cause, services, recovery, tags, refs, occurrences, content_hash, embedding, meta, created_at, updated_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (kind, key, title, text, toks, dataset, incident_id, root_cause, json.dumps(services or [], ensure_ascii=False), recovery,
+             json.dumps(tags or [], ensure_ascii=False), json.dumps(refs or [], ensure_ascii=False), 1, h, self._embed(f"{title}\n{text}"),
+             json.dumps(meta or {}, ensure_ascii=False, default=str), _now(), _now()))
+
+    def record(self, analysis, dataset: str, lang: str = "tr") -> int:
+        """One pattern lesson per root cause; a repeat bumps occurrences and appends the (dataset, incident) reference."""
+        from .analysis import suggested_owner
+        from .i18n import reason_text
+        from . import stamp
+        n = 0
+        input_id = stamp.input_id(getattr(analysis, "report", []) or [])
+        for inc in analysis.incidents:
+            root = analysis.signal_by_id[inc.root_cause_signal]
+            key = hashlib.sha1(f"{root.template}|{','.join(sorted(root.services))}".encode()).hexdigest()[:12]
+            ref = {"dataset": dataset, "input": input_id, "incident": inc.id, "started": inc.started_at.isoformat(timespec="minutes"),
+                   "ended": inc.ended_at.isoformat(timespec="minutes"), "score": inc.score, "severity": inc.severity}
+            row = self._exec("SELECT id, refs, occurrences FROM lessons WHERE kind='pattern' AND key=?", (key,))
+            if row:
+                refs = json.loads(row[0]["refs"] or "[]")
+                if any(r.get("dataset") == dataset and r.get("incident") == inc.id for r in refs):
+                    continue
+                refs.append(ref)
+                self._exec("UPDATE lessons SET refs=?, occurrences=?, updated_at=? WHERE id=?",
+                           (json.dumps(refs, ensure_ascii=False), len(refs), _now(), row[0]["id"]))
+                n += 1
+                continue
+            alts = "; ".join(f"{x['template'][:60]} ({', '.join(x['services'])}, {x['score']})" for x in inc.root_cause_alternatives[:3])
+            text = (f"Root cause: {root.template} ({', '.join(root.services)}) — {reason_text(inc.root_cause_codes, lang)}\n"
+                    f"Affected: {', '.join(inc.affected_services)}\nHosts: {', '.join(inc.affected_hosts[:8])}\n"
+                    f"Alarms/events: {sum(analysis.signal_by_id[s].count for s in inc.signal_ids)} in {len(inc.signal_ids)} signals\n"
+                    f"Recovery: {inc.recovery.get('kind', 'unknown')} {inc.recovery.get('what', '')[:120]}\n"
+                    f"First action: {inc.recommendations[0] if inc.recommendations else '-'} · owner: {suggested_owner(inc, root)}\n"
+                    f"Counter-hypotheses: {alts or '-'}")
+            evidence = [o.ref for o in root.observations[:5]]
+            self._insert(
+                "INSERT INTO lessons (kind, key, title, text, tokens, dataset, incident_id, root_cause, services, recovery, tags, refs, occurrences, content_hash, embedding, meta, created_at, updated_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                ("pattern", key, inc.title[:160], text, " ".join(sorted(_tokens(f"{inc.title} {text}"))), dataset, inc.id, root.template,
+                 json.dumps(inc.affected_services, ensure_ascii=False), inc.recovery.get("kind", ""), json.dumps(["auto"]),
+                 json.dumps([ref], ensure_ascii=False), 1, hashlib.sha256(f"pattern|{key}".encode()).hexdigest()[:16], self._embed(f"{inc.title}\n{text}"),
+                 json.dumps({"evidence": evidence, "owner": suggested_owner(inc, root)}, ensure_ascii=False), _now(), _now()))
+            n += 1
+        return n
+
+    def add_note(self, title: str, text: str, tags: list | None = None, services: list | None = None) -> int:
+        return self.add("note", title.strip() or text[:60], text.strip(), tags=tags, services=services)
+
+    def add_doc(self, name: str, text: str, tags: list | None = None) -> list[int]:
+        """A runbook / postmortem / wiki page, chunked; each chunk is one searchable lesson."""
+        ids = []
+        for i, ch in enumerate(chunk_text(text), 1):
+            ids.append(self.add("doc", f"{name} §{i}", ch, key=name, tags=(tags or []) + ["doc"]))
+        return ids
+
+    def add_feedback(self, dataset: str, inc, root, verdict: str, correct: str = "", comment: str = "", alt_type: str = "",
+                     root_type: str = "", mark_noise: bool = False) -> dict:
+        """Thumbs up/down on a card, with an optional corrected root cause. Wrong verdicts turn into rule proposals."""
+        text = (f"{'👍' if verdict == 'up' else '👎'} {inc.id} {inc.title[:120]}\nRoot cause shown: {root.template[:120]} ({', '.join(root.services)})"
+                + (f"\nCorrect root cause: {correct}" if correct else "") + (f"\nComment: {comment}" if comment else ""))
+        lid = self.add("feedback", f"{inc.id} {verdict}", text, dataset=dataset, incident_id=inc.id, root_cause=root.template,
+                       services=inc.affected_services, tags=[verdict], meta={"correct": correct, "alt_type": alt_type, "root_type": root_type, "noise": mark_noise})
+        proposals = []
+        if verdict == "down":
+            if mark_noise and root_type:
+                proposals.append(self.propose("noise_type", root_type, "1", f"{inc.id}: card marked as noise", f"feedback:{lid}"))
+            elif mark_noise:                                   # log data without alarm types: the root template itself is the noise key
+                proposals.append(self.propose("noise_template", root.template[:200], "1", f"{inc.id}: card marked as noise", f"feedback:{lid}"))
+            elif alt_type and alt_type != root_type:
+                cur = float(scenario.CAUSE_RANK.get(alt_type, 1.0))
+                proposals.append(self.propose("cause_rank", alt_type, str(max(cur + 1.0, float(scenario.CAUSE_RANK.get(root_type, 1.0)) + 0.5)),
+                                              f"{inc.id}: '{alt_type}' chosen as the real root cause over '{root_type}'", f"feedback:{lid}"))
+                if root_type:
+                    proposals.append(self.propose("cause_rank", root_type, str(max(0.5, float(scenario.CAUSE_RANK.get(root_type, 1.0)) - 1.0)),
+                                                  f"{inc.id}: '{root_type}' was shown as root cause but rejected", f"feedback:{lid}"))
+        return {"lesson": lid, "proposals": proposals}
+
+    def delete(self, lesson_id: int) -> None:
+        self._exec("DELETE FROM lessons WHERE id=?", (lesson_id,))
+
+    # ---------------------------------------------------------------- read / retrieval
+    def get(self, lesson_id: int) -> dict | None:
+        rows = self._exec("SELECT * FROM lessons WHERE id=?", (lesson_id,))
+        return self._row(rows[0]) if rows else None
+
+    @staticmethod
+    def _row(r: dict) -> dict:
+        out = dict(r)
+        for k in ("services", "tags", "refs"):
+            try:
+                out[k] = json.loads(out.get(k) or "[]")
+            except (TypeError, ValueError):
+                out[k] = []
+        try:
+            out["meta"] = json.loads(out.get("meta") or "{}")
+        except (TypeError, ValueError):
+            out["meta"] = {}
+        out.pop("embedding", None)
+        return out
+
+    def all(self, kind: str | None = None, limit: int = 500) -> list[dict]:
+        rows = self._exec("SELECT * FROM lessons WHERE (?='' OR kind=?) ORDER BY updated_at DESC LIMIT ?", (kind or "", kind or "", limit))
+        return [self._row(r) for r in rows]
+
+    def search(self, query: str, k: int = 6, kinds: tuple | None = None) -> list[dict]:
+        """Hybrid ranking: token overlap (always) + embedding cosine (when both sides have one) + a small recency/occurrence prior."""
+        q = (query or "").strip()
+        if not q:
+            return []
+        qt = _tokens(q)
+        qvec = None
+        if self.embedder:
+            try:
+                qvec = self.embedder([q[:2000]])[0]
+            except Exception:  # noqa: BLE001
+                qvec = None
+        rows = self._exec("SELECT * FROM lessons" + (" WHERE kind IN (%s)" % ",".join("?" * len(kinds)) if kinds else ""), tuple(kinds or ()))
+        scored = []
+        ql = q.lower()
+        for r in rows:
+            toks = set((r.get("tokens") or "").split())
+            common = len(qt & toks)
+            lex = (0.7 * common / len(qt) + 0.3 * common / len(qt | toks)) if qt and toks and common else 0.0   # coverage first, then overlap
+            if ql and ql in (r.get("title") or "").lower():
+                lex = max(lex, 0.6)
+            emb = 0.0
+            if qvec is not None and r.get("embedding"):
+                emb = max(0.0, cosine(qvec, _unpack(bytes(r["embedding"]))))
+            score = (0.55 * lex + 0.45 * emb) if qvec is not None and r.get("embedding") else lex
+            score += min(0.1, 0.02 * (int(r.get("occurrences") or 1) - 1))
+            if score > 0.02:
+                d = self._row(r); d["score"] = round(score, 3)
+                scored.append(d)
+        scored.sort(key=lambda d: -d["score"])
+        return scored[:k]
+
+    def related(self, inc, root, k: int = 4) -> list[dict]:
+        """Past lessons that look like this incident (excluding its own pattern row)."""
+        out = self.search(f"{inc.title} {root.template} {' '.join(inc.affected_services)}", k + 1)
+        return [d for d in out if not (d["kind"] == "pattern" and d.get("root_cause") == root.template)][:k]
+
+    def stats(self) -> dict:
+        rows = self._exec("SELECT kind, COUNT(*) AS n FROM lessons GROUP BY kind")
+        rules = self._exec("SELECT status, COUNT(*) AS n FROM rules GROUP BY status")
+        size = 0
+        if not self.pg:
+            try:
+                size = int(self._exec("SELECT page_count * page_size AS b FROM pragma_page_count(), pragma_page_size()")[0]["b"])
+            except Exception:  # noqa: BLE001
+                size = 0
+        return {"lessons": {r["kind"]: int(r["n"]) for r in rows}, "rules": {r["status"]: int(r["n"]) for r in rules}, "bytes": size}
+
+    # ---------------------------------------------------------------- rules: proposed by feedback / facts, approved by a human
+    def propose(self, kind: str, key: str, value: str, reason: str = "", source: str = "manual") -> int:
+        assert kind in RULE_KINDS, kind
+        ex = self._exec("SELECT id FROM rules WHERE kind=? AND key=? AND value=? AND status='proposed'", (kind, key, value))
+        if ex:
+            return int(ex[0]["id"])
+        return self._insert("INSERT INTO rules (kind, key, value, reason, source, status, created_at) VALUES (?,?,?,?,?,'proposed',?)",
+                            (kind, key, value, reason, source, _now()))
+
+    def rules(self, status: str | None = None) -> list[dict]:
+        return self._exec("SELECT * FROM rules WHERE (?='' OR status=?) ORDER BY id DESC", (status or "", status or ""))
+
+    def decide(self, rule_id: int, approve: bool) -> None:
+        self._exec("UPDATE rules SET status=?, decided_at=? WHERE id=?", ("approved" if approve else "rejected", _now(), rule_id))
+
+    def delete_rule(self, rule_id: int) -> None:
+        self._exec("DELETE FROM rules WHERE id=?", (rule_id,))
+
+    def apply_rules(self) -> dict:
+        """Overlay approved rules on the scenario module (in memory): owners, cause ranks, noise types, dependencies, recommendations.
+        Re-applied from the pristine base every time, so rejecting a rule later really removes its effect."""
+        if self._base is None:
+            self._base = {"OWNERS": dict(scenario.OWNERS), "CAUSE_RANK": dict(scenario.CAUSE_RANK), "RECOMMENDATIONS": {k: list(v) for k, v in scenario.RECOMMENDATIONS.items()},
+                          "NOISE_TYPES": set(getattr(scenario, "NOISE_TYPES", set())), "NOISE_TEMPLATES": set(getattr(scenario, "NOISE_TEMPLATES", set())),
+                          "EXTRA_DEPENDENCIES": list(getattr(scenario, "EXTRA_DEPENDENCIES", []))}
+        scenario.OWNERS.clear(); scenario.OWNERS.update(self._base["OWNERS"])
+        scenario.CAUSE_RANK.clear(); scenario.CAUSE_RANK.update(self._base["CAUSE_RANK"])
+        scenario.RECOMMENDATIONS.clear(); scenario.RECOMMENDATIONS.update({k: list(v) for k, v in self._base["RECOMMENDATIONS"].items()})
+        scenario.NOISE_TYPES = set(self._base["NOISE_TYPES"])
+        scenario.NOISE_TEMPLATES = set(self._base["NOISE_TEMPLATES"])
+        scenario.EXTRA_DEPENDENCIES = list(self._base["EXTRA_DEPENDENCIES"])
+        applied = Counter()
+        for r in self.rules("approved"):
+            kind, key, val = r["kind"], r["key"], r["value"]
+            if kind == "owner":
+                scenario.OWNERS[key.lower()] = val
+            elif kind == "cause_rank":
+                try:
+                    scenario.CAUSE_RANK[key.lower()] = float(val)
+                except ValueError:
+                    continue
+            elif kind == "noise_type":
+                scenario.NOISE_TYPES.add(key.lower())
+            elif kind == "noise_template":
+                scenario.NOISE_TEMPLATES.add(key)
+            elif kind == "dependency":
+                src, _, tgt = key.partition("->")
+                if src and tgt:
+                    scenario.EXTRA_DEPENDENCIES.append({"source": src.strip(), "target": tgt.strip(), "type": val or "declared", "criticality": "rule"})
+            elif kind == "recommendation":
+                scenario.RECOMMENDATIONS.setdefault(key.lower(), []).insert(0, val)
+            applied[kind] += 1
+        return dict(applied)

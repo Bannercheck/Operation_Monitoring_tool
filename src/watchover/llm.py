@@ -19,6 +19,7 @@ class LLMConfig:
     model: str = ""             # e.g. llama3.1, mistral, qwen2.5
     api_key: str = ""           # optional; local servers usually ignore it
     timeout: int = 60
+    embed_model: str = ""       # optional, e.g. nomic-embed-text (Ollama), text-embedding-3-small
 
     @property
     def enabled(self) -> bool:
@@ -48,6 +49,27 @@ def chat(cfg: LLMConfig, prompt: str, system: str = "You are a senior SRE. Be co
     with urllib.request.urlopen(req, timeout=cfg.timeout, context=_CTX) as r:
         doc = json.loads(r.read())
     return doc["choices"][0]["message"]["content"].strip()
+
+
+def chat_messages(cfg: LLMConfig, messages: list[dict], temperature: float = 0.2, max_tokens: int = 900) -> str:
+    """Full conversation (system + history + user) through /chat/completions."""
+    body = {"model": cfg.model, "messages": messages, "temperature": temperature, "stream": False, "max_tokens": max_tokens}
+    req = urllib.request.Request(cfg.base_url.rstrip("/") + "/chat/completions", data=json.dumps(body).encode(),
+                                 headers=_headers(cfg), method="POST")
+    with urllib.request.urlopen(req, timeout=cfg.timeout, context=_CTX) as r:
+        doc = json.loads(r.read())
+    return doc["choices"][0]["message"]["content"].strip()
+
+
+def embed(cfg: LLMConfig, texts: list[str]) -> list[list[float]]:
+    """Embeddings through /embeddings (OpenAI shape). Requires cfg.embed_model."""
+    if not (cfg.base_url and cfg.embed_model):
+        raise RuntimeError("embedding model not configured")
+    body = {"model": cfg.embed_model, "input": texts}
+    req = urllib.request.Request(cfg.base_url.rstrip("/") + "/embeddings", data=json.dumps(body).encode(), headers=_headers(cfg), method="POST")
+    with urllib.request.urlopen(req, timeout=cfg.timeout, context=_CTX) as r:
+        doc = json.loads(r.read())
+    return [d["embedding"] for d in sorted(doc["data"], key=lambda d: d.get("index", 0))]
 
 
 def test_connection(cfg: LLMConfig) -> tuple[bool, str]:

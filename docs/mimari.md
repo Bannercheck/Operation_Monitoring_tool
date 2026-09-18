@@ -83,3 +83,13 @@ Action      id, incident_id, title, priority, owner, status, evidence
 | 4 | Python + Streamlit + pandas, tek süreç | 3 saatlik sprint için en düşük risk; build adımı yok |
 | 5 | Case'e özel kod yalnız `scenario/` | Motor genel kalır, ayar tek dosyada |
 | 6 | LLM köprüsü isteğe bağlı (prompt paketi + OpenAI uyumlu uç) | İzinli araçla anahtar gerektirmeden zenginleştirme |
+
+## Öğrenen katman
+
+```
+analiz ──► knowledge.record()  (örüntü başına tek ders, tekrar sayacı, kanıt referansı)
+kullanıcı ──► not / belge / bilgi öğret / karta karar ──► lessons + rules(proposed)
+insan onayı ──► rules(approved) ──► apply_rules() ──► scenario katmanı ──► yeniden analiz
+soru ──► build_context(incident'lar + kanıt + dersler + kurallar) ──► LLM (kaynak zorunlu) | deterministik derleme
+```
+Motor deterministik kalır: LLM yalnız açıklar ve önerir; kararı değiştiren tek şey onaylanmış kuraldır.
