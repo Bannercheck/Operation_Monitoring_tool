@@ -1387,6 +1387,166 @@ def page_conn() -> None:
         wo_settings.save({"setup_done": False}); st.session_state["setup_done"] = False; st.session_state["setup_step"] = 0; st.rerun()
 
 
+# ------------------------------------------------------------------ page: Ask Watchover (chat + knowledge base + rules)
+def page_assist() -> None:
+    kb = kb_with_embedder()
+    a = st.session_state.get("analysis")
+    cfg = llm_cfg()
+    st.markdown(f'<div class="wo-brand" style="padding:0 0 6px"><span style="display:inline-block;width:44px">{logo(44)}</span>'
+                f'<div><div class="name" style="font-size:30px">{t("as_title_plain")}</div><div class="tag">{upper(t("as_title_tag"))}</div></div></div>', unsafe_allow_html=True)
+    stt = kb.stats()
+    chips = [("#2dd4bf" if cfg.enabled else "#64748b", f"LLM: {cfg.model or t('as_no_llm')}"), ("#60a5fa", f"{sum(stt['lessons'].values())} {t('kb_lessons')}"),
+             ("#a78bfa", f"{stt['rules'].get('approved', 0)} {t('kb_rules_on')} · {stt['rules'].get('proposed', 0)} {t('kb_rules_wait')}"),
+             ("#fbbf24" if a is None else "#2dd4bf", st.session_state.get("dataset") or t("as_no_dataset"))]
+    st.markdown('<div class="chips">' + "".join(f'<span class="chip"><span class="d" style="background:{c}"></span>{esc(str(x))}</span>' for c, x in chips) + "</div>", unsafe_allow_html=True)
+    tab_chat, tab_kb, tab_rules = st.tabs([t("as_tab_chat"), f"{t('as_tab_kb')} · {sum(stt['lessons'].values())}", f"{t('as_tab_rules')} · {stt['rules'].get('proposed', 0)}"])
+
+    with tab_chat:
+        hist = st.session_state.setdefault("chat", [])
+        if not hist:
+            st.markdown(f'<div class="card"><b>{t("as_hello")}</b><br><span class="muted">{t("as_hello_sub")}</span></div>', unsafe_allow_html=True)
+            ex = st.columns(3)
+            for i, q_ in enumerate((t("as_ex1"), t("as_ex2"), t("as_ex3"))):
+                if ex[i].button(q_, key=f"as-ex-{i}", **wide("button")):
+                    st.session_state["as_pending"] = q_; st.rerun()
+        for i, m in enumerate(hist):
+            with st.chat_message(m["role"], avatar=LOGO_PNG if m["role"] == "assistant" else "🧑‍💻"):
+                st.markdown(m["content"])
+                if m["role"] == "assistant":
+                    meta = m.get("meta", {})
+                    cap = (t("as_via_llm", m=cfg.model) if meta.get("used_llm") else t("as_via_ctx")) + (f" · ⚠ {meta['error'][:80]}" if meta.get("error") else "")
+                    st.caption(cap)
+                    if meta.get("sources"):
+                        with st.expander(f"📎 {t('as_sources')} · {len(meta['sources'])}"):
+                            for src_ in meta["sources"]:
+                                st.markdown(f'<div class="card" style="padding:8px 12px"><span class="pill" style="background:{"#f87171" if src_["kind"] == "incident" else "#60a5fa"}">{esc(src_["id"])}</span> '
+                                            f'<b>{esc(src_["title"][:100])}</b><br><span class="muted">{esc(src_["text"][:300])}</span></div>', unsafe_allow_html=True)
+                    if meta.get("context"):
+                        with st.expander(f"🔍 {t('as_context')}"):
+                            st.code(meta["context"][:6000], language=None)
+                    if i == len(hist) - 1:
+                        c1_, c2_, c3_, _ = st.columns([1.6, 0.5, 0.5, 3.4])
+                        q_prev = hist[i - 1]["content"] if i and hist[i - 1]["role"] == "user" else ""
+                        if c1_.button(t("as_save"), key=f"as-save-{i}", help=t("as_save_help")):
+                            kb.add("chat", q_prev[:80] or "chat", f"Q: {q_prev}\nA: {m['content']}", tags=["chat"])
+                            st.toast(t("as_saved"), icon="✅")
+                        if not meta.get("rated"):
+                            if c2_.button("👍", key=f"as-up-{i}", help=t("as_fb_help")):
+                                kb.rate_answer(cfg.model or "-", q_prev, "up"); meta["rated"] = "up"; st.toast(t("as_fb_thanks"), icon="👍"); st.rerun()
+                            if c3_.button("👎", key=f"as-down-{i}", help=t("as_fb_help")):
+                                kb.rate_answer(cfg.model or "-", q_prev, "down"); meta["rated"] = "down"; st.toast(t("as_fb_thanks"), icon="👎"); st.rerun()
+        pending = st.session_state.pop("as_pending", None)
+        q = st.chat_input(t("as_input")) or pending
+        if q:
+            hist.append({"role": "user", "content": q})
+            with st.chat_message("user", avatar="🧑‍💻"):
+                st.markdown(q)
+            with st.chat_message("assistant", avatar=LOGO_PNG):
+                with st.spinner(t("as_thinking")):
+                    res = wo_assistant.answer(cfg, q, hist[:-1], a, kb, current_lang())
+                st.markdown(res["text"])
+            hist.append({"role": "assistant", "content": res["text"], "meta": {k: res[k] for k in ("sources", "context", "used_llm", "error")}})
+            st.rerun()
+        if hist and st.button(t("as_clear"), key="as-clear"):
+            st.session_state["chat"] = []; st.rerun()
+
+    with tab_kb:
+        k = st.columns(5)
+        for i, (kind, ic, col) in enumerate((("pattern", "🧩", "#2dd4bf"), ("note", "📝", "#60a5fa"), ("doc", "📄", "#a78bfa"), ("feedback", "✍️", "#fbbf24"))):
+            k[i].markdown(kpi2(stt["lessons"].get(kind, 0), t("kb_" + kind), ic, col, ""), unsafe_allow_html=True)
+        k[4].markdown(kpi2(f"{stt['bytes'] / 1024:.0f} KB" if stt["bytes"] else "-", t("kb_size"), "💾", "#8b98ad", t("kb_size_sub")), unsafe_allow_html=True)
+        st.markdown("")
+        f1, f2 = st.columns(2, gap="medium")
+        with f1, st.form("kb-note", border=True):
+            st.markdown(f"**📝 {t('kb_add_note')}**")
+            ttl = st.text_input(t("kb_note_title"))
+            body = st.text_area(t("kb_note_text"), height=120, placeholder=t("kb_note_ph"))
+            tags = st.text_input(t("kb_tags"), placeholder="db, payment, runbook")
+            if st.form_submit_button(t("kb_save"), **wide("button")) and body.strip():
+                kb.add_note(ttl, body, [x.strip() for x in tags.split(",") if x.strip()])
+                st.toast(t("kb_saved"), icon="✅"); st.rerun()
+        with f2:
+            with st.container(border=True):
+                st.markdown(f"**📄 {t('kb_add_doc')}**")
+                st.caption(t("kb_doc_hint"))
+                ups = st.file_uploader(t("kb_add_doc"), type=["txt", "md", "log", "json", "csv", "yaml", "yml"], accept_multiple_files=True, key="kb_docs", label_visibility="collapsed")
+                if ups and st.button(t("kb_ingest"), key="kb-ingest", **wide("button")):
+                    n = 0
+                    for up in ups:
+                        try:
+                            n += len(kb.add_doc(up.name, up.getvalue().decode("utf-8", "replace")))
+                        except Exception as e:  # noqa: BLE001
+                            st.error(f"{up.name}: {e}")
+                    st.toast(t("kb_doc_saved", n=n), icon="✅")
+            with st.form("kb-fact", border=True):
+                st.markdown(f"**📌 {t('kb_add_fact')}**")
+                st.caption(t("kb_fact_hint"))
+                fk = st.selectbox(t("kb_fact_kind"), list(RULE_KINDS), format_func=lambda x: t("rule_" + x))
+                fkey = st.text_input(t("kb_fact_key"), placeholder="billing · disk_full · payment-api->payment-db")
+                fval = st.text_input(t("kb_fact_value"), placeholder="Faturalama ekibi · 5 · senkron")
+                if st.form_submit_button(t("kb_propose"), **wide("button")) and fkey.strip():
+                    kb.propose(fk, fkey.strip(), fval.strip() or "1", t("kb_fact_reason"), "manual")
+                    st.toast(t("kb_proposed"), icon="📌"); st.rerun()
+        st.markdown(f"#### {t('kb_browse')}")
+        b1, b2 = st.columns([4, 1])
+        qk = b1.text_input(t("kb_search"), key="kb_q", label_visibility="collapsed", placeholder=t("kb_search"))
+        kind = b2.selectbox(t("kb_kind"), ["", "pattern", "note", "doc", "feedback", "chat"], format_func=lambda x: t("kb_" + x) if x else t("ops_all"), label_visibility="collapsed")
+        rows = kb.search(qk, k=30, kinds=(kind,) if kind else None) if qk else kb.all(kind or None, limit=60)
+        if not rows:
+            st.caption(t("kb_empty"))
+        for d in rows:
+            with st.container(border=True):
+                h, x = st.columns([8, 1])
+                refs = ", ".join(f"{r_.get('dataset')}/{r_.get('incident')}" for r_ in d.get("refs", [])[:4])
+                h.markdown(f'<span class="pill" style="background:#60a5fa">L{d["id"]}</span> <b>{esc(d["title"][:120])}</b> <span class="muted">· {t("kb_" + d["kind"]) if d["kind"] in ("pattern","note","doc","feedback","chat") else d["kind"]} · ×{d.get("occurrences", 1)} · {str(d.get("updated_at", ""))[:16]}'
+                           + (f" · {t('fc_score')} {d['score']}" if d.get("score") is not None else "") + "</span>", unsafe_allow_html=True)
+                if x.button("🗑", key=f"kb-del-{d['id']}", help=t("kb_delete")):
+                    kb.delete(d["id"]); st.rerun()
+                st.markdown(f'<div class="mono muted" style="white-space:pre-wrap;font-size:12px">{esc(d["text"][:900])}</div>' + (f'<div class="muted" style="font-size:11px">{esc(refs)}</div>' if refs else ""), unsafe_allow_html=True)
+
+    with tab_rules:
+        st.caption(t("rules_hint"))
+        lc, lh = st.columns([1.4, 4])
+        if lc.button(f"🤖 {t('rules_ask_llm')}", key="rules-llm", disabled=not cfg.enabled, help=t("rules_ask_llm_help"), **wide("button")):
+            with st.spinner(t("as_thinking")):
+                try:
+                    out = wo_assistant.propose_rules(cfg, a, kb, current_lang())
+                    st.session_state["rules_llm_out"] = out
+                except Exception as e:  # noqa: BLE001
+                    st.session_state["rules_llm_out"] = {"error": str(e)}
+            st.rerun()
+        if not cfg.enabled:
+            lh.caption(t("rules_llm_off"))
+        out = st.session_state.pop("rules_llm_out", None)
+        if out:
+            if out.get("error"):
+                st.error(out["error"])
+            else:
+                st.success(t("rules_llm_done", n=len(out["proposed"]), d=len(out["dropped"])))
+                if out["dropped"]:
+                    st.caption(", ".join(out["dropped"][:8]))
+        prop = kb.rules("proposed")
+        st.markdown(f"#### {t('rules_proposed')} · {len(prop)}")
+        if not prop:
+            st.caption(t("rules_none"))
+        for r_ in prop:
+            c = st.columns([1.3, 2, 2, 3, 1, 1])
+            c[0].markdown(f'<span class="pill" style="background:{"#a78bfa" if str(r_["source"]).startswith("llm:") else "#fbbf24"}">{("🤖 " if str(r_["source"]).startswith("llm:") else "") + t("rule_" + r_["kind"])}</span>', unsafe_allow_html=True)
+            c[1].code(r_["key"][:80], language=None); c[2].markdown(f"→ **{esc(r_['value'])}**"); c[3].caption(f"{r_['reason'][:120]} · {r_['source']}")
+            if c[4].button("✓", key=f"rule-ok-{r_['id']}", help=t("rules_approve"), type="primary"):
+                kb.decide(r_["id"], True); reanalyze(); st.toast(t("rules_applied"), icon="✅"); st.rerun()
+            if c[5].button("✕", key=f"rule-no-{r_['id']}", help=t("rules_reject")):
+                kb.decide(r_["id"], False); st.rerun()
+        appr = kb.rules("approved")
+        st.markdown(f"#### {t('rules_active')} · {len(appr)}")
+        for r_ in appr:
+            c = st.columns([1.3, 2, 2, 3, 1])
+            c[0].markdown(f'<span class="pill" style="background:#2dd4bf">{t("rule_" + r_["kind"])}</span>', unsafe_allow_html=True)
+            c[1].code(r_["key"][:80], language=None); c[2].markdown(f"→ **{esc(r_['value'])}**"); c[3].caption(f"{r_['reason'][:120]} · {str(r_.get('decided_at', ''))[:16]}")
+            if c[4].button("⏏", key=f"rule-off-{r_['id']}", help=t("rules_revoke")):
+                kb.decide(r_["id"], False); reanalyze(); st.rerun()
+
+
 # ------------------------------------------------------------------ page: LLM (connection, models, quality)
 def page_llm() -> None:
     kb = kb_with_embedder()

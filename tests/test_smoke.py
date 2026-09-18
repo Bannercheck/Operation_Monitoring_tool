@@ -55,3 +55,15 @@ def test_multi_dataset_registry_and_compare(tmp_path, monkeypatch):
     assert at.session_state["active"] == "demo_mixed.zip" and not at.exception
     at.selectbox(key="cmp_b").set_value("live_buffer.jsonl").run()
     assert not at.exception
+
+
+def test_every_page_renders(monkeypatch, tmp_path):
+    """Regression: the chat page once vanished from app.py (NameError on 'Watchover'a sor') without any test noticing."""
+    monkeypatch.setenv("KNOWLEDGE_DB", str(tmp_path / "k.db")); monkeypatch.setenv("PLAYBOOK_DB", str(tmp_path / "pb.db"))
+    monkeypatch.setenv("WATCHOVER_HOME", str(tmp_path / "home")); monkeypatch.setenv("WATCHOVER_SKIP_SETUP", "1"); monkeypatch.setenv("LIVE_PORT", "18631")
+    from streamlit.testing.v1 import AppTest
+    at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=90).run()
+    for page in ("assist", "llm", "map", "pb", "itsm", "conn", "readme", "ops"):
+        at.sidebar.radio(key="page").set_value(page).run()
+        assert not at.exception, (page, at.exception)
+
