@@ -117,8 +117,9 @@ def summary(analysis, rows: list[dict]) -> dict:
     """Small companion summary: incidents with root cause, chain, owners; totals."""
     from .analysis import suggested_owner
     from .i18n import reason_text
+    from .stamp import stamp
     out = {"alarms": len(rows), "incidents": [], "noise": sum(1 for r in rows if r["role"] == "gurultu"),
-           "hot_cells": sum(1 for r in rows if r["hot_cell"] == "evet")}
+           "hot_cells": sum(1 for r in rows if r["hot_cell"] == "evet"), "stamp": stamp(analysis)}
     for inc in analysis.incidents:
         root = analysis.signal_by_id[inc.root_cause_signal]
         out["incidents"].append({"id": inc.id, "title": inc.title, "started": inc.started_at.strftime("%H:%M"), "ended": inc.ended_at.strftime("%H:%M"),

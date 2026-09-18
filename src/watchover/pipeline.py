@@ -7,6 +7,7 @@ from typing import Iterator
 import itertools
 
 from .format_detector import detect_format
+from . import stamp
 from .loader import iter_bytes, iter_path
 from .models import Observation
 from .normalize import auto_map
@@ -22,7 +23,7 @@ def ingest(files: Iterator[tuple[str, str]], mapping: dict | None = None) -> tup
         if tables.is_side_table(fname):        # reference data (dependencies, inventory, dictionary): kept, not parsed as events
             rows = tables.read_table(fname, text)
             report.append({"file": fname, "format": "table", "confidence": 1.0, "rows": len(rows), "kind": "table",
-                           "keys": list(rows[0].keys()) if rows else [], "roles": {}, "table": rows})
+                           "keys": list(rows[0].keys()) if rows else [], "roles": {}, "table": rows, "sha": stamp.file_id(fname, text)})
             continue
         fmt, conf = detect_format(text)
         parser = PARSERS[fmt]
@@ -34,7 +35,7 @@ def ingest(files: Iterator[tuple[str, str]], mapping: dict | None = None) -> tup
         rows = list(parser.parse(text, fname, mapping, conf))
         observations.extend(rows)
         report.append({"file": fname, "format": fmt, "confidence": conf, "rows": len(rows),
-                       "kind": rows[0].kind if rows else "-", "keys": keys, "roles": roles})
+                       "kind": rows[0].kind if rows else "-", "keys": keys, "roles": roles, "sha": stamp.file_id(fname, text)})
     observations = dedupe(observations, report)
     fill_missing_timestamps(observations)
     observations.sort(key=lambda o: o.timestamp)

@@ -89,7 +89,10 @@ def main(argv: list[str] | None = None) -> int:
         out = Path(args.enrich)
         out.write_text(to_jsonl(rows) if out.suffix == ".jsonl" else to_csv(rows), encoding="utf-8")
         out.with_suffix(out.suffix + ".summary.json").write_text(json.dumps(summary(a, rows), ensure_ascii=False, indent=1), encoding="utf-8")
+        from .stamp import stamp
+        st = stamp(a)
         print(f"{out}: {len(rows)} rows, {len(a.incidents)} incidents; summary -> {out.with_suffix(out.suffix + '.summary.json')}")
+        print(f"watchover v{st['version']} · engine {st['engine']} · input {st['input']} · result {st['result']}")
         return 0
     a = Analysis(obs, report)
     prof = profile(obs, report)
@@ -98,7 +101,10 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"profile": prof, "funnel": a.funnel(), "signals": [signal_dict(s) for s in a.signals],
                           "incidents": [incident_dict(i) for i in a.incidents]}, indent=2, default=str))
     else:
+        from .stamp import stamp
+        st = stamp(a)
         print(summary(a, prof))
+        print(f"\nwatchover v{st['version']} · engine {st['engine']} · git {st['git']} · input {st['input']} · result {st['result']}")
     return 0
 
 

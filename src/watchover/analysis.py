@@ -444,6 +444,7 @@ def storm_edges(sigs: list[Signal], c: dict, deps: list[dict]) -> list[dict]:
 
 class Analysis:
     def __init__(self, observations: list[Observation], report: list[dict]):
+        self.report = report
         self.observations, self.report = observations, report
         self.dependencies = tables.dependencies(report)          # declared service dependencies (may be empty)
         self.inventory = tables.inventory(report)                # host -> dc / rack / env / criticality (may be empty)

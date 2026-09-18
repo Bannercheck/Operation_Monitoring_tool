@@ -12,6 +12,9 @@ import os
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().with_name("src")))   # the repo's engine always wins over a stale pip install
 
 import altair as alt
 import pandas as pd
@@ -32,6 +35,7 @@ from watchover.i18n import current_lang, factor_value, narrative_text, reason_te
 from watchover.models import SEV_RANK
 from watchover.pipeline import ingest_bytes, ingest_path
 from watchover.profiler import profile
+from watchover import stamp as wo_stamp
 
 st.set_page_config(page_title="Watchover", page_icon="📡", layout="wide", initial_sidebar_state="expanded")
 
@@ -385,6 +389,10 @@ with st.sidebar:
 
     _status()
     st.caption(t("footer"))
+    _st = wo_stamp.stamp()
+    st.caption(f"Watchover v{_st['version']} · {t('stamp_engine')} {_st['engine']} · git {_st['git']} · {t('stamp_scenario')} {_st['scenario']}", help=t("stamp_hint"))
+    if (_stale := wo_stamp.stale_package(__file__)):
+        st.warning(t("stale_pkg", path=_stale))
 
 # always-on receiver + optional simulator (started once per process)
 _srv = receiver(int(st.session_state.get("live_port", LIVE_PORT)), st.session_state.get("live_key", ""))
@@ -1075,7 +1083,9 @@ if "analysis" not in st.session_state:
 a: Analysis = st.session_state["analysis"]
 prof = st.session_state["profile"]
 f = a.funnel()
-st.caption(f"{t('ds_loaded')}: {st.session_state['dataset']} · {st.session_state.get('elapsed', 0):.1f}s")
+_ids = wo_stamp.stamp(a)
+st.caption(f"{t('ds_loaded')}: {st.session_state['dataset']} · {st.session_state.get('elapsed', 0):.1f}s · "
+           f"{t('stamp_input')} {_ids['input']} · {t('stamp_engine')} {_ids['engine']} · {t('stamp_result')} {_ids['result']}", help=t("stamp_hint"))
 na = a.noise_audit()
 tab_over, tab_sig, tab_inc, tab_act, tab_noise = st.tabs([t("tab_overview"), f"{t('tab_signals')} · {f['fingerprints']}", f"{t('tab_incidents')} · {f['incidents']}", f"{t('tab_actions')} · {len(store().list())}", f"{t('tab_noise')} · {na['eliminated']}"])
 
