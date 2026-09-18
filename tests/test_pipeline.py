@@ -234,3 +234,42 @@ def test_alert_storm_density_clustering():
     assert root_a.services == ["payment-db"] and by_label["A"].root_cause_alternatives
     na = a.noise_audit()
     assert na["eliminated"] + na["on_cards"] == 3000 and set(na["totals"]) <= {"n_baseline", "n_small", "n_demoted"}
+
+
+def test_sap_log_family():
+    """SAP logs of any extension (.log .lst .jvm .out .trc .file or none): dev traces, HANA, NetWeaver Java, JUL, GC, tp / transport, SM21."""
+    obs, rep = ingest_path(str(ROOT / "samples" / "sap_logs.zip"))
+    by_file = {r["file"].rsplit("/", 1)[-1]: r for r in rep}
+    assert set(by_file) == {"dev_w0", "indexserver_sapprd01.30003.000.trc", "defaultTrace.0.trc", "std_server0.out", "sapjvm_gc.jvm", "R3trans.log", "SLOG2638.PRD.lst", "sm21_export.file"}
+    assert all(r["format"] == "sap" for r in by_file.values())
+    o = {(x.source.rsplit("/", 1)[-1], x.line_no): x for x in obs}
+    dev = o[("dev_w0", 15)]                       # timestamp inherited from the "M Wed Sep 16 02:14:09:501 2026" line
+    assert dev.timestamp.strftime("%H:%M:%S") == "02:14:09" and dev.severity == "ERROR" and dev.service == "sap-prd" and dev.host == "sapprd01"
+    assert dev.message.startswith("ThHdlReconnect") and o[("dev_w0", 16)].severity == "WARN" and o[("dev_w0", 18)].attributes["sap.thread"] == "140222"
+    assert o[("dev_w0", 14)].attributes["sap.msg_code"] == "Q0I" and o[("dev_w0", 14)].severity == "INFO"
+    assert ("dev_w0", 3) not in o                  # "*  ACTIVE TRACE LEVEL" decoration is skipped
+    hana = o[("indexserver_sapprd01.30003.000.trc", 3)]
+    assert hana.severity == "ERROR" and hana.service == "hana-memory" and hana.attributes["sap.source"] == "MemoryManager.cpp:00789" and hana.timestamp.microsecond == 1
+    assert o[("indexserver_sapprd01.30003.000.trc", 4)].severity == "CRITICAL"
+    nwj = o[("defaultTrace.0.trc", 1)]
+    assert nwj.severity == "ERROR" and nwj.service == "sap-deploy" and nwj.message.startswith("Deployment of application") and nwj.attributes["sap.category"] == "BC-JAS-DPL"
+    assert nwj.timestamp.utcoffset().total_seconds() == 3 * 3600 and o[("defaultTrace.0.trc", 3)].severity == "WARN"
+    jul = o[("std_server0.out", 3)]
+    assert jul.severity == "ERROR" and jul.service == "sap-dbpool" and jul.message.startswith("Cannot create JDBC pool") and jul.timestamp.strftime("%H:%M:%S") == "02:14:20"
+    gc = o[("sapjvm_gc.jvm", 2)]
+    assert gc.severity == "ERROR" and gc.attributes["gc.pause_ms"] == "6123.456" and o[("sapjvm_gc.jvm", 1)].severity == "INFO"
+    assert o[("sapjvm_gc.jvm", 3)].severity == "ERROR" and o[("sapjvm_gc.jvm", 3)].attributes["gc.pause_ms"] == "7235"
+    tp = o[("R3trans.log", 5)]
+    assert tp.severity == "ERROR" and tp.attributes["sap.msg_code"] == "ETW125" and tp.timestamp.strftime("%d.%m %H:%M:%S") == "16.09 02:14:35"
+    assert o[("R3trans.log", 6)].severity == "ERROR"      # exit code 12
+    assert o[("SLOG2638.PRD.lst", 2)].severity == "ERROR" and o[("SLOG2638.PRD.lst", 2)].attributes["sap.rc"] == "0008"
+    sm = o[("sm21_export.file", 3)]
+    assert sm.severity == "CRITICAL" and sm.service == "sap-upd" and sm.attributes["sap.user"] == "BATCHUSR" and sm.timestamp.strftime("%Y-%m-%d %H:%M:%S") == "2026-09-16 02:14:51"
+    assert o[("sm21_export.file", 4)].severity == "INFO"
+    # the SAP files run through the normal engine
+    a = an.Analysis(obs, rep)
+    assert a.funnel()["raw_events"] == len(obs) and sum(1 for x in obs if x.severity in ("ERROR", "CRITICAL")) >= 10
+    # non-SAP text is untouched, and the text parser now reads the extra timestamp shapes
+    assert detect_format(TEXT)[0] == "text" and detect_format(SYSLOG)[0] == "syslog"
+    t = parse("text", "Wed Sep 16 02:14:07 2026 ERROR foo: bar\n16.09.2026 02:14:08 WARN baz\nSep 16, 2026 2:14:09 AM SEVERE: qux\n")
+    assert [x.timestamp.strftime("%H:%M:%S") for x in t] == ["02:14:07", "02:14:08", "02:14:09"] and [x.severity for x in t] == ["ERROR", "WARN", "CRITICAL"]

@@ -49,6 +49,10 @@ def detect_format(text: str) -> tuple[str, float]:
     hits = sum(1 for ln in lines if SYSLOG_RE.match(ln))
     if hits / len(lines) > 0.6:
         return "syslog", round(hits / len(lines), 2)
+    from .parsers.sap_parser import sap_score          # SAP families (dev traces, HANA, NW Java, JUL, GC, tp, SM21)
+    sap = sap_score(lines)
+    if sap >= 0.5:
+        return "sap", sap
     d = detect_delimiter(lines)
     if d and len(lines) >= 2:
         import csv as _csv

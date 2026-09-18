@@ -1,0 +1,6 @@
+Sep 16, 2026 2:14:18 AM com.sap.engine.core.Framework start
+INFO: Server 0 of instance J00 started
+Sep 16, 2026 2:14:20 AM com.sap.engine.services.dbpool.deploy.ContainerImpl deploy
+SEVERE: Cannot create JDBC pool jdbc/PRD: Connection refused (sapprd01:30015)
+Sep 16, 2026 2:14:21 AM com.sap.engine.services.webservices.server.WSContainer start
+WARNING: Web service PaymentProxy initialisation slow (8 s)

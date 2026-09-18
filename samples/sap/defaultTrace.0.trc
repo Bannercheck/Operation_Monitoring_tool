@@ -1,0 +1,6 @@
+#2.0 #2026 09 16 02:14:15:100#+0300#Error#com.sap.engine.services.deploy#
+#BC-JAS-DPL#deploy#C0000A000123#12345##com.sap.engine.services.deploy.server.DeployServiceImpl#Guest#0##A1B2C3##0#0#Error##Plain###Deployment of application sap.com/tc~mobile~app failed: Connection to database PRD lost#
+#2.0 #2026 09 16 02:14:16:200#+0300#Warning#com.sap.engine.services.jndi#
+#BC-JAS-JNDI#jndi#C0000A000124#12346##com.sap.engine.services.jndi.implserver.ServerContextImpl#Guest#0##A1B2C4##0#0#Warning##Plain###Lookup of jdbc/PRD took 12000 ms#
+#2.0 #2026 09 16 02:14:17:300#+0300#Info#com.sap.engine.core.cluster#
+#BC-JAS-COR#cluster#C0000A000125#12347##com.sap.engine.core.cluster.impl6.ms.MSConnectionImpl#Guest#0##A1B2C5##0#0#Info##Plain###Reconnected to message server#

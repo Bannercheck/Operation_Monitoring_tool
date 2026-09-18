@@ -1,0 +1,3 @@
+[2026-09-16T02:14:22.000+0300][10.001s][info][gc] GC(41) Pause Young (Allocation Failure) 512M->128M(2048M) 45.123ms
+[2026-09-16T02:14:25.000+0300][13.001s][info][gc] GC(42) Pause Full (Allocation Failure) 1900M->1850M(2048M) 6123.456ms
+2026-09-16T02:14:30.000+0300: 18.001: [Full GC (Ergonomics) [PSYoungGen: 512K->0K(1024K)] 1900M->1850M(2048M), 7.2345678 secs]

@@ -7,8 +7,14 @@ from typing import Iterator
 
 from .base import Parser
 
-TS_RE = re.compile(r"^\[?(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:[.,]\d+)?(?:Z|[+\-]\d{2}:?\d{2})?)\]?\s*")
-LEVEL_RE = re.compile(r"^\[?(TRACE|DEBUG|INFO|NOTICE|WARN(?:ING)?|ERR(?:OR)?|CRIT(?:ICAL)?|FATAL)\]?[:\s]+", re.I)
+TS_RE = re.compile(r"^\[?("
+                   r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:[.,]\d+)?(?:Z|[+\-]\d{2}:?\d{2})?"          # ISO
+                   r"|\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}(?:[.,]\d+)?"                                       # 2026/09/16 02:14:07
+                   r"|\d{2}\.\d{2}\.\d{4} \d{2}:\d{2}:\d{2}"                                               # 16.09.2026 02:14:07
+                   r"|(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun) [A-Z][a-z]{2} +\d{1,2} \d{2}:\d{2}:\d{2} \d{4}"          # Wed Sep 16 02:14:07 2026
+                   r"|[A-Z][a-z]{2} \d{1,2}, \d{4} \d{1,2}:\d{2}:\d{2} (?:AM|PM)"                           # Sep 16, 2026 2:14:07 AM
+                   r")\]?:?\s*")
+LEVEL_RE = re.compile(r"^\[?(TRACE|DEBUG|INFO|NOTICE|WARN(?:ING)?|ERR(?:OR)?|CRIT(?:ICAL)?|FATAL|SEVERE|CONFIG|FINE(?:R|ST)?)\]?[:\s]+", re.I)
 LOGGER_RE = re.compile(r"^\[?([A-Za-z][\w.\-]{2,})\]?:\s+")
 
 

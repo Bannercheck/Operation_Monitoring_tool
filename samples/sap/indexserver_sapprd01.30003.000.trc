@@ -1,0 +1,4 @@
+[12345]{-1}[-1/-1] 2026-09-16 02:14:10.123456 i Basis            TrexNet.cpp(00123) : listening on port 30003
+[12346]{200123}[10/-1] 2026-09-16 02:14:12.222333 w PersistenceManag PersistenceManager.cpp(00456) : savepoint took 41.2 s
+[12347]{200123}[10/-1] 2026-09-16 02:14:13.000001 e Memory           MemoryManager.cpp(00789) : OUT OF MEMORY occurred; allocation of 4 GB failed
+[12348]{-1}[-1/-1] 2026-09-16 02:14:14.500000 f Crash            CrashHandler.cpp(00042) : indexserver crashed, writing crashdump

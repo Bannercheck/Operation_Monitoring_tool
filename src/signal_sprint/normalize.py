@@ -18,6 +18,8 @@ SEVERITY_MAP = {
     "fatal": "CRITICAL", "alert": "CRITICAL", "emerg": "CRITICAL", "emergency": "CRITICAL", "severe": "CRITICAL",
     "high": "ERROR", "medium": "WARN", "low": "INFO", "p1": "CRITICAL", "p2": "ERROR", "p3": "WARN", "p4": "INFO",
     "firing": "ERROR", "resolved": "INFO", "major": "ERROR", "minor": "WARN",
+    "path": "DEBUG", "config": "DEBUG", "fine": "DEBUG", "finer": "DEBUG", "finest": "DEBUG", "plain": "INFO",   # NetWeaver / JUL
+    "e": "ERROR", "w": "WARN", "i": "INFO", "d": "DEBUG", "f": "CRITICAL",                                       # HANA trace letters
 }
 ROLE_HINTS = {
     "timestamp": ("timestamp", "time", "ts", "@timestamp", "datetime", "date", "event_time", "created_at", "logged_at", "t", "start_time",
