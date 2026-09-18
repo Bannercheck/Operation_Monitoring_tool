@@ -13,7 +13,7 @@ test:
 	python3 -m pytest -q
 
 inspect:        # make inspect DS=path/to/dataset.zip
-	signal-sprint $(DS) --inspect
+	watchover $(DS) --inspect
 
 analyze:        # make analyze DS=path/to/dataset.zip
-	signal-sprint $(DS)
+	watchover $(DS)

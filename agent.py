@@ -1,4 +1,4 @@
-"""Signal Sprint agent: ships log lines to the dashboard's live receiver.
+"""Watchover agent: ships log lines to the dashboard's live receiver.
 
     python agent.py --url http://localhost:8600/ingest --key SECRET --tail /var/log/app/app.log
     python agent.py --url http://localhost:8600/ingest --key SECRET --simulate        # synthetic traffic
@@ -20,7 +20,7 @@ import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).with_name("src")))
-from signal_sprint.live import simulate_batch  # noqa: E402
+from watchover.live import simulate_batch  # noqa: E402
 
 
 def host_metrics() -> dict:

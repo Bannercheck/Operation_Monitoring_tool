@@ -103,7 +103,7 @@ class McpClient:
 
     def initialize(self) -> dict:
         res = self._rpc("initialize", {"protocolVersion": MCP_PROTOCOL, "capabilities": {},
-                                       "clientInfo": {"name": "signal-sprint", "version": "0.2"}})
+                                       "clientInfo": {"name": "watchover", "version": "0.2"}})
         self._rpc("notifications/initialized", notify=True)
         return res or {}
 

@@ -1,8 +1,8 @@
 """Smoke: package imports, demo dataset parses, pipeline yields incidents, Streamlit app renders."""
 from pathlib import Path
 
-from signal_sprint.analysis import Analysis
-from signal_sprint.pipeline import ingest_path
+from watchover.analysis import Analysis
+from watchover.pipeline import ingest_path
 
 ROOT = Path(__file__).resolve().parents[1]
 DEMO = ROOT / "samples" / "demo_mixed.zip"

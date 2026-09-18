@@ -20,7 +20,7 @@
                      ┌────────────────────┬───────────────────────┬──────────────────┤
               ┌──────▼──────┐     ┌───────▼───────┐      ┌────────▼────────┐  ┌──────▼──────┐
               │ Streamlit   │     │ CLI           │      │ MCP sunucusu    │  │ SQLite      │
-              │ app.py      │     │ signal-sprint │      │ mcp_server.py   │  │ actions.db  │
+              │ app.py      │     │ watchover │      │ mcp_server.py   │  │ actions.db  │
               │ (5 sayfa)   │     │               │      │ (8 araç)        │  │ playbook.db │
               └─────────────┘     └───────────────┘      └─────────────────┘  └─────────────┘
 ```
@@ -29,7 +29,7 @@
 
 | Bileşen | Sorumluluk | Teknoloji |
 |---------|------------|-----------|
-| `src/signal_sprint/loader.py` | Dosya / ZIP / TAR.GZ / GZ / klasörü açar, kodlama fallback | stdlib |
+| `src/watchover/loader.py` | Dosya / ZIP / TAR.GZ / GZ / klasörü açar, kodlama fallback | stdlib |
 | `format_detector.py` | json / jsonl / csv / syslog / kv / text + güven skoru | stdlib |
 | `parsers/*` | Her format → Observation; ham satır ve satır numarası korunur | stdlib csv / json |
 | `normalize.py` | Zaman, seviye, ortam normalizasyonu; sütun → rol eşleme | dateutil |

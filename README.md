@@ -1,8 +1,8 @@
-# Signal Sprint
+# Watchover
 
 ## Proje Adı
 
-**Signal Sprint** — operasyonel gürültüyü sinyale, sinyali gerekçeli incident'a, incident'ı takip edilen aksiyona çeviren SRE karar destek uygulaması.
+**Watchover** — operasyonel gürültüyü sinyale, sinyali gerekçeli incident'a, incident'ı takip edilen aksiyona çeviren SRE karar destek uygulaması.
 
 ## Problem
 
@@ -40,7 +40,7 @@ python -m venv .venv
 .venv\Scripts\Activate.ps1            # "running scripts is disabled" derse: Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 python -m pip install --upgrade pip
 pip install -r requirements.txt
-pip install -e .                       # motor paketini (src\signal_sprint) ortama tanıtır
+pip install -e .                       # motor paketini (src\watchover) ortama tanıtır
 python -m pytest -q                    # 30 passed beklenir
 streamlit run app.py
 ```
@@ -50,8 +50,8 @@ streamlit run app.py
 ```bash
 streamlit run app.py                   # http://localhost:8501 ; canlı alıcı :8600'de otomatik açılır
 python -m pytest -q                    # 30 test, ağ gerektirmez
-signal-sprint data.zip --inspect       # CLI: dosya başına format / roller / sütunlar
-signal-sprint data.zip                 # CLI: profil + incident özeti (--json ile makine çıktısı)
+watchover data.zip --inspect       # CLI: dosya başına format / roller / sütunlar
+watchover data.zip                 # CLI: profil + incident özeti (--json ile makine çıktısı)
 python mcp_server.py --http --port 8765   # motor MCP sunucusu olarak (http://localhost:8765/mcp)
 docker compose up                      # dashboard :8501 + mcp :8765
 ```
@@ -88,7 +88,7 @@ Veri paketi (alarms.json, alarms.csv, service_dependencies.csv, host_inventory.c
 6. **İlk aksiyon** (`record_first_actions`): her kart için kök neden şablonuna göre öneri (`scenario.RECOMMENDATIONS`), sahip (`scenario.OWNERS`: DBA / ağ / ödeme entegrasyon / batch / nöbetçi) ve **açık** durumla aksiyon kaydı otomatik açılır; Aksiyonlar sekmesinde durum değiştirilir (gereksinim 04–05).
 7. **Gürültü denetimi** sekmesi: ham olay → kart → karttaki / elenen alarm sayıları, indirgeme oranı, her elenen sinyal için neden (normal hız içinde / küçük yoğunluk noktası / kart bütçesi dışı), servis × zaman ısı haritası (sıcak hücreler çerçeveli), kart için küçük kalan gruplar.
 
-8. **Zenginleştirilmiş tek dosya** (`enrich.py`, `signal-sprint paket.zip --enrich alarms_enriched.csv`): her alarm satırı + şiddet etiketi, alarm sınıfı (neden / kaynak / belirti / arka plan) ve nedensellik puanı, mesajda anılan bağımlılık, envanter (dc, kabin, iş kritikliği, envanter–etiket tutarlılığı), bağımlı olduğu / ona bağımlı servisler ve kritiklikleri, altyapı alarmı mı, 5 dk kovası / kovadaki alarm / servis medyanı / sıcak hücre, incident, rol (kök neden / belirti / küçük grup / gürültü) ve gürültü nedeni; yanında `.summary.json` (kart özetleri, kök neden gerekçeleri, karşı olasılıklar, ilk aksiyon ve sahip). Dosya kendi kendine yeter: `tables.from_observations` bağımlılık grafiğini ve envanteri sütunlardan geri kurar, yalnız bu dosya yüklendiğinde aynı 4 kart çıkar (CSV ve JSONL). Format algılayıcı tırnak içindeki virgüllere karşı `csv.reader` ile sayım yapar.
+8. **Zenginleştirilmiş tek dosya** (`enrich.py`, `watchover paket.zip --enrich alarms_enriched.csv`): her alarm satırı + şiddet etiketi, alarm sınıfı (neden / kaynak / belirti / arka plan) ve nedensellik puanı, mesajda anılan bağımlılık, envanter (dc, kabin, iş kritikliği, envanter–etiket tutarlılığı), bağımlı olduğu / ona bağımlı servisler ve kritiklikleri, altyapı alarmı mı, 5 dk kovası / kovadaki alarm / servis medyanı / sıcak hücre, incident, rol (kök neden / belirti / küçük grup / gürültü) ve gürültü nedeni; yanında `.summary.json` (kart özetleri, kök neden gerekçeleri, karşı olasılıklar, ilk aksiyon ve sahip). Dosya kendi kendine yeter: `tables.from_observations` bağımlılık grafiğini ve envanteri sütunlardan geri kurar, yalnız bu dosya yüklendiğinde aynı 4 kart çıkar (CSV ve JSONL). Format algılayıcı tırnak içindeki virgüllere karşı `csv.reader` ile sayım yapar.
 
 Bu paketle sonuç: 3.000 alarm → 5 kart (yavaş yanma çıkarımı `storm.extract_slow_burns`: şiddeti tırmanan neden-tipi alarm zinciri + o servise yönelik timeout'lar ayrı kart olur; 02:24 session-service bellek sızıntısı → gc → oom, 0,44), diğerleri puan sırasıyla: 01:33 dc1/rack-A kabin ağ olayı (0,79); 02:33 payment-provider-gw dış servis kesintisi (0,77); 02:04 billing-db disk dolu → tablespace (0,71); 03:05 batch penceresi çakışması → subscriber-db bağlantı havuzu (0,44), 1.793 alarm gerekçesiyle elendi, analiz 0,4 sn. Kullanılan ek kütüphane yok; korelasyon tamamen bu depodaki kodla yapılır.
 
@@ -99,8 +99,8 @@ Bu paketle sonuç: 3.000 alarm → 5 kart (yavaş yanma çıkarımı `storm.extr
     streamlit run app.py                   # http://localhost:8501 ; canlı alıcı :8600'de otomatik açılır
 
     python -m pytest -q                    # 30 test, ağ gerektirmez
-    signal-sprint data.zip --inspect       # CLI: dosya başına format / roller / sütunlar
-    signal-sprint data.zip                 # CLI: profil + incident özeti (--json ile makine çıktısı)
+    watchover data.zip --inspect       # CLI: dosya başına format / roller / sütunlar
+    watchover data.zip                 # CLI: profil + incident özeti (--json ile makine çıktısı)
     python mcp_server.py --http --port 8765   # motor MCP sunucusu olarak (http://localhost:8765/mcp)
     docker compose up                      # dashboard :8501 + mcp :8765
 
@@ -160,7 +160,7 @@ Dil: sol üstte 🇹🇷 / 🇬🇧 anahtarı; arayüz, anlatı, gerekçe ve ön
 | `mcp_server.py` | CF5.1 | Motor MCP sunucusu olarak | Araç fonksiyonları düz Python (test edilebilir): `analyze_dataset(path)`, `list_incidents()`, `get_incident(id)`, `list_signals(limit)`, `evidence(ref)`, `postmortem(id)`, `create_action(...)`, `list_actions()`. `build_server()` `mcp>=2` `MCPServer`'a araçları kaydeder; `main()` `--http` ile streamable HTTP (DNS rebinding koruması kapalı, Docker / uzak istemci için) ya da stdio |
 | `samples/make_demo.py` | CF5.1 | Sentetik demo veri seti üreticisi | `samples/demo_mixed.zip`: 916 olay, 4 dosya (JSONL, düz log, syslog, CSV); 45 dk arka plan trafiği; gömülü zincir DB gecikmesi → payment timeout → checkout 500 → alarm → 14:36 PostgreSQL restart (systemd stop + "ready to accept connections"); ayrı disk dolu incident'ı |
 
-### Motor (`src/signal_sprint/`)
+### Motor (`src/watchover/`)
 
 | Dosya | AI aracı | Ne yapar | Nasıl çalışır (fonksiyonlar) |
 |---|---|---|---|
@@ -191,7 +191,7 @@ Dil: sol üstte 🇹🇷 / 🇬🇧 anahtarı; arayüz, anlatı, gerekçe ve ön
 | `storm.py` | CF5.1 | Alarm fırtınası kümeleyici | `cluster()`: 5 dk'lık kovalarda servis ve sunucu başına sayım, medyanın 3 katını aşan sıcak hücreler, aynı servis / bağımlılık / aynı kabin ile bağlama (union-find), olay alarmları ve gürültü; `prune_background()` küme içinde normal hızındaki (servis, tip) çiftlerini gürültüye geri verir |
 | `tables.py` | CF5.1 | Yan tablolar | `is_side_table()` dosya adından referans tablosu tespiti, `read_table()` CSV / JSON okuma, `dependencies()` (kaynak → hedef, tip, kritiklik; sütun adları `scenario.DEP_COLUMNS`), `inventory()` (host → servis, dc, kabin, ortam, kritiklik) |
 | `i18n.py` | CF5.1 | TR / EN metinler | `STRINGS` sözlüğü; `t()` aktif dil; `reason_text()`, `link_text()`, `narrative_text()`, `factor_value()`, `recommendation_text()` motor kodlarını dile çevirir; `RECOMMENDATIONS_TR` |
-| `cli.py` | CF5.1 | Komut satırı | `inspect()` dosya başına format, roller, zaman aralığı, seviye, sütun profili; `summary()`; `main()` `signal-sprint <path> [--inspect] [--json]` |
+| `cli.py` | CF5.1 | Komut satırı | `inspect()` dosya başına format, roller, zaman aralığı, seviye, sütun profili; `summary()`; `main()` `watchover <path> [--inspect] [--json]` |
 | `scenario/__init__.py` (S-A1 ayarları: SEVERITY_MAP, SIDE_TABLES, DEDUP_KEY, MAX_INCIDENTS, CLUSTERING / BUCKET_MIN / HOT_MIN / HOT_RATIO / HOST_HOT_MIN / PAD_MIN / INFRA_TYPES / RACK_MIN_HOSTS / MIN_CLUSTER_ALARMS / MIN_CLUSTER_ERRORS / PRUNE_BACKGROUND, CAUSE_RANK, DEP_PATTERNS, RECOMMENDATIONS, OWNERS) | CF5.1 | Yapılandırma | `MAPPING`, `EXTRA_MASKS`, `EXTRA_DEPENDENCY_WORDS`, `WINDOW_MIN`, `WEIGHTS`, `RECOMMENDATIONS`, `SLO`, `SLA`, `METRIC_THRESHOLDS` (cpu 85, gpu 95, memory 90, disk 90). Veri setine özel her ayar burada |
 
 ### Testler (`tests/`)
@@ -209,7 +209,7 @@ Dil: sol üstte 🇹🇷 / 🇬🇧 anahtarı; arayüz, anlatı, gerekçe ve ön
 
 | Dosya | Ne yapar |
 |---|---|
-| `pyproject.toml` | Paket tanımı, bağımlılıklar (streamlit, pandas, python-dateutil), `signal-sprint` CLI, `dev` / `mcp` ekstraları |
+| `pyproject.toml` | Paket tanımı, bağımlılıklar (streamlit, pandas, python-dateutil), `watchover` CLI, `dev` / `mcp` ekstraları |
 | `requirements.txt` | Aynı bağımlılıkların düz listesi (`pip install -r requirements.txt` + `pip install -e .`); Windows adımları README Kurulum bölümünde |
 | `Makefile` | `make run / test / demo / inspect DS=x / analyze DS=x` |
 | `.streamlit/config.toml` | 1 GB yükleme sınırı, koyu tema |

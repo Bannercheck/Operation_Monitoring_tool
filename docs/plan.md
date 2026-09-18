@@ -34,7 +34,7 @@ Etkinlik günü verilen bilinmeyen log / olay veri setini 3 saat içinde yükley
 
 | Risk | Etki | Önlem |
 |------|------|-------|
-| Veri seti beklenmedik formatta | Yüksek | Detector + 6 parser + rol eşleme; `signal-sprint data.zip --inspect` ile 10 dk'da teşhis |
+| Veri seti beklenmedik formatta | Yüksek | Detector + 6 parser + rol eşleme; `watchover data.zip --inspect` ile 10 dk'da teşhis |
 | Zaman sütunu yok / bozuk | Orta | Zamansız satırlar işaretlenir ve en erken zamana doldurulur |
 | Çok büyük dosya | Orta | Hızlı tarih parse yolu, tek birleşik maske regex'i, 1 GB yükleme sınırı |
 | Etkinlikte ağ / API yok | Düşük | Çekirdek çevrimdışı çalışır, LLM isteğe bağlı |

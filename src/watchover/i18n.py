@@ -10,7 +10,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "raw_events": "raw events", "fingerprints": "fingerprints", "meaningful": "meaningful signals",
         "incidents": "incidents", "actions": "actions",
         "footer": "Deterministic engine · no LLM / API at runtime · every decision carries evidence",
-        "landing_title": "Signal Sprint",
+        "landing_title": "Watchover",
         "landing_body": "Logs, alerts, events, metrics, incidents, in any mix of **JSON / JSONL / CSV / TSV / syslog / key=value / text**, "
                         "as a file, ZIP or TAR.GZ. The engine normalises everything, collapses noise into signals, correlates them into "
                         "incident candidates with a root-cause hypothesis, and lets you track the resulting actions.",
@@ -155,7 +155,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "raw_events": "ham olay", "fingerprints": "parmak izi", "meaningful": "anlamlı sinyal",
         "incidents": "incident", "actions": "aksiyon",
         "footer": "Deterministik motor · çalışma zamanında LLM / API yok · her karar kanıt taşır",
-        "landing_title": "Signal Sprint",
+        "landing_title": "Watchover",
         "landing_body": "Log, alarm, olay, metrik, incident; **JSON / JSONL / CSV / TSV / syslog / key=value / metin** karışık olabilir, "
                         "dosya, ZIP veya TAR.GZ olarak. Motor her şeyi normalize eder, gürültüyü sinyale indirger, sinyalleri kök neden "
                         "hipoteziyle incident adaylarına bağlar ve çıkan aksiyonların takibini sağlar.",

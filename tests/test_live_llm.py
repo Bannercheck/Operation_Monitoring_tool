@@ -6,9 +6,9 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
-from signal_sprint.live import LiveStore, simulate_batch, start_receiver, start_simulator
-from signal_sprint.llm import LLMConfig, chat, list_models
-from signal_sprint.llm import test_connection as llm_test_connection
+from watchover.live import LiveStore, simulate_batch, start_receiver, start_simulator
+from watchover.llm import LLMConfig, chat, list_models
+from watchover.llm import test_connection as llm_test_connection
 
 ROOT = Path(__file__).resolve().parents[1]
 

@@ -1,8 +1,8 @@
 from pathlib import Path
 
-from signal_sprint.analysis import Analysis
-from signal_sprint.pipeline import ingest_path
-from signal_sprint.playbook import Playbook, similarity
+from watchover.analysis import Analysis
+from watchover.pipeline import ingest_path
+from watchover.playbook import Playbook, similarity
 
 ROOT = Path(__file__).resolve().parents[1]
 

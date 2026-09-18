@@ -1,4 +1,4 @@
-"""Signal Sprint as an MCP server: any MCP client (Claude SAKA, Claude Desktop, Cursor, custom agents, this dashboard's
+"""Watchover as an MCP server: any MCP client (Claude SAKA, Claude Desktop, Cursor, custom agents, this dashboard's
 own Connection panel) can drive the engine over standard JSON-RPC.
 
     pip install "mcp>=2"
@@ -7,7 +7,7 @@ own Connection panel) can drive the engine over standard JSON-RPC.
     docker compose up mcp                     # see docker-compose.yml
 
 Desktop client config example:
-    {"mcpServers": {"signal-sprint": {"command": "python", "args": ["/abs/path/hackathon/mcp_server.py"]}}}
+    {"mcpServers": {"watchover": {"command": "python", "args": ["/abs/path/hackathon/mcp_server.py"]}}}
 Remote/HTTP client config example:  {"url": "http://<host>:8765/mcp"}
 
 Tools: analyze_dataset(path), list_incidents(), get_incident(id), list_signals(limit), evidence(ref),
@@ -23,10 +23,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).with_name("src")))
 
-from signal_sprint.actions import ActionStore           # noqa: E402
-from signal_sprint.analysis import Analysis, incident_dict, postmortem_md, signal_dict   # noqa: E402
-from signal_sprint.pipeline import ingest_path          # noqa: E402
-from signal_sprint.profiler import profile              # noqa: E402
+from watchover.actions import ActionStore           # noqa: E402
+from watchover.analysis import Analysis, incident_dict, postmortem_md, signal_dict   # noqa: E402
+from watchover.pipeline import ingest_path          # noqa: E402
+from watchover.profiler import profile              # noqa: E402
 
 STATE: dict = {"analysis": None, "dataset": None}
 STORE = ActionStore("actions.db")
@@ -102,7 +102,7 @@ TOOLS = [analyze_dataset, list_incidents, get_incident, list_signals, evidence, 
 
 def build_server():
     from mcp.server.mcpserver import MCPServer
-    server = MCPServer("signal-sprint", instructions="Operational noise -> signals -> explained incidents. Load a dataset with analyze_dataset first.")
+    server = MCPServer("watchover", instructions="Operational noise -> signals -> explained incidents. Load a dataset with analyze_dataset first.")
     for fn in TOOLS:
         server.tool()(fn)
     return server

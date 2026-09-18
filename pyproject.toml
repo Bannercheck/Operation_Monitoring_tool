@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "signal-sprint"
+name = "watchover"
 version = "0.2.0"
 classifiers = ["Programming Language :: Python :: 3", "Programming Language :: Python :: 3.9", "Programming Language :: Python :: 3.10", "Programming Language :: Python :: 3.11", "Programming Language :: Python :: 3.12", "Programming Language :: Python :: 3.13"]
 description = "Universal SRE ingestion + correlation engine: noise -> signals -> explained incidents -> tracked actions"
@@ -16,7 +16,7 @@ dev = ["pytest>=8"]
 mcp = ["mcp>=2"]
 
 [project.scripts]
-signal-sprint = "signal_sprint.cli:main"
+watchover = "watchover.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

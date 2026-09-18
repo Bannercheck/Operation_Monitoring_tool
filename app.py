@@ -1,4 +1,4 @@
-"""Signal Sprint dashboard (Streamlit).   streamlit run app.py
+"""Watchover dashboard (Streamlit).   streamlit run app.py
 
 Sidebar: upload / demo. Tabs: Overview, Signals, Incidents, Actions. Deterministic engine, no API needed.
 """
@@ -18,22 +18,22 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
-from signal_sprint.actions import PRIORITIES, STATUSES, ActionStore
-from signal_sprint.analysis import Analysis, interesting, llm_prompt, postmortem_md, signal_dict, suggested_owner
-from signal_sprint.connectors import fetch_http, fetch_mcp, mcp_tools, parse_headers
-from signal_sprint.live import LiveStore, start_receiver, start_simulator
-from signal_sprint.itsm import SYSTEMS, correlate as correlate_tickets, demo_tickets, fetch_generic
-from signal_sprint.analysis import template_of
-from signal_sprint.compare import compare as compare_datasets
-from signal_sprint.graph import build_map, to_html
-from signal_sprint.playbook import Playbook
-from signal_sprint.llm import LLMConfig, chat as llm_chat, test_connection as llm_test
-from signal_sprint.i18n import factor_value, narrative_text, reason_text, recommendation_text, link_text, t
-from signal_sprint.models import SEV_RANK
-from signal_sprint.pipeline import ingest_bytes, ingest_path
-from signal_sprint.profiler import profile
+from watchover.actions import PRIORITIES, STATUSES, ActionStore
+from watchover.analysis import Analysis, interesting, llm_prompt, postmortem_md, signal_dict, suggested_owner
+from watchover.connectors import fetch_http, fetch_mcp, mcp_tools, parse_headers
+from watchover.live import LiveStore, start_receiver, start_simulator
+from watchover.itsm import SYSTEMS, correlate as correlate_tickets, demo_tickets, fetch_generic
+from watchover.analysis import template_of
+from watchover.compare import compare as compare_datasets
+from watchover.graph import build_map, to_html
+from watchover.playbook import Playbook
+from watchover.llm import LLMConfig, chat as llm_chat, test_connection as llm_test
+from watchover.i18n import factor_value, narrative_text, reason_text, recommendation_text, link_text, t
+from watchover.models import SEV_RANK
+from watchover.pipeline import ingest_bytes, ingest_path
+from watchover.profiler import profile
 
-st.set_page_config(page_title="Signal Sprint", page_icon="📡", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="Watchover", page_icon="📡", layout="wide", initial_sidebar_state="expanded")
 
 # ---- Streamlit version compatibility: `width="stretch"` (>=1.5x) vs `use_container_width=True` (older)
 _WIDE_CACHE: dict = {}
@@ -325,7 +325,7 @@ LIVE_PORT = int(os.environ.get("LIVE_PORT", "8600"))
 PAGES = ["ops", "data", "map", "pb", "itsm", "conn", "readme"]
 PAGE_KEYS = {"ops": "sb_ops", "data": "sb_data", "map": "sb_map", "pb": "sb_pb", "itsm": "sb_itsm", "conn": "sb_conn", "readme": "sb_readme"}
 with st.sidebar:
-    st.markdown("## 📡 Signal Sprint")
+    st.markdown("## 📡 Watchover")
     st.radio("Language", ["tr", "en"], horizontal=True, label_visibility="collapsed",
              format_func=lambda x: {"tr": "🇹🇷 Türkçe", "en": "🇬🇧 English"}[x], key="lang")
     st.markdown("")
@@ -466,7 +466,7 @@ def metric_chart(d: pd.DataFrame, height: int, thr: float | None = None):
 
 def metrics_block(ms: dict, clickable: bool = False) -> None:
     """CPU / GPU / memory / disk tiles with per-host line charts."""
-    thr = __import__("signal_sprint.scenario", fromlist=["x"]).METRIC_THRESHOLDS
+    thr = __import__("watchover.scenario", fromlist=["x"]).METRIC_THRESHOLDS
     pm = pd.DataFrame(ms["per_minute"]) if ms["per_minute"] else pd.DataFrame(columns=["minute", "host", "metric", "env", "value"])
     ic = st.columns(4)
     for col, metric, icon in zip(ic, ("cpu", "gpu", "memory", "disk"), ("🧠", "🎮", "💾", "🗄")):
@@ -506,7 +506,7 @@ def _bar(df: pd.DataFrame, x: str, y: str, color: str = "#ff5c5c", height: int =
 
 def ops_detail_panel(kind: str, ls: LiveStore, env, host, ms: dict, stt: dict, slo: dict) -> None:
     """Live detail for the clicked card: one metric in depth, or what drives a service-level figure."""
-    thr = __import__("signal_sprint.scenario", fromlist=["x"]).METRIC_THRESHOLDS
+    thr = __import__("watchover.scenario", fromlist=["x"]).METRIC_THRESHOLDS
     with st.container(border=True):
         h, x = st.columns([8, 1])
         h.markdown(f"#### {t('od_' + kind)} <span class='muted' style='font-size:13px'>· {t('od_window')}</span>", unsafe_allow_html=True)
@@ -701,7 +701,7 @@ def live_analysis(n_received: int) -> Analysis | None:
 
 
 def page_map() -> None:
-    from signal_sprint.graph import PALETTE
+    from watchover.graph import PALETTE
     st.markdown(f"## 🕸 {t('map_title')} <span class='muted' style='font-size:13px'>· {t('map_sub')}</span>", unsafe_allow_html=True)
     reg = st.session_state.get("datasets", {})
     sources = list(reg) + ["__live__"]
@@ -1301,7 +1301,7 @@ with tab_sig:
         with r:
             srcs = Counter(o.source for o in s.observations)
             agents_ = sorted({str(o.attributes.get("agent")) for o in s.observations if o.attributes.get("agent")})
-            recs = [recommendation_text(x) for key_, lst in __import__("signal_sprint.scenario", fromlist=["x"]).RECOMMENDATIONS.items() if key_ in s.template for x in lst][:3]
+            recs = [recommendation_text(x) for key_, lst in __import__("watchover.scenario", fromlist=["x"]).RECOMMENDATIONS.items() if key_ in s.template for x in lst][:3]
             dur = (s.last_seen - s.first_seen).total_seconds()
             st.markdown(
                 f'<div class="card"><b>{t("where")}</b> · {t("sources")}: ' + ", ".join(f"{esc(k)} ({v})" for k, v in srcs.most_common(4)) +
@@ -1463,7 +1463,7 @@ with tab_noise:
     st.markdown(f"#### {t('tab_noise')} <span class='muted'>· {t('noise_sub')}</span>", unsafe_allow_html=True)
     k = st.columns(5)
     k[0].markdown(kpi2(f"{na['total']:,}", t("raw_events"), "📥", "#6b9bd2", ""), unsafe_allow_html=True)
-    k[1].markdown(kpi2(len(a.incidents), t("noise_cards"), "🗂", "#3ddc84", f"{t('inc_cap')} {__import__('signal_sprint.scenario', fromlist=['x']).MAX_INCIDENTS}"), unsafe_allow_html=True)
+    k[1].markdown(kpi2(len(a.incidents), t("noise_cards"), "🗂", "#3ddc84", f"{t('inc_cap')} {__import__('watchover.scenario', fromlist=['x']).MAX_INCIDENTS}"), unsafe_allow_html=True)
     k[2].markdown(kpi2(f"{na['on_cards']:,}", t("noise_on_cards"), "📌", "#ffb347", f"{na['on_cards'] / max(1, na['total']):.0%}"), unsafe_allow_html=True)
     k[3].markdown(kpi2(f"{na['eliminated']:,}", t("noise_eliminated"), "🧹", "#8b93a1", f"{na['eliminated'] / max(1, na['total']):.0%}"), unsafe_allow_html=True)
     k[4].markdown(kpi2(f"1 : {na['total'] / max(1, len(a.incidents)):.0f}", t("noise_ratio"), "📉", "#3ddc84", f"{na['total']} → {len(a.incidents)}"), unsafe_allow_html=True)

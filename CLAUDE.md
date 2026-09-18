@@ -2,12 +2,12 @@
 
 ## Proje
 
-Signal Sprint — AO Hackathon 2026 Enterprise katılımı. Operasyonel gürültü → sinyal → gerekçeli incident → takip edilen aksiyon. Web uygulaması üzerinden canlı demo; çalışma zamanında LLM/API yok sayılır, çekirdek deterministiktir.
+Watchover — AO Hackathon 2026 Enterprise katılımı. Operasyonel gürültü → sinyal → gerekçeli incident → takip edilen aksiyon. Web uygulaması üzerinden canlı demo; çalışma zamanında LLM/API yok sayılır, çekirdek deterministiktir.
 
 ## Dizin Yapısı
 
 - `app.py` — Streamlit arayüzü (Operasyon, Datasets, Playbook, ITSM, Connection Settings)
-- `src/signal_sprint/` — motor (loader, format_detector, parsers/, normalize, analysis, live, itsm, connectors, llm, playbook, actions, cli); case'e özel kod **sadece** `src/signal_sprint/scenario/`
+- `src/watchover/` — motor (loader, format_detector, parsers/, normalize, analysis, live, itsm, connectors, llm, playbook, actions, cli); case'e özel kod **sadece** `src/watchover/scenario/`
 - `agent.py`, `mcp_server.py` — uzak ajan ve MCP sunucusu
 - `tests/` — pytest; `samples/` — demo veri seti üretici
 - `docs/` — plan, fazlar, mimari, AI_LOG
@@ -28,7 +28,7 @@ Signal Sprint — AO Hackathon 2026 Enterprise katılımı. Operasyonel gürült
 ## Kod Kuralları
 
 - Stack kullanıcının seçimi, değiştirme: Python 3.9+, Streamlit, pandas, python-dateutil, pytest.
-- Motor `src/signal_sprint/` altında; senaryoya özel ayar yalnız `scenario/`.
+- Motor `src/watchover/` altında; senaryoya özel ayar yalnız `scenario/`.
 - Her adım ayrı commit, `make test` yeşil; commit mesajı: kısa başlık + madde listesi.
 - Branch: `claude/cool-tesla-dh9nw3`.
 
@@ -61,12 +61,12 @@ Signal Sprint — AO Hackathon 2026 Enterprise katılımı. Operasyonel gürült
 
 ## Notlar
 
-- Etkinlik: AI Hackathon TR 2026 "Signal Sprint". Senaryo ve veri seti
+- Etkinlik: AI Hackathon TR 2026. Senaryo ve veri seti
   etkinlik günü verilir, 3 saat kodlama, 17:30 hard stop, 7+3 dk sunum.
 - Ürün: operasyonel gürültü -> sinyal -> gerekçeli incident -> aksiyon
   takibi. Web uygulaması üzerinden canlı demo. Çalışma zamanında LLM/API
   yok sayılır, çekirdek deterministiktir.
 - Stack (kullanıcının seçimi, değiştirme): Python 3.11, Streamlit UI (`app.py`),
-  pandas, stdlib csv/json, python-dateutil, pytest. Motor `src/signal_sprint/`,
-  case'e özel kod sadece `src/signal_sprint/scenario/`. LLM opsiyonel, çekirdeğe bağlı değil.
+  pandas, stdlib csv/json, python-dateutil, pytest. Motor `src/watchover/`,
+  case'e özel kod sadece `src/watchover/scenario/`. LLM opsiyonel, çekirdeğe bağlı değil.
 - Branch: `claude/cool-tesla-dh9nw3`. Her adım ayrı commit, `make test` yeşil.

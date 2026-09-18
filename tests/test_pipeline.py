@@ -3,14 +3,14 @@ from pathlib import Path
 
 import pytest
 
-from signal_sprint import analysis as an
-from signal_sprint.actions import ActionStore
-from signal_sprint.format_detector import detect_format
-from signal_sprint.loader import iter_bytes
-from signal_sprint.normalize import auto_map, normalize_severity, parse_timestamp
-from signal_sprint.parsers import PARSERS
-from signal_sprint.pipeline import ingest, ingest_path
-from signal_sprint.profiler import profile, profile_text
+from watchover import analysis as an
+from watchover.actions import ActionStore
+from watchover.format_detector import detect_format
+from watchover.loader import iter_bytes
+from watchover.normalize import auto_map, normalize_severity, parse_timestamp
+from watchover.parsers import PARSERS
+from watchover.pipeline import ingest, ingest_path
+from watchover.profiler import profile, profile_text
 
 ROOT = Path(__file__).resolve().parents[1]
 JSONL = ('{"ts":"2026-09-16T14:31:00Z","level":"error","service":"payment-api","host":"api-01","msg":"DB timeout user=1","trace":{"id":"abc"}}\n'
@@ -148,7 +148,7 @@ def test_real_world_shapes_nested_json_turkish_csv_kv_prefix():
 
 
 def test_compare_two_datasets():
-    from signal_sprint.compare import compare
+    from watchover.compare import compare
     import io, zipfile
     obs_a, rep_a = ingest_path(str(ROOT / "samples" / "demo_mixed.zip"))
     a = an.Analysis(obs_a, rep_a)
@@ -178,7 +178,7 @@ def test_incident_origin_timing_recovery(demo):
 
 
 def test_environment_and_origin_roles():
-    from signal_sprint.normalize import auto_map, infer_environment, normalize_environment
+    from watchover.normalize import auto_map, infer_environment, normalize_environment
     m = auto_map(["ts", "level", "msg", "env", "source"], [{"env": "Production", "source": "kafka"}])
     assert m["environment"] == "env" and m["origin"] == "source"
     m2 = auto_map(["ts", "msg", "stage"], [{"stage": "staging"}, {"stage": "prod"}])
@@ -197,7 +197,7 @@ def test_environment_and_origin_roles():
 
 
 def test_error_map_from_demo():
-    from signal_sprint.graph import build_map, to_dot, dependency_edges
+    from watchover.graph import build_map, to_dot, dependency_edges
     obs, rep = ingest_path(str(ROOT / "samples" / "demo_mixed.zip"))
     a = an.Analysis(obs, rep)
     deps = dependency_edges(obs)
@@ -292,7 +292,7 @@ def test_sap_log_family():
 def test_burst_score_is_span_independent():
     """A signal in a 4-year log must not materialise one entry per quiet minute (was 60 s+ on a real deploy.log)."""
     from datetime import datetime, timedelta, timezone
-    from signal_sprint.models import Observation, Signal
+    from watchover.models import Observation, Signal
     t0 = datetime(2021, 1, 1, tzinfo=timezone.utc)
     obs = [Observation(timestamp=t0 + timedelta(minutes=i), message="x") for i in range(10)]
     sig = Signal(id="S1", fingerprint="f", template="x", severity="INFO", count=10, services=[], hosts=[], entities=set(),

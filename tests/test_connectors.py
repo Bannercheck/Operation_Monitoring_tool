@@ -4,8 +4,8 @@ import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
-from signal_sprint.connectors import McpClient, fetch_http, fetch_mcp, mcp_tools, parse_headers, dig
-from signal_sprint.pipeline import ingest_bytes
+from watchover.connectors import McpClient, fetch_http, fetch_mcp, mcp_tools, parse_headers, dig
+from watchover.pipeline import ingest_bytes
 
 ROOT = Path(__file__).resolve().parents[1]
 

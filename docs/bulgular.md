@@ -1,6 +1,6 @@
 # Bulgular — S-A1 "Alarm Fırtınası" veri paketi
 
-Gözlem penceresi 10 Eylül 2026, 01:30–03:30 · 3.000 alarm · 27 servis · 56 sunucu · 32 bağımlılık kaydı · 5 izleme sistemi (OBM, Prometheus, Zabbix, AppDynamics, SyslogNG). Bu belge motorun (`signal-sprint`, yoğunluk kümeleme modu) aynı paket üzerinde ürettiği sonucu anlatır; sayılar `signal-sprint S-A1_alarm_firtinasi.zip --enrich` çıktısıyla birebir aynıdır.
+Gözlem penceresi 10 Eylül 2026, 01:30–03:30 · 3.000 alarm · 27 servis · 56 sunucu · 32 bağımlılık kaydı · 5 izleme sistemi (OBM, Prometheus, Zabbix, AppDynamics, SyslogNG). Bu belge motorun (`watchover`, yoğunluk kümeleme modu) aynı paket üzerinde ürettiği sonucu anlatır; sayılar `watchover S-A1_alarm_firtinasi.zip --enrich` çıktısıyla birebir aynıdır.
 
 ---
 
@@ -114,4 +114,4 @@ message-queue 02:01 (6) ve 02:28 (9), web-bff 02:45 (3), cache-cluster 02:08 (2)
 - Olay 4'ün başlangıcı gerçek veride 01:35; kart 02:24'ten itibaren. Düşük şiddetli tırmanma dedektörü eklenirse kart uzar.
 - "Kendiliğinden düzeldi" bilgisi sessizliğe dayanır; alarm verisinde iyileşme kaydı yok.
 - Doğrulama verisi (alarm → olay etiketi) açıklanınca ölçülecekler: kök neden isabeti (5 hipotez), yanlış birleştirme (olay 1'in 16 servisi tek olay mı), gürültü eleme kesinliği (1.752 alarmın kaçı gerçekten gürültü).
-- Eşikler (3× medyan, 15 alarm, 5 dk kova) bu paketin profiline göre seçildi; `src/signal_sprint/scenario/__init__.py` içinde açıktır.
+- Eşikler (3× medyan, 15 alarm, 5 dk kova) bu paketin profiline göre seçildi; `src/watchover/scenario/__init__.py` içinde açıktır.

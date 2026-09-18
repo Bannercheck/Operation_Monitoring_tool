@@ -1,6 +1,6 @@
-"""CLI:  signal-sprint <path>            profile + analysis summary
-        signal-sprint <path> --inspect  per-file format / roles / columns (for the first 10 minutes with a new dataset)
-        signal-sprint <path> --json     full machine-readable output
+"""CLI:  watchover <path>            profile + analysis summary
+        watchover <path> --inspect  per-file format / roles / columns (for the first 10 minutes with a new dataset)
+        watchover <path> --json     full machine-readable output
 """
 
 from __future__ import annotations
@@ -69,7 +69,7 @@ def summary(a: Analysis, prof: dict) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(prog="signal-sprint", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(prog="watchover", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("path")
     ap.add_argument("--inspect", action="store_true")
     ap.add_argument("--json", action="store_true")

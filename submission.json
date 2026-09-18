@@ -2,14 +2,14 @@
   "schemaVersion": "1.0",
   "hackathon": "AO Hackathon 2026 - Enterprise",
   "project": {
-    "name": "signal-sprint",
-    "title": "Signal Sprint",
+    "name": "watchover",
+    "title": "Watchover",
     "tagline": "Operasyonel gürültüyü sinyale, sinyali gerekçeli incident'a, incident'ı takip edilen aksiyona çevirir.",
     "description": "SRE karar destek uygulaması. Log / olay / alarm / metrik / ticket verisini dosyadan, HTTP API'den, MCP sunucusundan veya canlı ajanlardan alır; formatı kendisi tanır, tek bir kanonik modele indirger, tekrarları parmak izine indirir, ilişkili sinyalleri incident'ta toplar, kök nedeni ve önem puanını faktörleriyle açıklar, aksiyon ve playbook takibi yapar. Çekirdek deterministiktir; çalışma zamanında LLM veya bulut servisi gerekmez, LLM isteğe bağlı zenginleştirmedir.",
     "category": "enterprise"
   },
   "team": {
-    "name": "Signal Sprint",
+    "name": "Watchover",
     "members": [
       {
         "name": "Tayfur",

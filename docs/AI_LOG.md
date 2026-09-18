@@ -4,7 +4,7 @@ Sadece geliştirme adımları. Format: araç + sürüm · tarih · yapılan iş.
 
 | Araç + sürüm | Tarih | Yapılan düzeltme / geliştirme |
 |---|---|---|
-| Claude Fable 5.1 | 2026-09-13 | Proje iskeleti: app.py, src/signal_sprint paketi, docs, Makefile, pyproject |
+| Claude Fable 5.1 | 2026-09-13 | Proje iskeleti: app.py, src/watchover paketi, docs, Makefile, pyproject |
 | Claude Fable 5.1 | 2026-09-13 | Format detector: dosya / ZIP / GZ / TAR.GZ / klasör açma, json / jsonl / csv-tsv / syslog / kv / text tespiti |
 | Claude Fable 5.1 | 2026-09-13 | Parser'lar (6 format), zaman damgası ve severity normalizasyonu, sütun → rol auto-mapper |
 | Claude Fable 5.1 | 2026-09-13 | Analiz motoru: fingerprint, burst tespiti, korelasyon, kök neden, skor + faktör gerekçesi, postmortem, LLM prompt paketi |
@@ -56,3 +56,4 @@ Sadece geliştirme adımları. Format: araç + sürüm · tarih · yapılan iş.
 | Claude Fable 5.1 (Cowork) | 2026-09-16 | `docs/bulgular.md`: S-A1 paketi için özet + ayrıntılı bulgu raporu (motor çıktısından üretilen sayılarla); gc / heap kök nedenleri için Türkçe ilk aksiyon önerileri |
 | Claude Fable 5.1 (Cowork) | 2026-09-18 | `parsers/sap_parser.py`: SAP log ailesi (ABAP dev trace, HANA trace, NetWeaver Java defaultTrace, java.util.logging, JVM GC, tp / R3trans / SUM, transport ALOG / SLOG, SM21 dışa aktarımı) uzantıdan bağımsız okunuyor; format tespitine `sap_score`; düz metin parser'ına 4 yeni zaman biçimi ve SEVERE / FINE seviyeleri; `samples/sap_logs.zip` + `test_sap_log_family` (33 test) |
 | Claude Fable 5.1 (Cowork) | 2026-09-18 | Gerçek SAP dosyalarıyla (deploy.0.log 7 MB, available.log, bootstrap/datcol.jvm, class_prefetch.lst) doğrulama: ListFormatter `#2.0<BS>#` sürümü ve `<!--LOGHEADER-->`, boş satırda biten çok satırlı kayıt, msg id / kategori / uygulama / kullanıcı alanları; erişilebilirlik günlüğü, JVM özellik anlık görüntüsü ve class listesi biçimleri; `score_burst` sessiz dakikaları listelemeden medyan alıyor (4 yıllık günlükte 60 sn+ → 1,3 sn); 34 test |
+| Claude Fable 5.1 (Cowork) | 2026-09-18 | Ürün adı Watchover oldu: Python paketi `src/watchover`, CLI komutu `watchover`, pyproject / Makefile / Docker, arayüz başlığı, README / AI_JURI / mimari / plan / bulgular / submission; eski ad tüm dosyalardan kaldırıldı |

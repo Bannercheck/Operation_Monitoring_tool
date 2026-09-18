@@ -1,4 +1,4 @@
-# Signal Sprint - çalışma zamanı bağımlılıkları (Python 3.9+)
+# Watchover - çalışma zamanı bağımlılıkları (Python 3.9+)
 # Kurulum: pip install -r requirements.txt  ve ardından  pip install -e .
 streamlit>=1.35
 pandas>=1.5

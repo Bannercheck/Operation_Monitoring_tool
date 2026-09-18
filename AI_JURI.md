@@ -2,7 +2,7 @@
 
 ## 1. Tek Cümlelik Özet
 
-Signal Sprint, S-A1 alarm fırtınasındaki 3.000 alarmı kök neden hipotezi, karşı olasılıklar, sahipli ilk aksiyon ve gürültü denetimi taşıyan 5 olay kartına indiren, çalışma zamanında LLM gerektirmeyen bir SRE karar destek uygulamasıdır.
+Watchover, S-A1 alarm fırtınasındaki 3.000 alarmı kök neden hipotezi, karşı olasılıklar, sahipli ilk aksiyon ve gürültü denetimi taşıyan 5 olay kartına indiren, çalışma zamanında LLM gerektirmeyen bir SRE karar destek uygulamasıdır.
 
 ## 2. Problem Tanımı
 

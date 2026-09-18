@@ -5,8 +5,8 @@ import threading
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-from signal_sprint.itsm import Ticket, correlate, demo_tickets, fetch_generic, fetch_jira, fetch_servicenow
-from signal_sprint.live import LiveStore, simulate_batch, simulate_metrics
+from watchover.itsm import Ticket, correlate, demo_tickets, fetch_generic, fetch_jira, fetch_servicenow
+from watchover.live import LiveStore, simulate_batch, simulate_metrics
 
 UTC = timezone.utc
 

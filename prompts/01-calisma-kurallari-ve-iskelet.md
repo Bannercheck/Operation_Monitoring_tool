@@ -20,8 +20,8 @@ sadece değişecek yere bak; (2) her geliştirme adımını docs/AI_LOG.md'ye te
 olarak kaydet: araç + sürüm, tarih, ne yapıldı; (3) tek bir README olsun ve her
 adımda sadece ilgili bölümü güncelle.
 
-Depoyu kur: app.py, src/signal_sprint/ paketi, senaryoya özel ayarlar sadece
-src/signal_sprint/scenario/ altında, tests/, samples/, docs/, pyproject.toml,
+Depoyu kur: app.py, src/watchover/ paketi, senaryoya özel ayarlar sadece
+src/watchover/scenario/ altında, tests/, samples/, docs/, pyproject.toml,
 Makefile, .streamlit/config.toml (koyu tema, 1 GB yükleme sınırı).
 
 Bitince testleri çalıştır, README'de bu adımın bölümünü güncelle, docs/AI_LOG.md'ye
