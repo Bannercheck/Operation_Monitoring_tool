@@ -117,6 +117,26 @@ section[data-testid="stSidebar"] [data-testid="stRadio"] label{padding:2px 0}
 .wo-brand .name{font-size:23px;font-weight:800;letter-spacing:-.03em;line-height:1.05;background:linear-gradient(90deg,#2dd4bf 0%,#60a5fa 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
 .wo-brand .tag{font-size:10.5px;color:var(--wo-muted);letter-spacing:.7px;margin-top:2px}
 .stTabs [data-baseweb="tab"]{font-weight:600}
+.funnel{background:linear-gradient(180deg,#182234 0%,#111827 100%);border:1px solid var(--wo-border);border-radius:16px;padding:14px 18px 14px;margin:4px 0 12px;box-shadow:inset 0 1px 0 rgba(255,255,255,.03),0 14px 34px -24px rgba(0,0,0,.95)}
+.funnel .head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:10px;flex-wrap:wrap}
+.funnel .ttl{font-size:13px;font-weight:700;letter-spacing:.2px;color:#eef2f7}
+.funnel .stages{display:flex;align-items:stretch}
+.funnel .stage{flex:1 1 0;min-width:0;padding:6px 16px 4px;position:relative}
+.funnel .stage:first-child{padding-left:2px}.funnel .stage+.stage{border-left:1px solid var(--wo-border)}
+.funnel .stage+.stage:after{content:"›";position:absolute;left:-6px;top:38%;color:#3b4b66;font-size:20px;line-height:1;background:transparent}
+.funnel .lb{display:flex;align-items:center;gap:7px;font-size:10.5px;font-weight:700;letter-spacing:.8px;color:var(--wo-muted);white-space:nowrap;overflow:hidden}
+.funnel .lb .ic{margin-left:auto;font-size:15px;opacity:.9}
+.funnel .dot{flex:none;width:8px;height:8px;border-radius:4px;background:var(--acc);box-shadow:0 0 0 3px rgba(255,255,255,.06)}
+.funnel .v{font-size:34px;font-weight:800;letter-spacing:-.03em;color:#f4f7fb;line-height:1.1;margin:8px 0 2px;font-variant-numeric:tabular-nums}
+.funnel .sub{font-size:12px;color:var(--acc);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.funnel .bar{height:5px;border-radius:3px;background:linear-gradient(90deg,var(--acc),transparent);margin-top:12px;opacity:.9}
+.facts{display:flex;flex-wrap:wrap;background:var(--wo-surface2);border:1px solid var(--wo-border);border-radius:14px;padding:4px 6px;margin-bottom:10px}
+.facts .fact{flex:1 1 0;min-width:140px;padding:10px 14px;position:relative}
+.facts .fact+.fact:before{content:"";position:absolute;left:0;top:14px;bottom:14px;width:1px;background:var(--wo-border)}
+.facts .lb{font-size:10.5px;letter-spacing:.7px;color:var(--wo-muted);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.facts .v{font-size:21px;font-weight:700;color:#eef2f7;margin:3px 0 1px;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.facts .sub{font-size:11.5px;color:var(--wo-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+div[data-testid="stPills"] button{border-radius:999px}
 div[data-testid="stExpander"] details{border:1px solid var(--wo-border);border-radius:12px;background:var(--wo-surface)}
 </style>"""
 st.markdown(CSS, unsafe_allow_html=True)
@@ -132,6 +152,11 @@ def pill(s: str) -> str:
 def upper(s: str) -> str:
     """Locale-aware upper case for labels: Turkish i -> İ (CSS text-transform gives ILIŞKI instead of İLİŞKİ)."""
     return str(s).replace("i", "İ").upper() if current_lang() == "tr" else str(s).upper()
+
+
+def cap(s: str) -> str:
+    """First letter upper-cased the Turkish way (i -> İ)."""
+    return (upper(s[0]) + s[1:]) if s else s
 
 
 def kpi(value, label) -> str:
@@ -1103,13 +1128,6 @@ def frames(dataset: str, n: int):
 
 
 with tab_over:
-    def tile(col, key: str, value, label: str, icon: str, accent: str, sub: str = "", muted: bool = False) -> None:
-        with col:
-            st.markdown('<div class="tile">' + kpi2(value, label, icon, accent, sub, muted) + "</div>", unsafe_allow_html=True)
-            if st.button(t("detail"), key=f"tile-{key}", **wide("button")):
-                st.session_state["detail"] = None if st.session_state.get("detail") == key else key
-                st.rerun()
-
     df = frames(st.session_state["dataset"], len(a.observations))
     n_err = int((df.severity.isin(["ERROR", "CRITICAL"])).sum())
     n_crit = sum(1 for i in a.incidents if i.severity == "critical")
@@ -1120,42 +1138,48 @@ with tab_over:
     host_counts = df[df.host != "-"].host.value_counts()
     err_sigs = [x_ for x_ in a.signals if SEV_RANK[x_.severity] >= 3]
     tr = prof["time_range"]
-    cols = st.columns([3, 1, 3, 1, 3, 1, 3, 1, 3])
+    # --- reduction funnel: one card, five stages, proportional (log) bars
     steps = [
-        ("raw_events", f"{f['raw_events']:,}", "🧾", "#60a5fa", f"{n_err / max(f['raw_events'], 1):.0%} ERROR+" if f["raw_events"] else ""),
+        ("raw_events", f["raw_events"], "🧾", "#60a5fa", f"{n_err / max(f['raw_events'], 1):.0%} ERROR+" if f["raw_events"] else ""),
         ("fingerprints", f["fingerprints"], "🧬", "#2dd4bf", f"{f['reduction']}× {t('reduction')}"),
         ("meaningful", f["meaningful_signals"], "📡", "#fbbf24", f"{top_sig.id} · {t('burst')} {top_sig.burst_score}" if top_sig else ""),
         ("incidents", f["incidents"], "🚨", "#f87171" if n_crit else "#fb923c", f"{n_crit} critical" if n_crit else t("no_critical")),
         ("actions", len(acts_all), "✅", "#a78bfa", f"{n_open} {t('open_n')}" if acts_all else t("none_yet")),
     ]
-    for i, (key, v, ic, acc, sub) in enumerate(steps):
-        tile(cols[i * 2], key, v, t(key), ic, acc, sub)
-        if i < 4:
-            cols[i * 2 + 1].markdown('<div class="flow">→</div>', unsafe_allow_html=True)
-    tiles = st.columns(7)
+    import math
+    vmax = max(1, max(v for _, v, *_ in steps))
+    stages = "".join(
+        f'<div class="stage" style="--acc:{acc}"><div class="lb"><span class="dot"></span>{upper(t(key))}<span class="ic">{ic}</span></div>'
+        f'<div class="v">{v:,}</div><div class="sub">{esc(str(sub))}</div>'
+        f'<div class="bar" style="width:{max(6, 100 * math.log(v + 1) / math.log(vmax + 1)):.0f}%"></div></div>'
+        for key, v, ic, acc, sub in steps)
+    head = t("funnel_head", raw=f"{f['raw_events']:,}", inc=f["incidents"], x=f["reduction"])
+    st.markdown(f'<div class="funnel"><div class="head"><span class="ttl">{t("funnel_title")}</span><span class="muted">{head}</span></div>'
+                f'<div class="stages">{stages}</div></div>', unsafe_allow_html=True)
+    # --- facts strip: one card, seven facts
     fmts = ", ".join(sorted({r["format"] for r in a.report}))
     envs = prof.get("environments", {})
     env_err_total = sum(v["errors"] for v in envs.values()) or 1
     env_sub = " · ".join(f"{e} {v['errors'] / env_err_total:.0%}" for e, v in list(envs.items())[:3] if v["errors"]) or ", ".join(list(envs)[:3])
     second = [
-        ("files_n", len(prof["files"]), "📁", "#8b98ad", fmts, True),
-        ("records_n", f"{prof['records']:,}", "🗂", "#8b98ad", f"{max(a.report, key=lambda r: r['rows'])['file'].split('/')[-1]} · {max(r['rows'] for r in a.report):,}" if a.report else "", True),
-        ("services_n", len(prof["services"]), "🧩", "#60a5fa", f"{svc_counts.index[0]} · {svc_counts.iloc[0]:,}" if len(svc_counts) else "-", False),
-        ("hosts_n", len(prof["hosts"]), "🖥", "#60a5fa", f"{host_counts.index[0]} · {host_counts.iloc[0]:,}" if len(host_counts) else "-", False),
-        ("error_classes", prof["error_classes"], "💥", "#fb923c", f"{err_sigs[0].template[:32]} · {err_sigs[0].count}" if err_sigs else "-", False),
-        ("span_min", tr["minutes"], "⏱", "#2dd4bf", f"{tr['start'][11:16]} → {tr['end'][11:16]} · {prof.get('bucket', '1min')}", False),
-        ("environments", len([e for e in envs if e != "unknown"]) or len(envs), "🌍", "#a78bfa", env_sub, False),
+        ("files_n", len(prof["files"]), "📁", fmts),
+        ("records_n", f"{prof['records']:,}", "🗂", f"{max(a.report, key=lambda r: r['rows'])['file'].split('/')[-1]} · {max(r['rows'] for r in a.report):,}" if a.report else ""),
+        ("services_n", len(prof["services"]), "🧩", f"{svc_counts.index[0]} · {svc_counts.iloc[0]:,}" if len(svc_counts) else "-"),
+        ("hosts_n", len(prof["hosts"]), "🖥", f"{host_counts.index[0]} · {host_counts.iloc[0]:,}" if len(host_counts) else "-"),
+        ("error_classes", prof["error_classes"], "💥", f"{err_sigs[0].template[:32]} · {err_sigs[0].count}" if err_sigs else "-"),
+        ("span_min", f"{tr['minutes']} {t('min_short')}", "⏱", f"{tr['start'][11:16]} → {tr['end'][11:16]} · {prof.get('bucket', '1min')}"),
+        ("environments", len([e for e in envs if e != "unknown"]) or len(envs), "🌍", env_sub),
     ]
-    for c, (key, v, ic, acc, sub, muted) in zip(tiles, second):
-        tile(c, key, v, t(key), ic, acc, sub, muted)
-
-    detail = st.session_state.get("detail")
+    st.markdown('<div class="facts">' + "".join(
+        f'<div class="fact"><div class="lb">{ic} {upper(t(key))}</div><div class="v">{v}</div><div class="sub" title="{esc(str(sub))}">{esc(str(sub))}</div></div>'
+        for key, v, ic, sub in second) + "</div>", unsafe_allow_html=True)
+    # --- one selector instead of twelve "Detail" buttons
+    all_keys = [k for k, *_ in steps] + [k for k, *_ in second]
+    icons = {k: ic for k, _, ic, *_ in steps} | {k: ic for k, _, ic, _ in second}
+    detail = st.pills(t("detail_pick"), all_keys, format_func=lambda k: f"{icons[k]} {cap(t(k))}", selection_mode="single", key="detail")
     if detail:
         with st.container(border=True):
-            h, x = st.columns([6, 1])
-            h.markdown(f"#### {t('d_' + detail)}")
-            if x.button(t("close"), key="detail-close", **wide("button")):
-                st.session_state["detail"] = None; st.rerun()
+            st.markdown(f"#### {icons[detail]} {t('d_' + detail)}")
             obs_df = df.assign(time=df["timestamp"].dt.strftime("%H:%M:%S"))[["time", "severity", "service", "host", "source", "message"]]
             if detail == "raw_events":
                 st.dataframe(obs_df, hide_index=True, **wide("dataframe"), height=420)
