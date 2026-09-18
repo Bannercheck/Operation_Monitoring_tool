@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from collections import Counter
 import html
+import re
 import json
 import os
 import time
@@ -137,6 +138,30 @@ section[data-testid="stSidebar"] [data-testid="stRadio"] label{padding:2px 0}
 .facts .v{font-size:21px;font-weight:700;color:#eef2f7;margin:3px 0 1px;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
 .facts .sub{font-size:11.5px;color:var(--wo-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 div[data-testid="stPills"] button{border-radius:999px}
+[role="radiogroup"][aria-orientation="horizontal"]{flex-wrap:wrap;row-gap:6px}
+.st-key-page div[role="radiogroup"]{gap:2px}
+.st-key-page label[data-testid="stRadioOption"]{display:flex;align-items:center;padding:8px 12px;border-radius:10px;margin:0;width:100%;cursor:pointer;border:1px solid transparent;transition:background .12s,border-color .12s}
+.st-key-page label[data-testid="stRadioOption"]:hover{background:rgba(255,255,255,.045)}
+.st-key-page label[data-testid="stRadioOption"][data-selected="true"]{background:rgba(45,212,191,.10);border-color:rgba(45,212,191,.28)}
+.st-key-page label[data-testid="stRadioOption"][data-selected="true"] p{color:#e6fffa;font-weight:600}
+.st-key-page label[data-testid="stRadioOption"] > div > div > div:first-child{display:none}
+.st-key-page label[data-testid="stRadioOption"] p{font-size:14px;color:#c7d0dd;margin:0}
+.st-key-lang [data-testid="stRadioGroup"]{gap:6px}
+.st-key-lang label[data-testid="stRadioOption"]{padding:2px 12px;border-radius:999px;border:1px solid var(--wo-border);margin:0;cursor:pointer}
+.st-key-lang label[data-testid="stRadioOption"] > div > div > div:first-child{display:none}
+.st-key-lang label[data-testid="stRadioOption"][data-selected="true"]{background:rgba(96,165,250,.14);border-color:rgba(96,165,250,.5)}
+.st-key-lang label[data-testid="stRadioOption"] p{font-size:12px;font-weight:700;letter-spacing:.6px;margin:0}
+.chips{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:2px 0 10px}
+.chip{display:inline-flex;align-items:center;gap:7px;padding:3px 11px;border-radius:999px;border:1px solid var(--wo-border);background:rgba(255,255,255,.03);font-size:12px;color:#c7d0dd;white-space:nowrap}
+.chip .d{width:7px;height:7px;border-radius:4px;flex:none}
+mark{background:rgba(251,191,36,.35);color:#fff;border-radius:3px;padding:0 2px}
+.facet-h{font-size:10.5px;letter-spacing:.8px;color:#5f6d84;font-weight:700;margin:4px 0 0}
+.rowcard{background:#111827;border:1px solid var(--wo-border);border-left:4px solid var(--wo-accent);border-radius:12px;padding:10px 14px;margin:6px 0 8px;font-size:13px;line-height:1.6}
+.sb-cap{font-size:10.5px;letter-spacing:.9px;color:#5f6d84;font-weight:700;margin:16px 0 4px 4px}
+.sb-status{background:rgba(255,255,255,.03);border:1px solid var(--wo-border);border-radius:12px;padding:10px 12px;font-size:12px;color:#aab4c5;line-height:1.8}
+.sb-status .dot{display:inline-block;width:7px;height:7px;border-radius:4px;margin-right:8px;vertical-align:middle}
+section[data-testid="stSidebar"] hr{margin:10px 0}
+div[data-testid="stDialog"] [data-testid="stMarkdownContainer"] h4{margin-top:0}
 div[data-testid="stExpander"] details{border:1px solid var(--wo-border);border-radius:12px;background:var(--wo-surface)}
 </style>"""
 st.markdown(CSS, unsafe_allow_html=True)
@@ -398,19 +423,20 @@ LOGO_SVG = ('<svg width="36" height="36" viewBox="0 0 34 34" xmlns="http://www.w
 with st.sidebar:
     st.markdown(f'<div class="wo-brand">{LOGO_SVG}<div><div class="name">Watchover</div><div class="tag">{upper(t("brand_tag"))}</div></div></div>', unsafe_allow_html=True)
     st.radio("Language", ["tr", "en"], horizontal=True, label_visibility="collapsed",
-             format_func=lambda x: {"tr": "🇹🇷 Türkçe", "en": "🇬🇧 English"}[x], key="lang")
-    st.markdown("")
+             format_func=lambda x: {"tr": "TR", "en": "EN"}[x], key="lang")
+    st.markdown(f'<div class="sb-cap">{upper(t("sb_nav"))}</div>', unsafe_allow_html=True)
     page = st.radio("nav", PAGES, format_func=lambda x: t(PAGE_KEYS[x]), label_visibility="collapsed", key="page")
-    st.markdown("---")
+    st.markdown(f'<div class="sb-cap">{upper(t("sb_status"))}</div>', unsafe_allow_html=True)
 
     @st.fragment(run_every="5s")
     def _status():
         ls_ = live_store()
-        st.caption(f"⚡ :{st.session_state.get('live_port', LIVE_PORT)} · {ls_.received:,} {t('events_n')} · {len(ls_.agents)} {t('live_agents')}")
+        rows = [("#2dd4bf" if ls_.agents else "#64748b", f"{t('live_port')} :{st.session_state.get('live_port', LIVE_PORT)} · {ls_.received:,} {t('events_n')} · {len(ls_.agents)} {t('live_agents')}")]
         if "analysis" in st.session_state:
-            st.caption(f"🗄️ {st.session_state['dataset']} · {st.session_state['analysis'].funnel()['incidents']} {t('incidents')}")
+            rows.append(("#60a5fa", f"{esc(st.session_state['dataset'])} · {st.session_state['analysis'].funnel()['incidents']} {t('incidents')}"))
         if st.session_state.get("tickets"):
-            st.caption(f"🎫 {len(st.session_state['tickets'])} {t('tickets_n')} · {st.session_state.get('tickets_src', '-')}")
+            rows.append(("#a78bfa", f"{len(st.session_state['tickets'])} {t('tickets_n')} · {esc(str(st.session_state.get('tickets_src', '-')))}"))
+        st.markdown('<div class="sb-status">' + "<br>".join(f'<span class="dot" style="background:{c};box-shadow:0 0 0 3px {c}33"></span>{txt}' for c, txt in rows) + "</div>", unsafe_allow_html=True)
 
     _status()
     st.caption(t("footer"))
@@ -524,10 +550,8 @@ def ops_tile(key: str, html_: str, clickable: bool) -> None:
     """A kpi2 card; with clickable=True a 'Detail' strip below toggles the live detail panel (session key ops_detail)."""
     if not clickable:
         st.markdown(html_, unsafe_allow_html=True); return
-    sel = st.session_state.get("ops_detail") == key
     st.markdown('<div class="tile">' + html_ + "</div>", unsafe_allow_html=True)
-    st.button(("✓ " if sel else "") + t("detail"), key=f"ops-tile-{key}", **wide("button"), type="primary" if sel else "secondary",
-              on_click=lambda k=key: st.session_state.__setitem__("ops_detail", None if st.session_state.get("ops_detail") == k else k))
+    st.button(t("detail"), key=f"ops-tile-{key}", **wide("button"), on_click=lambda k=key: st.session_state.__setitem__("open_ops_detail", k))
 
 
 def metric_chart(d: pd.DataFrame, height: int, thr: float | None = None):
@@ -582,10 +606,8 @@ def _bar(df: pd.DataFrame, x: str, y: str, color: str = "#f87171", height: int =
 def ops_detail_panel(kind: str, ls: LiveStore, env, host, ms: dict, stt: dict, slo: dict) -> None:
     """Live detail for the clicked card: one metric in depth, or what drives a service-level figure."""
     thr = __import__("watchover.scenario", fromlist=["x"]).METRIC_THRESHOLDS
-    with st.container(border=True):
-        h, x = st.columns([8, 1])
-        h.markdown(f"#### {t('od_' + kind)} <span class='muted' style='font-size:13px'>· {t('od_window')}</span>", unsafe_allow_html=True)
-        x.button(t("close"), key="ops-detail-close", **wide("button"), on_click=lambda: st.session_state.__setitem__("ops_detail", None))
+    with st.container():
+        st.markdown(f"<span class='muted' style='font-size:13px'>{t('od_window')}</span>", unsafe_allow_html=True)
         if kind in ("cpu", "gpu", "memory", "disk"):
             pm = pd.DataFrame(ms["per_minute"]) if ms["per_minute"] else pd.DataFrame(columns=["minute", "host", "metric", "env", "value"])
             d = pm[pm.metric == kind]
@@ -689,13 +711,13 @@ def ops_detail_panel(kind: str, ls: LiveStore, env, host, ms: dict, stt: dict, s
 def events_block(stt: dict) -> None:
     c1, c2 = st.columns([3, 2])
     rows = pd.DataFrame(stt["rows"])
-    with c1:
+    with c1, st.container(border=True):
         st.markdown(f"**{t('live_events_min')}**")
         st.altair_chart(alt.Chart(rows).mark_area(interpolate="monotone").encode(
             x=alt.X("minute:T", title=None, axis=alt.Axis(format="%H:%M")), y=alt.Y("events:Q", stack=True, title=None, axis=alt.Axis(format="d")),
             color=alt.Color("severity:N", scale=SEV_SCALE, legend=alt.Legend(orient="top", title=None)), order=alt.Order("severity:N"),
             tooltip=[alt.Tooltip("minute:T", format="%H:%M"), "severity", "events"]).properties(height=170).configure_view(strokeWidth=0), **wide("altair_chart"))
-    with c2:
+    with c2, st.container(border=True):
         st.markdown(f"**{t('live_services')}**")
         svc = pd.DataFrame(stt["services"], columns=["service", "events"]) if stt["services"] else pd.DataFrame({"service": ["-"], "events": [0]})
         st.altair_chart(alt.Chart(svc).mark_bar(color="#2dd4bf").encode(x=alt.X("events:Q", title=None, axis=alt.Axis(format="d")), y=alt.Y("service:N", sort="-x", title=None),
@@ -713,14 +735,20 @@ def tail_block(ls: LiveStore, n: int = 12, env: str | None = None, host: str | N
 # ------------------------------------------------------------------ page: Operations (home)
 def page_ops() -> None:
     ls = live_store()
+    _k = st.session_state.pop("open_ops_detail", None)          # popped before the fragment: the fragment only asks for a full rerun
 
     @st.fragment(run_every="2s")
     def _panel():
+        if st.session_state.get("open_ops_detail"):
+            st.rerun(scope="app")
         all_stt = ls.stats(15)
         real_agents = [a_ for a_ in all_stt["agents"] if a_ != "simulator"]
         badge_txt, badge_col = (t("live_real_badge"), "#2dd4bf") if real_agents else (t("live_sim_badge"), "#fbbf24")
-        st.markdown(f'## {t("live_title")} <span class="pill" style="background:{badge_col}">{badge_txt}</span>'
-                    f' <span class="muted" style="font-size:13px">· {t("live_sub")} · {len(all_stt["agents"])} {t("live_agents")}: {", ".join(list(all_stt["agents"])[:4]) or t("live_no_agent")}</span>', unsafe_allow_html=True)
+        st.markdown(f'## {t("live_title")}')
+        agents = ", ".join(list(all_stt["agents"])[:4]) or t("live_no_agent")
+        st.markdown('<div class="chips">' + "".join(f'<span class="chip"><span class="d" style="background:{c}"></span>{esc(x)}</span>' for c, x in (
+            (badge_col, badge_txt), ("#60a5fa", f"{len(all_stt['agents'])} {t('live_agents')} · {agents}"), ("#8b98ad", t("live_sub_short")),
+            ("#a78bfa", f"{t('live_port')} :{st.session_state.get('live_port', LIVE_PORT)}"))) + "</div>", unsafe_allow_html=True)
         # cards on the left, environment / host box on the right; the box narrows all ten cards
         main, side = st.columns([4.6, 1.25], gap="medium")
         with side:
@@ -732,13 +760,8 @@ def page_ops() -> None:
         with main:
             st.markdown(f"#### {t('ops_infra')}{scope_html} <span class='muted'>· {ms['samples']} {t('od_samples')}</span>", unsafe_allow_html=True)
             metrics_block(ms, clickable=True)
-            if st.session_state.get("ops_detail") in ("cpu", "gpu", "memory", "disk"):
-                ops_detail_panel(st.session_state["ops_detail"], ls, env, host, ms, stt, slo)
-            st.markdown(f"#### {t('ops_slo')}{scope_html}", unsafe_allow_html=True)
-            st.caption(t("ops_slo_basis"))
+            st.markdown(f"#### {t('ops_slo')}{scope_html}", unsafe_allow_html=True, help=t("ops_slo_basis"))
             slo_block(slo, stt, clickable=True)
-            if st.session_state.get("ops_detail") in ("availability", "p95", "budget", "sla", "rate", "errors"):
-                ops_detail_panel(st.session_state["ops_detail"], ls, env, host, ms, stt, slo)
         st.markdown("")
         events_block(stt)
         tk = correlated_tickets(ls, ms["breaches"])
@@ -751,6 +774,20 @@ def page_ops() -> None:
         tail_block(ls, env=env, host=host)
 
     _panel()
+    if _k:
+        _all = t("ops_all")
+        _env = st.session_state.get("ops_env_pick") or None
+        _env = None if _env in ("", _all) else _env
+        _host = st.session_state.get("ops_host_pick") or None
+        _host = None if _host in ("", _all) else _host
+
+        @st.dialog(t("od_" + _k), width="large")
+        def _ops_dialog() -> None:
+            @st.fragment(run_every="5s")
+            def _body() -> None:
+                ops_detail_panel(_k, ls, _env, _host, ls.metric_stats(15, _env, _host), ls.stats(15, _env, _host), ls.slo(15, _env, _host))
+            _body()
+        _ops_dialog()
     b1, b2, _ = st.columns([1, 1, 4])
     if b1.button(t("live_analyze"), key="ops_an", **wide("button")) and ls.received:
         name, data = ls.to_dataset()
@@ -1112,7 +1149,7 @@ _ids = wo_stamp.stamp(a)
 st.caption(f"{t('ds_loaded')}: {st.session_state['dataset']} · {st.session_state.get('elapsed', 0):.1f}s · "
            f"{t('stamp_input')} {_ids['input']} · {t('stamp_engine')} {_ids['engine']} · {t('stamp_result')} {_ids['result']}", help=t("stamp_hint"))
 na = a.noise_audit()
-tab_over, tab_sig, tab_inc, tab_act, tab_noise = st.tabs([t("tab_overview"), f"{t('tab_signals')} · {f['fingerprints']}", f"{t('tab_incidents')} · {f['incidents']}", f"{t('tab_actions')} · {len(store().list())}", f"{t('tab_noise')} · {na['eliminated']}"])
+tab_over, tab_search, tab_sig, tab_inc, tab_act, tab_noise = st.tabs([t("tab_overview"), t("tab_search"), f"{t('tab_signals')} · {f['fingerprints']}", f"{t('tab_incidents')} · {f['incidents']}", f"{t('tab_actions')} · {len(store().list())}", f"{t('tab_noise')} · {na['eliminated']}"])
 
 # ------------------------------------------------------------------ overview
 @st.cache_data(show_spinner=False)
@@ -1121,10 +1158,60 @@ def frames(dataset: str, n: int):
     a_ = st.session_state["analysis"]
     df = pd.DataFrame([{"timestamp": o.timestamp, "severity": o.severity, "service": o.service or "-", "host": o.host or "-",
                         "environment": o.environment or "unknown", "origin": o.origin or "-",
-                        "kind": o.kind, "source": o.source, "message": o.message} for o in a_.observations])
+                        "kind": o.kind, "source": o.source, "message": o.message, "ref": o.ref, "raw": o.raw or o.message} for o in a_.observations])
     df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
     df["minute"] = df["timestamp"].dt.floor("min")
+    df["hay"] = (df["message"] + " \x1f" + df["service"] + " " + df["host"] + " " + df["source"] + " " + df["severity"] + " " + df["origin"] + " " + df["environment"]).str.lower()
     return df
+
+
+# ------------------------------------------------------------------ log search
+SRCH_FIELDS = {"service": "service", "servis": "service", "host": "host", "sunucu": "host", "severity": "severity", "seviye": "severity", "level": "severity",
+               "source": "source", "kaynak": "source", "dosya": "source", "env": "environment", "environment": "environment", "ortam": "environment",
+               "origin": "origin", "kind": "kind", "tur": "kind"}
+SRCH_TOK = re.compile(r'(-?)(?:([\w]+):)?(?:"([^"]*)"|(\S+))')
+SRCH_FACETS = ("severity", "service", "host", "source")
+
+
+def parse_query(q: str) -> list[tuple[bool, str | None, str]]:
+    """'timeout db-01 service:payment-api -debug "exact phrase"' -> [(neg, field|None, term)]"""
+    out = []
+    for m in SRCH_TOK.finditer(q or ""):
+        term = m[3] if m[3] is not None else m[4]
+        if term:
+            out.append((m[1] == "-", SRCH_FIELDS.get((m[2] or "").lower()), term.lower()))
+    return out
+
+
+@st.cache_data(show_spinner=False)
+def search_frame(dataset: str, n: int, q: str, regex: bool, inc: tuple, exc: tuple) -> pd.DataFrame:
+    """Vectorised AND search over the pre-built lowercase haystack; field terms hit one column, -term excludes, facets narrow."""
+    df = frames(dataset, n)
+    m = pd.Series(True, index=df.index)
+    for neg, field, term in parse_query(q):
+        try:
+            if field:
+                col = df[field].astype(str).str.lower()
+                hit = col.str.contains(term, regex=True, na=False) if regex else (col == term) | col.str.contains(term, regex=False, na=False)
+            else:
+                hit = df["hay"].str.contains(term, regex=regex, na=False)
+        except re.error:
+            hit = df["hay"].str.contains(term, regex=False, na=False)
+        m &= ~hit if neg else hit
+    for col, vals in inc:
+        if vals:
+            m &= df[col].isin(vals)
+    for col, vals in exc:
+        if vals:
+            m &= ~df[col].isin(vals)
+    return df[m]
+
+
+def highlight(text: str, terms: list[str]) -> str:
+    out = esc(text)
+    for term in sorted({x for x in terms if x}, key=len, reverse=True):
+        out = re.sub(re.escape(esc(term)), lambda mm: f"<mark>{mm[0]}</mark>", out, flags=re.I)
+    return out
 
 
 with tab_over:
@@ -1176,77 +1263,86 @@ with tab_over:
     # --- one selector instead of twelve "Detail" buttons
     all_keys = [k for k, *_ in steps] + [k for k, *_ in second]
     icons = {k: ic for k, _, ic, *_ in steps} | {k: ic for k, _, ic, _ in second}
-    detail = st.pills(t("detail_pick"), all_keys, format_func=lambda k: f"{icons[k]} {cap(t(k))}", selection_mode="single", key="detail")
-    if detail:
-        with st.container(border=True):
-            st.markdown(f"#### {icons[detail]} {t('d_' + detail)}")
-            obs_df = df.assign(time=df["timestamp"].dt.strftime("%H:%M:%S"))[["time", "severity", "service", "host", "source", "message"]]
-            if detail == "raw_events":
-                st.dataframe(obs_df, hide_index=True, **wide("dataframe"), height=420)
-            elif detail in ("fingerprints", "meaningful"):
-                rows = [x_ for x_ in a.signals if detail == "fingerprints" or interesting(x_)]
-                st.dataframe(pd.DataFrame([signal_dict(x_) for x_ in rows]), hide_index=True, **wide("dataframe"), height=min(420, 38 + 35 * max(len(rows), 1)),
-                             column_config={"burst": st.column_config.ProgressColumn(min_value=0, max_value=1, format="%.2f")})
-            elif detail == "incidents":
-                incidents_table(a.incidents, "ov-inc", a)
-            elif detail == "actions":
-                acts_ = store().list()
-                st.dataframe(pd.DataFrame(acts_) if acts_ else pd.DataFrame(columns=["id", "incident_id", "title", "priority", "status", "owner"]), hide_index=True, **wide("dataframe"))
-            elif detail in ("files_n", "records_n"):
-                st.dataframe(pd.DataFrame([{"file": r["file"], "format": r["format"], t("conf"): r["confidence"], t("rows"): r["rows"], "kind": r["kind"],
-                                            **{k: (v or "") for k, v in r["roles"].items()}} for r in a.report]), hide_index=True, **wide("dataframe"),
-                             column_config={t("conf"): st.column_config.ProgressColumn(min_value=0, max_value=1, format="%.2f")})
-                per_file = df.groupby(["source", "severity"]).size().rename("events").reset_index()
-                st.altair_chart(alt.Chart(per_file).mark_bar().encode(x=alt.X("events:Q", title=None), y=alt.Y("source:N", title=None),
-                                color=alt.Color("severity:N", scale=SEV_SCALE, legend=None), tooltip=["source", "severity", "events"]).properties(height=30 * len(a.report) + 20), **wide("altair_chart"))
-            elif detail in ("services_n", "hosts_n"):
-                col = "service" if detail == "services_n" else "host"
-                g = df[df[col] != "-"].groupby(col).agg(events=("severity", "size"), errors=("severity", lambda x_: (x_.isin(["ERROR", "CRITICAL"])).sum()),
-                                                      first=("timestamp", "min"), last=("timestamp", "max")).reset_index().sort_values("events", ascending=False)
-                g["error_rate"] = (g["errors"] / g["events"]).round(3)
-                g["first"] = g["first"].dt.strftime("%H:%M:%S"); g["last"] = g["last"].dt.strftime("%H:%M:%S")
-                l2, r2 = st.columns([2, 3])
-                l2.dataframe(g, hide_index=True, **wide("dataframe"), column_config={"error_rate": st.column_config.ProgressColumn(min_value=0, max_value=1, format="%.2f")})
-                bycol = df[df[col] != "-"].groupby([col, "severity"]).size().rename("events").reset_index()
-                r2.altair_chart(alt.Chart(bycol).mark_bar().encode(x=alt.X("events:Q", title=None), y=alt.Y(f"{col}:N", sort="-x", title=None),
-                                color=alt.Color("severity:N", scale=SEV_SCALE, legend=None), tooltip=[col, "severity", "events"]).properties(height=max(120, 26 * bycol[col].nunique())), **wide("altair_chart"))
-            elif detail == "error_classes":
-                err = [x_ for x_ in a.signals if SEV_RANK[x_.severity] >= 3]
-                st.dataframe(pd.DataFrame([{"id": x_.id, "severity": x_.severity, "template": x_.template, "count": x_.count, "services": ", ".join(x_.services),
-                                            "first": x_.first_seen.strftime("%H:%M:%S"), "last": x_.last_seen.strftime("%H:%M:%S")} for x_ in err]),
+    def render_detail(detail: str) -> None:
+        """Body of one detail view (rendered inside a modal dialog)."""
+        obs_df = df.assign(time=df["timestamp"].dt.strftime("%H:%M:%S"))[["time", "severity", "service", "host", "source", "message"]]
+        if detail == "raw_events":
+            st.dataframe(obs_df, hide_index=True, **wide("dataframe"), height=420)
+        elif detail in ("fingerprints", "meaningful"):
+            rows = [x_ for x_ in a.signals if detail == "fingerprints" or interesting(x_)]
+            st.dataframe(pd.DataFrame([signal_dict(x_) for x_ in rows]), hide_index=True, **wide("dataframe"), height=min(420, 38 + 35 * max(len(rows), 1)),
+                         column_config={"burst": st.column_config.ProgressColumn(min_value=0, max_value=1, format="%.2f")})
+        elif detail == "incidents":
+            incidents_table(a.incidents, "ov-inc", a)
+        elif detail == "actions":
+            acts_ = store().list()
+            st.dataframe(pd.DataFrame(acts_) if acts_ else pd.DataFrame(columns=["id", "incident_id", "title", "priority", "status", "owner"]), hide_index=True, **wide("dataframe"))
+        elif detail in ("files_n", "records_n"):
+            st.dataframe(pd.DataFrame([{"file": r["file"], "format": r["format"], t("conf"): r["confidence"], t("rows"): r["rows"], "kind": r["kind"],
+                                        **{k: (v or "") for k, v in r["roles"].items()}} for r in a.report]), hide_index=True, **wide("dataframe"),
+                         column_config={t("conf"): st.column_config.ProgressColumn(min_value=0, max_value=1, format="%.2f")})
+            per_file = df.groupby(["source", "severity"]).size().rename("events").reset_index()
+            st.altair_chart(alt.Chart(per_file).mark_bar().encode(x=alt.X("events:Q", title=None), y=alt.Y("source:N", title=None),
+                            color=alt.Color("severity:N", scale=SEV_SCALE, legend=None), tooltip=["source", "severity", "events"]).properties(height=30 * len(a.report) + 20), **wide("altair_chart"))
+        elif detail in ("services_n", "hosts_n"):
+            col = "service" if detail == "services_n" else "host"
+            g = df[df[col] != "-"].groupby(col).agg(events=("severity", "size"), errors=("severity", lambda x_: (x_.isin(["ERROR", "CRITICAL"])).sum()),
+                                                  first=("timestamp", "min"), last=("timestamp", "max")).reset_index().sort_values("events", ascending=False)
+            g["error_rate"] = (g["errors"] / g["events"]).round(3)
+            g["first"] = g["first"].dt.strftime("%H:%M:%S"); g["last"] = g["last"].dt.strftime("%H:%M:%S")
+            l2, r2 = st.columns([2, 3])
+            l2.dataframe(g, hide_index=True, **wide("dataframe"), column_config={"error_rate": st.column_config.ProgressColumn(min_value=0, max_value=1, format="%.2f")})
+            bycol = df[df[col] != "-"].groupby([col, "severity"]).size().rename("events").reset_index()
+            r2.altair_chart(alt.Chart(bycol).mark_bar().encode(x=alt.X("events:Q", title=None), y=alt.Y(f"{col}:N", sort="-x", title=None),
+                            color=alt.Color("severity:N", scale=SEV_SCALE, legend=None), tooltip=[col, "severity", "events"]).properties(height=max(120, 26 * bycol[col].nunique())), **wide("altair_chart"))
+        elif detail == "error_classes":
+            err = [x_ for x_ in a.signals if SEV_RANK[x_.severity] >= 3]
+            st.dataframe(pd.DataFrame([{"id": x_.id, "severity": x_.severity, "template": x_.template, "count": x_.count, "services": ", ".join(x_.services),
+                                        "first": x_.first_seen.strftime("%H:%M:%S"), "last": x_.last_seen.strftime("%H:%M:%S")} for x_ in err]),
+                         hide_index=True, **wide("dataframe"))
+        elif detail == "environments":
+            env_rows = [{t("environment"): e, t("env_events"): v["events"], t("env_errors"): v["errors"], t("env_rate"): v["error_rate"],
+                         t("env_share"): round(v["errors"] / env_err_total, 3)} for e, v in envs.items()]
+            l3, r3 = st.columns([2, 3])
+            l3.dataframe(pd.DataFrame(env_rows), hide_index=True, **wide("dataframe"),
+                         column_config={t("env_rate"): st.column_config.ProgressColumn(min_value=0, max_value=1, format="%.2f"),
+                                        t("env_share"): st.column_config.ProgressColumn(min_value=0, max_value=1, format="%.0%")})
+            byenv = df.groupby(["environment", "severity"]).size().rename("events").reset_index()
+            r3.altair_chart(alt.Chart(byenv).mark_bar(size=26).encode(x=alt.X("events:Q", title=None), y=alt.Y("environment:N", sort="-x", title=None),
+                            color=alt.Color("severity:N", scale=SEV_SCALE, legend=alt.Legend(orient="top", title=None)), tooltip=["environment", "severity", "events"])
+                            .properties(height=70 + 44 * byenv.environment.nunique()), **wide("altair_chart"))
+            st.markdown(f"**{t('d_origins')}**")
+            origins = prof.get("origins", {})
+            if origins:
+                st.dataframe(pd.DataFrame([{t("origin_col"): o_, t("env_events"): v["events"], t("env_errors"): v["errors"]} for o_, v in origins.items()]),
                              hide_index=True, **wide("dataframe"))
-            elif detail == "environments":
-                env_rows = [{t("environment"): e, t("env_events"): v["events"], t("env_errors"): v["errors"], t("env_rate"): v["error_rate"],
-                             t("env_share"): round(v["errors"] / env_err_total, 3)} for e, v in envs.items()]
-                l3, r3 = st.columns([2, 3])
-                l3.dataframe(pd.DataFrame(env_rows), hide_index=True, **wide("dataframe"),
-                             column_config={t("env_rate"): st.column_config.ProgressColumn(min_value=0, max_value=1, format="%.2f"),
-                                            t("env_share"): st.column_config.ProgressColumn(min_value=0, max_value=1, format="%.0%")})
-                byenv = df.groupby(["environment", "severity"]).size().rename("events").reset_index()
-                r3.altair_chart(alt.Chart(byenv).mark_bar(size=26).encode(x=alt.X("events:Q", title=None), y=alt.Y("environment:N", sort="-x", title=None),
-                                color=alt.Color("severity:N", scale=SEV_SCALE, legend=alt.Legend(orient="top", title=None)), tooltip=["environment", "severity", "events"])
-                                .properties(height=70 + 44 * byenv.environment.nunique()), **wide("altair_chart"))
-                st.markdown(f"**{t('d_origins')}**")
-                origins = prof.get("origins", {})
-                if origins:
-                    st.dataframe(pd.DataFrame([{t("origin_col"): o_, t("env_events"): v["events"], t("env_errors"): v["errors"]} for o_, v in origins.items()]),
-                                 hide_index=True, **wide("dataframe"))
-                else:
-                    st.caption(t("no_origin"))
-                err_env_svc = df[df.severity.isin(["ERROR", "CRITICAL"])].groupby(["environment", "service"]).size().rename("errors").reset_index().sort_values("errors", ascending=False).head(15)
-                if len(err_env_svc):
-                    st.altair_chart(alt.Chart(err_env_svc).mark_bar(size=22).encode(x=alt.X("errors:Q", title=None), y=alt.Y("service:N", sort="-x", title=None),
-                                    color=alt.Color("environment:N", legend=alt.Legend(orient="top", title=None)), tooltip=["environment", "service", "errors"])
-                                    .properties(height=70 + 36 * err_env_svc.service.nunique()), **wide("altair_chart"))
-            elif detail == "span_min":
-                tr = prof["time_range"]
-                c1_, c2_, c3_ = st.columns(3)
-                c1_.markdown(kpi(tr["start"][11:19], tr["start"][:10]), unsafe_allow_html=True)
-                c2_.markdown(kpi(tr["end"][11:19], tr["end"][:10]), unsafe_allow_html=True)
-                c3_.markdown(kpi(prof.get("bucket", "1min"), "bucket"), unsafe_allow_html=True)
-                per_file_t = df.groupby("source").agg(first=("timestamp", "min"), last=("timestamp", "max"), events=("severity", "size")).reset_index()
-                st.altair_chart(alt.Chart(per_file_t).mark_bar(cornerRadius=3, height=14).encode(x=alt.X("first:T", title=None, axis=alt.Axis(format="%H:%M")), x2="last:T",
-                                y=alt.Y("source:N", title=None), tooltip=["source", "events"]).properties(height=30 * len(per_file_t) + 20), **wide("altair_chart"))
+            else:
+                st.caption(t("no_origin"))
+            err_env_svc = df[df.severity.isin(["ERROR", "CRITICAL"])].groupby(["environment", "service"]).size().rename("errors").reset_index().sort_values("errors", ascending=False).head(15)
+            if len(err_env_svc):
+                st.altair_chart(alt.Chart(err_env_svc).mark_bar(size=22).encode(x=alt.X("errors:Q", title=None), y=alt.Y("service:N", sort="-x", title=None),
+                                color=alt.Color("environment:N", legend=alt.Legend(orient="top", title=None)), tooltip=["environment", "service", "errors"])
+                                .properties(height=70 + 36 * err_env_svc.service.nunique()), **wide("altair_chart"))
+        elif detail == "span_min":
+            tr = prof["time_range"]
+            c1_, c2_, c3_ = st.columns(3)
+            c1_.markdown(kpi(tr["start"][11:19], tr["start"][:10]), unsafe_allow_html=True)
+            c2_.markdown(kpi(tr["end"][11:19], tr["end"][:10]), unsafe_allow_html=True)
+            c3_.markdown(kpi(prof.get("bucket", "1min"), "bucket"), unsafe_allow_html=True)
+            per_file_t = df.groupby("source").agg(first=("timestamp", "min"), last=("timestamp", "max"), events=("severity", "size")).reset_index()
+            st.altair_chart(alt.Chart(per_file_t).mark_bar(cornerRadius=3, height=14).encode(x=alt.X("first:T", title=None, axis=alt.Axis(format="%H:%M")), x2="last:T",
+                            y=alt.Y("source:N", title=None), tooltip=["source", "events"]).properties(height=30 * len(per_file_t) + 20), **wide("altair_chart"))
+
+    def _pick_detail() -> None:
+        st.session_state["open_detail"] = st.session_state.get("detail")
+        st.session_state["detail"] = None                     # pills behave like buttons: the dialog is the state
+
+    st.pills(t("detail_pick"), all_keys, format_func=lambda k: f"{icons[k]} {cap(t(k))}", selection_mode="single", key="detail", on_change=_pick_detail)
+    if (_k := st.session_state.pop("open_detail", None)):
+        @st.dialog(f"{icons[_k]} {t('d_' + _k)}", width="large")
+        def _detail_dialog() -> None:
+            render_detail(_k)
+        _detail_dialog()
     st.markdown("")
     left, right = st.columns([3, 2])
     with left:
@@ -1342,6 +1438,79 @@ with tab_over:
     live_panel()
 
 # ------------------------------------------------------------------ signals
+with tab_search:
+    ss = st.session_state
+    ss.setdefault("srch_inc", {}); ss.setdefault("srch_exc", {})
+
+    def _srch_add(col: str, val: str, neg: bool = False) -> None:
+        ss["srch_exc" if neg else "srch_inc"].setdefault(col, set()).add(val)
+
+    def _srch_remove(col: str, val: str, neg: bool) -> None:
+        ss["srch_exc" if neg else "srch_inc"].get(col, set()).discard(val)
+
+    def _srch_clear() -> None:
+        ss["srch_inc"], ss["srch_exc"] = {}, {}
+        for c_ in SRCH_FACETS:
+            ss[f"facet_{c_}"] = []
+
+    def _facet_changed(col: str) -> None:
+        ss["srch_inc"][col] = set(ss.get(f"facet_{col}") or [])
+
+    qc, rc = st.columns([6, 1])
+    q = qc.text_input(t("tab_search"), key="srch_q", placeholder=t("srch_ph"), label_visibility="collapsed", help=t("srch_help"))
+    regex = rc.toggle("Regex", key="srch_regex")
+    inc_t = tuple((c_, tuple(sorted(v))) for c_, v in sorted(ss["srch_inc"].items()) if v)
+    exc_t = tuple((c_, tuple(sorted(v))) for c_, v in sorted(ss["srch_exc"].items()) if v)
+    df_all = frames(st.session_state["dataset"], len(a.observations))
+    res = search_frame(st.session_state["dataset"], len(a.observations), q, regex, inc_t, exc_t)
+    terms = [x_[2] for x_ in parse_query(q) if not x_[0]]
+    chips = [(c_, v, False) for c_, vs in ss["srch_inc"].items() for v in sorted(vs)] + [(c_, v, True) for c_, vs in ss["srch_exc"].items() for v in sorted(vs)]
+    if chips:
+        cc = st.columns([1] * min(len(chips), 5) + [1.2])
+        for i_, (c_, v, neg) in enumerate(chips):
+            cc[i_ % 5].button(f"{'−' if neg else '+'} {t(c_)}: {v}  ✕", key=f"chip-{c_}-{v}-{neg}", on_click=_srch_remove, args=(c_, v, neg), **wide("button"))
+        cc[-1].button(t("srch_clear"), key="srch_clear", on_click=_srch_clear, **wide("button"))
+    st.markdown(f"<span style='font-size:20px;font-weight:800'>{len(res):,}</span> <span class='muted'>/ {len(df_all):,} {t('srch_hits')}</span>", unsafe_allow_html=True)
+    fcols = st.columns(len(SRCH_FACETS))
+    for c_, col_ in zip(fcols, SRCH_FACETS):
+        vc = res[res[col_] != "-"][col_].value_counts().head(8)
+        opts = sorted(set(vc.index) | ss["srch_inc"].get(col_, set()))
+        if not opts:
+            continue
+        ss[f"facet_{col_}"] = [x_ for x_ in sorted(ss["srch_inc"].get(col_, set())) if x_ in opts]
+        c_.markdown(f"<div class='facet-h'>{upper(t(col_))}</div>", unsafe_allow_html=True)
+        c_.pills(col_, opts, format_func=lambda v, vc=vc: f"{v} · {vc.get(v, 0):,}", selection_mode="multi", key=f"facet_{col_}", label_visibility="collapsed", on_change=_facet_changed, args=(col_,))
+    if len(res):
+        per_min = res.groupby(["minute", "severity"]).size().rename("events").reset_index()
+        span_s = (res["timestamp"].max() - res["timestamp"].min()).total_seconds()
+        st.altair_chart(alt.Chart(per_min).mark_bar().encode(x=alt.X("minute:T", title=None, axis=alt.Axis(format="%H:%M:%S" if span_s < 600 else "%H:%M", tickCount=12)), y=alt.Y("events:Q", title=None, axis=alt.Axis(format="d")),
+                        color=alt.Color("severity:N", scale=SEV_SCALE, legend=None), tooltip=[alt.Tooltip("minute:T", format="%H:%M"), "severity", "events"]).properties(height=90), **wide("altair_chart"))
+        view = res.assign(time=res["timestamp"].dt.strftime("%H:%M:%S"))[["time", "severity", "service", "host", "source", "message"]].head(2000)
+        ev = st.dataframe(view, hide_index=True, **wide("dataframe"), height=min(520, 38 + 35 * min(len(view), 14)), on_select="rerun", selection_mode="single-row", key="srch_tbl",
+                          column_config={"message": st.column_config.TextColumn(width="large"), "time": st.column_config.TextColumn(width="small")})
+        if len(res) > 2000:
+            st.caption(t("srch_more", n=len(res) - 2000))
+        sel = ev.selection.rows if ev and ev.selection else []
+        if sel:
+            row = res.iloc[sel[0]]
+            inc_of = {o_.ref: inc_.id for inc_ in a.incidents for sid_ in inc_.signal_ids for o_ in a.signal_by_id[sid_].observations}
+            inc_id = inc_of.get(row["ref"])
+            st.markdown(f'<div class="rowcard"><span class="muted">{row["timestamp"]:%Y-%m-%d %H:%M:%S}</span> · {pill(row["severity"])} · <b>{esc(row["service"])}</b> · {esc(row["host"])} · '
+                        f'<span class="mono">{esc(row["ref"])}</span>' + (f' · 🚨 <b>{inc_id}</b> {t("srch_in_inc")}' if inc_id else "") +
+                        f'<br><span class="mono">{highlight(str(row["raw"])[:600], terms)}</span></div>', unsafe_allow_html=True)
+            bc = st.columns([2, 0.5] * len(SRCH_FACETS) + [1.5])
+            for i_, col_ in enumerate(SRCH_FACETS):
+                v = str(row[col_])
+                bc[i_ * 2].button(f"+ {t(col_)}: {v[:18]}", key=f"rf-{col_}", on_click=_srch_add, args=(col_, v), help=t("srch_add"), **wide("button"))
+                bc[i_ * 2 + 1].button("−", key=f"rx-{col_}", on_click=_srch_add, args=(col_, v, True), help=f"{t('srch_exclude')}: {v}", **wide("button"))
+            if inc_id:
+                bc[-1].button(f"🚨 {inc_id}", key="rf-inc", on_click=lambda i=inc_id: st.session_state.__setitem__("inc_pick", i), help=t("fc_open"), **wide("button"))
+        else:
+            st.caption(t("srch_pick"))
+    else:
+        st.info(t("srch_none"))
+
+
 with tab_sig:
     fc1, fc2, fc3, fc4, fc5 = st.columns([1, 1, 1, 2, 1])
     min_sev = fc1.selectbox(t("min_sev"), list(SEV_RANK), index=0)
@@ -1401,8 +1570,8 @@ with tab_inc:
         default = st.session_state.pop("inc_pick", None)
         if default in ids_:
             st.session_state["inc_radio"] = default
-        iid = st.radio(t("incident"), ids_, horizontal=True, key="inc_radio",
-                       format_func=lambda i: f"{i} · {a.incident_by_id[i].severity} · {a.incident_by_id[i].score}")
+        iid = st.selectbox(t("incident"), ids_, key="inc_radio",
+                           format_func=lambda i: f"{i} · {a.incident_by_id[i].severity} · {a.incident_by_id[i].score} · {a.incident_by_id[i].title[:70]}")
         inc = a.incident_by_id[iid]
         incident_flashcard(inc, a, "tab")
         st.markdown(f'### {inc.id} &nbsp;{pill(inc.severity)} &nbsp;<span class="muted">{t("score")} {inc.score} · {inc.started_at:%H:%M:%S} → {inc.ended_at:%H:%M:%S}</span>', unsafe_allow_html=True)
