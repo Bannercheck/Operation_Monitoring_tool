@@ -33,7 +33,9 @@ from watchover.graph import build_map, to_html
 from watchover.playbook import Playbook
 from watchover.knowledge import Knowledge, RULE_KINDS
 from watchover import assistant as wo_assistant
-from watchover.llm import LLMConfig, chat as llm_chat, embed as llm_embed, test_connection as llm_test
+from watchover.llm import LLMConfig, PROVIDERS, chat as llm_chat, embed as llm_embed, list_models as llm_models, set_sink as llm_set_sink, test_connection as llm_test
+from watchover import ollama as wo_ollama
+from watchover import llm_eval as wo_eval
 from watchover.i18n import current_lang, factor_value, narrative_text, reason_text, recommendation_text, link_text, t
 from watchover.models import SEV_RANK
 from watchover.pipeline import ingest_bytes, ingest_path
@@ -161,6 +163,14 @@ div[data-testid="stPills"] button{border-radius:999px}
 .st-key-lang label[data-testid="stRadioOption"] > div > div > div:first-child{display:none}
 .st-key-lang label[data-testid="stRadioOption"][data-selected="true"]{background:rgba(96,165,250,.14);border-color:rgba(96,165,250,.5)}
 .st-key-lang label[data-testid="stRadioOption"] p{font-size:12px;font-weight:700;letter-spacing:.6px;margin:0}
+.k2.live{min-height:150px;padding-bottom:6px}
+.k2 .spark{display:block;width:100%;height:36px;margin-top:8px;overflow:visible}
+.k2 .spark.empty{height:36px;margin-top:8px;border-top:1px dashed var(--wo-border)}
+.k2 .pulse{animation:wo-pulse 1.6s ease-out infinite;transform-origin:center;transform-box:fill-box}
+@keyframes wo-pulse{0%{opacity:1;r:2.2}70%{opacity:.25;r:4.5}100%{opacity:1;r:2.2}}
+.k2 .livedot{position:absolute;left:14px;top:12px;width:7px;height:7px;border-radius:4px;background:var(--acc);box-shadow:0 0 0 0 var(--acc);animation:wo-ring 2s ease-out infinite}
+.k2.live .lb{padding-left:14px}
+@keyframes wo-ring{0%{box-shadow:0 0 0 0 rgba(255,255,255,.35)}100%{box-shadow:0 0 0 7px rgba(255,255,255,0)}}
 .chips{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:2px 0 10px}
 .chip{display:inline-flex;align-items:center;gap:7px;padding:3px 11px;border-radius:999px;border:1px solid var(--wo-border);background:rgba(255,255,255,.03);font-size:12px;color:#c7d0dd;white-space:nowrap}
 .chip .d{width:7px;height:7px;border-radius:4px;flex:none}
@@ -198,6 +208,42 @@ def kpi(value, label) -> str:
     return f'<div class="kpi"><b>{value}</b><span>{upper(label)}</span></div>'
 
 
+def sparkline(series: list, accent: str, ymax: float | None = None, ymin: float = 0.0, target: float | None = None) -> str:
+    """Inline SVG: area + line of the last N points, a pulsing dot on the newest one, an optional dashed target line."""
+    pts = [v for v in series if v is not None]
+    if len(pts) < 2:
+        return '<div class="spark empty"></div>'
+    lo = ymin if ymin is not None else min(pts)
+    hi = ymax if ymax is not None else max(pts)
+    if hi <= lo:
+        hi = lo + 1
+    n = len(series)
+    coords = []
+    for i, v in enumerate(series):
+        if v is None:
+            continue
+        x = 2 + 96 * i / max(1, n - 1)
+        y = 30 - 26 * (min(max(v, lo), hi) - lo) / (hi - lo)
+        coords.append((x, y))
+    line = " ".join(f"{x:.1f},{y:.1f}" for x, y in coords)
+    area = f"M{coords[0][0]:.1f},31 L" + line.replace(" ", " L") + f" L{coords[-1][0]:.1f},31 Z"
+    tgt = ""
+    if target is not None and lo <= target <= hi:
+        ty = 30 - 26 * (target - lo) / (hi - lo)
+        tgt = f'<line x1="2" y1="{ty:.1f}" x2="98" y2="{ty:.1f}" stroke="#f87171" stroke-width=".8" stroke-dasharray="2 2" opacity=".8"/>'
+    lx, ly = coords[-1]
+    return (f'<svg class="spark" viewBox="0 0 100 34" preserveAspectRatio="none"><path d="{area}" fill="{accent}" opacity=".16"/>'
+            f'<polyline points="{line}" fill="none" stroke="{accent}" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>{tgt}'
+            f'<circle class="pulse" cx="{lx:.1f}" cy="{ly:.1f}" r="2.2" fill="{accent}"/></svg>')
+
+
+def live_tile(value, label, icon: str, accent: str, sub: str, series: list, ymax=None, ymin=0.0, target=None, muted: bool = False) -> str:
+    """kpi2 with a live sparkline and a 'live' pulse in the corner (the surrounding fragment refreshes every 2 s)."""
+    return (f'<div class="k2 live" style="--acc:{accent}"><span class="ic">{icon}</span><span class="livedot" title="live"></span><div class="lb">{upper(label)}</div>'
+            f'<span class="v{" s" if len(str(value)) > 6 else ""}">{value}</span><div class="sub{" m" if muted else ""}">{esc(str(sub))}</div>'
+            f'{sparkline(series, accent, ymax, ymin, target)}</div>')
+
+
 def kpi2(value, label, icon: str, accent: str, sub: str = "", muted: bool = False) -> str:
     return (f'<div class="k2" style="--acc:{accent}"><span class="ic">{icon}</span><div class="lb">{upper(label)}</div>'
             f'<span class="v{" s" if len(str(value)) > 6 else ""}">{value}</span><div class="sub{" m" if muted else ""}">{esc(str(sub))}</div></div>')
@@ -223,6 +269,7 @@ def knowledge() -> Knowledge:
 def kb_with_embedder() -> Knowledge:
     """The knowledge base, with the session's embedding model attached when one is configured."""
     kb = knowledge()
+    llm_set_sink(kb.log_call)                        # every LLM call lands in the quality log
     cfg = llm_cfg()
     kb.embedder = (lambda texts, c=cfg: llm_embed(c, texts)) if cfg.base_url and cfg.embed_model else None
     return kb
@@ -261,8 +308,17 @@ def simulator():
 
 
 def llm_cfg() -> LLMConfig:
-    return LLMConfig(st.session_state.get("llm_base", "") or os.environ.get("LLM_BASE_URL", ""), st.session_state.get("llm_model", "") or os.environ.get("LLM_MODEL", ""),
-                     st.session_state.get("llm_key", "") or os.environ.get("LLM_API_KEY", ""), embed_model=st.session_state.get("llm_embed", "") or os.environ.get("LLM_EMBED_MODEL", ""))
+    ss = st.session_state
+    if "llm_base" not in ss and not os.environ.get("LLM_BASE_URL"):       # first run: adopt a local Ollama if there is one
+        found = wo_ollama.discover()
+        if found:
+            ss["llm_base"], ss["llm_provider"] = found, "ollama"
+            inst = [m["name"] for m in wo_ollama.installed(found)] if found else []
+            ss.setdefault("llm_model", next((m for m in inst if not any(e in m for e in ("embed", "bge"))), ""))
+            ss.setdefault("llm_embed", next((m for m in inst if any(e in m for e in ("embed", "bge"))), ""))
+    return LLMConfig(ss.get("llm_base", "") or os.environ.get("LLM_BASE_URL", ""), ss.get("llm_model", "") or os.environ.get("LLM_MODEL", ""),
+                     ss.get("llm_key", "") or os.environ.get("LLM_API_KEY", ""), embed_model=ss.get("llm_embed", "") or os.environ.get("LLM_EMBED_MODEL", ""),
+                     provider=ss.get("llm_provider", "") or os.environ.get("LLM_PROVIDER", "auto"))
 
 
 def load(name: str, data: bytes | None = None, path: str | None = None, mapping: dict | None = None) -> None:
@@ -490,8 +546,8 @@ def minute_chart(df: pd.DataFrame, incidents=None, height=200):
 # ------------------------------------------------------------------ sidebar navigation
 demo = Path(__file__).with_name("samples") / "demo_mixed.zip"
 LIVE_PORT = int(os.environ.get("LIVE_PORT", "8600"))
-PAGES = ["ops", "data", "map", "assist", "pb", "itsm", "conn", "readme"]
-PAGE_KEYS = {"ops": "sb_ops", "data": "sb_data", "map": "sb_map", "assist": "sb_assist", "pb": "sb_pb", "itsm": "sb_itsm", "conn": "sb_conn", "readme": "sb_readme"}
+PAGES = ["ops", "data", "map", "assist", "llm", "pb", "itsm", "conn", "readme"]
+PAGE_KEYS = {"ops": "sb_ops", "data": "sb_data", "map": "sb_map", "assist": "sb_assist", "llm": "sb_llm", "pb": "sb_pb", "itsm": "sb_itsm", "conn": "sb_conn", "readme": "sb_readme"}
 
 
 with st.sidebar:
@@ -638,7 +694,7 @@ def metric_chart(d: pd.DataFrame, height: int, thr: float | None = None):
 
 
 def metrics_block(ms: dict, clickable: bool = False) -> None:
-    """CPU / GPU / memory / disk tiles with per-host line charts."""
+    """CPU / GPU / memory / disk live tiles: value, worst host, per-minute sparkline (mean over hosts) with the threshold line."""
     thr = __import__("watchover.scenario", fromlist=["x"]).METRIC_THRESHOLDS
     pm = pd.DataFrame(ms["per_minute"]) if ms["per_minute"] else pd.DataFrame(columns=["minute", "host", "metric", "env", "value"])
     ic = st.columns(4)
@@ -647,25 +703,30 @@ def metrics_block(ms: dict, clickable: bool = False) -> None:
         val = f"{sm['avg']:.0f}%" if sm["avg"] is not None else t("no_data")
         color = "#8b98ad" if sm["max"] is None else "#f87171" if sm["max"] >= thr[metric] else "#fb923c" if sm["max"] >= thr[metric] - 15 else "#2dd4bf"
         sub = f"{t('worst')} {sm['worst']} {sm['max']:.0f}% · {sm['hosts']} {t('hosts_n_short')}" if sm["max"] is not None else ""
+        d = pm[pm.metric == metric]
+        series = d.groupby("minute").value.mean().sort_index().tolist() if len(d) else []
         with col:
-            ops_tile(metric, kpi2(val, t(metric), icon, color, sub), clickable)
-            d = pm[pm.metric == metric]
-            if len(d):
-                st.altair_chart(metric_chart(d, 170), **wide("altair_chart"))
+            ops_tile(metric, live_tile(val, t(metric), icon, color, sub, series[-15:], ymax=100, target=thr[metric]), clickable)
 
 
-def slo_block(slo: dict, stt: dict, clickable: bool = False) -> None:
+def slo_block(slo: dict, stt: dict, clickable: bool = False, det: dict | None = None) -> None:
     k = st.columns(6)
     av, p95, bud = slo["availability"], slo["p95_ms"], slo["error_budget"]
     av_ok = av is not None and av >= slo["slo"]["availability"]
     p_ok = p95 is None or p95 <= slo["slo"]["p95_ms"]
+    pmn = (det or {}).get("per_minute", [])
+    s_av = [r.get("availability") for r in pmn][-15:]
+    s_bud = [r.get("budget_left") for r in pmn][-15:]
+    s_err = [r.get("errors") for r in pmn][-15:]
+    s_tot = [r.get("total") for r in pmn][-15:]
+    lat = [x["ms"] for x in (det or {}).get("slowest", [])][::-1][-15:]
     tiles = [
-        ("availability", kpi2(pct(av, 1), t("availability"), "🎯", "#2dd4bf" if av_ok else "#f87171", t("slo_target", v=pct(slo["slo"]["availability"], 1)))),
-        ("p95", kpi2(f"{p95:.0f} ms" if p95 is not None else t("no_data"), t("p95"), "⏱", "#2dd4bf" if p_ok else "#fb923c", f"SLO ≤ {slo['slo']['p95_ms']} ms")),
-        ("budget", kpi2(pct(bud, 0) if bud is not None else t("no_data"), t("budget"), "🧮", "#2dd4bf" if (bud or 0) > 0.25 else "#fb923c" if (bud or 0) > 0 else "#f87171", f"{slo['errors']} / {slo['total']} ERROR+")),
-        ("sla", kpi2(t("ok") if slo["sla_ok"] else t("breach"), t("sla"), "📜", "#2dd4bf" if slo["sla_ok"] else "#f87171", t("sla_target", v=pct(slo["sla"]["availability"], 1)))),
-        ("rate", kpi2(stt["per_minute_now"], t("live_rate"), "⚡", "#60a5fa", f"{stt['received']:,} {t('n_total')}")),
-        ("errors", kpi2(stt["errors"], t("live_errors"), "🔥", "#f87171" if stt["errors"] else "#8b98ad", f"{stt['total']:,} {t('live_buffered')}", True)),
+        ("availability", live_tile(pct(av, 1), t("availability"), "🎯", "#2dd4bf" if av_ok else "#f87171", t("slo_target", v=pct(slo["slo"]["availability"], 1)), s_av, ymax=1.0, ymin=min([v for v in s_av if v is not None] + [slo["slo"]["availability"]]) - 0.01 if s_av else 0.9, target=slo["slo"]["availability"])),
+        ("p95", live_tile(f"{p95:.0f} ms" if p95 is not None else t("no_data"), t("p95"), "⏱", "#2dd4bf" if p_ok else "#fb923c", f"SLO ≤ {slo['slo']['p95_ms']} ms", lat, ymax=max(lat + [slo["slo"]["p95_ms"]]) if lat else None, target=slo["slo"]["p95_ms"])),
+        ("budget", live_tile(pct(bud, 0) if bud is not None else t("no_data"), t("budget"), "🧮", "#2dd4bf" if (bud or 0) > 0.25 else "#fb923c" if (bud or 0) > 0 else "#f87171", f"{slo['errors']} / {slo['total']} ERROR+", s_bud, ymax=1.0)),
+        ("sla", live_tile(t("ok") if slo["sla_ok"] else t("breach"), t("sla"), "📜", "#2dd4bf" if slo["sla_ok"] else "#f87171", t("sla_target", v=pct(slo["sla"]["availability"], 1)), s_av, ymax=1.0, ymin=min([v for v in s_av if v is not None] + [slo["sla"]["availability"]]) - 0.01 if s_av else 0.9, target=slo["sla"]["availability"])),
+        ("rate", live_tile(stt["per_minute_now"], t("live_rate"), "⚡", "#60a5fa", f"{stt['received']:,} {t('n_total')}", s_tot)),
+        ("errors", live_tile(stt["errors"], t("live_errors"), "🔥", "#f87171" if stt["errors"] else "#8b98ad", f"{stt['total']:,} {t('live_buffered')}", s_err, muted=True)),
     ]
     for col, (key, html_) in zip(k, tiles):
         with col:
@@ -829,13 +890,14 @@ def page_ops() -> None:
             st.markdown(f"#### {t('ops_scope')}")
             env, host = scope_panel(ls)
         stt, slo, ms = ls.stats(15, env, host), ls.slo(15, env, host), ls.metric_stats(15, env, host)
+        det = ls.slo_detail(15, env, host)
         scope = " · ".join(x for x in (env, host) if x)
         scope_html = f" <span class='pill' style='background:#60a5fa'>{t('ops_filter_on')}: {esc(scope)}</span>" if scope else ""
         with main:
             st.markdown(f"#### {t('ops_infra')}{scope_html} <span class='muted'>· {ms['samples']} {t('od_samples')}</span>", unsafe_allow_html=True)
             metrics_block(ms, clickable=True)
             st.markdown(f"#### {t('ops_slo')}{scope_html}", unsafe_allow_html=True, help=t("ops_slo_basis"))
-            slo_block(slo, stt, clickable=True)
+            slo_block(slo, stt, clickable=True, det=det)
         st.markdown("")
         events_block(stt)
         tk = correlated_tickets(ls, ms["breaches"])
@@ -1105,169 +1167,161 @@ def page_conn() -> None:
         st.code(f"python agent.py --url http://<dashboard-host>:{int(port)}/ingest{' --key ' + key if key else ''} --tail /var/log/app.log\n"
                 f"python agent.py --url http://<dashboard-host>:{int(port)}/ingest{' --key ' + key if key else ''} --metrics --interval 10", language="bash")
     with tab_llm:
-        st.caption(t("llm_hint"))
-        st.text_input(t("llm_base"), key="llm_base", placeholder="http://localhost:3000/v1")
-        st.text_input(t("llm_model"), key="llm_model", placeholder="llama3.1")
-        st.text_input(t("llm_key"), key="llm_key", type="password")
-        st.text_input(t("llm_embed"), key="llm_embed", placeholder="nomic-embed-text", help=t("llm_embed_help"))
-        if st.button(t("llm_test"), key="llm_test_btn"):
-            ok, info = llm_test(llm_cfg())
-            (st.success if ok else st.error)(t("llm_ok", info=info) if ok else t("llm_fail", e=info))
+        st.info(t("llm_moved"))
 
 
-# ------------------------------------------------------------------ page: Ask Watchover (chat + knowledge base + rules)
-def page_assist() -> None:
+# ------------------------------------------------------------------ page: LLM (connection, models, quality)
+def page_llm() -> None:
     kb = kb_with_embedder()
-    a = st.session_state.get("analysis")
     cfg = llm_cfg()
+    ss = st.session_state
     st.markdown(f'<div class="wo-brand" style="padding:0 0 6px"><span style="display:inline-block;width:44px">{logo(44)}</span>'
-                f'<div><div class="name" style="font-size:30px">{t("as_title_plain")}</div><div class="tag">{upper(t("as_title_tag"))}</div></div></div>', unsafe_allow_html=True)
-    stt = kb.stats()
-    chips = [("#2dd4bf" if cfg.enabled else "#64748b", f"LLM: {cfg.model or t('as_no_llm')}"), ("#60a5fa", f"{sum(stt['lessons'].values())} {t('kb_lessons')}"),
-             ("#a78bfa", f"{stt['rules'].get('approved', 0)} {t('kb_rules_on')} · {stt['rules'].get('proposed', 0)} {t('kb_rules_wait')}"),
-             ("#fbbf24" if a is None else "#2dd4bf", st.session_state.get("dataset") or t("as_no_dataset"))]
+                f'<div><div class="name" style="font-size:30px">{t("llm_page")}</div><div class="tag">{upper(t("llm_page_tag"))}</div></div></div>', unsafe_allow_html=True)
+    stt = kb.llm_stats()
+    chips = [("#2dd4bf" if cfg.enabled else "#64748b", f"{cfg.kind} · {cfg.model or t('as_no_llm')}"), ("#60a5fa", f"{stt['calls']} {t('llm_calls')}"),
+             ("#a78bfa", f"{t('llm_success')} {pct(stt['success'], 0) if stt['success'] is not None else '-'}"),
+             ("#fbbf24", f"{t('llm_ground')} {pct(stt['grounding_rate'], 0) if stt['grounding_rate'] is not None else '-'}")]
     st.markdown('<div class="chips">' + "".join(f'<span class="chip"><span class="d" style="background:{c}"></span>{esc(str(x))}</span>' for c, x in chips) + "</div>", unsafe_allow_html=True)
-    tab_chat, tab_kb, tab_rules = st.tabs([t("as_tab_chat"), f"{t('as_tab_kb')} · {sum(stt['lessons'].values())}", f"{t('as_tab_rules')} · {stt['rules'].get('proposed', 0)}"])
+    tab_conn, tab_models, tab_q = st.tabs([t("llm_tab_conn"), t("llm_tab_models"), t("llm_tab_quality")])
 
-    with tab_chat:
-        hist = st.session_state.setdefault("chat", [])
-        if not hist:
-            st.markdown(f'<div class="card"><b>{t("as_hello")}</b><br><span class="muted">{t("as_hello_sub")}</span></div>', unsafe_allow_html=True)
-            ex = st.columns(3)
-            for i, q_ in enumerate((t("as_ex1"), t("as_ex2"), t("as_ex3"))):
-                if ex[i].button(q_, key=f"as-ex-{i}", **wide("button")):
-                    st.session_state["as_pending"] = q_; st.rerun()
-        for i, m in enumerate(hist):
-            with st.chat_message(m["role"], avatar=LOGO_PNG if m["role"] == "assistant" else "🧑‍💻"):
-                st.markdown(m["content"])
-                if m["role"] == "assistant":
-                    meta = m.get("meta", {})
-                    cap = (t("as_via_llm", m=cfg.model) if meta.get("used_llm") else t("as_via_ctx")) + (f" · ⚠ {meta['error'][:80]}" if meta.get("error") else "")
-                    st.caption(cap)
-                    if meta.get("sources"):
-                        with st.expander(f"📎 {t('as_sources')} · {len(meta['sources'])}"):
-                            for src_ in meta["sources"]:
-                                st.markdown(f'<div class="card" style="padding:8px 12px"><span class="pill" style="background:{"#f87171" if src_["kind"] == "incident" else "#60a5fa"}">{esc(src_["id"])}</span> '
-                                            f'<b>{esc(src_["title"][:100])}</b><br><span class="muted">{esc(src_["text"][:300])}</span></div>', unsafe_allow_html=True)
-                    if meta.get("context"):
-                        with st.expander(f"🔍 {t('as_context')}"):
-                            st.code(meta["context"][:6000], language=None)
-                    if i == len(hist) - 1:
-                        c1_, c2_ = st.columns([1.6, 4])
-                        if c1_.button(t("as_save"), key=f"as-save-{i}", help=t("as_save_help")):
-                            q_prev = hist[i - 1]["content"] if i and hist[i - 1]["role"] == "user" else ""
-                            kb.add("chat", q_prev[:80] or "chat", f"Q: {q_prev}\nA: {m['content']}", tags=["chat"])
-                            st.toast(t("as_saved"), icon="✅")
-        pending = st.session_state.pop("as_pending", None)
-        q = st.chat_input(t("as_input")) or pending
-        if q:
-            hist.append({"role": "user", "content": q})
-            with st.chat_message("user", avatar="🧑‍💻"):
-                st.markdown(q)
-            with st.chat_message("assistant", avatar=LOGO_PNG):
-                with st.spinner(t("as_thinking")):
-                    res = wo_assistant.answer(cfg, q, hist[:-1], a, kb, current_lang())
-                st.markdown(res["text"])
-            hist.append({"role": "assistant", "content": res["text"], "meta": {k: res[k] for k in ("sources", "context", "used_llm", "error")}})
-            st.rerun()
-        if hist and st.button(t("as_clear"), key="as-clear"):
-            st.session_state["chat"] = []; st.rerun()
-
-    with tab_kb:
-        k = st.columns(5)
-        for i, (kind, ic, col) in enumerate((("pattern", "🧩", "#2dd4bf"), ("note", "📝", "#60a5fa"), ("doc", "📄", "#a78bfa"), ("feedback", "✍️", "#fbbf24"))):
-            k[i].markdown(kpi2(stt["lessons"].get(kind, 0), t("kb_" + kind), ic, col, ""), unsafe_allow_html=True)
-        k[4].markdown(kpi2(f"{stt['bytes'] / 1024:.0f} KB" if stt["bytes"] else "-", t("kb_size"), "💾", "#8b98ad", t("kb_size_sub")), unsafe_allow_html=True)
-        st.markdown("")
-        f1, f2 = st.columns(2, gap="medium")
-        with f1, st.form("kb-note", border=True):
-            st.markdown(f"**📝 {t('kb_add_note')}**")
-            ttl = st.text_input(t("kb_note_title"))
-            body = st.text_area(t("kb_note_text"), height=120, placeholder=t("kb_note_ph"))
-            tags = st.text_input(t("kb_tags"), placeholder="db, payment, runbook")
-            if st.form_submit_button(t("kb_save"), **wide("button")) and body.strip():
-                kb.add_note(ttl, body, [x.strip() for x in tags.split(",") if x.strip()])
-                st.toast(t("kb_saved"), icon="✅"); st.rerun()
-        with f2:
-            with st.container(border=True):
-                st.markdown(f"**📄 {t('kb_add_doc')}**")
-                st.caption(t("kb_doc_hint"))
-                ups = st.file_uploader(t("kb_add_doc"), type=["txt", "md", "log", "json", "csv", "yaml", "yml"], accept_multiple_files=True, key="kb_docs", label_visibility="collapsed")
-                if ups and st.button(t("kb_ingest"), key="kb-ingest", **wide("button")):
-                    n = 0
-                    for up in ups:
-                        try:
-                            n += len(kb.add_doc(up.name, up.getvalue().decode("utf-8", "replace")))
-                        except Exception as e:  # noqa: BLE001
-                            st.error(f"{up.name}: {e}")
-                    st.toast(t("kb_doc_saved", n=n), icon="✅")
-            with st.form("kb-fact", border=True):
-                st.markdown(f"**📌 {t('kb_add_fact')}**")
-                st.caption(t("kb_fact_hint"))
-                fk = st.selectbox(t("kb_fact_kind"), list(RULE_KINDS), format_func=lambda x: t("rule_" + x))
-                fkey = st.text_input(t("kb_fact_key"), placeholder="billing · disk_full · payment-api->payment-db")
-                fval = st.text_input(t("kb_fact_value"), placeholder="Faturalama ekibi · 5 · senkron")
-                if st.form_submit_button(t("kb_propose"), **wide("button")) and fkey.strip():
-                    kb.propose(fk, fkey.strip(), fval.strip() or "1", t("kb_fact_reason"), "manual")
-                    st.toast(t("kb_proposed"), icon="📌"); st.rerun()
-        st.markdown(f"#### {t('kb_browse')}")
-        b1, b2 = st.columns([4, 1])
-        qk = b1.text_input(t("kb_search"), key="kb_q", label_visibility="collapsed", placeholder=t("kb_search"))
-        kind = b2.selectbox(t("kb_kind"), ["", "pattern", "note", "doc", "feedback", "chat"], format_func=lambda x: t("kb_" + x) if x else t("ops_all"), label_visibility="collapsed")
-        rows = kb.search(qk, k=30, kinds=(kind,) if kind else None) if qk else kb.all(kind or None, limit=60)
-        if not rows:
-            st.caption(t("kb_empty"))
-        for d in rows:
-            with st.container(border=True):
-                h, x = st.columns([8, 1])
-                refs = ", ".join(f"{r_.get('dataset')}/{r_.get('incident')}" for r_ in d.get("refs", [])[:4])
-                h.markdown(f'<span class="pill" style="background:#60a5fa">L{d["id"]}</span> <b>{esc(d["title"][:120])}</b> <span class="muted">· {t("kb_" + d["kind"]) if d["kind"] in ("pattern","note","doc","feedback","chat") else d["kind"]} · ×{d.get("occurrences", 1)} · {str(d.get("updated_at", ""))[:16]}'
-                           + (f" · {t('fc_score')} {d['score']}" if d.get("score") is not None else "") + "</span>", unsafe_allow_html=True)
-                if x.button("🗑", key=f"kb-del-{d['id']}", help=t("kb_delete")):
-                    kb.delete(d["id"]); st.rerun()
-                st.markdown(f'<div class="mono muted" style="white-space:pre-wrap;font-size:12px">{esc(d["text"][:900])}</div>' + (f'<div class="muted" style="font-size:11px">{esc(refs)}</div>' if refs else ""), unsafe_allow_html=True)
-
-    with tab_rules:
-        st.caption(t("rules_hint"))
-        lc, lh = st.columns([1.4, 4])
-        if lc.button(f"🤖 {t('rules_ask_llm')}", key="rules-llm", disabled=not cfg.enabled, help=t("rules_ask_llm_help"), **wide("button")):
-            with st.spinner(t("as_thinking")):
+    with tab_conn:
+        c1, c2 = st.columns([3, 2], gap="medium")
+        with c1, st.container(border=True):
+            st.markdown(f"**🔌 {t('llm_conn_title')}**")
+            st.caption(t("llm_conn_hint"))
+            st.selectbox(t("llm_provider"), list(PROVIDERS), key="llm_provider", format_func=lambda x: t("prov_" + x))
+            st.text_input(t("llm_base"), key="llm_base", placeholder="http://localhost:11434  ·  http://localhost:8000/v1  ·  https://api.openai.com/v1")
+            st.text_input(t("llm_key"), key="llm_key", type="password")
+            mc1, mc2 = st.columns([3, 1])
+            mc1.text_input(t("llm_model"), key="llm_model", placeholder="qwen2.5:7b-instruct")
+            if mc2.button(t("llm_list"), key="llm-list", **wide("button")):
                 try:
-                    out = wo_assistant.propose_rules(cfg, a, kb, current_lang())
-                    st.session_state["rules_llm_out"] = out
+                    ss["llm_model_list"] = llm_models(llm_cfg())
                 except Exception as e:  # noqa: BLE001
-                    st.session_state["rules_llm_out"] = {"error": str(e)}
+                    st.error(str(e))
+            if ss.get("llm_model_list"):
+                pick = st.selectbox(t("llm_pick"), [""] + ss["llm_model_list"], key="llm_pick_box")
+                if pick and pick != ss.get("llm_model"):
+                    ss["llm_model"] = pick; st.rerun()
+            st.text_input(t("llm_embed"), key="llm_embed", placeholder="bge-m3", help=t("llm_embed_help"))
+            b1, b2 = st.columns(2)
+            if b1.button(t("llm_test"), key="llm_test_btn", **wide("button")):
+                ok, info = llm_test(llm_cfg())
+                (st.success if ok else st.error)(t("llm_ok", info=info) if ok else t("llm_fail", e=info))
+            if b2.button(f"🔍 {t('llm_find_ollama')}", key="llm-find", **wide("button")):
+                found = wo_ollama.discover()
+                if found:
+                    ss["llm_base"], ss["llm_provider"] = found, "ollama"
+                    st.toast(t("llm_found", u=found), icon="✅"); st.rerun()
+                else:
+                    st.warning(t("llm_not_found"))
+        with c2:
+            st.markdown(f'<div class="card"><b>{t("llm_prov_head")}</b><br><span class="muted">{t("llm_prov_body")}</span></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="card"><b>{t("llm_install_head")}</b><br><span class="muted">{t("llm_install_body")}</span></div>', unsafe_allow_html=True)
+            st.code("curl -fsSL https://raw.githubusercontent.com/<org>/watchover/main/scripts/install_linux.sh | sudo bash -s -- --with-ollama", language="bash")
+
+    with tab_models:
+        base = wo_ollama.discover() if cfg.kind != "ollama" else cfg.root
+        if not base:
+            st.info(t("llm_models_none"))
+        else:
+            st.caption(t("llm_models_at", u=base))
+            inst = wo_ollama.installed(base)
+            run = {r["name"]: r for r in wo_ollama.running(base)}
+            k = st.columns(3)
+            k[0].markdown(kpi2(len(inst), t("llm_installed"), "📦", "#60a5fa", f"{sum(m['size_gb'] for m in inst):.1f} GB"), unsafe_allow_html=True)
+            k[1].markdown(kpi2(len(run), t("llm_loaded"), "🧠", "#2dd4bf", ", ".join(list(run)[:2]) or "-"), unsafe_allow_html=True)
+            k[2].markdown(kpi2(cfg.model or "-", t("llm_active"), "⭐", "#a78bfa", cfg.embed_model or ""), unsafe_allow_html=True)
+            st.markdown(f"#### {t('llm_installed')}")
+            if not inst:
+                st.caption(t("llm_none_yet"))
+            for m in inst:
+                c = st.columns([3, 1.2, 1.2, 1.2, 1, 1])
+                mem_pill = f'<span class="pill" style="background:#2dd4bf">{t("llm_in_memory")}</span>' if m["name"] in run else ""
+                c[0].markdown(f"**{esc(m['name'])}** {mem_pill}", unsafe_allow_html=True)
+                c[1].caption(f"{m['size_gb']} GB"); c[2].caption(m["params"] or m["family"]); c[3].caption(m["quant"])
+                if c[4].button(t("llm_use"), key=f"use-{m['name']}", help=t("llm_use_help"), **wide("button")):
+                    if any(e in m["name"] for e in ("embed", "bge")):
+                        ss["llm_embed"] = m["name"]
+                    else:
+                        ss["llm_model"] = m["name"]
+                    ss["llm_base"], ss["llm_provider"] = base, "ollama"; st.rerun()
+                if c[5].button("🗑", key=f"rm-{m['name']}", help=t("llm_remove")):
+                    wo_ollama.remove(base, m["name"]); st.rerun()
+            st.markdown(f"#### {t('llm_recommended')}")
+            have = {m["name"] for m in inst}
+            for r in wo_ollama.RECOMMENDED:
+                c = st.columns([3, 4, 1.2])
+                c[0].markdown(f"**{r['name']}** <span class='muted'>· {t('llm_role_' + r['role'])}</span>", unsafe_allow_html=True)
+                c[1].caption(r["note"])
+                if r["name"] in have:
+                    c[2].markdown(f"<span class='pill' style='background:#2dd4bf'>{t('llm_have')}</span>", unsafe_allow_html=True)
+                elif c[2].button(f"⬇ {t('llm_pull')}", key=f"pull-{r['name']}", **wide("button")):
+                    ss["llm_pull"] = r["name"]; st.rerun()
+            custom = st.text_input(t("llm_pull_custom"), placeholder="mistral:7b-instruct", key="llm_pull_custom")
+            if custom and st.button(f"⬇ {t('llm_pull')} {custom}", key="pull-custom"):
+                ss["llm_pull"] = custom; st.rerun()
+            if ss.get("llm_pull"):
+                name = ss.pop("llm_pull")
+                bar = st.progress(0.0, text=f"{t('llm_pulling')} {name}")
+                try:
+                    last = ""
+                    for ev in wo_ollama.pull(base, name):
+                        if ev.get("error"):
+                            raise RuntimeError(ev["error"])
+                        if ev["pct"] is not None:
+                            bar.progress(min(1.0, ev["pct"]), text=f"{t('llm_pulling')} {name} · {ev['status']} · {ev['pct']:.0%}")
+                        elif ev["status"] != last:
+                            bar.progress(0.0, text=f"{t('llm_pulling')} {name} · {ev['status']}")
+                        last = ev["status"]
+                    bar.progress(1.0, text=t("llm_pulled", m=name)); st.toast(t("llm_pulled", m=name), icon="✅"); time.sleep(1); st.rerun()
+                except Exception as e:  # noqa: BLE001
+                    st.error(f"{name}: {e}")
+
+    with tab_q:
+        st.caption(t("llm_q_hint"))
+        k = st.columns(4)
+        k[0].markdown(kpi2(pct(stt["success"], 0) if stt["success"] is not None else "-", t("llm_success"), "✅", "#2dd4bf" if (stt["success"] or 0) >= 0.95 else "#fb923c", f"{stt['calls']} {t('llm_calls')} · {stt['fallbacks']} {t('llm_fallbacks')}"), unsafe_allow_html=True)
+        k[1].markdown(kpi2(f"{stt['p50_ms'] / 1000:.1f} s" if stt["calls"] else "-", t("llm_latency"), "⏱", "#60a5fa", f"p95 {stt['p95_ms'] / 1000:.1f} s" if stt["calls"] else ""), unsafe_allow_html=True)
+        k[2].markdown(kpi2(pct(stt["grounding_rate"], 0) if stt["grounding_rate"] is not None else "-", t("llm_ground"), "📎", "#2dd4bf" if (stt["grounding_rate"] or 0) >= 0.9 else "#f87171", f"{t('llm_cite_rate')} {pct(stt['citation_rate'], 0) if stt['citation_rate'] is not None else '-'} · {stt['invalid_citations']} {t('llm_invalid')}"), unsafe_allow_html=True)
+        k[3].markdown(kpi2(pct(stt["eval_accuracy"], 0) if stt["eval_accuracy"] is not None else "-", t("llm_accuracy"), "🎯", "#a78bfa", (f"{stt['last_eval']['correct']}/{stt['last_eval']['n']} · {stt['last_eval']['model']}" if stt["last_eval"] else t("llm_no_eval"))), unsafe_allow_html=True)
+        k2_ = st.columns(4)
+        k2_[0].markdown(kpi2(pct(stt["approval_rate"], 0) if stt["approval_rate"] is not None else "-", t("llm_approval"), "👍", "#2dd4bf", f"{stt['thumbs_up']} 👍 · {stt['thumbs_down']} 👎"), unsafe_allow_html=True)
+        k2_[1].markdown(kpi2(pct(stt["rule_acceptance"], 0) if stt["rule_acceptance"] is not None else "-", t("llm_rule_acc"), "📌", "#fbbf24", f"{stt['rules_approved']} / {stt['rules_proposed']} {t('llm_rules_prop')}"), unsafe_allow_html=True)
+        k2_[2].markdown(kpi2(stt["by_kind"].get("chat", 0), t("llm_kind_chat"), "💬", "#60a5fa", f"{stt['by_kind'].get('explain', 0)} {t('llm_kind_explain')} · {stt['by_kind'].get('rules', 0)} {t('llm_kind_rules')}"), unsafe_allow_html=True)
+        k2_[3].markdown(kpi2(stt["by_kind"].get("embed", 0), t("llm_kind_embed"), "🧬", "#a78bfa", cfg.embed_model or "-"), unsafe_allow_html=True)
+        with st.expander(f"ℹ️ {t('llm_metrics_help_title')}"):
+            st.markdown(t("llm_metrics_help"))
+        st.markdown(f"#### {t('llm_bench')}")
+        a = ss.get("analysis")
+        bc1, bc2 = st.columns([1.5, 4])
+        if bc1.button(f"🎯 {t('llm_bench_run')}", key="llm-bench", disabled=not (cfg.enabled and a is not None), **wide("button")):
+            with st.spinner(t("as_thinking")):
+                res = wo_eval.run_benchmark(cfg, a, current_lang())
+                kb.save_eval(cfg.model, ss.get("dataset", ""), res)
+                ss["llm_bench_out"] = res
             st.rerun()
-        if not cfg.enabled:
-            lh.caption(t("rules_llm_off"))
-        out = st.session_state.pop("rules_llm_out", None)
+        bc2.caption(t("llm_bench_hint") if (cfg.enabled and a is not None) else t("llm_bench_needs"))
+        out = ss.pop("llm_bench_out", None)
         if out:
-            if out.get("error"):
-                st.error(out["error"])
-            else:
-                st.success(t("rules_llm_done", n=len(out["proposed"]), d=len(out["dropped"])))
-                if out["dropped"]:
-                    st.caption(", ".join(out["dropped"][:8]))
-        prop = kb.rules("proposed")
-        st.markdown(f"#### {t('rules_proposed')} · {len(prop)}")
-        if not prop:
-            st.caption(t("rules_none"))
-        for r_ in prop:
-            c = st.columns([1.3, 2, 2, 3, 1, 1])
-            c[0].markdown(f'<span class="pill" style="background:{"#a78bfa" if str(r_["source"]).startswith("llm:") else "#fbbf24"}">{("🤖 " if str(r_["source"]).startswith("llm:") else "") + t("rule_" + r_["kind"])}</span>', unsafe_allow_html=True)
-            c[1].code(r_["key"][:80], language=None); c[2].markdown(f"→ **{esc(r_['value'])}**"); c[3].caption(f"{r_['reason'][:120]} · {r_['source']}")
-            if c[4].button("✓", key=f"rule-ok-{r_['id']}", help=t("rules_approve"), type="primary"):
-                kb.decide(r_["id"], True); reanalyze(); st.toast(t("rules_applied"), icon="✅"); st.rerun()
-            if c[5].button("✕", key=f"rule-no-{r_['id']}", help=t("rules_reject")):
-                kb.decide(r_["id"], False); st.rerun()
-        appr = kb.rules("approved")
-        st.markdown(f"#### {t('rules_active')} · {len(appr)}")
-        for r_ in appr:
-            c = st.columns([1.3, 2, 2, 3, 1])
-            c[0].markdown(f'<span class="pill" style="background:#2dd4bf">{t("rule_" + r_["kind"])}</span>', unsafe_allow_html=True)
-            c[1].code(r_["key"][:80], language=None); c[2].markdown(f"→ **{esc(r_['value'])}**"); c[3].caption(f"{r_['reason'][:120]} · {str(r_.get('decided_at', ''))[:16]}")
-            if c[4].button("⏏", key=f"rule-off-{r_['id']}", help=t("rules_revoke")):
-                kb.decide(r_["id"], False); reanalyze(); st.rerun()
+            st.success(t("llm_bench_done", c=out["correct"], n=out["n"], ms=out["latency_ms"]))
+            st.dataframe(pd.DataFrame(out["detail"]), hide_index=True, **wide("dataframe"))
+        runs = kb.eval_runs(10)
+        if runs:
+            st.dataframe(pd.DataFrame([{t("time"): r["ts"][:16], "model": r["model"], "dataset": r["dataset"], "n": r["n"], t("llm_accuracy"): f"{r['correct'] / r['n']:.0%}" if r["n"] else "-",
+                                        t("llm_ground"): f"{r['grounded'] / r['n']:.0%}" if r["n"] else "-", "ms": r["latency_ms"]} for r in runs]), hide_index=True, **wide("dataframe"))
+        if stt["models"]:
+            st.markdown(f"#### {t('llm_per_model')}")
+            st.dataframe(pd.DataFrame(stt["models"]), hide_index=True, **wide("dataframe"),
+                         column_config={"success": st.column_config.ProgressColumn(min_value=0, max_value=1, format="%.0%"), "citation_rate": st.column_config.ProgressColumn(min_value=0, max_value=1, format="%.0%")})
+        calls = kb.llm_calls(300)
+        if calls:
+            st.markdown(f"#### {t('llm_recent')}")
+            dfc = pd.DataFrame(calls)
+            dfc["ts"] = pd.to_datetime(dfc["ts"])
+            st.altair_chart(alt.Chart(dfc).mark_circle(size=40).encode(x=alt.X("ts:T", title=None), y=alt.Y("latency_ms:Q", title="ms"),
+                            color=alt.Color("kind:N", legend=alt.Legend(orient="top", title=None)), shape=alt.Shape("ok:N", legend=None), tooltip=["ts", "model", "kind", "latency_ms", "citations", "invalid", "error"]).properties(height=200), **wide("altair_chart"))
+            st.dataframe(dfc[["ts", "provider", "model", "kind", "ok", "latency_ms", "citations", "grounded", "invalid", "error"]].head(50), hide_index=True, **wide("dataframe"))
 
 
 # ------------------------------------------------------------------ page: Datasets (upload + log analysis)
@@ -1355,6 +1409,9 @@ if page == "map":
     st.stop()
 if page == "assist":
     page_assist()
+    st.stop()
+if page == "llm":
+    page_llm()
     st.stop()
 if page == "pb":
     page_playbook()

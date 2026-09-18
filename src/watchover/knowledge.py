@@ -113,6 +113,13 @@ class Knowledge:
         self._exec("CREATE INDEX IF NOT EXISTS lessons_kind ON lessons(kind)")
         self._exec("CREATE INDEX IF NOT EXISTS lessons_key ON lessons(key)")
         self._exec("CREATE INDEX IF NOT EXISTS lessons_hash ON lessons(content_hash)")
+        self._exec(f"""CREATE TABLE IF NOT EXISTS llm_calls (
+            id {pk}, ts TEXT, provider TEXT, model TEXT, kind TEXT, ok INTEGER, latency_ms INTEGER, prompt_chars INTEGER, answer_chars INTEGER,
+            citations INTEGER DEFAULT 0, grounded INTEGER DEFAULT 0, invalid INTEGER DEFAULT 0, error TEXT DEFAULT '')""")
+        self._exec(f"""CREATE TABLE IF NOT EXISTS answer_feedback (
+            id {pk}, ts TEXT, model TEXT, question TEXT, verdict TEXT, note TEXT DEFAULT '')""")
+        self._exec(f"""CREATE TABLE IF NOT EXISTS eval_runs (
+            id {pk}, ts TEXT, model TEXT, dataset TEXT, n INTEGER, correct INTEGER, cited INTEGER, grounded INTEGER, latency_ms INTEGER, detail TEXT DEFAULT '[]')""")
         self._exec(f"""CREATE TABLE IF NOT EXISTS rules (
             id {pk}, kind TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, reason TEXT DEFAULT '', source TEXT DEFAULT '',
             status TEXT DEFAULT 'proposed', created_at TEXT, decided_at TEXT)""")
@@ -341,3 +348,66 @@ class Knowledge:
                 scenario.RECOMMENDATIONS.setdefault(key.lower(), []).insert(0, val)
             applied[kind] += 1
         return dict(applied)
+
+    # ---------------------------------------------------------------- LLM quality: every call, every verdict, every benchmark run
+    def log_call(self, rec: dict) -> None:
+        self._exec("INSERT INTO llm_calls (ts, provider, model, kind, ok, latency_ms, prompt_chars, answer_chars, citations, grounded, invalid, error) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                   (_now(), rec.get("provider", ""), rec.get("model", ""), rec.get("kind", ""), int(rec.get("ok", 1)), int(rec.get("latency_ms", 0)),
+                    int(rec.get("prompt_chars", 0)), int(rec.get("answer_chars", 0)), int(rec.get("citations", 0)), int(rec.get("grounded", 0)),
+                    int(rec.get("invalid", 0)), str(rec.get("error", ""))[:300]))
+
+    def annotate_last_call(self, kind: str, citations: int, grounded: int, invalid: int) -> None:
+        rows = self._exec("SELECT id FROM llm_calls WHERE kind=? ORDER BY id DESC LIMIT 1", (kind,))
+        if rows:
+            self._exec("UPDATE llm_calls SET citations=?, grounded=?, invalid=? WHERE id=?", (citations, grounded, invalid, rows[0]["id"]))
+
+    def rate_answer(self, model: str, question: str, verdict: str, note: str = "") -> None:
+        self._exec("INSERT INTO answer_feedback (ts, model, question, verdict, note) VALUES (?,?,?,?,?)", (_now(), model, question[:300], verdict, note[:300]))
+
+    def save_eval(self, model: str, dataset: str, result: dict) -> int:
+        return self._insert("INSERT INTO eval_runs (ts, model, dataset, n, correct, cited, grounded, latency_ms, detail) VALUES (?,?,?,?,?,?,?,?,?)",
+                            (_now(), model, dataset, result["n"], result["correct"], result["cited"], result["grounded"], result["latency_ms"],
+                             json.dumps(result.get("detail", []), ensure_ascii=False)[:20000]))
+
+    def eval_runs(self, limit: int = 20) -> list[dict]:
+        return self._exec("SELECT * FROM eval_runs ORDER BY id DESC LIMIT ?", (limit,))
+
+    def llm_calls(self, limit: int = 500) -> list[dict]:
+        return self._exec("SELECT * FROM llm_calls ORDER BY id DESC LIMIT ?", (limit,))
+
+    def llm_stats(self) -> dict:
+        """The numbers on the LLM page: availability, latency, grounding, human approval, rule acceptance, per model."""
+        calls = self._exec("SELECT * FROM llm_calls ORDER BY id DESC LIMIT 2000")
+        chat = [c for c in calls if c["kind"] in ("chat", "explain", "rules", "eval")]
+        ok = [c for c in calls if c["ok"]]
+        lat = sorted(c["latency_ms"] for c in ok) or [0]
+        cited = [c for c in chat if c["ok"] and c["citations"]]
+        fb = self._exec("SELECT verdict, COUNT(*) AS n FROM answer_feedback GROUP BY verdict")
+        fbd = {r["verdict"]: int(r["n"]) for r in fb}
+        rl = self._exec("SELECT status, COUNT(*) AS n FROM rules WHERE source LIKE 'llm:%' GROUP BY status")
+        rld = {r["status"]: int(r["n"]) for r in rl}
+        per_model: dict = {}
+        for c in calls:
+            m = per_model.setdefault(c["model"] or "-", {"calls": 0, "ok": 0, "lat": [], "cited": 0, "chat": 0, "invalid": 0})
+            m["calls"] += 1; m["ok"] += int(c["ok"])
+            if c["ok"]:
+                m["lat"].append(c["latency_ms"])
+            if c["kind"] in ("chat", "explain", "eval"):
+                m["chat"] += 1; m["cited"] += int(bool(c["citations"])); m["invalid"] += int(c["invalid"] or 0)
+        models = [{"model": k, "calls": v["calls"], "success": round(v["ok"] / v["calls"], 3) if v["calls"] else None,
+                   "p50_ms": sorted(v["lat"])[len(v["lat"]) // 2] if v["lat"] else None, "citation_rate": round(v["cited"] / v["chat"], 3) if v["chat"] else None,
+                   "invalid_citations": v["invalid"]} for k, v in per_model.items()]
+        evals = self.eval_runs(10)
+        last_eval = evals[0] if evals else None
+        return {"calls": len(calls), "success": round(len(ok) / len(calls), 3) if calls else None,
+                "p50_ms": lat[len(lat) // 2], "p95_ms": lat[int(len(lat) * 0.95) - 1] if len(lat) > 1 else lat[0],
+                "citation_rate": round(len(cited) / len([c for c in chat if c["ok"]]), 3) if any(c["ok"] for c in chat) else None,
+                "grounding_rate": (round(sum(c["grounded"] for c in cited) / max(1, sum(c["citations"] for c in cited)), 3) if cited else None),
+                "invalid_citations": sum(c["invalid"] or 0 for c in chat),
+                "thumbs_up": fbd.get("up", 0), "thumbs_down": fbd.get("down", 0),
+                "approval_rate": round(fbd.get("up", 0) / (fbd.get("up", 0) + fbd.get("down", 0)), 3) if (fbd.get("up", 0) + fbd.get("down", 0)) else None,
+                "rules_proposed": sum(rld.values()), "rules_approved": rld.get("approved", 0), "rules_rejected": rld.get("rejected", 0),
+                "rule_acceptance": round(rld.get("approved", 0) / (rld.get("approved", 0) + rld.get("rejected", 0)), 3) if (rld.get("approved", 0) + rld.get("rejected", 0)) else None,
+                "fallbacks": len([c for c in chat if not c["ok"]]), "models": models,
+                "eval_accuracy": round(last_eval["correct"] / last_eval["n"], 3) if last_eval and last_eval["n"] else None, "last_eval": last_eval,
+                "by_kind": dict(Counter(c["kind"] for c in calls))}

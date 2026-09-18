@@ -98,7 +98,12 @@ def answer(cfg: LLMConfig | None, question: str, history: list[dict], analysis, 
             msgs.append({"role": h["role"], "content": h["content"][:2000]})
         msgs.append({"role": "user", "content": question})
         try:
-            return {"text": chat_messages(cfg, msgs), "sources": sources, "context": ctx, "used_llm": True, "error": ""}
+            text = chat_messages(cfg, msgs, kind="chat")
+            from .llm_eval import grounding
+            g = grounding(text, ctx)
+            if kb is not None and hasattr(kb, "annotate_last_call"):
+                kb.annotate_last_call("chat", g["citations"], g["grounded"], g["invalid"])
+            return {"text": text, "sources": sources, "context": ctx, "used_llm": True, "error": "", "grounding": g}
         except Exception as e:  # noqa: BLE001 - fall back, never break the chat
             return {"text": fallback_answer(question, analysis, kb, lang), "sources": sources, "context": ctx, "used_llm": False, "error": str(e)}
     return {"text": fallback_answer(question, analysis, kb, lang), "sources": sources, "context": ctx, "used_llm": False, "error": ""}
@@ -202,7 +207,7 @@ def propose_rules(cfg: LLMConfig, analysis, kb, lang: str = "tr") -> dict:
     """Ask the model for rule proposals, validate them against the data, store them as *proposed* (never applied by itself)."""
     ctx = rule_context(analysis, kb, lang)
     msgs = [{"role": "system", "content": SYSTEM.get(lang, SYSTEM["en"])}, {"role": "user", "content": RULE_PROMPT.get(lang, RULE_PROMPT["en"]) + "\n\nCONTEXT:\n" + ctx[:14000]}]
-    raw = chat_messages(cfg, msgs, temperature=0.1, max_tokens=1200)
+    raw = chat_messages(cfg, msgs, temperature=0.1, max_tokens=1200, kind="rules")
     items, dropped = validate_rules(_extract_json(raw), analysis)
     ids = [kb.propose(it["kind"], it["key"], it["value"], it["reason"] or "llm", f"llm:{cfg.model}") for it in items]
     return {"proposed": ids, "items": items, "dropped": dropped, "raw": raw}
