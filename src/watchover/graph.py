@@ -20,7 +20,7 @@ DEP_RE = re.compile(
     r"((?:[a-z][a-z0-9_.-]*?)?(?:-api|-service|-svc|-db|-cache|-queue|-gateway|-proxy|-worker|db-\d+|db|postgres(?:ql)?|mysql|redis|kafka|rabbitmq|elasticsearch|mongo(?:db)?|cache))\b",
     re.I)
 
-PALETTE = {"root": "#ff5c5c", "affected": "#ffb347", "erroring": "#f2d55c", "clean": "#3ddc84", "host": "#1a1f26"}
+PALETTE = {"root": "#f87171", "affected": "#fb923c", "erroring": "#fbbf24", "clean": "#2dd4bf", "host": "#1a2333"}
 
 
 def dependency_edges(observations: list[Observation], errors_only: bool = True) -> Counter:
@@ -144,30 +144,30 @@ def to_dot(m: dict, labels: dict | None = None) -> str:
     L = {"root": "ROOT CAUSE", "dep": "dependency errors", "hosts": "hosts", "errors": "ERROR+", **(labels or {})}
     esc = lambda s: str(s).replace('"', '\\"')
     out = ['digraph G {', 'rankdir=LR; bgcolor="transparent"; nodesep=0.35; ranksep=0.9; pad=0.2;',
-           'node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=12, color="#262b33", penwidth=1, margin="0.18,0.1"];',
-           'edge [fontname="Helvetica", fontsize=10, fontcolor="#c9d1d9", color="#6b7a90", arrowsize=0.8];']
+           'node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=12, color="#243044", penwidth=1, margin="0.18,0.1"];',
+           'edge [fontname="Helvetica", fontsize=10, fontcolor="#cbd5e1", color="#64748b", arrowsize=0.8];']
     for n in m["nodes"]:
         fill = PALETTE[n["kind"]]
-        font = "#0b0d10"
+        font = "#0e1420"
         lbl = f'{esc(n["id"])}\\n{n["errors"]} {L["errors"]}' + (f'\\n⚑ {L["root"]}' if n["kind"] == "root" else "")
         pw = 3 if n["kind"] == "root" else 1.2
-        out.append(f'"{esc(n["id"])}" [label="{lbl}", fillcolor="{fill}", fontcolor="{font}", penwidth={pw}, color="{"#ffffff" if n["kind"] == "root" else "#262b33"}"];')
+        out.append(f'"{esc(n["id"])}" [label="{lbl}", fillcolor="{fill}", fontcolor="{font}", penwidth={pw}, color="{"#ffffff" if n["kind"] == "root" else "#243044"}"];')
     for e in m["deps"]:
-        out.append(f'"{esc(e["from"])}" -> "{esc(e["to"])}" [label="{e["n"]}× {L["dep"]}", color="#ff5c5c", fontcolor="#ff9b9b", penwidth={1 + min(e["n"], 40) / 10:.1f}];')
+        out.append(f'"{esc(e["from"])}" -> "{esc(e["to"])}" [label="{e["n"]}× {L["dep"]}", color="#f87171", fontcolor="#fca5a5", penwidth={1 + min(e["n"], 40) / 10:.1f}];')
     for e in m["corr"]:
         lbl = ", ".join(e["ents"][:2]) + (f' · {e["gap"]}s' if e["gap"] else "")
-        out.append(f'"{esc(e["a"])}" -> "{esc(e["b"])}" [style=dashed, arrowhead=none, label="{esc(lbl)}", color="#6b9bd2", fontcolor="#9fb3c8"];')
+        out.append(f'"{esc(e["a"])}" -> "{esc(e["b"])}" [style=dashed, arrowhead=none, label="{esc(lbl)}", color="#60a5fa", fontcolor="#a5b4c9"];')
     by_env: dict[str, list[dict]] = defaultdict(list)
     for h in m["hosts"]:
         by_env[h["env"]].append(h)
     for i, (env, hs) in enumerate(sorted(by_env.items())):
-        out.append(f'subgraph cluster_env{i} {{ label="{esc(env)} · {L["hosts"]}"; fontcolor="#8b93a1"; fontname="Helvetica"; fontsize=11; color="#262b33"; style="rounded"; bgcolor="#0f1216";')
-        out.append('node [shape=ellipse, fillcolor="#1a1f26", fontcolor="#e6edf3", color="#3a4150", style="filled"];')
+        out.append(f'subgraph cluster_env{i} {{ label="{esc(env)} · {L["hosts"]}"; fontcolor="#8b98ad"; fontname="Helvetica"; fontsize=11; color="#243044"; style="rounded"; bgcolor="#111827";')
+        out.append('node [shape=ellipse, fillcolor="#1a2333", fontcolor="#e6ebf2", color="#334155", style="filled"];')
         for h in sorted({h["host"] for h in hs}):
             out.append(f'"{esc(h)}";')
         out.append("}")
     for h in m["hosts"]:
-        out.append(f'"{esc(h["host"])}" -> "{esc(h["service"])}" [label="{h["errors"]}", color="#4a5361", fontcolor="#8b93a1", arrowhead=vee, penwidth={0.8 + min(h["errors"], 30) / 20:.1f}];')
+        out.append(f'"{esc(h["host"])}" -> "{esc(h["service"])}" [label="{h["errors"]}", color="#475569", fontcolor="#8b98ad", arrowhead=vee, penwidth={0.8 + min(h["errors"], 30) / 20:.1f}];')
     out.append("}")
     return "\n".join(out)
 
@@ -245,28 +245,28 @@ def to_html(m: dict, labels: dict | None = None, signals: dict | None = None, he
 
 
 HTML_TEMPLATE = r"""<!doctype html><html><head><meta charset="utf-8"><style>
-html,body{margin:0;background:transparent;font-family:Helvetica,Arial,sans-serif;color:#e6edf3;overflow:hidden}
-#wrap{position:relative;width:100%;height:__H__px;border:1px solid #262b33;border-radius:14px;background:radial-gradient(1200px 600px at 30% 20%,#12161c 0%,#0b0d10 70%);overflow:hidden}
+html,body{margin:0;background:transparent;font-family:Helvetica,Arial,sans-serif;color:#e6ebf2;overflow:hidden}
+#wrap{position:relative;width:100%;height:__H__px;border:1px solid #243044;border-radius:14px;background:radial-gradient(1200px 600px at 30% 20%,#12161c 0%,#0e1420 70%);overflow:hidden}
 svg{width:100%;height:100%;cursor:grab}svg.drag{cursor:grabbing}
 .node{cursor:pointer}.node rect{filter:drop-shadow(0 6px 14px rgba(0,0,0,.55))}
-.node text{pointer-events:none;font-size:12px}.node .t{font-weight:700;fill:#0b0d10}.node .s{fill:#0b0d10;opacity:.75;font-size:11px}
-.host ellipse{fill:#1a1f26;stroke:#3a4150;stroke-width:1.2}.host text{fill:#e6edf3;font-size:11px;pointer-events:none}
-.edge{fill:none}.elabel{font-size:10px;fill:#c9d1d9;pointer-events:none}
+.node text{pointer-events:none;font-size:12px}.node .t{font-weight:700;fill:#0e1420}.node .s{fill:#0e1420;opacity:.75;font-size:11px}
+.host ellipse{fill:#1a2333;stroke:#334155;stroke-width:1.2}.host text{fill:#e6ebf2;font-size:11px;pointer-events:none}
+.edge{fill:none}.elabel{font-size:10px;fill:#cbd5e1;pointer-events:none}
 .dim{opacity:.13;transition:opacity .25s}.lit{opacity:1;transition:opacity .25s}
 .pulse{animation:pulse 1.6s ease-in-out infinite}@keyframes pulse{0%,100%{stroke-opacity:1}50%{stroke-opacity:.25}}
-.glabel{font-size:11px;fill:#8b93a1;text-transform:uppercase;letter-spacing:.7px}
-#panel{position:absolute;top:14px;right:14px;width:300px;max-height:calc(100% - 28px);overflow:auto;background:rgba(17,20,26,.96);border:1px solid #2a3140;border-radius:12px;padding:14px 16px;display:none;box-shadow:0 10px 30px rgba(0,0,0,.5)}
-#panel h3{margin:0 0 4px;font-size:16px}#panel .k{color:#8b93a1;font-size:11px;text-transform:uppercase;letter-spacing:.7px;margin-top:10px}
-#panel .sig{background:#0f1216;border:1px solid #262b33;border-radius:8px;padding:6px 8px;margin:6px 0;font-size:12px}
-#panel .mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px;color:#c9d1d9;word-break:break-all}
-#panel .pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:700;color:#0b0d10;margin-right:4px}
-#panel .x{position:absolute;top:8px;right:10px;cursor:pointer;color:#8b93a1;font-size:16px}
-#hint{position:absolute;left:14px;bottom:10px;font-size:11px;color:#6b7a90}
-#reset{position:absolute;left:14px;top:12px;font-size:11px;color:#c9d1d9;background:#161b22;border:1px solid #2a3140;border-radius:8px;padding:4px 10px;cursor:pointer;display:none}
+.glabel{font-size:11px;fill:#8b98ad;text-transform:uppercase;letter-spacing:.7px}
+#panel{position:absolute;top:14px;right:14px;width:300px;max-height:calc(100% - 28px);overflow:auto;background:rgba(17,20,26,.96);border:1px solid #1f2a3d;border-radius:12px;padding:14px 16px;display:none;box-shadow:0 10px 30px rgba(0,0,0,.5)}
+#panel h3{margin:0 0 4px;font-size:16px}#panel .k{color:#8b98ad;font-size:11px;text-transform:uppercase;letter-spacing:.7px;margin-top:10px}
+#panel .sig{background:#111827;border:1px solid #243044;border-radius:8px;padding:6px 8px;margin:6px 0;font-size:12px}
+#panel .mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px;color:#cbd5e1;word-break:break-all}
+#panel .pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:700;color:#0e1420;margin-right:4px}
+#panel .x{position:absolute;top:8px;right:10px;cursor:pointer;color:#8b98ad;font-size:16px}
+#hint{position:absolute;left:14px;bottom:10px;font-size:11px;color:#64748b}
+#reset{position:absolute;left:14px;top:12px;font-size:11px;color:#cbd5e1;background:#161b22;border:1px solid #1f2a3d;border-radius:8px;padding:4px 10px;cursor:pointer;display:none}
 </style></head><body><div id="wrap">
 <svg id="svg" xmlns="http://www.w3.org/2000/svg"><defs>
-<marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#ff5c5c"/></marker>
-<marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#6b7a90"/></marker>
+<marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#f87171"/></marker>
+<marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#64748b"/></marker>
 </defs><g id="root"></g></svg>
 <div id="reset">⟲ <span id="resetl"></span></div><div id="hint"></div><div id="panel"><span class="x" id="close">✕</span><div id="pbody"></div></div>
 </div><script>
@@ -283,17 +283,17 @@ D.deps.forEach(e=>link(e.from,e.to));D.corr.forEach(e=>link(e.a,e.b));D.hosts.fo
 const edgeEls=[],nodeEls={};
 function curve(x1,y1,x2,y2){const dx=Math.max(60,Math.abs(x2-x1)*.45);return `M${x1} ${y1} C${x1+dx} ${y1} ${x2-dx} ${y2} ${x2} ${y2}`}
 // environment groups
-D.groups.forEach(g=>{const x=D.hpos[g.hosts[0]][0];root.appendChild(el("rect",{x:x-80,y:g.y0-18,width:160,height:g.y1-g.y0+24,rx:12,fill:"#0f1216",stroke:"#262b33"}));root.appendChild(el("text",{x:x-70,y:g.y0-4,class:"glabel"},`${g.env} · ${L.hosts}`))});
+D.groups.forEach(g=>{const x=D.hpos[g.hosts[0]][0];root.appendChild(el("rect",{x:x-80,y:g.y0-18,width:160,height:g.y1-g.y0+24,rx:12,fill:"#111827",stroke:"#243044"}));root.appendChild(el("text",{x:x-70,y:g.y0-4,class:"glabel"},`${g.env} · ${L.hosts}`))});
 // edges
-function addEdge(a,b,x1,y1,x2,y2,attrs,label,lcolor){const p=el("path",Object.assign({d:curve(x1,y1,x2,y2),class:"edge"},attrs));root.appendChild(p);const t=el("text",{x:(x1+x2)/2,y:(y1+y2)/2-6,class:"elabel","text-anchor":"middle",fill:lcolor||"#c9d1d9"},label);root.appendChild(t);edgeEls.push({a,b,els:[p,t]})}
-D.hosts.forEach(h=>{const [x1,y1]=D.hpos[h.host],[x2,y2]=D.pos[h.service]||[0,0];addEdge(h.host,h.service,x1+60,y1,x2-NW/2,y2,{stroke:"#4a5361","stroke-width":.8+Math.min(h.errors,30)/20,"marker-end":"url(#ag)"},String(h.errors),"#8b93a1")});
-D.corr.forEach(e=>{const [x1,y1]=D.pos[e.a],[x2,y2]=D.pos[e.b];addEdge(e.a,e.b,x1,y1-NH/2,x2,y2-NH/2,{stroke:"#6b9bd2","stroke-width":1.2,"stroke-dasharray":"5 4"},(e.ents.slice(0,2).join(", ")+(e.gap?` · ${e.gap}s`:"")),"#9fb3c8")});
-D.deps.forEach(e=>{const [x1,y1]=D.pos[e.from],[x2,y2]=D.pos[e.to];const left=x1<x2;if(e.declared){addEdge(e.from,e.to,left?x1+NW/2:x1-NW/2,y1,left?x2-NW/2:x2+NW/2,y2,{stroke:"#a78bfa","stroke-width":1,"stroke-dasharray":"2 3","marker-end":"url(#ag)"},e.type||"",'#a78bfa')}else{addEdge(e.from,e.to,left?x1+NW/2:x1-NW/2,y1,left?x2-NW/2:x2+NW/2,y2,{stroke:"#ff5c5c","stroke-width":1+Math.min(e.n,40)/10,"marker-end":"url(#ar)",class:"edge pulse"},`${e.n}× ${L.dep}`,"#ff9b9b")}});
+function addEdge(a,b,x1,y1,x2,y2,attrs,label,lcolor){const p=el("path",Object.assign({d:curve(x1,y1,x2,y2),class:"edge"},attrs));root.appendChild(p);const t=el("text",{x:(x1+x2)/2,y:(y1+y2)/2-6,class:"elabel","text-anchor":"middle",fill:lcolor||"#cbd5e1"},label);root.appendChild(t);edgeEls.push({a,b,els:[p,t]})}
+D.hosts.forEach(h=>{const [x1,y1]=D.hpos[h.host],[x2,y2]=D.pos[h.service]||[0,0];addEdge(h.host,h.service,x1+60,y1,x2-NW/2,y2,{stroke:"#475569","stroke-width":.8+Math.min(h.errors,30)/20,"marker-end":"url(#ag)"},String(h.errors),"#8b98ad")});
+D.corr.forEach(e=>{const [x1,y1]=D.pos[e.a],[x2,y2]=D.pos[e.b];addEdge(e.a,e.b,x1,y1-NH/2,x2,y2-NH/2,{stroke:"#60a5fa","stroke-width":1.2,"stroke-dasharray":"5 4"},(e.ents.slice(0,2).join(", ")+(e.gap?` · ${e.gap}s`:"")),"#a5b4c9")});
+D.deps.forEach(e=>{const [x1,y1]=D.pos[e.from],[x2,y2]=D.pos[e.to];const left=x1<x2;if(e.declared){addEdge(e.from,e.to,left?x1+NW/2:x1-NW/2,y1,left?x2-NW/2:x2+NW/2,y2,{stroke:"#a78bfa","stroke-width":1,"stroke-dasharray":"2 3","marker-end":"url(#ag)"},e.type||"",'#a78bfa')}else{addEdge(e.from,e.to,left?x1+NW/2:x1-NW/2,y1,left?x2-NW/2:x2+NW/2,y2,{stroke:"#f87171","stroke-width":1+Math.min(e.n,40)/10,"marker-end":"url(#ar)",class:"edge pulse"},`${e.n}× ${L.dep}`,"#fca5a5")}});
 // hosts
 for(const h in D.hpos){const [x,y]=D.hpos[h];const g=el("g",{class:"host node"});g.appendChild(el("ellipse",{cx:x,cy:y,rx:60,ry:17}));g.appendChild(el("text",{x,y:y+4,"text-anchor":"middle"},h));g.addEventListener("click",ev=>{ev.stopPropagation();focus(h)});root.appendChild(g);nodeEls[h]=g}
 // services
 D.nodes.forEach(n=>{const [x,y]=D.pos[n.id];const g=el("g",{class:"node"});const rootc=n.kind==="root";
-g.appendChild(el("rect",{x:x-NW/2,y:y-NH/2,width:NW,height:NH,rx:12,fill:D.pal[n.kind],stroke:rootc?"#fff":"#262b33","stroke-width":rootc?3:1.2}));
+g.appendChild(el("rect",{x:x-NW/2,y:y-NH/2,width:NW,height:NH,rx:12,fill:D.pal[n.kind],stroke:rootc?"#fff":"#243044","stroke-width":rootc?3:1.2}));
 g.appendChild(el("text",{x,y:y-4,"text-anchor":"middle",class:"t"},n.id));g.appendChild(el("text",{x,y:y+13,"text-anchor":"middle",class:"s"},`${n.errors} ${L.errors}`+(rootc?`  ⚑ ${L.root}`:"")));
 g.addEventListener("click",ev=>{ev.stopPropagation();focus(n.id)});root.appendChild(g);nodeEls[n.id]=g});
 apply();
@@ -310,13 +310,13 @@ const near=adj[id]||new Set();for(const n in nodeEls)nodeEls[n].setAttribute("cl
 edgeEls.forEach(e=>e.els.forEach(x=>x.classList.toggle("dim",!(e.a===id||e.b===id))));document.getElementById("reset").style.display="block";show(id);save()}
 function reset(){sel=null;for(const n in nodeEls)nodeEls[n].classList.remove("dim");edgeEls.forEach(e=>e.els.forEach(x=>x.classList.remove("dim")));panel.style.display="none";document.getElementById("reset").style.display="none";animate(fitK(),(W-D.w*fitK())/2,(H-D.h*fitK())/2)}
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
-function show(id){const n=nodeOf[id];let h="";if(n){h+=`<h3>${esc(id)}</h3><span class="pill" style="background:${D.pal[n.kind]}">${esc(L["kind_"+n.kind])}</span> <span style="color:#8b93a1;font-size:12px">${n.errors} ${L.errors}</span>`;
+function show(id){const n=nodeOf[id];let h="";if(n){h+=`<h3>${esc(id)}</h3><span class="pill" style="background:${D.pal[n.kind]}">${esc(L["kind_"+n.kind])}</span> <span style="color:#8b98ad;font-size:12px">${n.errors} ${L.errors}</span>`;
 const out=D.deps.filter(e=>e.from===id),inn=D.deps.filter(e=>e.to===id),hs=D.hosts.filter(x=>x.service===id);
-if(out.length)h+=`<div class="k">${L.depends_on}</div>`+out.map(e=>`<div>→ <b>${esc(e.to)}</b> <span style="color:${e.declared?'#a78bfa':'#ff9b9b'}">${e.declared?(e.type||'·'):e.n+'×'}</span></div>`).join("");
-if(inn.length)h+=`<div class="k">${L.depended_by}</div>`+inn.map(e=>`<div>← <b>${esc(e.from)}</b> <span style="color:${e.declared?'#a78bfa':'#ff9b9b'}">${e.declared?(e.type||'·'):e.n+'×'}</span></div>`).join("");
-if(hs.length)h+=`<div class="k">${L.on_hosts}</div><div>`+hs.map(x=>`${esc(x.host)} <span style="color:#8b93a1">(${x.errors})</span>`).join(" · ")+"</div>";
-const sg=D.signals[id]||[];if(sg.length)h+=`<div class="k">${sg.length} ${L.signals}</div>`+sg.map(s=>`<div class="sig"><b style="color:${s.color}">${esc(s.severity)}</b> <span style="color:#8b93a1">×${s.count}${s.hosts?" · "+esc(s.hosts):""}</span><div class="mono">${esc(s.template)}</div></div>`).join("")}
-else{const hs=D.hosts.filter(x=>x.host===id);h+=`<h3>${esc(id)}</h3><span class="pill" style="background:#6b9bd2">${L.host}</span>`+(hs.length?`<div class="k">${L.errors}</div>`+hs.map(x=>`<div><b>${esc(x.service)}</b> <span style="color:#ff9b9b">${x.errors}</span> <span style="color:#8b93a1">· ${esc(x.env)}</span></div>`).join(""):"")}
+if(out.length)h+=`<div class="k">${L.depends_on}</div>`+out.map(e=>`<div>→ <b>${esc(e.to)}</b> <span style="color:${e.declared?'#a78bfa':'#fca5a5'}">${e.declared?(e.type||'·'):e.n+'×'}</span></div>`).join("");
+if(inn.length)h+=`<div class="k">${L.depended_by}</div>`+inn.map(e=>`<div>← <b>${esc(e.from)}</b> <span style="color:${e.declared?'#a78bfa':'#fca5a5'}">${e.declared?(e.type||'·'):e.n+'×'}</span></div>`).join("");
+if(hs.length)h+=`<div class="k">${L.on_hosts}</div><div>`+hs.map(x=>`${esc(x.host)} <span style="color:#8b98ad">(${x.errors})</span>`).join(" · ")+"</div>";
+const sg=D.signals[id]||[];if(sg.length)h+=`<div class="k">${sg.length} ${L.signals}</div>`+sg.map(s=>`<div class="sig"><b style="color:${s.color}">${esc(s.severity)}</b> <span style="color:#8b98ad">×${s.count}${s.hosts?" · "+esc(s.hosts):""}</span><div class="mono">${esc(s.template)}</div></div>`).join("")}
+else{const hs=D.hosts.filter(x=>x.host===id);h+=`<h3>${esc(id)}</h3><span class="pill" style="background:#60a5fa">${L.host}</span>`+(hs.length?`<div class="k">${L.errors}</div>`+hs.map(x=>`<div><b>${esc(x.service)}</b> <span style="color:#fca5a5">${x.errors}</span> <span style="color:#8b98ad">· ${esc(x.env)}</span></div>`).join(""):"")}
 pbody.innerHTML=h;panel.style.display="block"}
 function save(){try{window.name=JSON.stringify({sel,k,tx,ty})}catch(e){}}
 try{const st=JSON.parse(window.name||"null");if(st&&st.sel&&(D.pos[st.sel]||D.hpos[st.sel])){focus(st.sel,true)}else if(st&&st.k){k=st.k;tx=st.tx;ty=st.ty;apply()}}catch(e){}

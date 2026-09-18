@@ -28,7 +28,7 @@ from watchover.compare import compare as compare_datasets
 from watchover.graph import build_map, to_html
 from watchover.playbook import Playbook
 from watchover.llm import LLMConfig, chat as llm_chat, test_connection as llm_test
-from watchover.i18n import factor_value, narrative_text, reason_text, recommendation_text, link_text, t
+from watchover.i18n import current_lang, factor_value, narrative_text, reason_text, recommendation_text, link_text, t
 from watchover.models import SEV_RANK
 from watchover.pipeline import ingest_bytes, ingest_path
 from watchover.profiler import profile
@@ -50,40 +50,70 @@ def wide(fn_name: str) -> dict:
         _WIDE_CACHE[fn_name] = {"width": "stretch"} if "width" in params else {"use_container_width": True}
     return _WIDE_CACHE[fn_name]
 
-SEV_COLORS = {"CRITICAL": "#ff5c5c", "ERROR": "#ffb347", "WARN": "#f2d55c", "INFO": "#6b7a90", "DEBUG": "#4a5361",
-              "critical": "#ff5c5c", "high": "#ffb347", "medium": "#f2d55c", "low": "#6b7a90"}
-PRIO_COLORS = {"P1": "#ff5c5c", "P2": "#ffb347", "P3": "#f2d55c", "P4": "#6b7a90"}
+SEV_COLORS = {"CRITICAL": "#f87171", "ERROR": "#fb923c", "WARN": "#fbbf24", "INFO": "#64748b", "DEBUG": "#475569",
+              "critical": "#f87171", "high": "#fb923c", "medium": "#fbbf24", "low": "#64748b"}
+PRIO_COLORS = {"P1": "#f87171", "P2": "#fb923c", "P3": "#fbbf24", "P4": "#64748b"}
 UTC = timezone.utc
 SEV_SCALE = alt.Scale(domain=list(SEV_RANK), range=[SEV_COLORS[k] for k in SEV_RANK])
+
+
+def _wo_altair() -> dict:
+    """Chart theme matching the app: transparent background, muted axes, Inter, brand category colours."""
+    return {"config": {"background": "transparent", "view": {"stroke": None}, "font": "Inter, sans-serif",
+                       "axis": {"gridColor": "#1f2a3d", "gridOpacity": 0.8, "domainColor": "#243044", "tickColor": "#243044", "labelColor": "#8b98ad", "titleColor": "#8b98ad", "labelFontSize": 11},
+                       "legend": {"labelColor": "#cbd5e1", "titleColor": "#8b98ad", "labelFontSize": 11},
+                       "title": {"color": "#e6ebf2", "fontWeight": 600},
+                       "range": {"category": ["#2dd4bf", "#60a5fa", "#a78bfa", "#fb923c", "#fbbf24", "#f87171", "#34d399", "#f472b6"]}}}
+
+
+try:                                              # altair >= 5.5
+    alt.theme.register("watchover", enable=True)(_wo_altair)
+except AttributeError:                            # older altair
+    alt.themes.register("watchover", _wo_altair); alt.themes.enable("watchover")
 CSS = """
 <style>
-.block-container{padding-top:1.2rem;padding-bottom:2rem}
-.pill{display:inline-block;padding:1px 9px;border-radius:10px;font-size:11px;font-weight:700;color:#000;letter-spacing:.3px}
-.card{background:var(--secondary-background-color);border:1px solid #262b33;border-radius:12px;padding:14px 16px;margin-bottom:10px}
-.card.hot{border-color:#ff5c5c}
-.kpi{background:var(--secondary-background-color);border:1px solid #262b33;border-radius:12px;padding:12px 14px;text-align:center}
-.kpi b{display:block;font-size:30px;line-height:1.1}.kpi span{color:#8b93a1;font-size:12px;text-transform:uppercase;letter-spacing:.5px}
-.k2{position:relative;overflow:hidden;background:linear-gradient(160deg,var(--secondary-background-color) 0%,#101318 100%);border:1px solid #262b33;border-top:2px solid var(--acc);border-radius:14px;padding:14px 16px 8px;min-height:104px}
-.k2:before{content:"";position:absolute;right:-30px;top:-30px;width:110px;height:110px;border-radius:55px;background:var(--acc);opacity:.07}
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+:root{--wo-bg:#0e1420;--wo-surface:#151d2b;--wo-surface2:#111827;--wo-border:#243044;--wo-text:#e6ebf2;--wo-muted:#8b98ad;--wo-accent:#2dd4bf;--wo-accent2:#60a5fa}
+.stApp,.stApp p,.stApp li,.stApp label,.stApp h1,.stApp h2,.stApp h3,.stApp h4,.stApp input,.stApp textarea,.stApp .stMarkdown{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+code,pre,.mono{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace}
+.block-container{padding-top:1.1rem;padding-bottom:2.5rem;max-width:1480px}
+h1,h2,h3{letter-spacing:-.02em}h1{font-weight:800}h2{font-weight:700}
+[data-testid="stHeader"]{background:transparent}
+hr{border-color:var(--wo-border)!important;opacity:1}
+.pill{display:inline-block;padding:2px 10px;border-radius:999px;font-size:11px;font-weight:700;color:#0b1220;letter-spacing:.3px}
+.card{background:linear-gradient(180deg,var(--wo-surface) 0%,#131b28 100%);border:1px solid var(--wo-border);border-radius:14px;padding:16px 18px;margin-bottom:12px;box-shadow:inset 0 1px 0 rgba(255,255,255,.03),0 10px 28px -20px rgba(0,0,0,.9)}
+.card.hot{border-color:rgba(248,113,113,.55);box-shadow:0 0 0 1px rgba(248,113,113,.12),0 14px 32px -18px rgba(248,113,113,.35)}
+.kpi{background:linear-gradient(180deg,var(--wo-surface) 0%,#131b28 100%);border:1px solid var(--wo-border);border-radius:14px;padding:12px 14px;text-align:center}
+.kpi b{display:block;font-size:30px;line-height:1.1;font-variant-numeric:tabular-nums}.kpi span{color:var(--wo-muted);font-size:12px;letter-spacing:.5px}
+.k2{position:relative;overflow:hidden;background:linear-gradient(160deg,#182234 0%,#111827 100%);border:1px solid var(--wo-border);border-top:2px solid var(--acc);border-radius:14px;padding:14px 16px 8px;min-height:104px;box-shadow:0 12px 30px -22px rgba(0,0,0,.95);transition:border-color .15s,transform .15s}
+.k2:hover{border-color:var(--acc)}
+.k2:before{content:"";position:absolute;right:-34px;top:-34px;width:120px;height:120px;border-radius:60px;background:var(--acc);opacity:.10;filter:blur(6px)}
 .k2 .ic{position:absolute;right:12px;top:10px;font-size:20px;opacity:.9}
-.k2 .lb{color:#8b93a1;font-size:11px;text-transform:uppercase;letter-spacing:.7px;padding-right:30px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.k2 .v{display:block;font-size:32px;font-weight:700;line-height:1.15;margin:4px 0 2px;color:#f2f4f7;white-space:nowrap}
+.k2 .lb{color:var(--wo-muted);font-size:11px;font-weight:600;letter-spacing:.8px;padding-right:30px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.k2 .v{display:block;font-size:32px;font-weight:800;line-height:1.15;margin:4px 0 2px;color:#f4f7fb;white-space:nowrap;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
 .k2 .v.s{font-size:26px}
 .k2 .sub{font-size:12px;color:var(--acc);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.k2 .sub.m{color:#8b93a1}
-.flow{display:flex;align-items:center;justify-content:center;height:100%;color:#3ddc84;font-size:22px;padding-top:34px}
-.arrow{text-align:center;color:#3ddc84;font-size:26px;padding-top:18px}
+.k2 .sub.m{color:var(--wo-muted)}
+.flow{display:flex;align-items:center;justify-content:center;height:100%;color:var(--wo-accent);font-size:22px;padding-top:34px}
+.arrow{text-align:center;color:var(--wo-accent);font-size:26px;padding-top:18px}
 [class*="st-key-tile-"]{margin-top:-14px}
-[class*="st-key-tile-"] button{width:100%;min-height:22px;height:22px;padding:0;font-size:11px;letter-spacing:.4px;background:#0f1216;color:#6b7684;border:1px solid #262b33;border-top:0;border-radius:0 0 12px 12px}
-[class*="st-key-tile-"] button:hover{color:#3ddc84;border-color:#3ddc84;background:#0f1216}
+[class*="st-key-tile-"] button{width:100%;min-height:22px;height:22px;padding:0;font-size:11px;letter-spacing:.4px;background:#111827;color:#7c8aa3;border:1px solid var(--wo-border);border-top:0;border-radius:0 0 14px 14px}
+[class*="st-key-tile-"] button:hover{color:var(--wo-accent);border-color:var(--wo-accent);background:#111827}
 [class*="st-key-tile-"] button p{font-size:11px}
 .k2{border-radius:14px 14px 0 0}
-.muted{color:#8b93a1}.mono{font-family:ui-monospace,Menlo,monospace;font-size:12.5px}
-.tl{border-left:2px solid #262b33;margin-left:6px;padding-left:14px}.tl .step{position:relative;margin-bottom:8px}
-.tl .step:before{content:"";position:absolute;left:-19px;top:7px;width:8px;height:8px;border-radius:4px;background:#8b93a1}
-.tl .step.root:before{background:#ff5c5c;box-shadow:0 0 0 3px rgba(255,92,92,.25)}
+.muted{color:var(--wo-muted)}.mono{font-size:12.5px}
+.tl{border-left:2px solid var(--wo-border);margin-left:6px;padding-left:14px}.tl .step{position:relative;margin-bottom:8px}
+.tl .step:before{content:"";position:absolute;left:-19px;top:7px;width:8px;height:8px;border-radius:4px;background:var(--wo-muted)}
+.tl .step.root:before{background:#f87171;box-shadow:0 0 0 3px rgba(248,113,113,.25)}
 .fc-row{margin:8px 0;line-height:1.55}
-.act{background:#0f1216;border:1px solid #262b33;border-left:4px solid #8b93a1;border-radius:8px;padding:8px 10px;margin-bottom:8px}
+.act{background:#111827;border:1px solid var(--wo-border);border-left:4px solid var(--wo-muted);border-radius:10px;padding:8px 10px;margin-bottom:8px}
+section[data-testid="stSidebar"]{background:linear-gradient(180deg,#0b111b 0%,#0e1420 100%)}
+section[data-testid="stSidebar"] [data-testid="stRadio"] label{padding:2px 0}
+.wo-brand{display:flex;align-items:center;gap:11px;padding:4px 0 12px}
+.wo-brand .name{font-size:23px;font-weight:800;letter-spacing:-.03em;line-height:1.05;background:linear-gradient(90deg,#2dd4bf 0%,#60a5fa 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
+.wo-brand .tag{font-size:10.5px;color:var(--wo-muted);letter-spacing:.7px;margin-top:2px}
+.stTabs [data-baseweb="tab"]{font-weight:600}
+div[data-testid="stExpander"] details{border:1px solid var(--wo-border);border-radius:12px;background:var(--wo-surface)}
 </style>"""
 st.markdown(CSS, unsafe_allow_html=True)
 
@@ -92,15 +122,20 @@ esc = html.escape
 
 
 def pill(s: str) -> str:
-    return f'<span class="pill" style="background:{SEV_COLORS.get(s, "#6b7a90")}">{s}</span>'
+    return f'<span class="pill" style="background:{SEV_COLORS.get(s, "#64748b")}">{s}</span>'
+
+
+def upper(s: str) -> str:
+    """Locale-aware upper case for labels: Turkish i -> İ (CSS text-transform gives ILIŞKI instead of İLİŞKİ)."""
+    return str(s).replace("i", "İ").upper() if current_lang() == "tr" else str(s).upper()
 
 
 def kpi(value, label) -> str:
-    return f'<div class="kpi"><b>{value}</b><span>{label}</span></div>'
+    return f'<div class="kpi"><b>{value}</b><span>{upper(label)}</span></div>'
 
 
 def kpi2(value, label, icon: str, accent: str, sub: str = "", muted: bool = False) -> str:
-    return (f'<div class="k2" style="--acc:{accent}"><span class="ic">{icon}</span><div class="lb">{label}</div>'
+    return (f'<div class="k2" style="--acc:{accent}"><span class="ic">{icon}</span><div class="lb">{upper(label)}</div>'
             f'<span class="v{" s" if len(str(value)) > 6 else ""}">{value}</span><div class="sub{" m" if muted else ""}">{esc(str(sub))}</div></div>')
 
 
@@ -205,7 +240,7 @@ def incident_flashcard(inc, a: Analysis, key: str) -> None:
     tm, rc, og = inc.timing, inc.recovery, inc.origin
     symptoms = [a.signal_by_id[x] for x in inc.signal_ids if x != root.id]
     rk = rc.get("kind", "unknown")
-    rcol = {"restart": "#3ddc84", "self_healed": "#3ddc84", "stopped": "#f2d55c", "ongoing": "#ff5c5c"}.get(rk, "#8b93a1")
+    rcol = {"restart": "#2dd4bf", "self_healed": "#2dd4bf", "stopped": "#fbbf24", "ongoing": "#f87171"}.get(rk, "#8b98ad")
     chain = " → ".join([f"{root.id} {esc(root.template[:40])}"] + [f"{x.id} {esc(x.template[:40])}" for x in symptoms[:4]])
     alts_html = ""
     if inc.root_cause_alternatives:
@@ -306,7 +341,7 @@ def record_auto_recoveries(a: Analysis, dataset: str) -> int:
 
 
 def minute_chart(df: pd.DataFrame, incidents=None, height=200):
-    base = alt.Chart(df).mark_bar(color="#3ddc84", opacity=0.85).encode(
+    base = alt.Chart(df).mark_bar(color="#2dd4bf", opacity=0.85).encode(
         x=alt.X("timestamp:T", title=None, axis=alt.Axis(format="%H:%M")),
         y=alt.Y("events:Q", title="events / min"),
         tooltip=[alt.Tooltip("timestamp:T", format="%H:%M"), "events:Q"])
@@ -324,8 +359,15 @@ demo = Path(__file__).with_name("samples") / "demo_mixed.zip"
 LIVE_PORT = int(os.environ.get("LIVE_PORT", "8600"))
 PAGES = ["ops", "data", "map", "pb", "itsm", "conn", "readme"]
 PAGE_KEYS = {"ops": "sb_ops", "data": "sb_data", "map": "sb_map", "pb": "sb_pb", "itsm": "sb_itsm", "conn": "sb_conn", "readme": "sb_readme"}
+LOGO_SVG = ('<svg width="36" height="36" viewBox="0 0 34 34" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="wo" x1="0" y1="0" x2="1" y2="1">'
+            '<stop offset="0" stop-color="#2dd4bf"/><stop offset="1" stop-color="#60a5fa"/></linearGradient></defs>'
+            '<circle cx="17" cy="17" r="15" fill="none" stroke="url(#wo)" stroke-width="2" opacity=".3"/>'
+            '<path d="M17 5a12 12 0 0 1 12 12" fill="none" stroke="url(#wo)" stroke-width="2.6" stroke-linecap="round"/>'
+            '<path d="M17 10.5a6.5 6.5 0 0 1 6.5 6.5" fill="none" stroke="url(#wo)" stroke-width="2.6" stroke-linecap="round" opacity=".75"/>'
+            '<circle cx="17" cy="17" r="3.2" fill="url(#wo)"/></svg>')
+
 with st.sidebar:
-    st.markdown("## 📡 Watchover")
+    st.markdown(f'<div class="wo-brand">{LOGO_SVG}<div><div class="name">Watchover</div><div class="tag">{upper(t("brand_tag"))}</div></div></div>', unsafe_allow_html=True)
     st.radio("Language", ["tr", "en"], horizontal=True, label_visibility="collapsed",
              format_func=lambda x: {"tr": "🇹🇷 Türkçe", "en": "🇬🇧 English"}[x], key="lang")
     st.markdown("")
@@ -335,11 +377,11 @@ with st.sidebar:
     @st.fragment(run_every="5s")
     def _status():
         ls_ = live_store()
-        st.caption(f"⚡ :{st.session_state.get('live_port', LIVE_PORT)} · {ls_.received:,} events · {len(ls_.agents)} {t('live_agents')}")
+        st.caption(f"⚡ :{st.session_state.get('live_port', LIVE_PORT)} · {ls_.received:,} {t('events_n')} · {len(ls_.agents)} {t('live_agents')}")
         if "analysis" in st.session_state:
             st.caption(f"🗄️ {st.session_state['dataset']} · {st.session_state['analysis'].funnel()['incidents']} {t('incidents')}")
         if st.session_state.get("tickets"):
-            st.caption(f"🎫 {len(st.session_state['tickets'])} {t('itsm_table').lower()} · {st.session_state.get('tickets_src', '-')}")
+            st.caption(f"🎫 {len(st.session_state['tickets'])} {t('tickets_n')} · {st.session_state.get('tickets_src', '-')}")
 
     _status()
     st.caption(t("footer"))
@@ -460,7 +502,7 @@ def metric_chart(d: pd.DataFrame, height: int, thr: float | None = None):
         x=alt.X("minute:T", title=None, axis=alt.Axis(format="%H:%M")), y=alt.Y("value:Q", title=None, scale=alt.Scale(domain=[0, 100])),
         color=alt.Color("host:N", legend=alt.Legend(orient="bottom", title=None, columns=4)), tooltip=["host", "env", "metric", "value"])
     if thr is not None:
-        base = base + alt.Chart(pd.DataFrame({"y": [thr]})).mark_rule(color="#ff5c5c", strokeDash=[4, 4]).encode(y="y:Q")
+        base = base + alt.Chart(pd.DataFrame({"y": [thr]})).mark_rule(color="#f87171", strokeDash=[4, 4]).encode(y="y:Q")
     return base.properties(height=height).configure_view(strokeWidth=0)
 
 
@@ -472,7 +514,7 @@ def metrics_block(ms: dict, clickable: bool = False) -> None:
     for col, metric, icon in zip(ic, ("cpu", "gpu", "memory", "disk"), ("🧠", "🎮", "💾", "🗄")):
         sm = ms["summary"][metric]
         val = f"{sm['avg']:.0f}%" if sm["avg"] is not None else t("no_data")
-        color = "#8b93a1" if sm["max"] is None else "#ff5c5c" if sm["max"] >= thr[metric] else "#ffb347" if sm["max"] >= thr[metric] - 15 else "#3ddc84"
+        color = "#8b98ad" if sm["max"] is None else "#f87171" if sm["max"] >= thr[metric] else "#fb923c" if sm["max"] >= thr[metric] - 15 else "#2dd4bf"
         sub = f"{t('worst')} {sm['worst']} {sm['max']:.0f}% · {sm['hosts']} {t('hosts_n_short')}" if sm["max"] is not None else ""
         with col:
             ops_tile(metric, kpi2(val, t(metric), icon, color, sub), clickable)
@@ -487,19 +529,19 @@ def slo_block(slo: dict, stt: dict, clickable: bool = False) -> None:
     av_ok = av is not None and av >= slo["slo"]["availability"]
     p_ok = p95 is None or p95 <= slo["slo"]["p95_ms"]
     tiles = [
-        ("availability", kpi2(pct(av, 1), t("availability"), "🎯", "#3ddc84" if av_ok else "#ff5c5c", t("slo_target", v=pct(slo["slo"]["availability"], 1)))),
-        ("p95", kpi2(f"{p95:.0f} ms" if p95 is not None else t("no_data"), t("p95"), "⏱", "#3ddc84" if p_ok else "#ffb347", f"SLO ≤ {slo['slo']['p95_ms']} ms")),
-        ("budget", kpi2(pct(bud, 0) if bud is not None else t("no_data"), t("budget"), "🧮", "#3ddc84" if (bud or 0) > 0.25 else "#ffb347" if (bud or 0) > 0 else "#ff5c5c", f"{slo['errors']} / {slo['total']} ERROR+")),
-        ("sla", kpi2(t("ok") if slo["sla_ok"] else t("breach"), t("sla"), "📜", "#3ddc84" if slo["sla_ok"] else "#ff5c5c", t("sla_target", v=pct(slo["sla"]["availability"], 1)))),
-        ("rate", kpi2(stt["per_minute_now"], t("live_rate"), "⚡", "#6b9bd2", f"{stt['received']:,} total")),
-        ("errors", kpi2(stt["errors"], t("live_errors"), "🔥", "#ff5c5c" if stt["errors"] else "#8b93a1", f"{stt['total']:,} {t('live_buffered')}", True)),
+        ("availability", kpi2(pct(av, 1), t("availability"), "🎯", "#2dd4bf" if av_ok else "#f87171", t("slo_target", v=pct(slo["slo"]["availability"], 1)))),
+        ("p95", kpi2(f"{p95:.0f} ms" if p95 is not None else t("no_data"), t("p95"), "⏱", "#2dd4bf" if p_ok else "#fb923c", f"SLO ≤ {slo['slo']['p95_ms']} ms")),
+        ("budget", kpi2(pct(bud, 0) if bud is not None else t("no_data"), t("budget"), "🧮", "#2dd4bf" if (bud or 0) > 0.25 else "#fb923c" if (bud or 0) > 0 else "#f87171", f"{slo['errors']} / {slo['total']} ERROR+")),
+        ("sla", kpi2(t("ok") if slo["sla_ok"] else t("breach"), t("sla"), "📜", "#2dd4bf" if slo["sla_ok"] else "#f87171", t("sla_target", v=pct(slo["sla"]["availability"], 1)))),
+        ("rate", kpi2(stt["per_minute_now"], t("live_rate"), "⚡", "#60a5fa", f"{stt['received']:,} {t('n_total')}")),
+        ("errors", kpi2(stt["errors"], t("live_errors"), "🔥", "#f87171" if stt["errors"] else "#8b98ad", f"{stt['total']:,} {t('live_buffered')}", True)),
     ]
     for col, (key, html_) in zip(k, tiles):
         with col:
             ops_tile(key, html_, clickable)
 
 
-def _bar(df: pd.DataFrame, x: str, y: str, color: str = "#ff5c5c", height: int = 200, fmt: str = "d"):
+def _bar(df: pd.DataFrame, x: str, y: str, color: str = "#f87171", height: int = 200, fmt: str = "d"):
     return alt.Chart(df).mark_bar(color=color).encode(x=alt.X(f"{x}:Q", title=None, axis=alt.Axis(format=fmt)), y=alt.Y(f"{y}:N", sort="-x", title=None),
                                                      tooltip=[y, x]).properties(height=height).configure_view(strokeWidth=0)
 
@@ -554,14 +596,14 @@ def ops_detail_panel(kind: str, ls: LiveStore, env, host, ms: dict, stt: dict, s
         # availability / sla / budget / p95 -> what lowers the figure
         target = slo["slo"]["availability"] if kind != "sla" else slo["sla"]["availability"]
         k = st.columns(4)
-        k[0].markdown(kpi2(pct(slo["availability"], 2), t("availability"), "🎯", "#3ddc84" if (slo["availability"] or 0) >= target else "#ff5c5c", t("od_target", v=pct(target, 1))), unsafe_allow_html=True)
-        k[1].markdown(kpi2(f"{det['errors']} / {det['total']}", t("od_err_total"), "🔥", "#ff5c5c" if det["errors"] else "#8b93a1", t("od_allowed", n=det["allowed_errors"])), unsafe_allow_html=True)
-        k[2].markdown(kpi2(det["breach_minutes"], t("od_breach_min"), "⏱", "#ff5c5c" if det["breach_minutes"] else "#3ddc84", t("od_of_15")), unsafe_allow_html=True)
+        k[0].markdown(kpi2(pct(slo["availability"], 2), t("availability"), "🎯", "#2dd4bf" if (slo["availability"] or 0) >= target else "#f87171", t("od_target", v=pct(target, 1))), unsafe_allow_html=True)
+        k[1].markdown(kpi2(f"{det['errors']} / {det['total']}", t("od_err_total"), "🔥", "#f87171" if det["errors"] else "#8b98ad", t("od_allowed", n=det["allowed_errors"])), unsafe_allow_html=True)
+        k[2].markdown(kpi2(det["breach_minutes"], t("od_breach_min"), "⏱", "#f87171" if det["breach_minutes"] else "#2dd4bf", t("od_of_15")), unsafe_allow_html=True)
         if kind == "p95":
-            k[3].markdown(kpi2(f"{slo['p95_ms']:.0f} ms" if slo["p95_ms"] is not None else t("no_data"), t("p95"), "⏱", "#ffb347", f"SLO ≤ {slo['slo']['p95_ms']} ms"), unsafe_allow_html=True)
+            k[3].markdown(kpi2(f"{slo['p95_ms']:.0f} ms" if slo["p95_ms"] is not None else t("no_data"), t("p95"), "⏱", "#fb923c", f"SLO ≤ {slo['slo']['p95_ms']} ms"), unsafe_allow_html=True)
         else:
             k[3].markdown(kpi2(pct(slo["error_budget"], 0) if slo["error_budget"] is not None else t("no_data"), t("budget"), "🧮",
-                               "#3ddc84" if (slo["error_budget"] or 0) > 0.25 else "#ff5c5c", t("od_budget_sub", v=pct(1 - target, 2))), unsafe_allow_html=True)
+                               "#2dd4bf" if (slo["error_budget"] or 0) > 0.25 else "#f87171", t("od_budget_sub", v=pct(1 - target, 2))), unsafe_allow_html=True)
         pm = pd.DataFrame(det["per_minute"])
         if kind == "p95":
             if not det["latency"]:
@@ -569,8 +611,8 @@ def ops_detail_panel(kind: str, ls: LiveStore, env, host, ms: dict, stt: dict, s
             c1, c2 = st.columns([2, 3])
             with c1:
                 lat = pd.DataFrame(det["latency"])
-                st.altair_chart((alt.Chart(lat).mark_bar(color="#ffb347").encode(x=alt.X("p95:Q", title="p95 ms"), y=alt.Y("service:N", sort="-x", title=None), tooltip=["service", "n", "p50", "p95", "max"])
-                                 + alt.Chart(pd.DataFrame({"x": [slo["slo"]["p95_ms"]]})).mark_rule(color="#ff5c5c", strokeDash=[4, 4]).encode(x="x:Q")).properties(height=220).configure_view(strokeWidth=0), **wide("altair_chart"))
+                st.altair_chart((alt.Chart(lat).mark_bar(color="#fb923c").encode(x=alt.X("p95:Q", title="p95 ms"), y=alt.Y("service:N", sort="-x", title=None), tooltip=["service", "n", "p50", "p95", "max"])
+                                 + alt.Chart(pd.DataFrame({"x": [slo["slo"]["p95_ms"]]})).mark_rule(color="#f87171", strokeDash=[4, 4]).encode(x="x:Q")).properties(height=220).configure_view(strokeWidth=0), **wide("altair_chart"))
                 st.dataframe(lat.rename(columns={"service": t("service"), "n": t("od_samples")}), hide_index=True, **wide("dataframe"))
             with c2:
                 st.markdown(f"**{t('od_slowest')}**")
@@ -582,15 +624,15 @@ def ops_detail_panel(kind: str, ls: LiveStore, env, host, ms: dict, stt: dict, s
             st.markdown(f"**{t('od_minute_avail') if kind != 'budget' else t('od_burn')}**")
             if kind == "budget":
                 d = pm.dropna(subset=["budget_left"])
-                ch = alt.Chart(d).mark_area(interpolate="monotone", color="#3ddc84", opacity=.5).encode(
+                ch = alt.Chart(d).mark_area(interpolate="monotone", color="#2dd4bf", opacity=.5).encode(
                     x=alt.X("minute:T", title=None, axis=alt.Axis(format="%H:%M")), y=alt.Y("budget_left:Q", title=None, axis=alt.Axis(format="%"), scale=alt.Scale(domain=[0, 1])),
                     tooltip=[alt.Tooltip("minute:T", format="%H:%M"), alt.Tooltip("budget_left:Q", format=".0%"), "errors", "total"])
             else:
                 d = pm.dropna(subset=["availability"])
-                ch = (alt.Chart(d).mark_line(interpolate="monotone", color="#6b9bd2", point=True).encode(
+                ch = (alt.Chart(d).mark_line(interpolate="monotone", color="#60a5fa", point=True).encode(
                     x=alt.X("minute:T", title=None, axis=alt.Axis(format="%H:%M")), y=alt.Y("availability:Q", title=None, axis=alt.Axis(format="%"), scale=alt.Scale(domainMax=1)),
                     tooltip=[alt.Tooltip("minute:T", format="%H:%M"), alt.Tooltip("availability:Q", format=".2%"), "errors", "total"])
-                      + alt.Chart(pd.DataFrame({"y": [target]})).mark_rule(color="#ff5c5c", strokeDash=[4, 4]).encode(y="y:Q"))
+                      + alt.Chart(pd.DataFrame({"y": [target]})).mark_rule(color="#f87171", strokeDash=[4, 4]).encode(y="y:Q"))
             if len(d):
                 st.altair_chart(ch.properties(height=220).configure_view(strokeWidth=0), **wide("altair_chart"))
             else:
@@ -623,15 +665,15 @@ def events_block(stt: dict) -> None:
     with c2:
         st.markdown(f"**{t('live_services')}**")
         svc = pd.DataFrame(stt["services"], columns=["service", "events"]) if stt["services"] else pd.DataFrame({"service": ["-"], "events": [0]})
-        st.altair_chart(alt.Chart(svc).mark_bar(color="#3ddc84").encode(x=alt.X("events:Q", title=None, axis=alt.Axis(format="d")), y=alt.Y("service:N", sort="-x", title=None),
+        st.altair_chart(alt.Chart(svc).mark_bar(color="#2dd4bf").encode(x=alt.X("events:Q", title=None, axis=alt.Axis(format="d")), y=alt.Y("service:N", sort="-x", title=None),
                         tooltip=["service", "events"]).properties(height=170).configure_view(strokeWidth=0), **wide("altair_chart"))
 
 
 def tail_block(ls: LiveStore, n: int = 12, env: str | None = None, host: str | None = None) -> None:
     st.markdown(f"**{t('live_tail')}**")
     lines = "".join(
-        f'<div><span class="muted">{o.timestamp:%H:%M:%S}</span> <span style="color:{SEV_COLORS.get(o.severity, "#8b93a1")};font-weight:700">{o.severity:<8}</span> '
-        f'<span style="color:#9fb3c8">{esc(o.service or o.source)[:18]:<18}</span> {esc(o.message)[:150]}</div>' for o in reversed(ls.tail(n, env, host)))
+        f'<div><span class="muted">{o.timestamp:%H:%M:%S}</span> <span style="color:{SEV_COLORS.get(o.severity, "#8b98ad")};font-weight:700">{o.severity:<8}</span> '
+        f'<span style="color:#a5b4c9">{esc(o.service or o.source)[:18]:<18}</span> {esc(o.message)[:150]}</div>' for o in reversed(ls.tail(n, env, host)))
     st.markdown(f'<div class="card mono" style="max-height:260px;overflow:auto;white-space:pre;line-height:1.55">{lines or "…"}</div>', unsafe_allow_html=True)
 
 
@@ -643,7 +685,7 @@ def page_ops() -> None:
     def _panel():
         all_stt = ls.stats(15)
         real_agents = [a_ for a_ in all_stt["agents"] if a_ != "simulator"]
-        badge_txt, badge_col = (t("live_real_badge"), "#3ddc84") if real_agents else (t("live_sim_badge"), "#f2d55c")
+        badge_txt, badge_col = (t("live_real_badge"), "#2dd4bf") if real_agents else (t("live_sim_badge"), "#fbbf24")
         st.markdown(f'## {t("live_title")} <span class="pill" style="background:{badge_col}">{badge_txt}</span>'
                     f' <span class="muted" style="font-size:13px">· {t("live_sub")} · {len(all_stt["agents"])} {t("live_agents")}: {", ".join(list(all_stt["agents"])[:4]) or t("live_no_agent")}</span>', unsafe_allow_html=True)
         # cards on the left, environment / host box on the right; the box narrows all ten cards
@@ -653,9 +695,9 @@ def page_ops() -> None:
             env, host = scope_panel(ls)
         stt, slo, ms = ls.stats(15, env, host), ls.slo(15, env, host), ls.metric_stats(15, env, host)
         scope = " · ".join(x for x in (env, host) if x)
-        scope_html = f" <span class='pill' style='background:#6b9bd2'>{t('ops_filter_on')}: {esc(scope)}</span>" if scope else ""
+        scope_html = f" <span class='pill' style='background:#60a5fa'>{t('ops_filter_on')}: {esc(scope)}</span>" if scope else ""
         with main:
-            st.markdown(f"#### {t('ops_infra')}{scope_html} <span class='muted'>· {ms['samples']} samples</span>", unsafe_allow_html=True)
+            st.markdown(f"#### {t('ops_infra')}{scope_html} <span class='muted'>· {ms['samples']} {t('od_samples')}</span>", unsafe_allow_html=True)
             metrics_block(ms, clickable=True)
             if st.session_state.get("ops_detail") in ("cpu", "gpu", "memory", "disk"):
                 ops_detail_panel(st.session_state["ops_detail"], ls, env, host, ms, stt, slo)
@@ -738,17 +780,17 @@ def page_map() -> None:
         if not m["nodes"]:
             st.info(t("map_empty")); return
         k = st.columns(5)
-        k[0].markdown(kpi2(len(m["nodes"]), t("map_k_services"), "🧩", "#6b9bd2", f"{len({h['host'] for h in m['hosts']})} {t('env_hosts')}"), unsafe_allow_html=True)
-        k[1].markdown(kpi2(len(m["deps"]), t("map_k_deps"), "🔗", "#ff5c5c" if m["deps"] else "#8b93a1", f"{sum(e['n'] for e in m['deps'])} {t('map_k_dep_events')}"), unsafe_allow_html=True)
-        k[2].markdown(kpi2(len(m["corr"]), t("map_k_corr"), "🧭", "#6b9bd2", t("map_k_corr_sub")), unsafe_allow_html=True)
-        k[3].markdown(kpi2(", ".join(m["root"]) or "—", t("map_k_root"), "⚑", "#ff5c5c" if m["root"] else "#8b93a1", ", ".join(m["incidents"][:3])), unsafe_allow_html=True)
-        k[4].markdown(kpi2(m["errors_total"], t("map_k_errors"), "🔥", "#ffb347", f"{len(m['affected'])} {t('map_k_affected')}"), unsafe_allow_html=True)
+        k[0].markdown(kpi2(len(m["nodes"]), t("map_k_services"), "🧩", "#60a5fa", f"{len({h['host'] for h in m['hosts']})} {t('env_hosts')}"), unsafe_allow_html=True)
+        k[1].markdown(kpi2(len(m["deps"]), t("map_k_deps"), "🔗", "#f87171" if m["deps"] else "#8b98ad", f"{sum(e['n'] for e in m['deps'])} {t('map_k_dep_events')}"), unsafe_allow_html=True)
+        k[2].markdown(kpi2(len(m["corr"]), t("map_k_corr"), "🧭", "#60a5fa", t("map_k_corr_sub")), unsafe_allow_html=True)
+        k[3].markdown(kpi2(", ".join(m["root"]) or "—", t("map_k_root"), "⚑", "#f87171" if m["root"] else "#8b98ad", ", ".join(m["incidents"][:3])), unsafe_allow_html=True)
+        k[4].markdown(kpi2(m["errors_total"], t("map_k_errors"), "🔥", "#fb923c", f"{len(m['affected'])} {t('map_k_affected')}"), unsafe_allow_html=True)
         sig_by_svc: dict[str, list[dict]] = {}
         for s_ in a.signals:
             for svc in s_.services:
                 if any(n["id"] == svc for n in m["nodes"]) and len(sig_by_svc.setdefault(svc, [])) < 6:
                     sig_by_svc[svc].append({"severity": s_.severity, "count": s_.count, "template": s_.template[:110],
-                                            "hosts": ", ".join(sorted(s_.hosts)[:3]), "color": SEV_COLORS.get(s_.severity, "#8b93a1")})
+                                            "hosts": ", ".join(sorted(s_.hosts)[:3]), "color": SEV_COLORS.get(s_.severity, "#8b98ad")})
         labels = {"root": t("map_l_root_tag"), "dep": t("map_dep_lbl"), "hosts": t("env_hosts"), "errors": "ERROR+", "signals": t("signals_n"),
                   "depends_on": t("map_depends_on").rstrip(":"), "depended_by": t("map_depended_by").rstrip(":"), "on_hosts": t("ops_hosts"),
                   "reset": t("map_reset"), "hint": t("map_hint"), "kind_root": t("map_l_root"), "kind_affected": t("map_l_affected"),
@@ -814,7 +856,7 @@ def playbook_card(template: str, current_dataset: str) -> None:
         st.markdown(f'<div class="card"><b>📚 {t("pb_new")}</b></div>', unsafe_allow_html=True); return
     sim = f' · {t("pb_similar")} {e.get("similarity")}' if e.get("similarity") else ""
     recov = ", ".join(f"{recovery_label(k)} ×{v}" for k, v in e["recoveries"].items()) or "-"
-    st.markdown(f'<div class="card" style="border-left:4px solid #9b7bff"><b>📚 {t("pb_seen_before")}</b>{sim} · {t("pb_times", n=e["occurrences"], d=len(e["datasets"]))} · '
+    st.markdown(f'<div class="card" style="border-left:4px solid #a78bfa"><b>📚 {t("pb_seen_before")}</b>{sim} · {t("pb_times", n=e["occurrences"], d=len(e["datasets"]))} · '
                 f'{t("pb_last")} {esc(e["last_seen"] or "")[:16]}<br><span class="muted">{t("pb_datasets")}: {esc(", ".join(others or e["datasets"]))} · {t("pb_recov")}: {recov}</span>'
                 f'<br><b>{t("pb_resolution")}:</b> {esc(e["resolution"]) or t("pb_no_notes")}<br><b>{t("pb_runbook")}:</b><br>{esc(e["runbook"]).replace(chr(10), "<br>") or t("pb_no_notes")}</div>',
                 unsafe_allow_html=True)
@@ -989,7 +1031,7 @@ def compare_view(da: dict, db: dict, ka: str, kb: str) -> None:
         st.markdown(f"**{t('cmp_timeline')}**")
         st.altair_chart(alt.Chart(pd.DataFrame(c["timeline"])).mark_line(interpolate="monotone").encode(
             x=alt.X("minute:Q", title="min"), y=alt.Y("events:Q", title=None),
-            color=alt.Color("dataset:N", scale=alt.Scale(domain=["A", "B"], range=["#3ddc84", "#6b9bd2"]), legend=alt.Legend(orient="top", title=None)),
+            color=alt.Color("dataset:N", scale=alt.Scale(domain=["A", "B"], range=["#2dd4bf", "#60a5fa"]), legend=alt.Legend(orient="top", title=None)),
             tooltip=["dataset", "minute", "events"]).properties(height=200).configure_view(strokeWidth=0), **wide("altair_chart"))
     sm = c["summary"]
     t1, t2, t3 = st.tabs([f"{t('cmp_shared')} · {sm['shared']}", f"{t('cmp_only_a')} · {sm['only_a']}", f"{t('cmp_only_b')} · {sm['only_b']}"])
@@ -1070,11 +1112,11 @@ with tab_over:
     tr = prof["time_range"]
     cols = st.columns([3, 1, 3, 1, 3, 1, 3, 1, 3])
     steps = [
-        ("raw_events", f"{f['raw_events']:,}", "🧾", "#6b9bd2", f"{n_err / max(f['raw_events'], 1):.0%} ERROR+" if f["raw_events"] else ""),
-        ("fingerprints", f["fingerprints"], "🧬", "#3ddc84", f"{f['reduction']}× {t('reduction')}"),
-        ("meaningful", f["meaningful_signals"], "📡", "#f2d55c", f"{top_sig.id} · {t('burst')} {top_sig.burst_score}" if top_sig else ""),
-        ("incidents", f["incidents"], "🚨", "#ff5c5c" if n_crit else "#ffb347", f"{n_crit} critical" if n_crit else t("no_critical")),
-        ("actions", len(acts_all), "✅", "#9b7bff", f"{n_open} {t('open_n')}" if acts_all else t("none_yet")),
+        ("raw_events", f"{f['raw_events']:,}", "🧾", "#60a5fa", f"{n_err / max(f['raw_events'], 1):.0%} ERROR+" if f["raw_events"] else ""),
+        ("fingerprints", f["fingerprints"], "🧬", "#2dd4bf", f"{f['reduction']}× {t('reduction')}"),
+        ("meaningful", f["meaningful_signals"], "📡", "#fbbf24", f"{top_sig.id} · {t('burst')} {top_sig.burst_score}" if top_sig else ""),
+        ("incidents", f["incidents"], "🚨", "#f87171" if n_crit else "#fb923c", f"{n_crit} critical" if n_crit else t("no_critical")),
+        ("actions", len(acts_all), "✅", "#a78bfa", f"{n_open} {t('open_n')}" if acts_all else t("none_yet")),
     ]
     for i, (key, v, ic, acc, sub) in enumerate(steps):
         tile(cols[i * 2], key, v, t(key), ic, acc, sub)
@@ -1086,13 +1128,13 @@ with tab_over:
     env_err_total = sum(v["errors"] for v in envs.values()) or 1
     env_sub = " · ".join(f"{e} {v['errors'] / env_err_total:.0%}" for e, v in list(envs.items())[:3] if v["errors"]) or ", ".join(list(envs)[:3])
     second = [
-        ("files_n", len(prof["files"]), "📁", "#8b93a1", fmts, True),
-        ("records_n", f"{prof['records']:,}", "🗂", "#8b93a1", f"{max(a.report, key=lambda r: r['rows'])['file'].split('/')[-1]} · {max(r['rows'] for r in a.report):,}" if a.report else "", True),
-        ("services_n", len(prof["services"]), "🧩", "#6b9bd2", f"{svc_counts.index[0]} · {svc_counts.iloc[0]:,}" if len(svc_counts) else "-", False),
-        ("hosts_n", len(prof["hosts"]), "🖥", "#6b9bd2", f"{host_counts.index[0]} · {host_counts.iloc[0]:,}" if len(host_counts) else "-", False),
-        ("error_classes", prof["error_classes"], "💥", "#ffb347", f"{err_sigs[0].template[:32]} · {err_sigs[0].count}" if err_sigs else "-", False),
-        ("span_min", tr["minutes"], "⏱", "#3ddc84", f"{tr['start'][11:16]} → {tr['end'][11:16]} · {prof.get('bucket', '1min')}", False),
-        ("environments", len([e for e in envs if e != "unknown"]) or len(envs), "🌍", "#9b7bff", env_sub, False),
+        ("files_n", len(prof["files"]), "📁", "#8b98ad", fmts, True),
+        ("records_n", f"{prof['records']:,}", "🗂", "#8b98ad", f"{max(a.report, key=lambda r: r['rows'])['file'].split('/')[-1]} · {max(r['rows'] for r in a.report):,}" if a.report else "", True),
+        ("services_n", len(prof["services"]), "🧩", "#60a5fa", f"{svc_counts.index[0]} · {svc_counts.iloc[0]:,}" if len(svc_counts) else "-", False),
+        ("hosts_n", len(prof["hosts"]), "🖥", "#60a5fa", f"{host_counts.index[0]} · {host_counts.iloc[0]:,}" if len(host_counts) else "-", False),
+        ("error_classes", prof["error_classes"], "💥", "#fb923c", f"{err_sigs[0].template[:32]} · {err_sigs[0].count}" if err_sigs else "-", False),
+        ("span_min", tr["minutes"], "⏱", "#2dd4bf", f"{tr['start'][11:16]} → {tr['end'][11:16]} · {prof.get('bucket', '1min')}", False),
+        ("environments", len([e for e in envs if e != "unknown"]) or len(envs), "🌍", "#a78bfa", env_sub, False),
     ]
     for c, (key, v, ic, acc, sub, muted) in zip(tiles, second):
         tile(c, key, v, t(key), ic, acc, sub, muted)
@@ -1259,8 +1301,8 @@ with tab_over:
         upto = window[-1].timestamp.strftime("%H:%M:%S") if window else "-"
         st.caption(t("showing", n=len(shown), total=len(window), time=upto))
         rows = "".join(
-            f'<div><span class="muted">{o.timestamp:%H:%M:%S}</span> <span style="color:{SEV_COLORS.get(o.severity, "#8b93a1")};font-weight:700">{o.severity:<8}</span> '
-            f'<span style="color:#9fb3c8">{esc(o.service or o.source)[:18]:<18}</span> {esc(o.message)[:160]}</div>' for o in shown)
+            f'<div><span class="muted">{o.timestamp:%H:%M:%S}</span> <span style="color:{SEV_COLORS.get(o.severity, "#8b98ad")};font-weight:700">{o.severity:<8}</span> '
+            f'<span style="color:#a5b4c9">{esc(o.service or o.source)[:18]:<18}</span> {esc(o.message)[:160]}</div>' for o in shown)
         st.markdown(f'<div class="card mono" style="max-height:420px;overflow:auto;white-space:pre;line-height:1.55">{rows}</div>', unsafe_allow_html=True)
 
     live_panel()
@@ -1342,7 +1384,7 @@ with tab_inc:
                     (f'<br>{t("origin_col")}: {esc(", ".join(f"{k} ({v})" for k, v in og.get("origins", {}).items()))}' if og.get("origins") else "") +
                     f'<br>parser: {esc(", ".join(og.get("parsers", [])))} · kind: {esc(", ".join(og.get("kinds", [])))}</div>', unsafe_allow_html=True)
         rk = rc.get("kind", "unknown")
-        rcol = {"restart": "#3ddc84", "self_healed": "#3ddc84", "stopped": "#f2d55c", "ongoing": "#ff5c5c"}.get(rk, "#8b93a1")
+        rcol = {"restart": "#2dd4bf", "self_healed": "#2dd4bf", "stopped": "#fbbf24", "ongoing": "#f87171"}.get(rk, "#8b98ad")
         tc.markdown(f'<div class="card" style="border-left:4px solid {rcol}"><b>{t("timing")}</b><br>{t("first_signal")}: <span class="mono">{tm.get("first_signal", "")[11:19]}</span> · '
                     f'{t("last_error")}: <span class="mono">{tm.get("last_error", "")[11:19]}</span> · {t("duration")}: <b>{tm.get("duration_s", 0) / 60:.1f} min</b> ({tm.get("error_count", 0)} ERROR+)'
                     f'<br>{t("quiet")}: <b>{rc.get("quiet_min", 0)} min</b><br><span style="color:{rcol};font-weight:700">{recovery_label(rk)}</span>' +
@@ -1363,7 +1405,7 @@ with tab_inc:
         with l:
             st.markdown(f"#### {t('why_score')}")
             fac = pd.DataFrame([{"factor": t("f_" + x.name), "contribution": x.contribution, "detail": factor_value(x), "weight": x.weight} for x in inc.factors])
-            st.altair_chart(alt.Chart(fac).mark_bar(color="#3ddc84").encode(
+            st.altair_chart(alt.Chart(fac).mark_bar(color="#2dd4bf").encode(
                 x=alt.X("contribution:Q", scale=alt.Scale(domain=[0, max(0.4, fac.contribution.max())]), title=None),
                 y=alt.Y("factor:N", sort=None, title=None), tooltip=["factor", "detail", "weight", "contribution"]).properties(height=140), **wide("altair_chart"))
             for x in inc.factors:
@@ -1434,7 +1476,7 @@ with tab_act:
     if healed:
         for inc in healed:
             rc = inc.recovery
-            st.markdown(f'<div class="act" style="border-left-color:#3ddc84"><b>{inc.id}</b> · {esc(inc.title[:70])}<br>'
+            st.markdown(f'<div class="act" style="border-left-color:#2dd4bf"><b>{inc.id}</b> · {esc(inc.title[:70])}<br>'
                         f'<span class="muted">{recovery_label(rc["kind"])} · {esc(rc.get("recovered_at") or "")[11:19]} · {esc(rc.get("evidence") or "")} · {esc(rc.get("what") or "")}</span></div>', unsafe_allow_html=True)
     else:
         st.caption(t("auto_none"))
@@ -1462,11 +1504,11 @@ with tab_act:
 with tab_noise:
     st.markdown(f"#### {t('tab_noise')} <span class='muted'>· {t('noise_sub')}</span>", unsafe_allow_html=True)
     k = st.columns(5)
-    k[0].markdown(kpi2(f"{na['total']:,}", t("raw_events"), "📥", "#6b9bd2", ""), unsafe_allow_html=True)
-    k[1].markdown(kpi2(len(a.incidents), t("noise_cards"), "🗂", "#3ddc84", f"{t('inc_cap')} {__import__('watchover.scenario', fromlist=['x']).MAX_INCIDENTS}"), unsafe_allow_html=True)
-    k[2].markdown(kpi2(f"{na['on_cards']:,}", t("noise_on_cards"), "📌", "#ffb347", f"{na['on_cards'] / max(1, na['total']):.0%}"), unsafe_allow_html=True)
-    k[3].markdown(kpi2(f"{na['eliminated']:,}", t("noise_eliminated"), "🧹", "#8b93a1", f"{na['eliminated'] / max(1, na['total']):.0%}"), unsafe_allow_html=True)
-    k[4].markdown(kpi2(f"1 : {na['total'] / max(1, len(a.incidents)):.0f}", t("noise_ratio"), "📉", "#3ddc84", f"{na['total']} → {len(a.incidents)}"), unsafe_allow_html=True)
+    k[0].markdown(kpi2(f"{na['total']:,}", t("raw_events"), "📥", "#60a5fa", ""), unsafe_allow_html=True)
+    k[1].markdown(kpi2(len(a.incidents), t("noise_cards"), "🗂", "#2dd4bf", f"{t('inc_cap')} {__import__('watchover.scenario', fromlist=['x']).MAX_INCIDENTS}"), unsafe_allow_html=True)
+    k[2].markdown(kpi2(f"{na['on_cards']:,}", t("noise_on_cards"), "📌", "#fb923c", f"{na['on_cards'] / max(1, na['total']):.0%}"), unsafe_allow_html=True)
+    k[3].markdown(kpi2(f"{na['eliminated']:,}", t("noise_eliminated"), "🧹", "#8b98ad", f"{na['eliminated'] / max(1, na['total']):.0%}"), unsafe_allow_html=True)
+    k[4].markdown(kpi2(f"1 : {na['total'] / max(1, len(a.incidents)):.0f}", t("noise_ratio"), "📉", "#2dd4bf", f"{na['total']} → {len(a.incidents)}"), unsafe_allow_html=True)
     if na["totals"]:
         st.markdown("**" + t("noise_reason") + "** · " + " · ".join(f"{t(k_)}: **{v:,}**" for k_, v in na["totals"].items()), unsafe_allow_html=True)
     if getattr(a, "mode", "") == "density" and a.storm.get("cells") is not None:
@@ -1483,7 +1525,7 @@ with tab_noise:
         base = alt.Chart(heat).encode(x=alt.X("bucket:O", title=None, axis=alt.Axis(labelAngle=0)), y=alt.Y("service:N", sort=order, title=None))
         st.altair_chart((base.mark_rect().encode(color=alt.Color("alarms:Q", scale=alt.Scale(scheme="inferno"), legend=alt.Legend(title=t("env_events"))),
                                                  tooltip=["service", "bucket", "alarms", "hot", "threshold"])
-                         + base.transform_filter(alt.datum.hot == True).mark_rect(fill=None, stroke="#3ddc84", strokeWidth=2.5))
+                         + base.transform_filter(alt.datum.hot == True).mark_rect(fill=None, stroke="#2dd4bf", strokeWidth=2.5))
                         .properties(height=22 * max(8, len(order))).configure_view(strokeWidth=0), **wide("altair_chart"))
     rows = na["rows"]
     if rows:

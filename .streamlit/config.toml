@@ -8,8 +8,22 @@ gatherUsageStats = false
 
 [theme]
 base = "dark"
-primaryColor = "#3ddc84"
-backgroundColor = "#0b0d10"
-secondaryBackgroundColor = "#15181d"
-textColor = "#e6e8eb"
-font = "sans serif"
+primaryColor = "#2dd4bf"
+backgroundColor = "#0e1420"
+secondaryBackgroundColor = "#151d2b"
+textColor = "#e6ebf2"
+linkColor = "#7dd3fc"
+borderColor = "#243044"
+codeBackgroundColor = "#111827"
+baseRadius = "10px"
+font = "Inter, sans-serif"
+headingFont = "Inter, sans-serif"
+codeFont = "JetBrains Mono, ui-monospace, monospace"
+
+[theme.sidebar]
+backgroundColor = "#0b111b"
+secondaryBackgroundColor = "#151d2b"
+borderColor = "#243044"
+
+[client]
+toolbarMode = "minimal"
