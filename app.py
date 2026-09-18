@@ -503,43 +503,92 @@ def learning_panel(inc, a: Analysis) -> None:
                 st.toast(t("fb_saved", n=len(out["proposals"])), icon="✅")
 
 
-def agents_panel(port: int) -> None:
-    """Enrol collectors, hand out one-time tokens, watch last-seen, revoke."""
+def receiver_url(port: int) -> str:
+    """The address servers will post to: the saved public host, else the best local guess."""
+    host = st.session_state.get("public_host") or (wo_settings.local_addresses()[0])
+    return f"http://{host}:{port}/ingest"
+
+
+def agent_install_cmd(port: int, token: str, logs: str = "/var/log/syslog", env: str = "") -> str:
+    url = receiver_url(port); base = url[: -len("/ingest")]
+    return (f"curl -fsSL {base}/agent/install.sh | sudo bash -s -- --url {url} --token {token} --logs \"{logs}\"" + (f" --env {env}" if env else ""))
+
+
+def agents_panel(port: int, wizard: bool = False) -> None:
+    """Where the receiver lives, what a server needs, enrol collectors, hand out one-time tokens, watch them come online, revoke."""
     reg = agents()
-    st.markdown(f"#### {t('ag_title')}")
-    st.caption(t("ag_hint"))
+    ss = st.session_state
+    if not wizard:
+        st.markdown(f"#### {t('ag_title')}")
+    with st.container(border=True):
+        st.markdown(f"**📡 {t('ag_addr_title')}**")
+        st.caption(t("ag_addr_hint"))
+        cands = wo_settings.local_addresses()
+        c1, c2, c3 = st.columns([2.5, 1, 1.2])
+        cur = ss.get("public_host") or cands[0]
+        opts = list(dict.fromkeys([cur] + cands))
+        pick = c1.selectbox(t("ag_addr"), opts + ["__custom__"], index=opts.index(cur), key="ag_addr_pick", format_func=lambda x: t("ag_addr_custom") if x == "__custom__" else x)
+        if pick == "__custom__":
+            pick = c1.text_input(t("ag_addr_custom"), value=cur, key="ag_addr_txt")
+        if pick and pick != ss.get("public_host"):
+            ss["public_host"] = pick; wo_settings.save({"public_host": pick})
+        c2.markdown(kpi2(port, t("live_port"), "🔌", "#60a5fa", ""), unsafe_allow_html=True)
+        c3.markdown(kpi2(t("ag_open"), t("ag_firewall"), "🛡", "#fbbf24", t("ag_firewall_sub", p=port)), unsafe_allow_html=True)
+        st.code(receiver_url(port), language=None)
+        st.markdown(f'<div class="card" style="padding:10px 14px"><b>{t("ag_what_title")}</b><br><span class="muted">{t("ag_what_body")}</span></div>', unsafe_allow_html=True)
     with st.form("ag-enroll", border=True):
-        c = st.columns([2, 1.2, 1.2, 2])
+        st.markdown(f"**➕ {t('ag_enroll')}**")
+        c = st.columns([2, 1.2, 1.2, 2.4])
         name = c[0].text_input(t("ag_name"), placeholder="db-01")
         env = c[1].selectbox(t("environment"), ["prod", "staging", "test", "dev", "qa", "dr"])
         site = c[2].text_input(t("ag_site"), placeholder="IST-DC1")
-        tags = c[3].text_input(t("ag_tags"), placeholder="oracle, core")
+        logs = c[3].text_input(t("ag_logs"), value="/var/log/syslog", help=t("ag_logs_help"))
+        tags = st.text_input(t("ag_tags"), placeholder="oracle, core")
         if st.form_submit_button(f"➕ {t('ag_enroll')}", **wide("button")) and name.strip():
-            rec, tok = reg.enroll(name, env, site, tags)
-            st.session_state["ag_new"] = (rec, tok)
-    if st.session_state.get("ag_new"):
-        rec, tok = st.session_state.pop("ag_new")
+            try:
+                rec, tok = reg.enroll(name, env, site, tags)
+                ss["ag_new"] = (rec, tok, logs.strip() or "/var/log/syslog")
+            except ValueError:
+                st.warning(t("ag_dup", n=name.strip()))
+    if ss.get("ag_new"):
+        rec, tok, logs = ss["ag_new"]
         st.success(t("ag_token_once", n=rec["name"]))
-        st.code(tok, language=None)
-        st.code(f"export WATCHOVER_TOKEN={tok}\npython agent.py --url http://<dashboard-host>:{port}/ingest --metrics --interval 10\n"
-                f"python agent.py --url http://<dashboard-host>:{port}/ingest --tail /var/log/app.log", language="bash")
-    rows = reg.list()
-    if not rows:
-        st.caption(t("ag_none")); return
-    for r in rows:
-        c = st.columns([2, 1, 1.2, 1.6, 1, 0.8, 0.8])
-        dot = "#2dd4bf" if r["status"] == "active" else "#f87171"
-        c[0].markdown(f'<span class="dot" style="display:inline-block;width:8px;height:8px;border-radius:4px;background:{dot};margin-right:6px"></span><b>{esc(r["name"])}</b>', unsafe_allow_html=True)
-        c[1].caption(r["env"] or "-"); c[2].caption(r["site"] or "-")
-        c[3].caption(f"{(r['last_seen'] or '-')[:16]} · {r['last_ip'] or ''}")
-        c[4].caption(f"{r['events']:,} {t('events_n')}")
-        if r["status"] == "active":
-            if c[5].button("⏏", key=f"ag-rev-{r['id']}", help=t("ag_revoke")):
-                reg.revoke(r["id"]); st.rerun()
-        elif c[5].button("↻", key=f"ag-rot-{r['id']}", help=t("ag_rotate")):
-            st.session_state["ag_new"] = (r, reg.rotate(r["id"])); st.rerun()
-        if c[6].button("🗑", key=f"ag-del-{r['id']}", help=t("ag_delete")):
-            reg.delete(r["id"]); st.rerun()
+        st.markdown(f"**1 · {t('ag_step_run')}**")
+        st.code(agent_install_cmd(port, tok, logs, rec.get("env", "")), language="bash")
+        st.markdown(f"**2 · {t('ag_step_watch')}**")
+        st.caption(t("ag_step_watch_sub"))
+        with st.expander(t("ag_manual")):
+            st.code(f"export WATCHOVER_URL={receiver_url(port)}\nexport WATCHOVER_TOKEN={tok}\ncurl -fsSL {receiver_url(port)[:-7]}/agent.py -o agent.py\n"
+                    f"python3 agent.py --test\npython3 agent.py --metrics --tail \"{logs}\" --spool ./spool", language="bash")
+            st.caption(t("ag_manual_sub"))
+        if st.button(t("ag_done"), key="ag-done"):
+            ss.pop("ag_new", None); st.rerun()
+
+    @st.fragment(run_every="5s")
+    def _agent_rows():
+        rows = reg.list()
+        if not rows:
+            st.caption(t("ag_none")); return
+        from datetime import datetime as _dt
+        for r in rows:
+            c = st.columns([2, 1, 1.2, 1.8, 1, 0.8, 0.8])
+            seen = r["last_seen"] or ""
+            fresh = bool(seen) and (datetime.now(UTC) - _dt.fromisoformat(seen)).total_seconds() < 120
+            dot = "#f87171" if r["status"] != "active" else ("#2dd4bf" if fresh else "#fbbf24" if seen else "#64748b")
+            state = t("ag_revoked") if r["status"] != "active" else (t("ag_online") if fresh else t("ag_stale") if seen else t("ag_waiting"))
+            c[0].markdown(f'<span style="display:inline-block;width:8px;height:8px;border-radius:4px;background:{dot};margin-right:6px;box-shadow:0 0 0 3px {dot}33"></span><b>{esc(r["name"])}</b> <span class="muted">· {state}</span>', unsafe_allow_html=True)
+            c[1].caption(r["env"] or "-"); c[2].caption(r["site"] or "-")
+            c[3].caption(f"{seen[:16] or '-'} · {r['last_ip'] or ''}")
+            c[4].caption(f"{r['events']:,} {t('events_n')}")
+            if r["status"] == "active":
+                if c[5].button("⏏", key=f"ag-rev-{r['id']}", help=t("ag_revoke")):
+                    reg.revoke(r["id"]); st.rerun()
+            elif c[5].button("↻", key=f"ag-rot-{r['id']}", help=t("ag_rotate")):
+                ss["ag_new"] = (r, reg.rotate(r["id"]), "/var/log/syslog"); st.rerun()
+            if c[6].button("🗑", key=f"ag-del-{r['id']}", help=t("ag_delete")):
+                reg.delete(r["id"]); st.rerun()
+
+    _agent_rows()
 
 
 def recovery_label(kind: str) -> str:
@@ -661,7 +710,11 @@ def page_setup() -> None:
         elif step == 2:
             st.markdown(f"### {t('su_s3')}")
             st.caption(t("su_s3_hint"))
-            agents_panel(int(ss.get("su_port", LIVE_PORT)))
+            _port = int(ss.get("live_port", LIVE_PORT))
+            _r = receiver(_port, ss.get("live_key", ""))                  # the receiver must already listen so the first agent can come online here
+            if isinstance(_r, OSError):
+                st.error(f"{t('live_port')} {_port}: {_r}")
+            agents_panel(_port, wizard=True)
         else:
             st.markdown(f"### {t('su_s4')}")
             st.caption(t("su_s4_hint"))

@@ -10,8 +10,9 @@ import os
 from pathlib import Path
 
 DEFAULTS = {"setup_done": False, "lang": "tr", "workspace": "", "llm_provider": "auto", "llm_base": "", "llm_model": "", "llm_key": "", "llm_embed": "",
-            "live_port": 8600, "live_key": "", "sim_on": True, "demo_on_start": False, "version": 1}
-SESSION_KEYS = ("lang", "llm_provider", "llm_base", "llm_model", "llm_key", "llm_embed", "live_port", "live_key", "sim_on")
+            "live_port": int(os.environ.get("LIVE_PORT", "8600") or 8600),      # the env var is what the receiver actually binds
+            "live_key": "", "public_host": "", "sim_on": True, "demo_on_start": False, "version": 1}
+SESSION_KEYS = ("lang", "llm_provider", "llm_base", "llm_model", "llm_key", "llm_embed", "live_port", "live_key", "public_host", "sim_on")
 
 
 def home() -> Path:
@@ -47,3 +48,25 @@ def save(values: dict) -> dict:
 
 def setup_done() -> bool:
     return bool(os.environ.get("WATCHOVER_SKIP_SETUP")) or bool(load().get("setup_done"))
+
+
+def local_addresses() -> list[str]:
+    """Addresses other machines may use to reach this one: primary route IP, hostname, then anything else bound."""
+    import socket
+    out: list[str] = []
+    try:
+        sk = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); sk.connect(("10.255.255.255", 1)); out.append(sk.getsockname()[0]); sk.close()
+    except OSError:
+        pass
+    try:
+        hn = socket.gethostname()
+        for cand in (hn, socket.getfqdn()):
+            if cand and cand not in out and cand != "localhost":
+                out.append(cand)
+        for info in socket.getaddrinfo(hn, None, socket.AF_INET):
+            ip = info[4][0]
+            if ip not in out and not ip.startswith("127."):
+                out.append(ip)
+    except OSError:
+        pass
+    return out or ["localhost"]

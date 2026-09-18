@@ -273,8 +273,12 @@ def metric_of(o: Observation) -> list[tuple] | None:
     return out or None
 
 
+AGENT_FILES = {"/agent.py": Path(__file__).resolve().parents[2] / "agent.py", "/agent/install.sh": Path(__file__).resolve().parents[2] / "scripts" / "agent-install.sh"}
+
+
 def make_handler(store: LiveStore, api_key: str | None, registry=None):
-    """Auth order: per-agent token from the registry (identity = the registered record) > legacy shared key > open when no key is set."""
+    """Auth order: per-agent token from the registry (identity = the registered record) > legacy shared key > open when no key is set.
+    GET /agent.py and /agent/install.sh serve the collector itself, so a server needs nothing but python3 and this port."""
     class H(BaseHTTPRequestHandler):
         def _token(self) -> str:
             auth = self.headers.get("Authorization", "")
@@ -305,7 +309,12 @@ def make_handler(store: LiveStore, api_key: str | None, registry=None):
 
         def do_GET(self):
             if self.path.startswith("/health"):
-                return self._send(200, {"status": "ok", "received": store.received, "buffered": len(store.buf)})
+                return self._send(200, {"status": "ok", "received": store.received, "buffered": len(store.buf), "agents": len(store.agents)})
+            path = self.path.split("?", 1)[0]
+            if path in AGENT_FILES and AGENT_FILES[path].exists():
+                data = AGENT_FILES[path].read_bytes()
+                self.send_response(200); self.send_header("Content-Type", "text/plain; charset=utf-8"); self.send_header("Content-Length", str(len(data))); self.end_headers()
+                return self.wfile.write(data)
             self._send(404, {"error": "not found"})
 
         def do_POST(self):

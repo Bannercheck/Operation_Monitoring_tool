@@ -35,6 +35,8 @@ class AgentRegistry:
 
     def enroll(self, name: str, env: str = "", site: str = "", tags: str = "", note: str = "") -> tuple[dict, str]:
         """Returns (agent record, plaintext token). The token is shown once and never stored."""
+        if any(r["name"].lower() == name.strip().lower() and r["status"] == "active" for r in self.list()):
+            raise ValueError(f"an active agent named '{name.strip()}' already exists: rotate its token instead of enrolling it twice")
         token = "wo_" + secrets.token_urlsafe(32)
         aid = self.kb._insert("INSERT INTO agents (name, token_hash, env, site, tags, status, created_at, note) VALUES (?,?,?,?,?,'active',?,?)",
                               (name.strip(), _hash(token), env.strip().lower(), site.strip(), tags.strip(), _now(), note.strip()))
