@@ -4,7 +4,9 @@
 #   curl -fsSL .../install.sh | bash -s -- --with-ollama --models "qwen2.5:7b-instruct bge-m3"
 #   Options: --dir <path>  --repo <git url>  --branch <name>  --port 8501  --with-ollama  --models "…"  --no-autostart  --no-open
 set -euo pipefail
-REPO="${WATCHOVER_REPO:-https://github.com/Bannercheck/ollama_audit.git}"; BRANCH="${WATCHOVER_BRANCH:-claude/cool-tesla-dh9nw3}"   # main is still empty; switch to main after the merge; PORT=8501; WITH_OLLAMA=0
+REPO="${WATCHOVER_REPO:-https://github.com/Bannercheck/ollama_audit.git}"
+BRANCH="${WATCHOVER_BRANCH:-claude/cool-tesla-dh9nw3}"   # main is still empty; switch to main after the merge
+PORT=8501; WITH_OLLAMA=0
 MODELS="qwen2.5:7b-instruct bge-m3"; AUTOSTART=1; OPEN=1
 OS="$(uname -s)"
 if [[ "$OS" == "Darwin" ]]; then DIR="$HOME/Library/Application Support/Watchover"; else DIR="${XDG_DATA_HOME:-$HOME/.local/share}/watchover"; fi
