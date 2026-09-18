@@ -2,6 +2,9 @@
 import json
 import urllib.error
 import urllib.request
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
 
 from watchover import settings
 from watchover.agents import AgentRegistry
@@ -114,7 +117,7 @@ def test_agent_installer_end_to_end(tmp_path):
         assert r.returncode == 0, r.stdout + r.stderr
         assert (tmp_path / "agent" / "agent.py").exists() and (tmp_path / "agent" / "spool").is_dir()
         env = (tmp_path / "agent" / "agent.env").read_text()
-        assert f"WATCHOVER_TOKEN={tok}" in env and "WATCHOVER_METRICS=1" in env and oct((tmp_path / "agent" / "agent.env").stat().st_mode)[-3:] == "600"
+        assert f"WATCHOVER_TOKEN='{tok}'" in env and "WATCHOVER_METRICS=1" in env and oct((tmp_path / "agent" / "agent.env").stat().st_mode)[-3:] == "600"
         assert reg.get(rec["id"])["events"] >= 1 and store.snapshot()[-1].attributes["agent"] == "app-03"        # the self-test hello arrived
         r2 = subprocess.run(["bash", str(Path(__file__).resolve().parents[1] / "scripts" / "agent-install.sh"), "--url", f"http://127.0.0.1:{port}/ingest", "--token", "wo_wrong",
                              "--dir", str(tmp_path / "agent2"), "--no-service"], capture_output=True, text=True, timeout=120)
@@ -123,3 +126,78 @@ def test_agent_installer_end_to_end(tmp_path):
         assert r3.returncode == 0 and not (tmp_path / "agent").exists()
     finally:
         srv.shutdown()
+
+
+def _post(port, body, tok=None, name="a.jsonl", agent="x"):
+    h = {"X-Agent": agent, "X-File-Name": name}
+    if tok:
+        h["Authorization"] = f"Bearer {tok}"
+    try:
+        with urllib.request.urlopen(urllib.request.Request(f"http://127.0.0.1:{port}/ingest", data=body, headers=h, method="POST"), timeout=5) as r:
+            return r.status
+    except urllib.error.HTTPError as e:
+        return e.code
+    except OSError:                                                      # 413 arrives before the body is read: the socket may reset first
+        return 413
+
+
+def test_receiver_fails_closed_and_caps_body(tmp_path):
+    from watchover import live
+    kb = Knowledge(str(tmp_path / "k.db")); reg = AgentRegistry(kb); store = LiveStore()
+    srv = start_receiver(store, 0, None, reg); port = srv.server_address[1]
+    line = b'{"level":"error","msg":"x","host":"test-db-01"}\n'
+    try:
+        assert _post(port, line) == 200                                  # open mode: nothing enrolled yet
+        rec, tok = reg.enroll("db-01", "prod")
+        reg._active = None
+        assert _post(port, line) == 401                                  # first agent enrolled: token-less senders are refused
+        assert _post(port, line, tok) == 200
+        assert store.buf[-1].environment == "prod"                       # registered env beats the "test" guessed from the host name
+        assert _post(port, b"", tok) == 400
+        assert _post(port, b"x" * (live.MAX_BODY + 1), tok) == 413
+    finally:
+        srv.shutdown(); srv.server_close()
+
+
+def test_agent_tail_rotation_truncation_partial(tmp_path):
+    import sys, threading, time
+    sys.path.insert(0, str(ROOT)); import agent
+    log = tmp_path / "app.log"; log.write_text("old line\n")
+    sent = []
+
+    class S:
+        def send(self, data, name):
+            sent.append(data.decode())
+    stop = threading.Event()
+    th = threading.Thread(target=agent.tail_loop, args=(str(log), S(), 0.1, stop), daemon=True); th.start()
+    time.sleep(0.6)
+    with log.open("a") as f:
+        f.write("first\nhalf"); f.flush()
+    time.sleep(0.6)
+    assert "".join(sent) == "first\n"                                    # the unfinished line waits for its newline
+    with log.open("a") as f:
+        f.write(" done\n")
+    time.sleep(0.6)
+    assert "".join(sent) == "first\nhalf done\n"
+    log.rename(tmp_path / "app.log.1"); log.write_text("after rotate\n")  # logrotate style: rename + new file
+    time.sleep(1.0)
+    assert "after rotate\n" in "".join(sent)
+    log.write_text("")                                                   # copytruncate style: same inode, shrinks
+    time.sleep(0.5)                                                      # (a poller can only see a shrink that lasts a tick, like tail -F)
+    with log.open("a") as f:
+        f.write("after truncate\n")
+    time.sleep(1.0)
+    stop.set(); th.join(2)
+    assert "after truncate\n" in "".join(sent)
+
+
+def test_agent_sender_drops_permanent_errors(tmp_path):
+    import sys
+    sys.path.insert(0, str(ROOT)); import agent
+    store = LiveStore(); srv = start_receiver(store, 0, None); port = srv.server_address[1]
+    try:
+        s = agent.Sender(f"http://127.0.0.1:{port}/ingest", None, "t", str(tmp_path / "spool"))
+        assert s.send(b"", "x.jsonl") is None and s.dropped == 1 and not list((tmp_path / "spool").glob("*"))   # HTTP 400: dropped, not spooled
+        assert oct((tmp_path / "spool").stat().st_mode)[-3:] == "700"
+    finally:
+        srv.shutdown(); srv.server_close()

@@ -8,6 +8,7 @@ under another host's name and ten servers never blend into one series. The legac
 from __future__ import annotations
 
 import hashlib
+import time
 import secrets
 from datetime import datetime, timezone
 
@@ -32,6 +33,7 @@ class AgentRegistry:
             id {pk}, name TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, env TEXT DEFAULT '', site TEXT DEFAULT '', tags TEXT DEFAULT '',
             status TEXT DEFAULT 'active', created_at TEXT, last_seen TEXT DEFAULT '', last_ip TEXT DEFAULT '', events INTEGER DEFAULT 0, note TEXT DEFAULT '')""")
         self._cache: dict[str, dict] = {}
+        self._active: tuple[int, float] | None = None
 
     def enroll(self, name: str, env: str = "", site: str = "", tags: str = "", note: str = "") -> tuple[dict, str]:
         """Returns (agent record, plaintext token). The token is shown once and never stored."""
@@ -40,7 +42,7 @@ class AgentRegistry:
         token = "wo_" + secrets.token_urlsafe(32)
         aid = self.kb._insert("INSERT INTO agents (name, token_hash, env, site, tags, status, created_at, note) VALUES (?,?,?,?,?,'active',?,?)",
                               (name.strip(), _hash(token), env.strip().lower(), site.strip(), tags.strip(), _now(), note.strip()))
-        self._cache.clear()
+        self._cache.clear(); self._active = None
         return self.get(aid), token
 
     def get(self, aid: int) -> dict | None:
@@ -49,6 +51,13 @@ class AgentRegistry:
 
     def list(self) -> list[dict]:
         return [dict(r) for r in self.kb._exec("SELECT * FROM agents ORDER BY status, name")]
+
+    def active_count(self) -> int:
+        """Number of active agents (cached ~5 s: the receiver asks on every token-less request)."""
+        now = time.time()
+        if self._active is None or now - self._active[1] > 5:
+            self._active = (int(self.kb._exec("SELECT COUNT(*) AS n FROM agents WHERE status='active'")[0]["n"]), now)
+        return self._active[0]
 
     def verify(self, token: str | None) -> dict | None:
         """Active agent for this token, or None. Cached per hash (the receiver hits this on every batch)."""
@@ -65,21 +74,21 @@ class AgentRegistry:
 
     def revoke(self, aid: int) -> None:
         self.kb._exec("UPDATE agents SET status='revoked' WHERE id=?", (aid,))
-        self._cache.clear()
+        self._cache.clear(); self._active = None
 
     def reactivate(self, aid: int) -> None:
         self.kb._exec("UPDATE agents SET status='active' WHERE id=?", (aid,))
-        self._cache.clear()
+        self._cache.clear(); self._active = None
 
     def rotate(self, aid: int) -> str:
         token = "wo_" + secrets.token_urlsafe(32)
         self.kb._exec("UPDATE agents SET token_hash=?, status='active' WHERE id=?", (_hash(token), aid))
-        self._cache.clear()
+        self._cache.clear(); self._active = None
         return token
 
     def delete(self, aid: int) -> None:
         self.kb._exec("DELETE FROM agents WHERE id=?", (aid,))
-        self._cache.clear()
+        self._cache.clear(); self._active = None
 
     def touch(self, aid: int, ip: str, n: int) -> None:
         self.kb._exec("UPDATE agents SET last_seen=?, last_ip=?, events=events+? WHERE id=?", (_now(), ip, int(n), aid))

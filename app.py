@@ -307,12 +307,28 @@ def agents() -> AgentRegistry:
 
 
 @st.cache_resource
+def _receivers() -> dict:
+    return {}
+
+
 def receiver(port: int, api_key: str):
-    """One receiver per (port, key) for the life of the process; a port clash returns the OSError to display."""
+    """One receiver per process. A changed port/key stops the old server and binds a new one; a port clash returns the OSError to display."""
+    holder = _receivers()
+    cur = holder.get("srv")
+    if cur is not None and holder.get("cfg") == (port, api_key or None):
+        return cur
+    if cur is not None:
+        try:
+            cur.shutdown(); cur.server_close()
+        except Exception:  # noqa: BLE001
+            pass
+        holder.pop("srv", None)
     try:
-        return start_receiver(live_store(), port, api_key or None, agents())
+        srv = start_receiver(live_store(), port, api_key or None, agents())
     except OSError as e:
         return e
+    holder["srv"], holder["cfg"] = srv, (port, api_key or None)
+    return srv
 
 
 @st.cache_resource
@@ -509,7 +525,7 @@ def receiver_url(port: int) -> str:
     return f"http://{host}:{port}/ingest"
 
 
-def agent_install_cmd(port: int, token: str, logs: str = "/var/log/syslog", env: str = "") -> str:
+def agent_install_cmd(port: int, token: str, logs: str = "/var/log/syslog,/var/log/messages", env: str = "") -> str:
     url = receiver_url(port); base = url[: -len("/ingest")]
     return (f"curl -fsSL {base}/agent/install.sh | sudo bash -s -- --url {url} --token {token} --logs \"{logs}\"" + (f" --env {env}" if env else ""))
 
@@ -542,12 +558,12 @@ def agents_panel(port: int, wizard: bool = False) -> None:
         name = c[0].text_input(t("ag_name"), placeholder="db-01")
         env = c[1].selectbox(t("environment"), ["prod", "staging", "test", "dev", "qa", "dr"])
         site = c[2].text_input(t("ag_site"), placeholder="IST-DC1")
-        logs = c[3].text_input(t("ag_logs"), value="/var/log/syslog", help=t("ag_logs_help"))
+        logs = c[3].text_input(t("ag_logs"), value="/var/log/syslog,/var/log/messages", help=t("ag_logs_help"))
         tags = st.text_input(t("ag_tags"), placeholder="oracle, core")
         if st.form_submit_button(f"➕ {t('ag_enroll')}", **wide("button")) and name.strip():
             try:
                 rec, tok = reg.enroll(name, env, site, tags)
-                ss["ag_new"] = (rec, tok, logs.strip() or "/var/log/syslog")
+                ss["ag_new"] = (rec, tok, logs.strip() or "/var/log/syslog,/var/log/messages")
             except ValueError:
                 st.warning(t("ag_dup", n=name.strip()))
     if ss.get("ag_new"):
@@ -584,7 +600,7 @@ def agents_panel(port: int, wizard: bool = False) -> None:
                 if c[5].button("⏏", key=f"ag-rev-{r['id']}", help=t("ag_revoke")):
                     reg.revoke(r["id"]); st.rerun()
             elif c[5].button("↻", key=f"ag-rot-{r['id']}", help=t("ag_rotate")):
-                ss["ag_new"] = (r, reg.rotate(r["id"]), "/var/log/syslog"); st.rerun()
+                ss["ag_new"] = (r, reg.rotate(r["id"]), "/var/log/syslog,/var/log/messages"); st.rerun()
             if c[6].button("🗑", key=f"ag-del-{r['id']}", help=t("ag_delete")):
                 reg.delete(r["id"]); st.rerun()
 
@@ -714,13 +730,14 @@ def page_setup() -> None:
             _r = receiver(_port, ss.get("live_key", ""))                  # the receiver must already listen so the first agent can come online here
             if isinstance(_r, OSError):
                 st.error(f"{t('live_port')} {_port}: {_r}")
+            st.caption("⚠ " + t("ag_http_warn"))
             agents_panel(_port, wizard=True)
         else:
             st.markdown(f"### {t('su_s4')}")
             st.caption(t("su_s4_hint"))
             st.toggle(t("su_demo"), value=True, key="su_demo")
             cfg = llm_cfg()
-            st.markdown(f'<div class="card"><b>{t("su_summary")}</b><br><span class="muted">{t("su_lang")}: {ss.get("lang", "tr")} · {t("live_port")}: {ss.get("su_port", LIVE_PORT)} · LLM: {cfg.kind} / {cfg.model or t("as_no_llm")} · {t("llm_embed")}: {cfg.embed_model or "-"} · {t("ag_title")}: {len(agents().list())}</span></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="card"><b>{t("su_summary")}</b><br><span class="muted">{t("su_lang")}: {ss.get("lang", "tr")} · {t("live_port")}: {ss.get("live_port", LIVE_PORT)} · LLM: {cfg.kind} / {cfg.model or t("as_no_llm")} · {t("llm_embed")}: {cfg.embed_model or "-"} · {t("ag_title")}: {len(agents().list())}</span></div>', unsafe_allow_html=True)
     b1, b2, b3 = st.columns([1, 1, 4])
     if step > 0 and b1.button(f"← {t('su_back')}", key="su-back", **wide("button")):
         ss["setup_step"] = step - 1; st.rerun()
@@ -1362,6 +1379,7 @@ def page_conn() -> None:
         if st.button(t("cfg_save"), key="live-save"):
             wo_settings.save({"live_port": int(port), "live_key": key, "sim_on": st.session_state.get("sim_on", True)}); st.toast(t("cfg_saved"), icon="💾")
         st.caption(t("live_key_legacy"))
+        st.caption("⚠ " + t("ag_http_warn"))
         agents_panel(int(port))
     with tab_llm:
         st.info(t("llm_moved"))

@@ -13,12 +13,16 @@ log(){ printf '\033[1;36m▶ %s\033[0m\n' "$*"; }
 die(){ printf '\033[1;31m✖ %s\033[0m\n' "$*"; exit 1; }
 OS="$(uname -s)"; ROOT=0; [[ "$(id -u)" == "0" ]] && ROOT=1
 if [[ -z "$DIR" ]]; then if [[ $ROOT -eq 1 ]]; then DIR=/opt/watchover-agent; else DIR="$HOME/.watchover-agent"; fi; fi
-UNIT=watchover-agent; PLIST="$HOME/Library/LaunchAgents/com.watchover.agent.plist"
+UNIT=watchover-agent
+if [[ $ROOT -eq 1 ]]; then PLIST="/Library/LaunchDaemons/com.watchover.agent.plist"; else PLIST="$HOME/Library/LaunchAgents/com.watchover.agent.plist"; fi
+[[ "$LOGS" == *"'"* ]] && die "--logs may not contain single quotes"
+HAS_SYSTEMD=0; [[ "$OS" == "Linux" && -d /run/systemd/system ]] && command -v systemctl >/dev/null 2>&1 && HAS_SYSTEMD=1
 
 if [[ $UNINSTALL -eq 1 ]]; then
   log "Removing the agent"
-  if [[ "$OS" == "Linux" ]] && command -v systemctl >/dev/null 2>&1; then systemctl disable --now "$UNIT" 2>/dev/null || true; rm -f "/etc/systemd/system/$UNIT.service"; systemctl daemon-reload || true
-  elif [[ "$OS" == "Darwin" ]]; then launchctl unload "$PLIST" 2>/dev/null || true; rm -f "$PLIST"; fi
+  if [[ $HAS_SYSTEMD -eq 1 ]]; then systemctl disable --now "$UNIT" 2>/dev/null || true; rm -f "/etc/systemd/system/$UNIT.service"; systemctl daemon-reload || true
+  elif [[ "$OS" == "Darwin" ]]; then
+    if [[ $ROOT -eq 1 ]]; then launchctl bootout system/com.watchover.agent 2>/dev/null || true; else launchctl unload "$PLIST" 2>/dev/null || true; fi; rm -f "$PLIST"; fi
   [[ -f "$DIR/agent.pid" ]] && kill "$(cat "$DIR/agent.pid")" 2>/dev/null || true
   rm -rf "$DIR"; log "Done"; exit 0
 fi
@@ -46,23 +50,28 @@ with urllib.request.urlopen(src, timeout=15) as r:
 assert b"Watchover agent" in data, "unexpected content"
 open(dst, "wb").write(data)
 PYEOF
+umask 077
 cat > "$DIR/agent.env" <<ENVEOF
-WATCHOVER_URL=$URL
-WATCHOVER_TOKEN=$TOKEN
-WATCHOVER_LOGS=$LOGS
+WATCHOVER_URL='$URL'
+WATCHOVER_TOKEN='$TOKEN'
+WATCHOVER_LOGS='$LOGS'
 WATCHOVER_METRICS=1
-WATCHOVER_INTERVAL=$INTERVAL
-WATCHOVER_SPOOL=$DIR/spool
-AGENT_ENV=$ENV_
+WATCHOVER_INTERVAL='$INTERVAL'
+WATCHOVER_SPOOL='$DIR/spool'
+AGENT_ENV='$ENV_'
 ENVEOF
-chmod 600 "$DIR/agent.env"; mkdir -p "$DIR/spool"
+chmod 600 "$DIR/agent.env"; mkdir -p -m 700 "$DIR/spool"; chmod 700 "$DIR/spool"
+umask 022
+IFS=',' read -ra _paths <<<"$LOGS"
+for _p in "${_paths[@]}"; do _p="$(echo "$_p" | xargs)"; [[ -z "$_p" || "$_p" == *"*"* || -r "$_p" ]] || echo "  warning: $_p does not exist yet on this server (the agent keeps waiting for it)"; done
 
 if [[ $TEST -eq 1 ]]; then
   log "Connectivity test"
-  ( set -a; . "$DIR/agent.env"; set +a; "$PY" "$DIR/agent.py" --test ) || die "the receiver did not accept this agent: check the address/port (firewall on the dashboard machine) and that the token is active"
+  ( set -a; . "$DIR/agent.env"; set +a; "$PY" "$DIR/agent.py" --test ) || die "the receiver at $URL did not accept this agent: check the address/port (firewall on the dashboard machine) and that the token is active"
 fi
 
-if [[ $SERVICE -eq 1 && "$OS" == "Linux" && $ROOT -eq 1 ]] && command -v systemctl >/dev/null 2>&1; then
+[[ -f "$DIR/agent.pid" ]] && { kill "$(cat "$DIR/agent.pid")" 2>/dev/null || true; rm -f "$DIR/agent.pid"; }   # replace a previous background run
+if [[ $SERVICE -eq 1 && $ROOT -eq 1 && $HAS_SYSTEMD -eq 1 ]]; then
   log "systemd service $UNIT"
   cat > "/etc/systemd/system/$UNIT.service" <<UNITEOF
 [Unit]
@@ -78,7 +87,8 @@ RestartSec=5
 [Install]
 WantedBy=multi-user.target
 UNITEOF
-  systemctl daemon-reload && systemctl enable --now "$UNIT" && sleep 1 && systemctl --no-pager --lines=3 status "$UNIT" || true
+  systemctl daemon-reload && systemctl enable "$UNIT" >/dev/null 2>&1 && systemctl restart "$UNIT" || die "systemd could not start $UNIT (journalctl -u $UNIT)"
+  sleep 1; systemctl --no-pager --lines=3 status "$UNIT" || true
 elif [[ $SERVICE -eq 1 && "$OS" == "Darwin" ]]; then
   log "launchd agent com.watchover.agent"
   mkdir -p "$(dirname "$PLIST")"
@@ -92,9 +102,14 @@ elif [[ $SERVICE -eq 1 && "$OS" == "Darwin" ]]; then
   <key>StandardOutPath</key><string>$DIR/agent.log</string><key>StandardErrorPath</key><string>$DIR/agent.log</string>
 </dict></plist>
 PLISTEOF
-  launchctl unload "$PLIST" 2>/dev/null || true; launchctl load "$PLIST"
+  if [[ $ROOT -eq 1 ]]; then
+    chown root:wheel "$PLIST"; chmod 644 "$PLIST"
+    launchctl bootout system/com.watchover.agent 2>/dev/null || true; launchctl bootstrap system "$PLIST"   # LaunchDaemon: runs at boot, as root
+  else
+    launchctl unload "$PLIST" 2>/dev/null || true; launchctl load "$PLIST"
+  fi
 elif [[ $SERVICE -eq 1 ]]; then
-  log "Background process (no systemd/launchd rights): $DIR/agent.log"
+  log "Background process (no systemd/launchd): $DIR/agent.log"
   ( set -a; . "$DIR/agent.env"; set +a; nohup "$PY" "$DIR/agent.py" >>"$DIR/agent.log" 2>&1 & echo $! > "$DIR/agent.pid" )
 fi
 log "Installed. Files: $DIR · settings: $DIR/agent.env · re-run with --uninstall to remove"

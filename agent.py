@@ -25,7 +25,7 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
-__version__ = "0.4.0"
+__version__ = "0.4.1"
 
 
 def host_metrics() -> dict:
@@ -50,7 +50,7 @@ def host_metrics() -> dict:
             r = subprocess.run(["vm_stat"], capture_output=True, text=True, timeout=5)
             pages = {ln.split(":")[0].strip(): int(ln.split(":")[1].strip().rstrip(".")) for ln in r.stdout.splitlines() if ":" in ln and ln.split(":")[1].strip().rstrip(".").isdigit()}
             free = pages.get("Pages free", 0) + pages.get("Pages inactive", 0) + pages.get("Pages speculative", 0)
-            total = sum(v for k, v in pages.items() if k.startswith("Pages ") and k not in ("Pages purgeable", "Pages stored in compressor"))
+            total = sum(pages.get(k, 0) for k in ("Pages free", "Pages active", "Pages inactive", "Pages speculative", "Pages wired down", "Pages occupied by compressor"))
             if total:
                 out["memory"] = round(100.0 * (1 - free / total), 1)
         except Exception:  # noqa: BLE001
@@ -74,12 +74,19 @@ def host_metrics() -> dict:
 class Sender:
     """POSTs batches; keeps undeliverable batches in a disk spool and drains it once the receiver answers again."""
 
+    PERMANENT = {400, 404, 405, 413, 415, 422}                  # the receiver will never accept this exact batch: drop it
+
     def __init__(self, url: str, key: str | None, agent: str, spool: str | None = None, timeout: int = 15):
         self.url, self.key, self.agent, self.timeout = url, key, agent, timeout
         self.spool = Path(spool) if spool else None
+        self._lock = threading.Lock()
         if self.spool:
-            self.spool.mkdir(parents=True, exist_ok=True)
-        self.sent = self.failed = self.spooled = 0
+            self.spool.mkdir(parents=True, exist_ok=True, mode=0o700)
+            try:
+                os.chmod(self.spool, 0o700)                    # spooled batches may hold privileged log lines
+            except OSError:
+                pass
+        self.sent = self.failed = self.spooled = self.dropped = 0
 
     def _post(self, data: bytes, name: str) -> dict:
         headers = {"Content-Type": "application/octet-stream", "X-Agent": self.agent, "X-File-Name": name, "X-Agent-Version": __version__}
@@ -100,6 +107,10 @@ class Sender:
             if e.code in (401, 403):                           # a bad token never gets better by retrying: do not spool
                 print(f"rejected by the receiver (HTTP {e.code}): check the token", file=sys.stderr)
                 return None
+            if e.code in self.PERMANENT:                       # the receiver refused the content itself: retrying cannot help
+                self.dropped += 1
+                print(f"batch {name} rejected (HTTP {e.code}): dropped", file=sys.stderr)
+                return None
             self._spool(data, name); return None
         except Exception as e:  # noqa: BLE001 - network down, DNS, timeout
             self.failed += 1
@@ -109,23 +120,37 @@ class Sender:
     def _spool(self, data: bytes, name: str) -> None:
         if not self.spool:
             return
-        p = self.spool / f"{time.time_ns()}__{Path(name).name}"
-        p.write_bytes(data); self.spooled += 1
-        files = sorted(self.spool.glob("*__*"))
-        for old in files[:-2000]:                              # bounded: keep the newest 2.000 batches
-            old.unlink(missing_ok=True)
+        try:
+            p = self.spool / f"{time.time_ns()}__{Path(name).name}"
+            p.write_bytes(data); os.chmod(p, 0o600); self.spooled += 1
+            files = sorted(self.spool.glob("*__*"))
+            for old in files[:-2000]:                          # bounded: keep the newest 2.000 batches
+                old.unlink(missing_ok=True)
+        except OSError as e:                                   # disk full / permissions: losing this batch beats killing the thread
+            self.dropped += 1
+            print(f"spool write failed: {e}", file=sys.stderr)
 
     def drain(self, limit: int = 200) -> int:
-        """Re-send spooled batches oldest first; stops at the first failure."""
-        if not self.spool:
+        """Re-send spooled batches oldest first; a permanently rejected batch is dropped, a network failure stops the drain."""
+        if not self.spool or not self._lock.acquire(blocking=False):   # one thread drains at a time (no duplicate re-sends)
             return 0
         n = 0
-        for p in sorted(self.spool.glob("*__*"))[:limit]:
-            try:
-                self._post(p.read_bytes(), p.name.split("__", 1)[1])
-                p.unlink(missing_ok=True); n += 1
-            except Exception:  # noqa: BLE001
-                break
+        try:
+            for p in sorted(self.spool.glob("*__*"))[:limit]:
+                try:
+                    self._post(p.read_bytes(), p.name.split("__", 1)[1])
+                    p.unlink(missing_ok=True); n += 1
+                except urllib.error.HTTPError as e:
+                    if e.code in self.PERMANENT or e.code in (401, 403):
+                        p.unlink(missing_ok=True); self.dropped += 1
+                        if e.code in (401, 403):
+                            break
+                        continue
+                    break
+                except Exception:  # noqa: BLE001
+                    break
+        finally:
+            self._lock.release()
         return n
 
 
@@ -136,17 +161,27 @@ def hello(sender: Sender, env: str) -> dict | None:
 
 
 def tail_loop(pattern: str, sender: Sender, batch_secs: float, stop: threading.Event) -> None:
-    """Follow every file matching the pattern (new matches are picked up every 30 s); starts at the end like tail -f."""
+    """Follow every file matching the pattern like `tail -F`: starts at the end, survives rename rotation (logrotate,
+    newsyslog) and in-place truncation (copytruncate), ships only complete lines, re-scans the glob every 30 s."""
     handles: dict[str, object] = {}
-    last_scan = 0.0
+    seen: set[str] = set()                                     # paths opened before: a re-appearing path is read from the start
+    partial: dict[str, str] = {}                               # trailing fragment without newline, per path
     buf: dict[str, list[str]] = {}
+    last_scan = 0.0
     last_flush = time.time()
+    warned = False
     while not stop.is_set():
         if time.time() - last_scan > 30:
-            for path in glob.glob(pattern) or ([pattern] if os.path.exists(pattern) else []):
+            paths = glob.glob(pattern) or ([pattern] if os.path.exists(pattern) else [])
+            if not paths and not warned:
+                print(f"no file matches {pattern} yet (waiting)", file=sys.stderr); warned = True
+            for path in paths:
                 if path not in handles:
                     try:
-                        f = open(path, "r", encoding="utf-8", errors="replace"); f.seek(0, 2); handles[path] = f
+                        f = open(path, "r", encoding="utf-8", errors="replace")
+                        if path not in seen:
+                            f.seek(0, 2)                       # first sight: start at the end like tail -f
+                        seen.add(path); handles[path] = f
                         print(f"tailing {path}")
                     except OSError as e:
                         print(f"cannot open {path}: {e}", file=sys.stderr)
@@ -154,13 +189,32 @@ def tail_loop(pattern: str, sender: Sender, batch_secs: float, stop: threading.E
         got = False
         for path, f in list(handles.items()):
             try:
+                try:
+                    if os.fstat(f.fileno()).st_size < f.tell():   # truncated in place (copytruncate): start over
+                        f.seek(0); partial.pop(path, None)
+                except (OSError, ValueError):
+                    pass
                 for _ in range(500):
                     line = f.readline()
                     if not line:
                         break
-                    buf.setdefault(path, []).append(line); got = True
-                if os.path.exists(path) and os.stat(path).st_ino != os.fstat(f.fileno()).st_ino:   # rotated: reopen
-                    f.close(); handles.pop(path)
+                    got = True
+                    if path in partial:
+                        line = partial.pop(path) + line
+                    if line.endswith("\n"):
+                        buf.setdefault(path, []).append(line)
+                    else:                                      # the writer has not finished this line: wait for the rest
+                        partial[path] = line
+                        break
+                rotated = False
+                try:
+                    rotated = os.path.exists(path) and os.stat(path).st_ino != os.fstat(f.fileno()).st_ino
+                except OSError:
+                    rotated = True
+                if rotated:                                    # renamed: old handle is drained above; reopen the new file now
+                    f.close(); handles.pop(path); last_scan = 0.0     # stays in `seen`: the new file is read from its start
+                    if path in partial:                        # a fragment left in the rotated file is the last line
+                        buf.setdefault(path, []).append(partial.pop(path) + "\n")
             except OSError:
                 handles.pop(path, None)
         if buf and time.time() - last_flush >= batch_secs:
@@ -173,10 +227,13 @@ def tail_loop(pattern: str, sender: Sender, batch_secs: float, stop: threading.E
 
 def metrics_loop(sender: Sender, interval: float, env: str, stop: threading.Event) -> None:
     while not stop.is_set():
-        m = host_metrics()
-        if env:
-            m["env"] = env
-        sender.send((json.dumps(m) + "\n").encode(), "metrics.jsonl")
+        try:
+            m = host_metrics()
+            if env:
+                m["env"] = env
+            sender.send((json.dumps(m) + "\n").encode(), "metrics.jsonl")
+        except Exception as e:  # noqa: BLE001
+            print(f"metrics failed: {e}", file=sys.stderr)
         stop.wait(max(interval, 1.0))
 
 
@@ -228,8 +285,11 @@ def main(argv=None) -> int:
     print(f"watchover agent {__version__} -> {args.url} · metrics={'on' if args.metrics else 'off'} · tails={len(args.tail)} · spool={args.spool or 'off'} (Ctrl+C to stop)")
     try:
         while True:
-            time.sleep(60)
-            print(f"sent={sender.sent} failed={sender.failed} spooled={sender.spooled}", file=sys.stderr)
+            for _ in range(60):
+                time.sleep(1)
+                if not any(th.is_alive() for th in threads):
+                    print("all workers stopped: exiting so the service manager restarts the agent", file=sys.stderr); return 3
+            print(f"sent={sender.sent} failed={sender.failed} spooled={sender.spooled} dropped={sender.dropped}", file=sys.stderr)
     except KeyboardInterrupt:
         stop.set()
     return 0

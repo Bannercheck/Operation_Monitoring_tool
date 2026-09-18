@@ -3,12 +3,13 @@
 DIR="__DIR__"; SRC="__SRC__"; PORT="__PORT__"
 export WATCHOVER_HOME="$DIR/data"
 [[ -f "$DIR/data/.env" ]] && set -a && . "$DIR/data/.env" && set +a
+ADDR="${WATCHOVER_UI_ADDRESS:-127.0.0.1}"   # dashboard UI: loopback by default; WATCHOVER_UI_ADDRESS=0.0.0.0 in data/.env to expose it (put TLS/SSO in front)
 PID="$DIR/data/watchover.pid"; LOG="$DIR/data/watchover.log"
-run(){ cd "$SRC" && exec "$DIR/.venv/bin/python" -m streamlit run app.py --server.port "$PORT" --server.headless true --browser.gatherUsageStats false; }
+run(){ cd "$SRC" && exec "$DIR/.venv/bin/python" -m streamlit run app.py --server.address "$ADDR" --server.port "$PORT" --server.headless true --browser.gatherUsageStats false; }
 case "${1:-start}" in
   run) run;;
   start) if [[ -f "$PID" ]] && kill -0 "$(cat "$PID")" 2>/dev/null; then echo "already running (pid $(cat "$PID")) → http://localhost:$PORT"; exit 0; fi
-         (cd "$SRC" && nohup "$DIR/.venv/bin/python" -m streamlit run app.py --server.port "$PORT" --server.headless true --browser.gatherUsageStats false >>"$LOG" 2>&1 & echo $! > "$PID")
+         (cd "$SRC" && nohup "$DIR/.venv/bin/python" -m streamlit run app.py --server.address "$ADDR" --server.port "$PORT" --server.headless true --browser.gatherUsageStats false >>"$LOG" 2>&1 & echo $! > "$PID")
          echo "started → http://localhost:$PORT";;
   stop) [[ -f "$PID" ]] && kill "$(cat "$PID")" 2>/dev/null && rm -f "$PID" && echo "stopped" || echo "not running";;
   restart) "$0" stop; sleep 1; "$0" start;;

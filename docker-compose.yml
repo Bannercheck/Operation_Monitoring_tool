@@ -1,7 +1,7 @@
 services:
   dashboard:
     build: .
-    ports: ["8501:8501"]
+    ports: ["8501:8501", "8600:8600"]
     volumes:
       - ./data:/data            # drop datasets here; upload from the UI or point the MCP tool at /data/<file>
       - ./actions.db:/app/actions.db

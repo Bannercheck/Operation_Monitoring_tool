@@ -20,7 +20,7 @@ die(){ printf '\033[1;31m✖ %s\033[0m\n' "$*"; exit 1; }
 log "Watchover → $DIR"
 PY=""
 for c in python3.12 python3.11 python3.10 python3.9 python3; do
-  if command -v "$c" >/dev/null 2>&1 && "$c" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)'; then PY="$(command -v "$c")"; break; fi
+  if command -v "$c" >/dev/null 2>&1 && "$c" -c 'import sys, venv, ensurepip; sys.exit(0 if sys.version_info >= (3, 9) else 1)' 2>/dev/null; then PY="$(command -v "$c")"; break; fi
 done
 if [[ -z "$PY" ]]; then
   if [[ "$OS" == "Darwin" ]]; then
@@ -42,7 +42,9 @@ fi
 [[ -f "$SRC_DIR/app.py" && -d "$SRC_DIR/src/watchover" ]] || die "No Watchover code in $SRC_DIR (branch '$BRANCH'). Run the script from inside the repository folder or pass --branch."
 
 log "Python environment"
-"$PY" -m venv "$DIR/.venv" || die "venv failed. On macOS move out of Downloads/Desktop (privacy protection) or run: xattr -dr com.apple.quarantine \"$DIR\""
+if ! "$PY" -m venv "$DIR/.venv"; then
+  if [[ "$OS" == "Darwin" ]]; then die "venv failed. Move out of Downloads/Desktop (privacy protection) or run: xattr -dr com.apple.quarantine \"$DIR\""; else die "venv failed. Install the venv module first: apt install python3-venv  (Debian/Ubuntu)  ·  dnf install python3  (RHEL/Rocky)"; fi
+fi
 "$DIR/.venv/bin/pip" install -q --upgrade pip
 "$DIR/.venv/bin/pip" install -q -e "$SRC_DIR[mcp]"
 mkdir -p "$DIR/data/live"
@@ -84,7 +86,7 @@ if [[ $AUTOSTART -eq 1 ]]; then
 </dict></plist>
 PLIST
     launchctl unload "$PL" >/dev/null 2>&1 || true; launchctl load "$PL"; log "LaunchAgent installed (starts at login)"
-  elif command -v systemctl >/dev/null 2>&1; then
+  elif command -v systemctl >/dev/null 2>&1 && systemctl --user is-system-running >/dev/null 2>&1; then
     mkdir -p "$HOME/.config/systemd/user"
     cat > "$HOME/.config/systemd/user/watchover.service" <<UNIT
 [Unit]
@@ -96,12 +98,19 @@ Restart=on-failure
 [Install]
 WantedBy=default.target
 UNIT
-    systemctl --user daemon-reload && systemctl --user enable --now watchover && (loginctl enable-linger "$USER" 2>/dev/null || true)
-    log "user systemd service installed"
+    if systemctl --user daemon-reload && systemctl --user enable --now watchover; then
+      loginctl enable-linger "$(id -un)" 2>/dev/null || true; log "user systemd service installed"
+    else
+      log "user systemd unavailable: starting as a background process"; "$DIR/bin/watchover" start
+    fi
+  else
+    log "no launchd/systemd session: starting as a background process (use 'watchover start' after a reboot)"; "$DIR/bin/watchover" start
   fi
 else
   "$DIR/bin/watchover" start
 fi
-for i in $(seq 1 40); do curl -fsS "http://127.0.0.1:$PORT/" >/dev/null 2>&1 && break; sleep 1; done
+UP=0; for i in $(seq 1 60); do curl -fsS "http://127.0.0.1:$PORT/" >/dev/null 2>&1 && { UP=1; break; }; sleep 1; done
+[[ $UP -eq 1 ]] || die "the app did not answer on port $PORT within 60 s — see: watchover logs"
 log "Done → http://localhost:$PORT   (watchover start|stop|status|open|update|logs|token)"
-[[ $OPEN -eq 1 ]] && { command -v open >/dev/null && open "http://localhost:$PORT" || command -v xdg-open >/dev/null && xdg-open "http://localhost:$PORT" || true; }
+if [[ $OPEN -eq 1 ]]; then command -v open >/dev/null && open "http://localhost:$PORT" || { command -v xdg-open >/dev/null && xdg-open "http://localhost:$PORT"; } || true; fi
+exit 0

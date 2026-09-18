@@ -10,6 +10,7 @@ Any format the pipeline parses is accepted, so the agent can ship raw log lines.
 
 from __future__ import annotations
 
+import hmac
 import json
 import re
 import statistics
@@ -56,7 +57,7 @@ class LiveStore:
             if o.attributes.pop("_no_ts", False) or o.timestamp.year < 2000:
                 o.timestamp = now
             o.attributes["agent"] = agent
-            if env and not o.environment:                    # the registered environment wins over guessing from host names
+            if env:                                          # the registered environment wins over guessing from host names
                 o.environment = env
             if site:
                 o.attributes["site"] = site
@@ -74,11 +75,27 @@ class LiveStore:
             self.agents[agent] = time.time()
         obs = events
         if self.spool and obs:
-            with self.spool.open("a", encoding="utf-8") as f:
-                for o in obs:
-                    f.write(json.dumps({"ts": o.timestamp.isoformat(), "severity": o.severity, "service": o.service, "host": o.host,
-                                        "env": o.environment, "message": o.message, "source": o.source, "agent": agent}, ensure_ascii=False) + "\n")
+            try:
+                self._rotate_spool()
+                with self.spool.open("a", encoding="utf-8") as f:
+                    for o in obs:
+                        f.write(json.dumps({"ts": o.timestamp.isoformat(), "severity": o.severity, "service": o.service, "host": o.host,
+                                            "env": o.environment, "message": o.message, "source": o.source, "agent": agent}, ensure_ascii=False) + "\n")
+            except OSError:                                    # a full disk must not stop ingestion into the ring buffer
+                pass
         return len(obs)
+
+    SPOOL_MAX_BYTES = 64 * 1024 * 1024                         # events.jsonl is rotated at 64 MB; 3 generations are kept
+    SPOOL_KEEP = 3
+
+    def _rotate_spool(self) -> None:
+        if not self.spool or not self.spool.exists() or self.spool.stat().st_size < self.SPOOL_MAX_BYTES:
+            return
+        for i in range(self.SPOOL_KEEP, 0, -1):
+            src = self.spool.with_name(f"{self.spool.name}.{i - 1}") if i > 1 else self.spool
+            dst = self.spool.with_name(f"{self.spool.name}.{i}")
+            if src.exists():
+                src.replace(dst)
 
     def snapshot(self, env: str | None = None, host: str | None = None) -> list[Observation]:
         with self.lock:
@@ -273,6 +290,7 @@ def metric_of(o: Observation) -> list[tuple] | None:
     return out or None
 
 
+MAX_BODY = 16 * 1024 * 1024                                    # one POST at most 16 MB (agents batch every second anyway)
 AGENT_FILES = {"/agent.py": Path(__file__).resolve().parents[2] / "agent.py", "/agent/install.sh": Path(__file__).resolve().parents[2] / "scripts" / "agent-install.sh"}
 
 
@@ -283,6 +301,8 @@ def make_handler(store: LiveStore, api_key: str | None, registry=None):
         def _token(self) -> str:
             auth = self.headers.get("Authorization", "")
             return self.headers.get("X-API-Key") or (auth[7:] if auth.startswith("Bearer ") else "")
+        timeout = 30                                         # a stalled client cannot pin a handler thread forever
+
         def log_message(self, *a):
             pass
 
@@ -303,9 +323,11 @@ def make_handler(store: LiveStore, api_key: str | None, registry=None):
                 if tok.startswith("wo_"):                    # an agent token that is unknown or revoked: never fall back to the shared key
                     return False
             self.agent_rec = None
-            if not api_key:
+            if not api_key:                                  # open mode only until the first agent is enrolled: then every sender needs a token
+                if registry is not None and registry.active_count() > 0:
+                    return False
                 return True
-            return tok == api_key
+            return hmac.compare_digest(tok.encode(), api_key.encode())
 
         def do_GET(self):
             if self.path.startswith("/health"):
@@ -322,13 +344,20 @@ def make_handler(store: LiveStore, api_key: str | None, registry=None):
                 return self._send(404, {"error": "not found"})
             if not self._authorized():
                 return self._send(401, {"error": "invalid or revoked token"})
-            n = int(self.headers.get("Content-Length") or 0)
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                return self._send(400, {"error": "bad Content-Length"})
+            if n <= 0:
+                return self._send(400, {"error": "empty body"})
+            if n > MAX_BODY:
+                return self._send(413, {"error": f"body larger than {MAX_BODY // (1024 * 1024)} MB: send smaller batches"})
             data = self.rfile.read(n)
             if not data:
                 return self._send(400, {"error": "empty body"})
             rec = getattr(self, "agent_rec", None)
-            agent = rec["name"] if rec else self.headers.get("X-Agent", self.client_address[0])
-            name = self.headers.get("X-File-Name", "agent.log")
+            agent = (rec["name"] if rec else self.headers.get("X-Agent", self.client_address[0]))[:120]
+            name = Path(self.headers.get("X-File-Name", "agent.log")).name[:200] or "agent.log"
             try:
                 count = store.ingest(name, data, agent, env=(rec or {}).get("env", ""), site=(rec or {}).get("site", ""), agent_id=(rec or {}).get("id"))
             except Exception as e:  # noqa: BLE001
@@ -345,6 +374,7 @@ def make_handler(store: LiveStore, api_key: str | None, registry=None):
 
 def start_receiver(store: LiveStore, port: int = 8600, api_key: str | None = None, registry=None) -> ThreadingHTTPServer:
     server = ThreadingHTTPServer(("0.0.0.0", port), make_handler(store, api_key, registry))
+    server.daemon_threads = True
     threading.Thread(target=server.serve_forever, daemon=True, name=f"live-receiver-{port}").start()
     return server
 
