@@ -315,6 +315,11 @@ def live_tile(value, label, icon: str, accent: str, sub: str, series: list, ymax
             f'{sparkline(series, accent, ymax, ymin, target)}</div>')
 
 
+def wo_i18n_keys() -> set:
+    from watchover import i18n as _i
+    return set(_i.STRINGS.get("tr", {}).keys()) if hasattr(_i, "STRINGS") else set()
+
+
 def info_btn(key: str, **kw) -> None:
     """Explanatory text behind an ℹ️ button instead of a paragraph on the page (keeps screens uncluttered)."""
     with st.popover("ℹ️", help=t("info_help")):
@@ -1117,7 +1122,11 @@ def ops_detail_panel(kind: str, ls: LiveStore, env, host, ms: dict, stt: dict, s
     """Live detail for the clicked card: one metric in depth, or what drives a service-level figure."""
     thr = __import__("watchover.scenario", fromlist=["x"]).METRIC_THRESHOLDS
     with st.container():
-        st.markdown(f"<span class='muted' style='font-size:13px'>{t('od_window')} · {t('ops_scope')}: {esc(scope_label(env, host) or t('ops_all'))}</span>", unsafe_allow_html=True)
+        h1_, h2_ = st.columns([8, 0.6])
+        h1_.markdown(f"<span class='muted' style='font-size:13px'>{t('od_window')} · {t('ops_scope')}: {esc(scope_label(env, host) or t('ops_all'))}</span>", unsafe_allow_html=True)
+        if f"od_{kind}_info" in wo_i18n_keys():
+            with h2_:
+                info_btn(f"od_{kind}_info")
         if kind in ("cpu", "gpu", "memory", "disk"):
             pm = pd.DataFrame(ms["per_minute"]) if ms["per_minute"] else pd.DataFrame(columns=["minute", "host", "metric", "env", "value"])
             d = pm[pm.metric == kind]
@@ -1173,7 +1182,10 @@ def ops_detail_panel(kind: str, ls: LiveStore, env, host, ms: dict, stt: dict, s
             _html = wo_report.slo_report(fig, st.session_state.get("analysis"), scope_label(_env, _hst), "", current_lang(), st.session_state.get("workspace", ""), LOGO_SVG)
             r3.download_button(f"📄 {t('rep_download')}", _html.encode("utf-8"), file_name=f"watchover-slo-{datetime.now(UTC).strftime('%Y%m%d-%H%M')}.html", mime="text/html", key="rep-dl", **wide("download_button"))
             cov = history().coverage()
-            r4.caption(t("rep_hint") + (f" · {t('rep_coverage', d=str(cov['first'])[:10])}" if cov.get("first") else f" · {t('rep_no_history')}"))
+            r4a, r4b = r4.columns([0.5, 4])
+            with r4a:
+                info_btn("rep_hint")
+            r4b.caption(t("rep_coverage", d=str(cov["first"])[:10]) if cov.get("first") else t("rep_no_history"))
         target = slo["slo"]["availability"] if kind != "sla" else slo["sla"]["availability"]
         k = st.columns(4)
         k[0].markdown(kpi2(pct(slo["availability"], 2), t("availability"), "🎯", "#2dd4bf" if (slo["availability"] or 0) >= target else "#f87171", t("od_target", v=pct(target, 1))), unsafe_allow_html=True)
@@ -1580,7 +1592,10 @@ def page_assist() -> None:
     with tab_chat:
         hist = st.session_state.setdefault("chat", [])
         if not hist:
-            st.markdown(f'<div class="card"><b>{t("as_hello")}</b><br><span class="muted">{t("as_hello_sub")}</span></div>', unsafe_allow_html=True)
+            hc1, hc2 = st.columns([8, 0.6])
+            hc1.markdown(f'<div class="card"><b>{t("as_hello")}</b></div>', unsafe_allow_html=True)
+            with hc2:
+                info_btn("as_hello_sub")
             ex = st.columns(3)
             for i, q_ in enumerate((t("as_ex1"), t("as_ex2"), t("as_ex3"))):
                 if ex[i].button(q_, key=f"as-ex-{i}", **wide("button")):
