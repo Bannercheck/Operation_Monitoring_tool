@@ -251,6 +251,10 @@ div[data-testid="stDataFrame"],div[data-testid="stDataFrameResizable"]{border-ra
 ::-webkit-scrollbar{width:9px;height:9px}::-webkit-scrollbar-thumb{background:rgba(255,255,255,.14);border-radius:8px;border:2px solid transparent;background-clip:padding-box}::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.24);background-clip:padding-box}
 hr{border-color:var(--wo-line)!important}
 h1,h2,h3{color:#eef3f9}
+.card.cat .cat-t{font-size:17px;font-weight:700;color:#eef3f9;letter-spacing:-.01em;margin-bottom:8px;display:flex;align-items:baseline;gap:8px}
+.card.cat .cat-p{font-size:12px;font-weight:500;color:var(--wo-muted);font-family:"JetBrains Mono",monospace}
+.card.cat .cat-b{font-size:12.5px;line-height:1.55;color:#b6c0cf;margin-top:8px}
+.card.cat .cat-b b{font-size:10.5px;letter-spacing:.8px;text-transform:uppercase;color:var(--wo-muted)}
 .muted{color:var(--wo-muted)}
 @media (prefers-reduced-transparency: reduce){.card,.kpi,.k2,.funnel,.facts,section[data-testid="stSidebar"],div[data-testid="stDialog"] > div[role="dialog"]{backdrop-filter:none!important;background:#121a26!important}}
 </style>"""
@@ -1860,9 +1864,9 @@ def page_sources() -> None:
     with st.expander(t("src_catalog"), expanded=not rows):
         cols = st.columns(3)
         for i, (k, meta) in enumerate(wo_sources.KINDS.items()):
-            cols[i % 3].markdown(f'<div class="card" style="min-height:190px"><b>{meta["icon"]} {esc(meta["label"])}</b> <span class="muted">· :{meta["port"]}</span><br>'
-                                 f'<span class="muted"><b>{t("src_needs")}:</b> {esc(t("src_needs_" + k))}</span><br>'
-                                 f'<span class="muted"><b>{t("src_logs")}:</b> {esc(t("src_logs_" + k))}</span></div>', unsafe_allow_html=True)
+            cols[i % 3].markdown(f'<div class="card cat" style="min-height:190px"><div class="cat-t">{meta["icon"]} {esc(meta["label"])}<span class="cat-p">:{meta["port"]}</span></div>'
+                                 f'<div class="cat-b"><b>{t("src_needs")}</b><br>{esc(t("src_needs_" + k))}</div>'
+                                 f'<div class="cat-b"><b>{t("src_logs")}</b><br>{esc(t("src_logs_" + k))}</div></div>', unsafe_allow_html=True)
         info_btn("src_catalog_note")
 
     with st.container(border=True):
