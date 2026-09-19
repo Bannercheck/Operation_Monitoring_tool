@@ -281,6 +281,10 @@ h1,h2,h3{color:#eef3f9}
   div[data-testid="stDialog"] > div[role="dialog"]{width:96vw!important;max-width:96vw!important;border-radius:16px}
   .chips{gap:5px}.chip{font-size:11.5px;padding:3px 9px}
 }
+@media (min-width: 761px) and (max-width: 1000px){
+  [data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"]:nth-child(2):last-child > div > [data-testid="stForm"]) > [data-testid="stColumn"],
+  [data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"]:nth-child(2):last-child .card.act2) > [data-testid="stColumn"]{flex:1 1 100%!important;min-width:100%!important}
+}
 @media (min-width: 761px) and (max-width: 1180px){
   /* tablets: rows wrap, no column narrower than a third; a wrapped column grows to the full row (scope panel under the cards) */
   [data-testid="stHorizontalBlock"]{flex-wrap:wrap!important;gap:10px!important}
@@ -304,6 +308,10 @@ h1,h2,h3{color:#eef3f9}
   .st-key-page label[data-testid="stRadioOption"]{padding:11px 12px}
   .stTabs [data-baseweb="tab-list"]{overflow-x:auto;flex-wrap:nowrap}
   .stTabs [data-baseweb="tab"]{padding:6px 10px;white-space:nowrap}
+  /* header rows (a title next to a toggle or a button) and three-way rows stack fully on phones */
+  [data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"] [data-testid="stMarkdownContainer"] h4) > [data-testid="stColumn"]{flex-basis:100%!important;min-width:100%!important}
+  [data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"]:nth-child(3):last-child) > [data-testid="stColumn"]{flex-basis:100%!important;min-width:100%!important}
+  h4,.stApp [data-testid="stMarkdownContainer"] h4{font-size:1.15rem!important}
   .sb-status{font-size:11.5px}
 }
 @media (pointer: coarse){
