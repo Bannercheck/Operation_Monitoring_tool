@@ -38,6 +38,7 @@ from watchover import assistant as wo_assistant
 from watchover import sources as wo_sources
 from watchover import report as wo_report
 from watchover import history as wo_history
+from watchover import notify as wo_notify
 from watchover import autolearn as wo_learn
 from watchover import inventory as wo_inv
 from watchover import auth as wo_auth
@@ -530,6 +531,26 @@ def users() -> wo_auth.Users:
     return _singleton("users", wo_auth.Users, lambda: wo_auth.Users(knowledge()))
 
 
+def notify_channels() -> dict:
+    """SMTP and SMS gateway settings from config.json (0600) — read at send time so edits apply without a restart."""
+    c = wo_settings.load()
+    return {"email": {"host": c.get("smtp_host", ""), "port": c.get("smtp_port", 587), "security": c.get("smtp_security", "starttls"), "user": c.get("smtp_user", ""),
+                      "password": c.get("smtp_password", ""), "from_addr": c.get("smtp_from", ""), "from_name": c.get("smtp_from_name", "Watchover")},
+            "sms": {k[4:]: c.get(k, "") for k in ("sms_preset", "sms_url", "sms_method", "sms_auth", "sms_user", "sms_password", "sms_token", "sms_from", "sms_account", "sms_body", "sms_content_type")}}
+
+
+def notifier() -> wo_notify.Notifier:
+    return _singleton("notifier", wo_notify.Notifier, lambda: wo_notify.Notifier(knowledge(), notify_channels))
+
+
+def alert_engine() -> wo_notify.AlertEngine:
+    """Evaluates the alert rules against the live feed every minute (only when alerts are switched on)."""
+    def make():
+        eng = wo_notify.AlertEngine(notifier(), live_store(), agents(), sources())
+        return eng.start() if st.session_state.get("alerts_on", True) else eng
+    return _singleton("alert_engine", wo_notify.AlertEngine, make)
+
+
 def llm_cfg() -> LLMConfig:
     ss = st.session_state
     if "llm_base" not in ss and not os.environ.get("LLM_BASE_URL"):       # first run: adopt a local Ollama if there is one
@@ -1010,7 +1031,9 @@ def login_forms() -> None:
                     st.error(t("login_sso_err", e=e))
         if ss.get("auth_local"):
             st.markdown(f'<div class="muted" style="text-align:center;font-size:11px;margin:8px 0 4px">— {t("login_or")} —</div>', unsafe_allow_html=True)
-    if ss.get("auth_local"):
+    if not auth_enabled():
+        st.info(t("login_off_hint"))
+    if ss.get("auth_local") or not auth_enabled():
         tabs = st.tabs([t("login_tab_in"), t("login_tab_up")]) if (ss.get("auth_self_register", True) or first) else [st.container()]
         with tabs[0]:
             if first:
@@ -1093,10 +1116,15 @@ with st.sidebar:
         st.markdown('<div class="sb-status">' + "<br>".join(f'<span class="dot" style="background:{c};box-shadow:0 0 0 3px {c}33"></span>{txt}' for c, txt in rows) + "</div>", unsafe_allow_html=True)
 
     _status()
-    if auth_enabled():
+    if True:                                                     # account card is always shown: who is signed in, or that sign-in is off
         st.markdown(f'<div class="sb-cap">{upper(t("sb_account"))}</div>', unsafe_allow_html=True)
         _u = current_user()
-        if _u:
+        if not _u and not auth_enabled():
+            st.markdown(f'<div class="sb-user off"><span class="av">👤</span><div><div class="nm">{t("login_off_title")}</div><div class="em">{t("login_off_sub")}</div>'
+                        f'<span class="role r-admin">{t("role_admin")} · {t("login_off_role")}</span></div></div>', unsafe_allow_html=True)
+            if st.button(f"🔐 {t('login_open')}", key="sb-login-off", **wide("button"), help=t("login_enable_help")):
+                st.session_state["login_open"] = True
+        elif _u:
             uc1, uc2 = st.columns([3.2, 1])
             _ini = (_u.get("name") or _u["email"])[:1].upper()
             uc1.markdown(f'<div class="sb-user"><span class="av">{esc(_ini)}</span><div><div class="nm">{esc(_u.get("name") or _u["email"])}</div>'
@@ -1122,6 +1150,7 @@ with st.sidebar:
 _srv = receiver(int(st.session_state.get("live_port", LIVE_PORT)), st.session_state.get("live_key", ""))
 _poller = source_poller()                                       # pull sources (Elasticsearch, Loki, Splunk, Graylog, HTTP) poll in the background
 _hist = history()                                               # minute rollups for weekly / monthly service-level reports
+_alerts = alert_engine()                                        # e-mail / SMS alert rules evaluated against the live feed
 _learn = learner()                                              # live learning: patterns from the live feed land in the knowledge base
 _inv = inventory()                                              # inventory matching on every incoming event
 set_simulation(bool(st.session_state.get("sim_on", False)))
@@ -2040,6 +2069,195 @@ def _action_card(col, key: str, icon: str, title: str, body: str, label: str, fn
             fn()
 
 
+def notify_tab() -> None:
+    """Sistem › Bildirimler: SMTP / SMS channels, recipients (people and mail groups), alert rules, delivery log."""
+    ss = st.session_state
+    nf, eng = notifier(), alert_engine()
+    h1, h2, h3 = st.columns([5, 1.6, 0.5])
+    h1.markdown(f"#### {t('ntf_title')}")
+    on = h2.toggle(t("ntf_on"), value=bool(ss.get("alerts_on", True)), key="ntf_on_tg")
+    if on != bool(ss.get("alerts_on", True)):
+        ss["alerts_on"] = on; wo_settings.save({"alerts_on": on})
+        if on and not any(th.name == "alert-engine" and th.is_alive() for th in __import__("threading").enumerate()):
+            eng.start()
+        st.rerun()
+    with h3:
+        info_btn("ntf_info")
+    al = nf.alerts(200)
+    day = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat(timespec="seconds")
+    chips = [("#2dd4bf" if on else "#64748b", t("on") if on else t("off")), ("#60a5fa", f"{len(nf.rules())} {t('ntf_rules')}"), ("#a78bfa", f"{len(nf.recipients())} {t('ntf_people')} · {len(nf.groups())} {t('ntf_groups')}"),
+             ("#fbbf24", f"{sum(1 for a in al if a['ts'] >= day)} {t('ntf_last24')}"), ("#94a0b4", f"{t('ntf_last_run')} {eng.last_run[11:19] or '-'} · {eng.runs} {t('src_polls')}")]
+    st.markdown('<div class="chips">' + "".join(f'<span class="chip"><span class="d" style="background:{c}"></span>{esc(str(x))}</span>' for c, x in chips) + "</div>", unsafe_allow_html=True)
+    s_ch, s_rc, s_ru, s_log = st.tabs([t("ntf_tab_ch"), f"{t('ntf_tab_rc')} · {len(nf.recipients()) + len(nf.groups())}", f"{t('ntf_tab_rules')} · {len(nf.rules())}", f"{t('ntf_tab_log')} · {len(al)}"])
+    cfg = wo_settings.load()
+
+    with s_ch:
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown(f'<div class="card act2"><div class="act2-t">✉️ {t("ntf_email")}</div><div class="act2-b">{t("ntf_email_body")}</div></div>', unsafe_allow_html=True)
+            with st.form("smtp-form", border=False):
+                a, b = st.columns([3, 1])
+                host = a.text_input("SMTP host", value=cfg.get("smtp_host", ""), placeholder="smtp.sirket.com")
+                port = b.number_input("Port", value=int(cfg.get("smtp_port", 587) or 587), min_value=1, max_value=65535)
+                sec = st.selectbox(t("ntf_security"), ["starttls", "ssl", "none"], index=["starttls", "ssl", "none"].index(cfg.get("smtp_security", "starttls")))
+                a, b = st.columns(2)
+                user = a.text_input(t("ntf_user"), value=cfg.get("smtp_user", ""))
+                pw = b.text_input(t("ntf_password"), value=cfg.get("smtp_password", ""), type="password")
+                a, b = st.columns(2)
+                frm = a.text_input(t("ntf_from"), value=cfg.get("smtp_from", ""), placeholder="watchover@sirket.com")
+                frn = b.text_input(t("ntf_from_name"), value=cfg.get("smtp_from_name", "Watchover"))
+                if st.form_submit_button(f"💾 {t('ntf_save')}", type="primary", **wide("form_submit_button")):
+                    vals = {"smtp_host": host.strip(), "smtp_port": int(port), "smtp_security": sec, "smtp_user": user.strip(), "smtp_password": pw, "smtp_from": frm.strip(), "smtp_from_name": frn.strip() or "Watchover"}
+                    ss.update(vals); wo_settings.save(vals); st.success(t("ntf_saved"))
+            a, b = st.columns([3, 1.2])
+            to = a.text_input(t("ntf_test_to"), key="ntf_test_mail", placeholder="siz@sirket.com", label_visibility="collapsed")
+            if b.button(f"📨 {t('ntf_test')}", key="ntf_test_mail_btn", **wide("button")) and to:
+                ok, msg = nf.test_channel("email", to.strip())
+                (st.success if ok else st.error)(t("ntf_test_ok") if ok else t("ntf_test_fail", e=msg))
+        with c2:
+            st.markdown(f'<div class="card act2"><div class="act2-t">📱 {t("ntf_sms")}</div><div class="act2-b">{t("ntf_sms_body")}</div></div>', unsafe_allow_html=True)
+            presets = list(wo_notify.SMS_PRESETS)
+            preset = st.selectbox(t("ntf_provider"), presets, index=presets.index(cfg.get("sms_preset", "http")) if cfg.get("sms_preset", "http") in presets else 2,
+                                  format_func=lambda k: wo_notify.SMS_PRESETS[k]["label"], key="ntf_sms_preset")
+            pre = wo_notify.SMS_PRESETS[preset]
+            with st.form("sms-form", border=False):
+                if preset == "twilio":
+                    a, b = st.columns(2)
+                    acc = a.text_input("Account SID", value=cfg.get("sms_account", ""))
+                    tok = b.text_input("Auth token", value=cfg.get("sms_token", ""), type="password")
+                    frm_s = st.text_input(t("ntf_sms_from"), value=cfg.get("sms_from", ""), placeholder="+1415…")
+                    vals = {"sms_preset": preset, "sms_account": acc.strip(), "sms_token": tok.strip(), "sms_from": frm_s.strip(), "sms_url": "", "sms_body": "", "sms_method": pre["method"], "sms_auth": pre["auth"], "sms_content_type": pre["content_type"]}
+                elif preset == "netgsm":
+                    a, b = st.columns(2)
+                    usr = a.text_input(t("ntf_user"), value=cfg.get("sms_user", ""))
+                    pws = b.text_input(t("ntf_password"), value=cfg.get("sms_password", ""), type="password")
+                    frm_s = st.text_input(t("ntf_sms_header"), value=cfg.get("sms_from", ""))
+                    vals = {"sms_preset": preset, "sms_user": usr.strip(), "sms_password": pws, "sms_from": frm_s.strip(), "sms_url": "", "sms_body": "", "sms_method": pre["method"], "sms_auth": pre["auth"], "sms_content_type": pre["content_type"]}
+                else:
+                    url = st.text_input("URL", value=cfg.get("sms_url", "") or pre["url"], help=t("ntf_sms_placeholders"))
+                    a, b, c = st.columns(3)
+                    meth = a.selectbox(t("ntf_method"), ["POST", "GET"], index=0 if (cfg.get("sms_method", "POST") or "POST").upper() == "POST" else 1)
+                    auth = b.selectbox(t("ntf_auth"), ["bearer", "basic", "none"], index=["bearer", "basic", "none"].index(cfg.get("sms_auth", "bearer") or "bearer"))
+                    ctype = c.selectbox("Content-Type", ["application/json", "application/x-www-form-urlencoded"], index=0 if "json" in (cfg.get("sms_content_type") or "json") else 1)
+                    a, b = st.columns(2)
+                    tok = a.text_input(t("ntf_token"), value=cfg.get("sms_token", ""), type="password")
+                    frm_s = b.text_input(t("ntf_sms_from"), value=cfg.get("sms_from", ""))
+                    body = st.text_area(t("ntf_body_tpl"), value=cfg.get("sms_body", "") or pre["body"], height=70)
+                    vals = {"sms_preset": preset, "sms_url": url.strip(), "sms_method": meth, "sms_auth": auth, "sms_content_type": ctype, "sms_token": tok.strip(), "sms_from": frm_s.strip(), "sms_body": body}
+                if st.form_submit_button(f"💾 {t('ntf_save')}", type="primary", **wide("form_submit_button")):
+                    ss.update(vals); wo_settings.save(vals); st.success(t("ntf_saved"))
+            a, b = st.columns([3, 1.2])
+            to = a.text_input(t("ntf_test_to_sms"), key="ntf_test_sms", placeholder="+90555…", label_visibility="collapsed")
+            if b.button(f"📨 {t('ntf_test')}", key="ntf_test_sms_btn", **wide("button")) and to:
+                ok, msg = nf.test_channel("sms", to.strip())
+                (st.success if ok else st.error)(t("ntf_test_ok") if ok else t("ntf_test_fail", e=msg))
+
+    with s_rc:
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown(f"##### {t('ntf_add_person')}")
+            with st.form("rc-form", clear_on_submit=True, border=False):
+                a, b = st.columns(2)
+                nm = a.text_input(t("ntf_name"), placeholder="Ayşe Yılmaz")
+                gr = b.text_input(t("ntf_groups_of"), placeholder="ops, dba", help=t("ntf_groups_help"))
+                a, b = st.columns(2)
+                em = a.text_input("E-mail", placeholder="ayse@sirket.com")
+                ph = b.text_input(t("ntf_phone"), placeholder="+905551112233")
+                if st.form_submit_button(f"＋ {t('ntf_add')}", type="primary", **wide("form_submit_button")):
+                    try:
+                        nf.add_recipient(nm, em, ph, gr); st.success(t("ntf_saved")); st.rerun()
+                    except ValueError:
+                        st.error(t("ntf_need_contact"))
+        with c2:
+            st.markdown(f"##### {t('ntf_add_group')}")
+            with st.form("grp-form", clear_on_submit=True, border=False):
+                a, b = st.columns(2)
+                gn = a.text_input(t("ntf_group_name"), placeholder="ops")
+                ge = b.text_input(t("ntf_group_mail"), placeholder="ops-team@sirket.com", help=t("ntf_group_mail_help"))
+                gnote = st.text_input(t("ntf_note"), placeholder=t("ntf_group_note_ph"))
+                if st.form_submit_button(f"＋ {t('ntf_add')}", **wide("form_submit_button")):
+                    if gn.strip():
+                        try:
+                            nf.add_group(gn, ge, gnote); st.success(t("ntf_saved")); st.rerun()
+                        except Exception:  # noqa: BLE001
+                            st.error(t("ntf_group_dup"))
+        recs, grps = nf.recipients(), nf.groups()
+        if grps:
+            st.markdown(f"##### {t('ntf_h_groups')}")
+            for g in grps:
+                a, b = st.columns([8, 1])
+                mem = [r["name"] for r in recs if g["name"] in [x.strip() for x in r["groups"].split(",")]]
+                _gm = f" · {esc(g['email'])}" if g["email"] else ""
+                _mem = (": " + esc(", ".join(mem))) if mem else ""
+                _note = f" · {esc(g['note'])}" if g["note"] else ""
+                a.markdown(f'<div class="card svc"><div class="svc-h">👥 <b>{esc(g["name"])}</b>{_gm}</div><div class="svc-v">{len(mem)} {t("ntf_members")}{_mem}{_note}</div></div>', unsafe_allow_html=True)
+                if b.button("🗑", key=f"gdel{g['id']}", help=t("ntf_delete")):
+                    nf.delete_group(g["id"]); st.rerun()
+        if recs:
+            st.markdown(f"##### {t('ntf_h_people')}")
+            for r in recs:
+                a, b, c = st.columns([7, 1, 1])
+                _dot = "#2dd4bf" if r["enabled"] else "#64748b"
+                _contact = "".join(f" · {esc(x)}" for x in (r["email"], r["phone"]) if x)
+                a.markdown(f'<div class="card svc"><div class="svc-h"><span class="d" style="background:{_dot}"></span>👤 <b>{esc(r["name"])}</b>{_contact}</div>'
+                           f'<div class="svc-v">{t("ntf_groups_of")}: {esc(r["groups"] or "-")}</div></div>', unsafe_allow_html=True)
+                if b.button("🔕" if r["enabled"] else "🔔", key=f"rtg{r['id']}", help=t("ntf_toggle")):
+                    nf.update_recipient(r["id"], enabled=not r["enabled"]); st.rerun()
+                if c.button("🗑", key=f"rdel{r['id']}", help=t("ntf_delete")):
+                    nf.delete_recipient(r["id"]); st.rerun()
+        if not recs and not grps:
+            st.info(t("ntf_no_rc"))
+
+    with s_ru:
+        st.markdown(f"##### {t('ntf_add_rule')}")
+        with st.form("rule-form", clear_on_submit=True, border=False):
+            a, b, c = st.columns([2, 2, 1])
+            rn = a.text_input(t("ntf_rule_name"), placeholder=t("ntf_rule_name_ph"))
+            cond = b.selectbox(t("ntf_condition"), list(wo_notify.CONDITIONS), format_func=lambda k: t("ntf_c_" + k))
+            thr = c.number_input(t("ntf_threshold"), value=0.0, min_value=0.0, help=t("ntf_threshold_help"))
+            a, b, c, d = st.columns([1.2, 1.2, 1.5, 1])
+            env = a.text_input(t("ntf_env"), placeholder=t("ntf_all"), help=t("ntf_env_help"))
+            sev = b.selectbox(t("severity").capitalize(), list(wo_notify.SEVERITIES), index=1)
+            ch = c.multiselect(t("ntf_channels"), ["email", "sms"], default=["email"], format_func=lambda x: {"email": "✉️ E-mail", "sms": "📱 SMS"}[x])
+            cd = d.number_input(t("ntf_cooldown"), value=30, min_value=1, max_value=1440)
+            tg = st.text_input(t("ntf_targets"), placeholder="ops, @dba, ayse@sirket.com, +905551112233", help=t("ntf_targets_help"))
+            if st.form_submit_button(f"＋ {t('ntf_add')}", type="primary", **wide("form_submit_button")):
+                if rn.strip() and tg.strip() and ch:
+                    nf.add_rule(rn, cond, thr, env, sev, ",".join(ch), tg, int(cd)); st.success(t("ntf_saved")); st.rerun()
+                else:
+                    st.error(t("ntf_rule_need"))
+        rules = nf.rules()
+        if rules:
+            a, b = st.columns([6, 1.4])
+            a.markdown(f"##### {t('ntf_h_rules')}")
+            if b.button(f"⚡ {t('ntf_eval_now')}", key="ntf_eval", **wide("button")):
+                out = eng.evaluate()
+                st.info(t("ntf_eval_res", n=sum(1 for o in out if o.get("ts")), s=sum(1 for o in out if o.get("skipped")), e=sum(1 for o in out if o.get("error"))))
+            for r in rules:
+                a, b, c = st.columns([7, 1, 1])
+                ems, phs = nf.resolve(r["targets"])
+                _dot = "#2dd4bf" if r["enabled"] else "#64748b"
+                _thr = f" ≥ {r['threshold']:g}" if r["threshold"] else ""
+                _env = f" · {esc(r['env'])}" if r["env"] else ""
+                _rc = "admin" if r["severity"] in ("critical", "high") else "operator"
+                a.markdown(f'<div class="card svc"><div class="svc-h"><span class="d" style="background:{_dot}"></span><b>{esc(r["name"])}</b> · {t("ntf_c_" + r["condition"])}{_thr}{_env} '
+                           f'<span class="role r-{_rc}">{esc(r["severity"])}</span></div>'
+                           f'<div class="svc-v">{esc(r["channels"])} → {esc(r["targets"])} · {len(ems)} ✉️ {len(phs)} 📱 · {t("ntf_cooldown")} {r["cooldown_min"]} dk</div></div>', unsafe_allow_html=True)
+                if b.button("🔕" if r["enabled"] else "🔔", key=f"rutg{r['id']}", help=t("ntf_toggle")):
+                    nf.update_rule(r["id"], enabled=not r["enabled"]); st.rerun()
+                if c.button("🗑", key=f"rudel{r['id']}", help=t("ntf_delete")):
+                    nf.delete_rule(r["id"]); st.rerun()
+        else:
+            st.info(t("ntf_no_rules"))
+
+    with s_log:
+        if al:
+            st.dataframe(pd.DataFrame([{t("time").capitalize(): a["ts"][:19].replace("T", " "), t("severity").capitalize(): a["severity"], t("ntf_rule_name"): a["title"], t("ntf_channels"): a["channels"], t("ntf_targets"): a["recipients"],
+                                        t("sec_ok").capitalize(): "✓" if a["ok"] else "✗", t("sec_detail").capitalize(): a["detail"]} for a in al]), hide_index=True, height=380, **wide("dataframe"))
+        else:
+            st.info(t("ntf_no_log"))
+
+
 def page_system() -> None:
     ss = st.session_state
     u = current_user()
@@ -2052,7 +2270,8 @@ def page_system() -> None:
     chips = [("#2dd4bf", f"git {vi['git'][:7] or '-'}"), ("#60a5fa", f"{t('sys_uptime')} {vi['uptime_s'] // 3600}h {(vi['uptime_s'] % 3600) // 60}m"),
              ("#a78bfa", f"Streamlit {vi['streamlit']} · Python {vi['python']}"), ("#2dd4bf" if vi["launcher"] else "#fbbf24", t("sys_launcher_ok") if vi["launcher"] else t("sys_launcher_none"))]
     st.markdown('<div class="chips">' + "".join(f'<span class="chip"><span class="d" style="background:{c}"></span>{esc(str(x))}</span>' for c, x in chips) + "</div>", unsafe_allow_html=True)
-    tab_st, tab_m, tab_upd, tab_users, tab_auth, tab_sec = st.tabs([t("sys_tab_status"), t("sys_tab_maint"), t("sys_tab_update"), f"{t('sys_tab_users')} · {us.count()}", t("sys_tab_auth"), t("sys_tab_security")])
+    tab_st, tab_m, tab_upd, tab_users, tab_auth, tab_ntf, tab_sec = st.tabs([t("sys_tab_status"), t("sys_tab_maint"), t("sys_tab_update"), f"{t('sys_tab_users')} · {us.count()}", t("sys_tab_auth"),
+                                                                            f"{t('sys_tab_notify')} · {len(notifier().rules())}", t("sys_tab_security")])
 
     with tab_st:
         h = history(); p = source_poller(); lr = learner(); di = wo_admin.db_info(kb)
@@ -2070,6 +2289,9 @@ def page_system() -> None:
         _svc_card(c[0], t("learn_title"), f"{t('learn_every')}: {lr.interval_min} · {lr.runs} {t('src_polls')}", lr.interval_min > 0, "🧠")
         _svc_card(c[1], t("sim_mode"), t("on") if ss.get("sim_on") else t("off"), None if not ss.get("sim_on") else True, "🧪")
         _svc_card(c[2], t("inv_page"), f"{inventory().stats(ls.hosts())['matched']}/{len(ls.hosts())} {t('inv_matched')}", None, "🗂")
+        c = st.columns(3)
+        _ae = alert_engine()
+        _svc_card(c[0], t("ntf_title"), f"{len(notifier().rules())} {t('ntf_rules')} · {_ae.runs} {t('src_polls')} · {t('ntf_last_run')} {_ae.last_run[11:19] or '-'}", bool(ss.get("alerts_on", True)), "🔔")
         with st.expander(t("sys_facts")):
             st.code("\n".join(f"{k_}: {v}" for k_, v in vi.items()), language=None)
             if di["tables"]:
@@ -2208,6 +2430,9 @@ def page_system() -> None:
             ss.update(vals); wo_settings.save(vals); st.toast(t("cfg_saved"), icon="💾")
             if a_local and us.count() == 0:
                 st.info(t("auth_first_admin"))
+
+    with tab_ntf:
+        notify_tab()
 
     with tab_sec:
         st.caption(t("sec_log_lead"))

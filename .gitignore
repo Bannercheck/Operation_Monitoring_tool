@@ -24,3 +24,5 @@ data/live/
 Thumbs.db
 .idea/
 .vscode/
+
+data/config.json
