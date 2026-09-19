@@ -55,9 +55,9 @@ Uygulama giriş yapılmadan hiçbir bilgi göstermez. İlk açılışta yerleşi
 | Alan | Değer |
 |---|---|
 | E-posta | `admin@watchover.local` |
-| Başlangıç parolası | `Watchover2026!` |
+| Başlangıç parolası | `data/initial-admin.txt` dosyasında (rastgele, tek kullanımlık; konsola da bir kez basılır) |
 
-İlk girişin hemen ardından yeni bir parola istenir; başlangıç parolası korunamaz. Diğer hesaplar Sistem › Kullanıcılar sekmesinden açılır (kendi kendine kayıt varsayılan olarak kapalıdır). Parolalar yalnız scrypt karması olarak, SMTP / SMS / LLM / SSO sırları ise `data/.vault.key` anahtarıyla şifreli saklanır; yedek alırken `data/` klasörünü anahtar dosyasıyla birlikte alın.
+İlk girişin hemen ardından yeni bir parola istenir; parola değişince dosya silinir. Google, Microsoft 365 / Exchange, Apple ve kurumsal OpenID Connect girişleri Sistem › Giriş sekmesinden açılır. Diğer hesaplar Sistem › Kullanıcılar sekmesinden açılır (kendi kendine kayıt varsayılan olarak kapalıdır). Parolalar yalnız scrypt karması olarak, SMTP / SMS / LLM / SSO sırları ise `data/.vault.key` anahtarıyla şifreli saklanır; yedek alırken `data/` klasörünü anahtar dosyasıyla birlikte alın.
 
 ## 3. Alıcı: adres, port, güvenlik duvarı
 

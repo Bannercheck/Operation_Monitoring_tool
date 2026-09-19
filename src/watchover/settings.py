@@ -12,9 +12,10 @@ from pathlib import Path
 DEFAULTS = {"setup_done": False, "lang": "tr", "workspace": "", "llm_provider": "auto", "llm_base": "", "llm_model": "", "llm_key": "", "llm_embed": "",
             "live_port": int(os.environ.get("LIVE_PORT", "8600") or 8600),      # the env var is what the receiver actually binds
             "live_key": "", "public_host": "", "sim_on": False, "learn_min": 15, "auth_local": False, "auth_google": False, "auth_oidc": False, "google_client_id": "", "google_client_secret": "", "auth_self_register": False, "auth_domains": "", "oidc_issuer": "", "oidc_client_id": "", "oidc_client_secret": "", "oidc_redirect": "http://localhost:8501/oauth2callback",
+            "auth_apple": False, "apple_client_id": "", "apple_team_id": "", "apple_key_id": "", "apple_private_key": "", "auth_microsoft": False, "ms_tenant": "common", "ms_client_id": "", "ms_client_secret": "",
             "alerts_on": True, "smtp_host": "", "smtp_port": 587, "smtp_security": "starttls", "smtp_user": "", "smtp_password": "", "smtp_from": "", "smtp_from_name": "Watchover",
             "sms_preset": "http", "sms_url": "", "sms_method": "POST", "sms_auth": "bearer", "sms_user": "", "sms_password": "", "sms_token": "", "sms_from": "", "sms_account": "", "sms_body": "", "sms_content_type": "application/json", "demo_on_start": False, "version": 1}
-SESSION_KEYS = ("lang", "llm_provider", "llm_base", "llm_model", "llm_key", "llm_embed", "live_port", "live_key", "public_host", "sim_on", "learn_min", "auth_local", "auth_google", "auth_oidc", "google_client_id", "google_client_secret", "auth_self_register", "auth_domains", "oidc_issuer", "oidc_client_id", "oidc_client_secret", "oidc_redirect",
+SESSION_KEYS = ("lang", "llm_provider", "llm_base", "llm_model", "llm_key", "llm_embed", "live_port", "live_key", "public_host", "sim_on", "learn_min", "auth_local", "auth_google", "auth_oidc", "google_client_id", "google_client_secret", "auth_self_register", "auth_domains", "oidc_issuer", "oidc_client_id", "oidc_client_secret", "oidc_redirect", "auth_apple", "apple_client_id", "apple_team_id", "apple_key_id", "apple_private_key", "auth_microsoft", "ms_tenant", "ms_client_id", "ms_client_secret",
                 "alerts_on", "smtp_host", "smtp_port", "smtp_security", "smtp_user", "smtp_password", "smtp_from", "smtp_from_name",
                 "sms_preset", "sms_url", "sms_method", "sms_auth", "sms_user", "sms_password", "sms_token", "sms_from", "sms_account", "sms_body", "sms_content_type")
 
@@ -29,7 +30,7 @@ def path() -> Path:
     return home() / "config.json"
 
 
-SECRET_KEYS = ("llm_key", "live_key", "google_client_secret", "oidc_client_secret", "smtp_password", "sms_password", "sms_token")   # encrypted at rest (vault.py)
+SECRET_KEYS = ("llm_key", "live_key", "google_client_secret", "oidc_client_secret", "smtp_password", "sms_password", "sms_token", "apple_private_key", "ms_client_secret")   # encrypted at rest (vault.py)
 
 
 def load() -> dict:

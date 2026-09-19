@@ -15,6 +15,7 @@ import hmac
 import os
 import re
 import secrets
+import time
 from datetime import datetime, timedelta, timezone
 
 UTC = timezone.utc
@@ -22,7 +23,31 @@ ROLES = ("admin", "operator", "viewer")
 PROVIDERS = ("local", "google", "oidc")
 SCRYPT = {"n": 2 ** 15, "r": 8, "p": 2}
 LOCK_FAILURES, LOCK_MINUTES = 5, 15
-INITIAL_EMAIL, INITIAL_PASSWORD = "admin@watchover.local", "Watchover2026!"     # built-in administrator; the password must be changed at first sign-in
+INITIAL_EMAIL = "admin@watchover.local"                   # built-in administrator; a random initial password lands in data/initial-admin.txt (0600)
+APPLE_METADATA = "https://appleid.apple.com/.well-known/openid-configuration"
+MS_METADATA = "https://login.microsoftonline.com/{tenant}/v2.0/.well-known/openid-configuration"
+
+
+def initial_password_file():
+    from . import settings
+    return settings.home() / "initial-admin.txt"
+
+
+def _random_password(n: int = 14) -> str:
+    alphabet = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    while True:
+        pw = "".join(secrets.choice(alphabet) for _ in range(n))
+        if not password_policy(pw):
+            return pw
+
+
+def apple_client_secret(team_id: str, key_id: str, client_id: str, private_key_pem: str, days: int = 180) -> str:
+    """Sign in with Apple wants the client secret as an ES256 JWT signed with the .p8 key from the developer portal."""
+    from authlib.jose import jwt
+    now = int(time.time())
+    header = {"alg": "ES256", "kid": key_id.strip()}
+    claims = {"iss": team_id.strip(), "iat": now, "exp": now + days * 86400, "aud": "https://appleid.apple.com", "sub": client_id.strip()}
+    return jwt.encode(header, claims, private_key_pem.strip().encode("utf-8")).decode("ascii")
 MIN_PASSWORD = 10
 _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 GOOGLE_METADATA = "https://accounts.google.com/.well-known/openid-configuration"
@@ -74,15 +99,23 @@ class Users:
         kb._exec("CREATE INDEX IF NOT EXISTS auth_events_email ON auth_events(email, ts)")
 
     # ---- queries
-    def bootstrap(self, email: str = "", password: str = "") -> bool:
-        """No accounts yet: create the built-in administrator with the initial password, which must be changed at first sign-in."""
+    def bootstrap(self, email: str = "", password: str = "") -> str:
+        """No accounts yet: create the built-in administrator with a random initial password that is written to data/initial-admin.txt
+        (mode 0600) and printed once on the console; it must be changed at first sign-in. Returns the password, '' when nothing was done."""
         if self.count():
-            return False
-        email, password = email or INITIAL_EMAIL, password or INITIAL_PASSWORD
+            return ""
+        email, password = email or INITIAL_EMAIL, password or _random_password()
         self.kb._exec("INSERT INTO users (email, name, pw_hash, role, status, provider, created_at, must_change) VALUES (?,?,?,?,?,?,?,1)",
                       (email, "Administrator", _hash(password), "admin", "active", "local", datetime.now(UTC).isoformat(timespec="seconds")))
         self._event(email, "bootstrap", True, "built-in administrator created")
-        return True
+        try:
+            f = initial_password_file()
+            f.write_text(f"Watchover built-in administrator\nemail: {email}\ninitial password: {password}\n(change it at first sign-in; this file is removed afterwards)\n", encoding="utf-8")
+            os.chmod(f, 0o600)
+            print(f"[watchover] built-in administrator {email} created; initial password in {f}", flush=True)
+        except OSError:
+            print(f"[watchover] built-in administrator {email} created; initial password: {password}", flush=True)
+        return password
 
     def initial_password_active(self) -> bool:
         """True while the built-in administrator still carries the initial password (shown as a hint on the sign-in page)."""
@@ -194,6 +227,11 @@ class Users:
         self.kb._exec("UPDATE users SET pw_hash=?, must_change=0 WHERE id=?", (_hash(password), uid))
         rows = self.kb._exec("SELECT email FROM users WHERE id=?", (uid,))
         self._event(rows[0]["email"] if rows else str(uid), "password_change", True)
+        if rows and rows[0]["email"] == INITIAL_EMAIL:
+            try:
+                initial_password_file().unlink(missing_ok=True)      # the initial password is spent
+            except OSError:
+                pass
 
     def delete(self, uid: int) -> None:
         if self._is_last_admin(uid):
@@ -217,6 +255,12 @@ def secrets_toml(redirect_uri: str, providers: dict, cookie_secret: str = "") ->
     g = providers.get("google")
     if g:
         out.append(f'[auth.google]\nclient_id = "{_esc(g["client_id"])}"\nclient_secret = "{_esc(g["client_secret"])}"\nserver_metadata_url = "{GOOGLE_METADATA}"\n')
+    a = providers.get("apple")
+    if a:
+        out.append(f'[auth.apple]\nclient_id = "{_esc(a["client_id"])}"\nclient_secret = "{_esc(a["client_secret"])}"\nserver_metadata_url = "{APPLE_METADATA}"\nclient_kwargs = {{ scope = "openid" }}\n')
+    m = providers.get("microsoft")
+    if m:
+        out.append(f'[auth.microsoft]\nclient_id = "{_esc(m["client_id"])}"\nclient_secret = "{_esc(m["client_secret"])}"\nserver_metadata_url = "{_esc(MS_METADATA.format(tenant=m.get("tenant") or "common"))}"\n')
     o = providers.get("oidc")
     if o:
         meta = o["issuer"].rstrip("/") + "/.well-known/openid-configuration"

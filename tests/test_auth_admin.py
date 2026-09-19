@@ -124,13 +124,19 @@ def test_bootstrap_admin_and_forced_change(tmp_path):
     from watchover.knowledge import Knowledge
     from watchover import auth as wo_auth
     us = wo_auth.Users(Knowledge(str(tmp_path / "k.db")))
-    assert us.bootstrap() and not us.bootstrap() and us.count() == 1 and us.initial_password_active()
-    u = us.login(wo_auth.INITIAL_EMAIL, wo_auth.INITIAL_PASSWORD)
+    monkeypatch_home = tmp_path / "home"; monkeypatch_home.mkdir()
+    import os; os.environ["WATCHOVER_HOME"] = str(monkeypatch_home)
+    pw = us.bootstrap()
+    assert pw and not us.bootstrap() and us.count() == 1 and us.initial_password_active()
+    f = wo_auth.initial_password_file()
+    assert f.exists() and pw in f.read_text() and oct(f.stat().st_mode & 0o777) == "0o600"
+    u = us.login(wo_auth.INITIAL_EMAIL, pw)
     assert u and u["role"] == "admin" and u["must_change"] is True
     assert us.get(wo_auth.INITIAL_EMAIL)["pw_hash"].startswith("scrypt$")      # never the clear text
     us.change_password(u["id"], "Yeni-Parola-2026")
     assert not us.initial_password_active() and us.login(wo_auth.INITIAL_EMAIL, "Yeni-Parola-2026")["must_change"] is False
-    assert us.login(wo_auth.INITIAL_EMAIL, wo_auth.INITIAL_PASSWORD) is None
+    assert us.login(wo_auth.INITIAL_EMAIL, pw) is None and not f.exists()          # the initial password is spent and its file removed
+    os.environ.pop("WATCHOVER_HOME", None)
 
 
 def test_vault_encrypts_settings_and_source_secrets(tmp_path, monkeypatch):
@@ -169,3 +175,18 @@ def test_version_snapshot_and_rollback(tmp_path, monkeypatch):
     assert len(admin.versions()) == 2 and admin.versions()[0]["reason"].startswith("before rollback")
     admin.delete_version(m["id"]); assert len(admin.versions()) == 1
     assert admin.prune_versions(0) == 1 and admin.versions() == []
+
+
+def test_apple_and_microsoft_secrets(tmp_path):
+    from watchover import auth as wo_auth
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.hazmat.primitives import serialization
+    key = ec.generate_private_key(ec.SECP256R1())
+    pem = key.private_key().private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()).decode() if hasattr(key, "private_key") else key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()).decode()
+    tok = wo_auth.apple_client_secret("TEAM1", "KEY1", "com.corp.watchover", pem)
+    from authlib.jose import jwt
+    claims = jwt.decode(tok, key.public_key().public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo))
+    assert claims["iss"] == "TEAM1" and claims["sub"] == "com.corp.watchover" and claims["aud"] == "https://appleid.apple.com"
+    body = wo_auth.secrets_toml("http://localhost:8501/oauth2callback", {"apple": {"client_id": "com.corp.watchover", "client_secret": tok}, "microsoft": {"tenant": "t-1", "client_id": "c", "client_secret": "s"}})
+    assert "[auth.apple]" in body and "appleid.apple.com" in body and 'scope = "openid"' in body
+    assert "[auth.microsoft]" in body and "login.microsoftonline.com/t-1/v2.0/.well-known" in body
