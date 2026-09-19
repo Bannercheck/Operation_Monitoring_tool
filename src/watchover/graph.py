@@ -47,7 +47,7 @@ def dependency_edges(observations: list[Observation], errors_only: bool = True) 
 def build_map(analysis, incident_id: str | None = None, env: str | None = None, host: str | None = None,
               with_hosts: bool = True) -> dict:
     """Nodes / edges for the error map. incident_id=None means every incident (root causes of all)."""
-    obs = [o for o in analysis.observations if (not env or (o.environment or "unknown") == env) and (not host or o.host == host)]
+    obs = [o for o in analysis.observations if (not env or (o.environment or "unknown") == env) and (not host or (o.host == host if isinstance(host, str) else o.host in host))]
     incs = [i for i in analysis.incidents if incident_id is None or i.id == incident_id]
     root_svcs: set[str] = set()
     affected: set[str] = set()

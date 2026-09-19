@@ -26,6 +26,11 @@ from .pipeline import ingest_bytes
 from . import scenario
 
 UTC = timezone.utc
+
+
+def host_match(h: str, sel) -> bool:
+    """Scope filter: sel is one host name or a collection of names (multi-select: two servers averaged together)."""
+    return h == sel if isinstance(sel, str) else h in sel
 METRIC_KEYS = {"cpu": "cpu", "cpu_percent": "cpu", "cpu_pct": "cpu", "memory": "memory", "mem": "memory", "mem_percent": "memory",
                "memory_percent": "memory", "disk": "disk", "disk_percent": "disk", "disk_pct": "disk",
                "gpu": "gpu", "gpu_percent": "gpu", "gpu_util": "gpu", "gpu_utilization": "gpu"}
@@ -103,7 +108,7 @@ class LiveStore:
         if env:
             obs = [o for o in obs if (o.environment or "unknown") == env]
         if host:
-            obs = [o for o in obs if o.host == host]
+            obs = [o for o in obs if host_match(o.host, host)]
         return obs
 
     def environments(self) -> dict[str, int]:
@@ -162,7 +167,7 @@ class LiveStore:
         """Latest value per (metric, host), per-minute mean series, and threshold breaches (optionally one env / host)."""
         start = datetime.now(UTC) - timedelta(minutes=window_min)
         with self.lock:
-            rows = [r for r in self.metrics if r[0] >= start and (not env or (r[4] or "unknown") == env) and (not host or r[1] == host)]
+            rows = [r for r in self.metrics if r[0] >= start and (not env or (r[4] or "unknown") == env) and (not host or host_match(r[1], host))]
         latest: dict[tuple[str, str], float] = {}
         series: dict[tuple, list] = defaultdict(list)
         host_env = {r[1]: (r[4] or "unknown") for r in rows}

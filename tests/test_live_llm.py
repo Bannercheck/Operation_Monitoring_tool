@@ -133,3 +133,25 @@ def test_slo_detail_explains_cards():
     assert d["slowest"] == sorted(d["slowest"], key=lambda r: -r["ms"])
     one = store.slo_detail(15, host="ml-02")
     assert all(r["host"] == "ml-02" for r in one["recent"]) and all(h == "ml-02" for h, _ in one["by_host"])
+
+
+def test_slo_report_and_multi_host_scope():
+    """Report HTML is self-contained and deterministic for a scope; several hosts are averaged / merged in one scope."""
+    import random
+    from watchover import report
+    store = LiveStore()
+    rng = random.Random(3)
+    for _ in range(30):
+        store.ingest("sim.jsonl", simulate_batch(rng, 8, True), agent="sim")
+    hosts = sorted(store.hosts())
+    assert len(hosts) >= 3
+    two = tuple(hosts[:2])
+    one, both = store.slo(15, None, hosts[0]), store.slo(15, None, two)
+    assert both["total"] == store.slo(15, None, hosts[0])["total"] + store.slo(15, None, hosts[1])["total"]
+    assert {o.host for o in store.snapshot(None, two)} <= set(two) and store.metric_stats(15, None, two)
+    html = report.slo_report(store, None, None, two, 15, "tr", "Acme", "<svg/>")
+    assert html.startswith("<!doctype html>") and "Yönetici özeti" in html and hosts[0] in html and "<svg" in html and "Acme" in html
+    assert report.slo_report(store, None, None, two, 15, "tr", "Acme", "<svg/>").split("Oluşturulma")[1][30:] == html.split("Oluşturulma")[1][30:]
+    assert "Executive summary" in report.slo_report(store, None, "prod", None, 60, "en")
+    empty = report.slo_report(LiveStore(), None, None, None, 15, "tr")
+    assert "olay yok" in empty

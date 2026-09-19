@@ -36,6 +36,7 @@ from watchover.agents import AgentRegistry
 from watchover import settings as wo_settings
 from watchover import assistant as wo_assistant
 from watchover import sources as wo_sources
+from watchover import report as wo_report
 from watchover.llm import LLMConfig, PROVIDERS, chat as llm_chat, embed as llm_embed, list_models as llm_models, set_sink as llm_set_sink, test_connection as llm_test
 from watchover import ollama as wo_ollama
 from watchover import llm_eval as wo_eval
@@ -907,7 +908,8 @@ def _set_scope(env_key: str, host_key: str, env=None, host=None) -> None:
     """Button callback: runs before widgets are built, so the popover pickers can be updated safely."""
     all_ = t("ops_all")
     st.session_state[env_key] = env or all_
-    st.session_state[host_key] = host or all_
+    st.session_state[host_key] = list(host) if isinstance(host, (list, tuple)) else ([host] if host else [])
+    st.session_state["ops_scope_hosts"] = list(st.session_state[host_key])
 
 
 def scope_panel(ls: LiveStore) -> tuple[str | None, str | None]:
@@ -923,15 +925,31 @@ def scope_panel(ls: LiveStore) -> tuple[str | None, str | None]:
                 f"{esc(e)} · {pct(r['availability'], 1)} · {r['errors']} {t('env_errors')}" for e, r in summary.items()) + "</div>", unsafe_allow_html=True)
         hosts = [h for h, e in host_env.items() if not env or e == env]
         st.markdown(f"**🖥 {t('ops_hosts')}** <span class='muted'>· {len(hosts)}</span>", unsafe_allow_html=True)
-        all_ = t("ops_all")
-        opts = [all_] + hosts
-        if st.session_state.get("ops_host_pick") not in opts:
-            st.session_state["ops_host_pick"] = all_
-        pick = st.radio("host", opts, key="ops_host_pick", label_visibility="collapsed", help=t("ops_host_hint"),
-                        format_func=lambda h: h if (h == all_ or env) else f"{h} · {host_env.get(h, '')}")
-        host = None if pick == all_ else pick
+        # The pills live inside the 2 s fragment: on the next full rerun (opening a detail dialog) Streamlit drops the widget's
+        # own state, so the chosen hosts are mirrored in a plain key and re-seeded from it before the widget is built.
+        if "ops_host_pick" not in st.session_state and st.session_state.get("ops_scope_hosts"):
+            st.session_state["ops_host_pick"] = [h for h in st.session_state["ops_scope_hosts"] if h in hosts]
+        cur = [h for h in (st.session_state.get("ops_host_pick") or []) if h in hosts]
+        if hosts and cur != list(st.session_state.get("ops_host_pick") or []):   # prune only against a known host list
+            st.session_state["ops_host_pick"] = cur
+        pick = st.pills("host", hosts, selection_mode="multi", key="ops_host_pick", label_visibility="collapsed", help=t("ops_host_hint"),
+                        format_func=lambda h: h if env else f"{h} · {host_env.get(h, '')}")
+        st.session_state["ops_scope_hosts"] = list(pick or [])
+        host = scope_hosts(pick)
+        if isinstance(host, (list, tuple)):
+            st.caption(t("ops_multi", n=len(host)))
         st.button(f"✕ {t('ops_reset')}", key="ops_reset", on_click=_set_scope, args=("ops_env_pick", "ops_host_pick"), disabled=not (env or host), **wide("button"))
     return env, host
+
+
+def scope_hosts(pick) -> str | tuple | None:
+    """Multi-select value → scope: None (all), one name, or a tuple of names (metrics are averaged over them)."""
+    pick = [h for h in (pick or []) if h]
+    return None if not pick else pick[0] if len(pick) == 1 else tuple(pick)
+
+
+def scope_label(env, host) -> str:
+    return " · ".join(x for x in (env, ", ".join(host) if isinstance(host, (list, tuple)) else host) if x)
 
 
 def ops_tile(key: str, html_: str, clickable: bool) -> None:
@@ -1000,7 +1018,7 @@ def ops_detail_panel(kind: str, ls: LiveStore, env, host, ms: dict, stt: dict, s
     """Live detail for the clicked card: one metric in depth, or what drives a service-level figure."""
     thr = __import__("watchover.scenario", fromlist=["x"]).METRIC_THRESHOLDS
     with st.container():
-        st.markdown(f"<span class='muted' style='font-size:13px'>{t('od_window')}</span>", unsafe_allow_html=True)
+        st.markdown(f"<span class='muted' style='font-size:13px'>{t('od_window')} · {t('ops_scope')}: {esc(scope_label(env, host) or t('ops_all'))}</span>", unsafe_allow_html=True)
         if kind in ("cpu", "gpu", "memory", "disk"):
             pm = pd.DataFrame(ms["per_minute"]) if ms["per_minute"] else pd.DataFrame(columns=["minute", "host", "metric", "env", "value"])
             d = pm[pm.metric == kind]
@@ -1042,6 +1060,12 @@ def ops_detail_panel(kind: str, ls: LiveStore, env, host, ms: dict, stt: dict, s
                          hide_index=True, **wide("dataframe"), height=380)
             return
         # availability / sla / budget / p95 -> what lowers the figure
+        with st.container(border=True):
+            r1, r2, r3 = st.columns([1.2, 1.2, 3])
+            win = r1.selectbox(t("rep_window"), [15, 60, 240, 1440], index=1, key="rep_window", format_func=lambda m: f"{m} {t('min_short')}" if m < 60 else f"{m // 60} {t('hour_short')}")
+            _html = wo_report.slo_report(ls, st.session_state.get("analysis"), env, host, int(win), current_lang(), st.session_state.get("workspace", ""), LOGO_SVG)
+            r2.download_button(f"📄 {t('rep_download')}", _html.encode("utf-8"), file_name=f"watchover-slo-{datetime.now(UTC).strftime('%Y%m%d-%H%M')}.html", mime="text/html", key="rep-dl", **wide("download_button"))
+            r3.caption(t("rep_hint"))
         target = slo["slo"]["availability"] if kind != "sla" else slo["sla"]["availability"]
         k = st.columns(4)
         k[0].markdown(kpi2(pct(slo["availability"], 2), t("availability"), "🎯", "#2dd4bf" if (slo["availability"] or 0) >= target else "#f87171", t("od_target", v=pct(target, 1))), unsafe_allow_html=True)
@@ -1149,7 +1173,7 @@ def page_ops() -> None:
             env, host = scope_panel(ls)
         stt, slo, ms = ls.stats(15, env, host), ls.slo(15, env, host), ls.metric_stats(15, env, host)
         det = ls.slo_detail(15, env, host)
-        scope = " · ".join(x for x in (env, host) if x)
+        scope = scope_label(env, host)
         scope_html = f" <span class='pill' style='background:#60a5fa'>{t('ops_filter_on')}: {esc(scope)}</span>" if scope else ""
         with main:
             st.markdown(f"#### {t('ops_infra')}{scope_html} <span class='muted'>· {ms['samples']} {t('od_samples')}</span>", unsafe_allow_html=True)
@@ -1172,8 +1196,7 @@ def page_ops() -> None:
         _all = t("ops_all")
         _env = st.session_state.get("ops_env_pick") or None
         _env = None if _env in ("", _all) else _env
-        _host = st.session_state.get("ops_host_pick") or None
-        _host = None if _host in ("", _all) else _host
+        _host = scope_hosts(st.session_state.get("ops_scope_hosts") or st.session_state.get("ops_host_pick"))
 
         @st.dialog(t("od_" + _k), width="large")
         def _ops_dialog() -> None:
