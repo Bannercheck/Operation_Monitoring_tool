@@ -290,6 +290,8 @@ Sol menüdeki **Envanter** sayfası (`src/watchover/inventory.py`) kurumun sunuc
 
 **Liquid glass tema** (`GLASS` CSS katmanı, `.streamlit/config.toml`): zemin koyu slate üzerine yumuşak turkuaz / mavi ışık lekeleri (sabit), tüm yüzeyler yarı saydam katmanlı cam (`backdrop-filter: blur + saturate`, 1 px yarı saydam kenar, üstte ince ışık çizgisi, yumuşak gölge); kenar çubuğu, kartlar, KPI kutuları, formlar, genişleticiler, diyaloglar, girişler, düğmeler, sekmeler, tablolar ve kaydırma çubukları aynı dili paylaşır. Kontrast uzun nöbetler için korunur (metin `#e3e9f2`, yüzey opaklığı %4–8), `prefers-reduced-transparency` isteyen sistemlerde bulanıklık kapanıp düz yüzeye döner. README sayfası wordmark'ı base64 olarak gömer (Streamlit göreli resim yollarını sunmaz).
 
+**Telefon ve tablet uyumu** (`GLASS` içindeki medya sorguları): 1180 px altında (iPad) satırlar sarılır, hiçbir sütun üçte birden dar olmaz, kenar çubuğu 250 px'e iner, sarılan sütun (Kapsam paneli) kartların altına tam genişlikte geçer; 760 px altında (iPhone / Android) kartlar ikişer sıralanır, iki sütunlu satırlar alt alta gelir, başlıklar küçülür, sekmeler yatay kaydırılır, diyaloglar ekran genişliğinde açılır; dokunmatik cihazlarda düğmeler 42 px yükseklikte ve giriş alanları 16 px (iOS odaklanınca yakınlaştırmaz). Kenar çubuğu küçük ekranda kapalı başlar (`initial_sidebar_state="auto"`), sol üstteki `»` ile açılır. Tarayıcıda "Ana ekrana ekle" ile uygulama simgesi olarak kullanılabilir; yerel push bildirimi yoktur (yol haritasındaki bildirim adımı).
+
 **Bilgi düğmeleri:** sayfalardaki açıklama paragrafları artık ℹ️ düğmesinin (popover) arkasındadır; ekranlar sade kalır, basınca açıklama açılır.
 
 ### Simülasyon modu, Sistem sayfası, kullanıcı girişi ve SSO

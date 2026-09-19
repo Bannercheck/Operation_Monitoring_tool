@@ -65,7 +65,7 @@ LOGO_SVG = (ASSETS / "logo.svg").read_text(encoding="utf-8") if (ASSETS / "logo.
 def logo(size: int) -> str:
     """The SVG mark at a given pixel size (inline, so it renders inside markdown)."""
     return LOGO_SVG.replace('width="64" height="64"', f'width="{size}" height="{size}"')
-st.set_page_config(page_title="Watchover", page_icon=LOGO_PNG if (ASSETS / "logo-64.png").exists() else "📡", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="Watchover", page_icon=LOGO_PNG if (ASSETS / "logo-64.png").exists() else "📡", layout="wide", initial_sidebar_state="auto")
 
 # ---- Streamlit version compatibility: `width="stretch"` (>=1.5x) vs `use_container_width=True` (older)
 _WIDE_CACHE: dict = {}
@@ -269,6 +269,46 @@ h1,h2,h3{color:#eef3f9}
 .card.cat .cat-b{font-size:12.5px;line-height:1.55;color:#b6c0cf;margin-top:8px}
 .card.cat .cat-b b{font-size:10.5px;letter-spacing:.8px;text-transform:uppercase;color:var(--wo-muted)}
 .muted{color:var(--wo-muted)}
+/* ---- phones and tablets: two tiles per row instead of a long single column, larger touch targets, edge-to-edge dialogs ---- */
+@media (max-width: 1024px){
+  .block-container{padding-left:1rem;padding-right:1rem;padding-top:.8rem}
+  .k2 .v{font-size:26px}.k2 .v.s{font-size:20px}.k2{min-height:96px;padding:12px 12px 6px}.k2.live{min-height:132px}
+  .funnel .v{font-size:26px}.facts .v{font-size:18px}
+  h1{font-size:1.6rem}h2{font-size:1.3rem}
+  .stApp .stButton > button,.stApp .stDownloadButton > button,.stApp .stFormSubmitButton > button{min-height:42px}
+  div[data-testid="stDialog"] > div[role="dialog"]{width:96vw!important;max-width:96vw!important;border-radius:16px}
+  .chips{gap:5px}.chip{font-size:11.5px;padding:3px 9px}
+}
+@media (min-width: 761px) and (max-width: 1180px){
+  /* tablets: rows wrap, no column narrower than a third; a wrapped column grows to the full row (scope panel under the cards) */
+  [data-testid="stHorizontalBlock"]{flex-wrap:wrap!important;gap:10px!important}
+  [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]{min-width:calc(33.33% - 8px)!important;flex-grow:1!important}
+  section[data-testid="stSidebar"]{width:250px!important;min-width:250px!important}
+  section[data-testid="stSidebar"] > div{width:250px!important}
+  h2{font-size:1.45rem}
+}
+@media (max-width: 760px){
+  [data-testid="stHorizontalBlock"]{flex-direction:row!important;flex-wrap:wrap!important;gap:8px!important}
+  [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]{flex:1 1 calc(50% - 6px)!important;min-width:calc(50% - 6px)!important;width:auto!important}
+  h2,.stApp [data-testid="stMarkdownContainer"] h2{font-size:1.3rem!important;line-height:1.2;overflow-wrap:normal;word-break:normal}
+  /* two-column rows (cards + scope panel, form pairs) stack on phones */
+  [data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"]:nth-child(2):last-child) > [data-testid="stColumn"]{flex-basis:100%!important;min-width:100%!important}
+  [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:only-child{flex-basis:100%!important;min-width:100%!important}
+  .k2 .lb{font-size:10px}.k2 .v{font-size:22px}.k2 .sub{font-size:11px}
+  .card.cat,.card.act2,.card.prov,.card.svc{min-height:0}
+  .block-container{padding-left:.6rem;padding-right:.6rem;max-width:100vw}
+  div[data-testid="stDataFrame"]{overflow-x:auto}
+  .wo-brand .name{font-size:22px!important}
+  .st-key-page label[data-testid="stRadioOption"]{padding:11px 12px}
+  .stTabs [data-baseweb="tab-list"]{overflow-x:auto;flex-wrap:nowrap}
+  .stTabs [data-baseweb="tab"]{padding:6px 10px;white-space:nowrap}
+  .sb-status{font-size:11.5px}
+}
+@media (pointer: coarse){
+  .st-key-page label[data-testid="stRadioOption"]{padding:11px 12px}
+  [class*="st-key-tile-"] button{min-height:34px;height:34px}
+  input,select,textarea{font-size:16px!important}   /* iOS: no auto-zoom when a field gets focus */
+}
 @media (prefers-reduced-transparency: reduce){.card,.kpi,.k2,.funnel,.facts,section[data-testid="stSidebar"],div[data-testid="stDialog"] > div[role="dialog"]{backdrop-filter:none!important;background:#121a26!important}}
 </style>"""
 st.markdown(CSS, unsafe_allow_html=True)
