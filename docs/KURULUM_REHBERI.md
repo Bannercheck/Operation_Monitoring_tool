@@ -144,6 +144,7 @@ Kurucuyu yeniden çalıştırmak ajanı günceller ve servisi yeniden başlatır
 
 | Belirti | Sebep | Çözüm |
 |---|---|---|
+| Giriş yapılamıyor (yönetici parolası kabul edilmiyor, hesap kilitli, hesap yok) | Önceki sürümde ilk kaydolan hesap yönetici olduğu için yerleşik yönetici oluşmamış olabilir; 5 yanlış deneme 15 dakika kilitler | Terminalden: `watchover user list` (hesapları ve kilidi gösterir), `watchover user add siz@sirket.com --admin` (parolayı sorar), `watchover user promote siz@sirket.com`, `watchover user password siz@sirket.com`, `watchover user unlock siz@sirket.com` |
 | Kurucu: `could not download agent.py` | Sunucu alıcıya ulaşamıyor | Adres / port / güvenlik duvarı; `curl http://<alıcı>:8600/health` |
 | Kurucu: `the receiver did not accept this agent` | Token yanlış, iptal edilmiş veya süresi dolmuş | Panelde ↻ ile yeni token, komutu yeniden çalıştır |
 | Kurucu: `self-enrolment failed` (401) | Filo anahtarı yenilenmiş veya kapalı | Paneldeki güncel komutu al |

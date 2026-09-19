@@ -136,6 +136,10 @@ class Users:
             return datetime.fromisoformat(rows[0]["ts"]) + timedelta(minutes=LOCK_MINUTES)
         return None
 
+    def unlock(self, email: str) -> None:
+        """Lift the lockout: a successful marker event breaks the run of failed sign-ins the lock is computed from."""
+        self._event(email, "login", True, "unlocked by an administrator")
+
     # ---- lifecycle
     def register(self, email: str, password: str, name: str = "", allowed_domains: str = "", provider: str = "local") -> dict:
         email = email.strip().lower()

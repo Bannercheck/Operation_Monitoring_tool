@@ -249,3 +249,23 @@ def test_email_otp_codes(tmp_path):
     assert not us.kb._exec("SELECT 1 FROM otp_codes") and us.otp_verify(u["id"], code) == (False, 0)          # too many attempts void the code
     code = us.otp_issue(u["id"]); us.kb._exec("UPDATE otp_codes SET expires_at='2000-01-01T00:00:00+00:00'")
     assert us.otp_verify(u["id"], code) == (False, 0)                                                            # expired
+
+
+def test_useradmin_cli(tmp_path, monkeypatch, capsys):
+    from watchover import useradmin, auth as wo_auth
+    monkeypatch.setenv("KNOWLEDGE_DB", str(tmp_path / "k.db"))
+    assert useradmin.main(["list"]) == 0 and "no accounts" in capsys.readouterr().out
+    assert useradmin.main(["add", "Tayfur@Sirket.com", "--admin", "--name", "Tayfur", "--password", "Kurumsal-Parola-2026"]) == 0
+    assert useradmin.main(["add", "ops@sirket.com", "--password", "Operator-2026-x"]) == 0
+    us = useradmin._users()
+    assert us.get("tayfur@sirket.com")["role"] == "admin" and us.get("ops@sirket.com")["role"] == "operator"
+    assert useradmin.main(["promote", "ops@sirket.com"]) == 0 and us.get("ops@sirket.com")["role"] == "admin"
+    for _ in range(wo_auth.LOCK_FAILURES):
+        us.login("ops@sirket.com", "wrong-wrong-1")
+    assert us.locked_until("ops@sirket.com") and useradmin.main(["unlock", "ops@sirket.com"]) == 0 and not us.locked_until("ops@sirket.com")
+    assert useradmin.main(["password", "ops@sirket.com", "--password", "Yeni-Parola-2026"]) == 0 and us.login("ops@sirket.com", "Yeni-Parola-2026")
+    assert useradmin.main(["disable", "ops@sirket.com"]) == 0 and us.login("ops@sirket.com", "Yeni-Parola-2026") is None
+    assert useradmin.main(["enable", "ops@sirket.com"]) == 0 and us.login("ops@sirket.com", "Yeni-Parola-2026")
+    assert useradmin.main(["delete", "ops@sirket.com"]) == 0 and us.get("ops@sirket.com") is None
+    assert useradmin.main(["promote", "nobody@sirket.com"]) == 1
+    assert useradmin.main(["list"]) == 0 and "tayfur@sirket.com" in capsys.readouterr().out
