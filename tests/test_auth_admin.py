@@ -134,6 +134,13 @@ def test_bootstrap_admin_and_forced_change(tmp_path):
     us.change_password(u["id"], "Yeni-Parola-2026")
     assert not us.initial_password_active() and us.login(wo_auth.INITIAL_EMAIL, "Yeni-Parola-2026")["must_change"] is False
     assert us.login(wo_auth.INITIAL_EMAIL, wo_auth.INITIAL_PASSWORD) is None and not us.bootstrap()   # a changed password is never re-keyed
+    # an installation whose first account was registered by an older build: the built-in administrator is added next to it
+    us2 = wo_auth.Users(Knowledge(str(tmp_path / "k2.db")))
+    us2.register("tayfur@sirket.com", "Kurumsal-Parola-2026", "Tayfur")
+    assert us2.count() == 1 and us2.bootstrap() and us2.count() == 2
+    assert us2.login(wo_auth.INITIAL_EMAIL, wo_auth.INITIAL_PASSWORD)["role"] == "admin" and us2.get("tayfur@sirket.com")["role"] == "admin"
+    us2.set_status(us2.get(wo_auth.INITIAL_EMAIL)["id"], "disabled")
+    assert us2.bootstrap() and us2.get(wo_auth.INITIAL_EMAIL)["status"] == "active"                    # never signed in: brought back
 
 
 def test_vault_encrypts_settings_and_source_secrets(tmp_path, monkeypatch):

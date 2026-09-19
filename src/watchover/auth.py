@@ -91,19 +91,24 @@ class Users:
 
     # ---- queries
     def bootstrap(self) -> bool:
-        """No accounts yet: create the built-in administrator with the fixed initial password, which must be changed at first sign-in.
-        An administrator that still carries must_change (never signed in) is re-keyed to the initial password, so a fresh install
-        always accepts it. Returns True when something was written."""
-        if not self.count():
+        """The built-in administrator always exists: created when missing (also next to accounts registered by older builds),
+        re-keyed to the fixed initial password while it still carries must_change (never signed in), re-enabled if disabled
+        in that state. A changed password is never touched. Returns True when something was written."""
+        u = self.get(INITIAL_EMAIL)
+        if not u:
             self.kb._exec("INSERT INTO users (email, name, pw_hash, role, status, provider, created_at, must_change) VALUES (?,?,?,?,?,?,?,1)",
                           (INITIAL_EMAIL, "Administrator", _hash(INITIAL_PASSWORD), "admin", "active", "local", datetime.now(UTC).isoformat(timespec="seconds")))
             self._event(INITIAL_EMAIL, "bootstrap", True, "built-in administrator created")
             return True
-        u = self.get(INITIAL_EMAIL)
-        if u and u.get("must_change") and not _verify(INITIAL_PASSWORD, u["pw_hash"])[0]:
-            self.kb._exec("UPDATE users SET pw_hash=? WHERE id=?", (_hash(INITIAL_PASSWORD), u["id"]))
-            self._event(INITIAL_EMAIL, "bootstrap", True, "initial password re-keyed")
-            return True
+        if u.get("must_change"):
+            changed = False
+            if not _verify(INITIAL_PASSWORD, u["pw_hash"])[0]:
+                self.kb._exec("UPDATE users SET pw_hash=? WHERE id=?", (_hash(INITIAL_PASSWORD), u["id"])); changed = True
+            if u["status"] != "active" or u["role"] != "admin":
+                self.kb._exec("UPDATE users SET status='active', role='admin' WHERE id=?", (u["id"],)); changed = True
+            if changed:
+                self._event(INITIAL_EMAIL, "bootstrap", True, "initial password re-keyed")
+            return changed
         return False
 
     def initial_password_active(self) -> bool:
@@ -211,6 +216,9 @@ class Users:
         if role != "admin" and self._is_last_admin(uid):
             raise ValueError("the last admin cannot be demoted")
         self.kb._exec("UPDATE users SET role=? WHERE id=?", (role, uid))
+
+    def set_name(self, uid: int, name: str) -> None:
+        self.kb._exec("UPDATE users SET name=? WHERE id=?", (name.strip()[:80], uid))
 
     def set_status(self, uid: int, status: str) -> None:
         if status == "disabled" and self._is_last_admin(uid):

@@ -226,6 +226,7 @@ section[data-testid="stSidebar"] > div:first-child{background:transparent}
   backdrop-filter:blur(18px) saturate(150%);-webkit-backdrop-filter:blur(18px) saturate(150%);
   box-shadow:inset 0 1px 0 rgba(255,255,255,.10),inset 0 -1px 0 rgba(0,0,0,.25),0 22px 48px -32px rgba(0,0,0,.85)}
 .card,.kpi,.funnel,[data-testid="stVerticalBlockBorderWrapper"] > div:first-child,[data-testid="stForm"],div[data-testid="stExpander"] details{border-radius:18px!important}
+.stApp [data-testid="stForm"]{padding:14px 16px 10px!important}
 .k2{border-radius:18px 18px 0 0;border-top:2px solid var(--acc)!important}
 .k2:before{opacity:.085;filter:blur(10px)}
 .k2:hover{border-color:var(--wo-line2)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.14),0 0 0 1px color-mix(in srgb,var(--acc) 35%,transparent),0 24px 50px -30px rgba(0,0,0,.9)}
@@ -331,6 +332,22 @@ h1,h2,h3{color:#eef3f9}
   input,select,textarea{font-size:16px!important}   /* iOS: no auto-zoom when a field gets focus */
 }
 @media (prefers-reduced-transparency: reduce){.card,.kpi,.k2,.funnel,.facts,section[data-testid="stSidebar"],div[data-testid="stDialog"] > div[role="dialog"]{backdrop-filter:none!important;background:#121a26!important}}
+
+/* ---- sidebar: sharp liquid glass; navigation entries are glass tiles, the collapse handle is always visible */
+section[data-testid="stSidebar"]{background:linear-gradient(180deg,rgba(12,18,28,.86) 0%,rgba(10,15,24,.92) 100%)!important;backdrop-filter:blur(26px) saturate(150%);-webkit-backdrop-filter:blur(26px) saturate(150%);border-right:1px solid rgba(255,255,255,.09);box-shadow:inset -1px 0 0 rgba(255,255,255,.04),12px 0 40px rgba(2,6,23,.35)}
+section[data-testid="stSidebar"]::before{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(520px 320px at -10% -10%,rgba(45,212,191,.16),transparent 60%),radial-gradient(420px 300px at 110% 20%,rgba(99,102,241,.14),transparent 60%)}
+.st-key-page div[role="radiogroup"]{gap:6px}
+.st-key-page label[data-testid="stRadioOption"]{position:relative;padding:10px 14px 10px 16px;border-radius:13px;background:linear-gradient(160deg,rgba(255,255,255,.075),rgba(255,255,255,.025));border:1px solid rgba(255,255,255,.12);box-shadow:inset 0 1px 0 rgba(255,255,255,.10),0 6px 18px rgba(2,6,23,.28);backdrop-filter:blur(12px);transition:transform .12s ease,background .15s ease,border-color .15s ease}
+.st-key-page label[data-testid="stRadioOption"]::before{content:"";position:absolute;left:0;top:22%;height:56%;width:3px;border-radius:3px;background:transparent;transition:background .15s ease}
+.st-key-page label[data-testid="stRadioOption"]:hover{background:linear-gradient(160deg,rgba(255,255,255,.12),rgba(255,255,255,.05));border-color:rgba(255,255,255,.22);transform:translateX(2px)}
+.st-key-page label[data-testid="stRadioOption"][data-selected="true"]{background:linear-gradient(135deg,rgba(45,212,191,.28),rgba(96,165,250,.22))!important;border-color:rgba(45,212,191,.6)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 10px 26px rgba(45,212,191,.18)}
+.st-key-page label[data-testid="stRadioOption"][data-selected="true"]::before{background:linear-gradient(180deg,#2dd4bf,#60a5fa)}
+.st-key-page label[data-testid="stRadioOption"] p{font-size:14px;color:#dbe4f0;margin:0;letter-spacing:.1px}
+.st-key-page label[data-testid="stRadioOption"][data-selected="true"] p{color:#f8fffe;font-weight:700}
+.sb-cap{margin-top:14px}
+section[data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"],section[data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] button{opacity:1!important;visibility:visible!important}
+section[data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] button{background:linear-gradient(160deg,rgba(255,255,255,.12),rgba(255,255,255,.04))!important;border:1px solid rgba(255,255,255,.18)!important;border-radius:10px!important;color:#e2e8f0!important;backdrop-filter:blur(10px)}
+[data-testid="stSidebarCollapsedControl"] button,[data-testid="stExpandSidebarButton"] button,[data-testid="collapsedControl"] button{background:linear-gradient(160deg,rgba(45,212,191,.30),rgba(96,165,250,.22))!important;border:1px solid rgba(45,212,191,.55)!important;border-radius:12px!important;color:#f8fffe!important;backdrop-filter:blur(12px);box-shadow:0 10px 26px rgba(45,212,191,.22)}
 </style>"""
 st.markdown(CSS, unsafe_allow_html=True)
 st.markdown(GLASS, unsafe_allow_html=True)
@@ -954,8 +971,8 @@ def minute_chart(df: pd.DataFrame, incidents=None, height=200):
 # ------------------------------------------------------------------ sidebar navigation
 demo = Path(__file__).with_name("samples") / "demo_mixed.zip"
 LIVE_PORT = int(os.environ.get("LIVE_PORT", "8600"))
-PAGES = ["ops", "data", "src", "inv", "map", "assist", "llm", "pb", "itsm", "conn", "sys", "readme"]
-PAGE_KEYS = {"ops": "sb_ops", "data": "sb_data", "src": "sb_src", "inv": "sb_inv", "map": "sb_map", "assist": "sb_assist", "llm": "sb_llm", "pb": "sb_pb", "itsm": "sb_itsm", "conn": "sb_conn", "sys": "sb_sys", "readme": "sb_readme"}
+PAGES = ["ops", "data", "src", "inv", "map", "assist", "llm", "pb", "itsm", "conn", "users", "sys", "readme"]
+PAGE_KEYS = {"ops": "sb_ops", "data": "sb_data", "src": "sb_src", "inv": "sb_inv", "map": "sb_map", "assist": "sb_assist", "llm": "sb_llm", "pb": "sb_pb", "itsm": "sb_itsm", "conn": "sb_conn", "users": "sb_users", "sys": "sb_sys", "readme": "sb_readme"}
 
 
 # ------------------------------------------------------------------ first-run setup wizard
@@ -1417,11 +1434,6 @@ with st.sidebar:
                 sign_out()
     if st.session_state.pop("login_open", False) and not current_user():
         login_dialog()
-    st.caption(t("footer"))
-    _st = wo_stamp.stamp()
-    st.caption(f"Watchover v{_st['version']} · {t('stamp_engine')} {_st['engine']} · git {_st['git']} · {t('stamp_scenario')} {_st['scenario']}", help=t("stamp_hint"))
-    if (_stale := wo_stamp.stale_package(__file__)):
-        st.warning(t("stale_pkg", path=_stale))
 
 
 
@@ -2575,6 +2587,97 @@ def roles_editor() -> None:
                 st.error(str(e))
 
 
+def page_users() -> None:
+    """Users page: accounts (each row is a form with a Save button), roles and permissions, add account."""
+    us, rl = users(), roles()
+    if not can("page.users"):
+        st.warning(t("perm_denied")); return
+    rows = us.list()
+    st.markdown(f'<div class="wo-brand" style="padding:0 0 6px"><span style="display:inline-block;width:44px">{logo(44)}</span>'
+                f'<div><div class="name" style="font-size:30px">{t("users_page")}</div><div class="tag">{upper(t("users_page_tag"))}</div></div></div>', unsafe_allow_html=True)
+    k = st.columns(4)
+    k[0].markdown(kpi2(len(rows), t("users_total"), "👥", "#2dd4bf", ""), unsafe_allow_html=True)
+    k[1].markdown(kpi2(sum(1 for r in rows if r["role"] == "admin"), t("role_admin"), "🛡", "#60a5fa", ""), unsafe_allow_html=True)
+    k[2].markdown(kpi2(sum(1 for r in rows if r["status"] == "pending"), t("users_pending"), "✉️", "#fbbf24", ""), unsafe_allow_html=True)
+    k[3].markdown(kpi2(sum(1 for r in rows if us.locked_until(r["email"])), t("users_locked"), "🔒", "#f87171", ""), unsafe_allow_html=True)
+    tab_list, tab_roles, tab_add = st.tabs([f"{t('users_tab_list')} · {len(rows)}", f"{t('users_tab_roles')} · {len(rl.names())}", t("users_tab_add")])
+    names = rl.names()
+    with tab_list:
+        if not rows:
+            st.info(t("user_none"))
+        for r in rows:
+            with st.form(f"u-form-{r['id']}", border=False):
+                a = st.columns([0.45, 2.2, 1.6, 1.4, 1.4, 1.2, 1.1])
+                a[0].markdown(f'<span class="av-sm">{esc((r["name"] or r["email"])[:1].upper())}</span>', unsafe_allow_html=True)
+                nm = a[1].text_input(t("login_name"), value=r["name"] or "", key=f"u-nm-{r['id']}")
+                a[1].markdown(f'<span class="muted" style="font-size:12px">{esc(r["email"])} · {esc(r["provider"])} · {t("user_last")} {(r["last_login"] or "-")[:16].replace("T", " ")}</span>', unsafe_allow_html=True)
+                role = a[2].selectbox(t("user_role"), names, index=names.index(r["role"]) if r["role"] in names else 0, key=f"u-role-{r['id']}", format_func=role_label)
+                st_opts = ["active", "disabled"] + (["pending"] if r["status"] == "pending" else [])
+                status = a[3].selectbox(t("user_status"), st_opts, index=st_opts.index(r["status"]) if r["status"] in st_opts else 0, key=f"u-st-{r['id']}",
+                                        format_func=lambda x: {"active": t("user_active"), "disabled": t("user_disabled"), "pending": t("user_pending")}[x])
+                newpw = a[4].text_input(t("user_newpw_short"), type="password", key=f"u-pw-{r['id']}", help=t("user_newpw")) if r["provider"] == "local" else ""
+                lock = us.locked_until(r["email"])
+                a[5].markdown(f'<div style="height:30px"></div><span class="pillx {"ok" if r["status"] == "active" else "off"}">{ {"active": t("user_active"), "disabled": t("user_disabled"), "pending": t("user_pending")}[r["status"]] }</span>'
+                              + (f' <span class="pillx off">🔒 {lock.strftime("%H:%M")}</span>' if lock else ""), unsafe_allow_html=True)
+                with a[6]:
+                    st.markdown('<div style="height:28px"></div>', unsafe_allow_html=True)
+                    save = st.form_submit_button(f"💾 {t('user_save')}", type="primary", **wide("form_submit_button"))
+                    delete = st.form_submit_button(f"🗑 {t('user_delete')}", **wide("form_submit_button"))
+                if delete:
+                    st.session_state["user_del"] = r["id"]
+                if save:
+                    try:
+                        if nm != (r["name"] or ""):
+                            us.set_name(r["id"], nm)
+                        if role != r["role"]:
+                            us.set_role(r["id"], role, valid=names)
+                        if status != r["status"]:
+                            if status == "active" and r["status"] == "pending":
+                                us.activate(r["id"])
+                            else:
+                                us.set_status(r["id"], status)
+                        if newpw:
+                            us.change_password(r["id"], newpw)
+                        if lock and status == "active":
+                            us.unlock(r["email"])
+                        st.toast(t("user_saved"), icon="✅"); st.rerun()
+                    except ValueError as e:
+                        st.error(str(e))
+            if st.session_state.get("user_del") == r["id"]:
+                st.warning(t("user_delete_confirm", e=r["email"]))
+                e1, e2 = st.columns(2)
+                if e1.button(f"🗑 {t('user_delete_go')}", key=f"u-del-go-{r['id']}", type="primary", **wide("button")):
+                    try:
+                        us.delete(r["id"]); st.session_state.pop("user_del", None); st.rerun()
+                    except ValueError as e:
+                        st.error(str(e))
+                if e2.button(t("ver_cancel"), key=f"u-del-no-{r['id']}", **wide("button")):
+                    st.session_state.pop("user_del", None); st.rerun()
+            st.markdown('<div style="height:4px"></div>', unsafe_allow_html=True)
+    with tab_roles:
+        roles_editor()
+    with tab_add:
+        st.markdown(f'<div class="card act2"><div class="act2-t">➕ {t("user_add")}</div><div class="act2-b">{t("user_add_body")}</div></div>', unsafe_allow_html=True)
+        with st.form("user-add", border=False, clear_on_submit=True):
+            a, b = st.columns(2)
+            em = a.text_input(t("login_email"), placeholder="ad.soyad@sirket.com")
+            nm = b.text_input(t("login_name"))
+            a, b = st.columns(2)
+            pw = a.text_input(t("login_pw"), type="password", help=t("login_pw_help"))
+            role = b.selectbox(t("user_role"), names, index=names.index("operator") if "operator" in names else 0, format_func=role_label)
+            if st.form_submit_button(f"➕ {t('user_add')}", type="primary", **wide("form_submit_button")):
+                if not em:
+                    st.error(t("login_bad"))
+                else:
+                    try:
+                        u = us.register(em, pw, nm)
+                        if role != u["role"]:
+                            us.set_role(u["id"], role, valid=names)
+                        st.toast(t("user_saved"), icon="✅"); st.rerun()
+                    except ValueError as e:
+                        st.error(t("login_policy", e=e))
+
+
 def _deploy_finish() -> None:
     """After a deploy or rollback: drop Streamlit caches and the previous version's __pycache__, then hard-restart automatically."""
     st.cache_data.clear(); st.cache_resource.clear()
@@ -2591,15 +2694,19 @@ def page_system() -> None:
                 f'<div><div class="name" style="font-size:30px">{t("sys_page")}</div><div class="tag">{upper(t("sys_page_tag"))}</div></div></div>', unsafe_allow_html=True)
     vi = wo_admin.version_info()
     ls = live_store(); kb = knowledge(); us = users()
-    chips = [("#2dd4bf", f"git {vi['git'][:7] or '-'}"), ("#60a5fa", f"{t('sys_uptime')} {vi['uptime_s'] // 3600}h {(vi['uptime_s'] % 3600) // 60}m"),
+    _st = wo_stamp.stamp()
+    chips = [("#2dd4bf", f"Watchover v{_st['version']}"), ("#2dd4bf", f"{t('stamp_engine')} {_st['engine']}"), ("#2dd4bf", f"git {vi['git'][:7] or '-'}"), ("#2dd4bf", f"{t('stamp_scenario')} {_st['scenario']}"),
+             ("#60a5fa", f"{t('sys_uptime')} {vi['uptime_s'] // 3600}h {(vi['uptime_s'] % 3600) // 60}m"),
              ("#a78bfa", f"Streamlit {vi['streamlit']} · Python {vi['python']}"), ("#2dd4bf" if vi["launcher"] else "#fbbf24", t("sys_launcher_ok") if vi["launcher"] else t("sys_launcher_none"))]
     st.markdown('<div class="chips">' + "".join(f'<span class="chip"><span class="d" style="background:{c}"></span>{esc(str(x))}</span>' for c, x in chips) + "</div>", unsafe_allow_html=True)
-    _tabdefs = [("sys.status", t("sys_tab_status")), ("sys.maint", t("sys_tab_maint")), ("sys.update", t("sys_tab_update")), ("sys.users", f"{t('sys_tab_users')} · {us.count()}"),
+    if (_stale := wo_stamp.stale_package(__file__)):
+        st.warning(t("stale_pkg", path=_stale))
+    _tabdefs = [("sys.status", t("sys_tab_status")), ("sys.maint", t("sys_tab_maint")), ("sys.update", t("sys_tab_update")),
                 ("sys.auth", t("sys_tab_auth")), ("sys.notify", f"{t('sys_tab_notify')} · {len(notifier().rules())}"), ("sys.security", t("sys_tab_security"))]
     _shown = [d for d in _tabdefs if can(d[0])]
     _tabs = dict(zip([d[0] for d in _shown], st.tabs([d[1] for d in _shown]))) if _shown else {}
     _ph = st.empty(); _hidden = _ph.container()                         # tabs the role may not open render into a placeholder that is emptied below
-    tab_st, tab_m, tab_upd, tab_users, tab_auth, tab_ntf, tab_sec = (_tabs.get(k, _hidden) for k in ("sys.status", "sys.maint", "sys.update", "sys.users", "sys.auth", "sys.notify", "sys.security"))
+    tab_st, tab_m, tab_upd, tab_auth, tab_ntf, tab_sec = (_tabs.get(k, _hidden) for k in ("sys.status", "sys.maint", "sys.update", "sys.auth", "sys.notify", "sys.security"))
 
     with tab_st:
         h = history(); p = source_poller(); lr = learner(); di = wo_admin.db_info(kb)
@@ -2712,46 +2819,6 @@ def page_system() -> None:
                         _deploy_finish()
                 if k2.button(t("ver_cancel"), key=f"ver-no-{m['id']}", **wide("button")):
                     ss.pop("ver_confirm", None); st.rerun()
-
-    with tab_users:
-        rows = us.list()
-        if not rows:
-            st.caption(t("user_none"))
-        for r in rows:
-            c = st.columns([0.5, 2.6, 1.6, 1.3, 1.3, 1.1, 0.6])
-            c[0].markdown(f'<span class="av-sm">{esc((r["name"] or r["email"])[:1].upper())}</span>', unsafe_allow_html=True)
-            c[1].markdown(f'<b>{esc(r["name"] or "-")}</b><br><span class="muted" style="font-size:12px">{esc(r["email"])}</span>', unsafe_allow_html=True)
-            c[2].markdown(f'<span class="role r-{r["role"] if r["role"] in wo_rbac.BUILTIN else "custom"}">{esc(role_label(r["role"]))}</span> <span class="pillx {"ok" if r["status"] == "active" else "off"}">{t("user_active") if r["status"] == "active" else t("user_disabled")}</span> <span class="muted" style="font-size:11px">· {r["provider"]}</span>', unsafe_allow_html=True)
-            _names = roles().names()
-            role = c[3].selectbox("role", _names, index=_names.index(r["role"]) if r["role"] in _names else 0, key=f"u-role-{r['id']}", label_visibility="collapsed", format_func=role_label)
-            if role != r["role"]:
-                try:
-                    us.set_role(r["id"], role, valid=_names); st.rerun()
-                except ValueError as e:
-                    st.warning(str(e))
-            c[4].caption(f"{t('user_last')} {(r['last_login'] or '-')[:16]}")
-            if c[5].button(t("user_disable") if r["status"] == "active" else t("user_enable"), key=f"u-st-{r['id']}", **wide("button")):
-                try:
-                    us.set_status(r["id"], "disabled" if r["status"] == "active" else "active"); st.rerun()
-                except ValueError as e:
-                    st.warning(str(e))
-            if c[6].button("🗑", key=f"u-del-{r['id']}"):
-                try:
-                    us.delete(r["id"]); st.rerun()
-                except ValueError as e:
-                    st.warning(str(e))
-        with st.expander(f"➕ {t('user_add')}"):
-            with st.form("user-add", border=False):
-                a = st.columns([2, 1.6, 1.6])
-                em = a[0].text_input(t("login_email")); nm = a[1].text_input(t("login_name")); pw = a[2].text_input(t("login_pw"), type="password", help=t("login_pw_help"))
-                if st.form_submit_button(f"➕ {t('user_add')}") and em:
-                    try:
-                        us.register(em, pw, nm); st.rerun()
-                    except ValueError as e:
-                        st.error(t("login_policy", e=e))
-
-    with tab_users:
-        roles_editor()
 
     with tab_auth:
         hc1, hc2 = st.columns([8, 0.6])
@@ -3326,6 +3393,9 @@ if page == "itsm":
     st.stop()
 if page == "conn":
     page_conn()
+    st.stop()
+if page == "users":
+    page_users()
     st.stop()
 if page == "sys":
     page_system()

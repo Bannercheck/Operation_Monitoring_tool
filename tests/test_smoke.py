@@ -65,7 +65,7 @@ def test_every_page_renders(monkeypatch, tmp_path):
     monkeypatch.setenv("WATCHOVER_HOME", str(tmp_path / "home")); monkeypatch.setenv("WATCHOVER_SKIP_SETUP", "1"); monkeypatch.setenv("LIVE_PORT", "18631")
     from streamlit.testing.v1 import AppTest
     at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=90).run()
-    for page in ("assist", "src", "llm", "map", "pb", "itsm", "conn", "readme", "ops"):
+    for page in ("assist", "src", "llm", "map", "pb", "itsm", "conn", "users", "sys", "readme", "ops"):
         at.sidebar.radio(key="page").set_value(page).run()
         assert not at.exception, (page, at.exception)
 
