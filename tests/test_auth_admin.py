@@ -16,27 +16,38 @@ def test_users(tmp_path):
     with pytest.raises(ValueError):
         us.register("nope", "12345678")
     with pytest.raises(ValueError):
-        us.register("a@b.co", "short")
-    first = us.register("Admin@Corp.com", "s3cret-pass", "Ada")
-    assert first["email"] == "admin@corp.com" and first["role"] == "admin" and first["pw_hash"].startswith("scrypt$")
-    second = us.register("ops@corp.com", "another-pass", allowed_domains="corp.com")
+        us.register("a@b.co", "short1234")                                    # policy: 10+ characters
+    with pytest.raises(ValueError):
+        us.register("a@b.co", "onlyletters!!")                                # policy: letters and digits
+    first = us.register("Admin@Corp.com", "s3cret-pass-2026", "Ada")
+    assert first["email"] == "admin@corp.com" and first["role"] == "admin" and first["pw_hash"].startswith("scrypt$32768$8$2$")
+    second = us.register("ops@corp.com", "another-pass-77", allowed_domains="corp.com")
     assert second["role"] == "operator"
     with pytest.raises(ValueError):
-        us.register("x@other.com", "another-pass", allowed_domains="corp.com, grp.com.tr")
+        us.register("x@other.com", "another-pass-77", allowed_domains="corp.com, grp.com.tr")
     with pytest.raises(ValueError):
-        us.register("ops@corp.com", "another-pass")
-    assert us.login("admin@corp.com", "s3cret-pass")["role"] == "admin" and us.login("admin@corp.com", "wrong") is None and us.login("ghost@corp.com", "x") is None
+        us.register("ops@corp.com", "another-pass-77")
+    assert us.login("admin@corp.com", "s3cret-pass-2026")["role"] == "admin" and us.login("admin@corp.com", "wrong") is None and us.login("ghost@corp.com", "x") is None
     assert us.get("admin@corp.com")["last_login"]
     us.set_role(second["id"], "viewer"); assert us.get("ops@corp.com")["role"] == "viewer"
     with pytest.raises(ValueError):
         us.set_role(first["id"], "viewer")                                   # last admin stays admin
     with pytest.raises(ValueError):
         us.set_status(first["id"], "disabled")
-    us.set_status(second["id"], "disabled"); assert us.login("ops@corp.com", "another-pass") is None
-    us.change_password(second["id"], "new-password-9"); us.set_status(second["id"], "active")
-    assert us.login("ops@corp.com", "new-password-9")
-    sso = us.sso_login("jane@corp.com", "Jane", allowed_domains="corp.com")
-    assert sso["provider"] == "oidc" and sso["role"] == "operator" and us.login("jane@corp.com", "") is None
+    us.set_status(second["id"], "disabled"); assert us.login("ops@corp.com", "another-pass-77") is None
+    us.change_password(second["id"], "new-password-99"); us.set_status(second["id"], "active")
+    assert us.login("ops@corp.com", "new-password-99")
+    # legacy hash upgrade + lockout + security log
+    us.kb._exec("UPDATE users SET pw_hash=? WHERE id=?", (auth._hash("new-password-99", b"0123456789abcdef", 2 ** 14, 8, 1).replace("scrypt$16384$8$1$", "scrypt$"), second["id"]))
+    assert us.get("ops@corp.com")["pw_hash"].count("$") == 2 and us.login("ops@corp.com", "new-password-99") and us.get("ops@corp.com")["pw_hash"].startswith("scrypt$32768$")
+    for _ in range(auth.LOCK_FAILURES):
+        assert us.login("ops@corp.com", "nope-nope-1") is None
+    assert us.locked_until("ops@corp.com") is not None and us.login("ops@corp.com", "new-password-99") is None
+    ev = us.events(5)
+    assert ev[0]["event"] == "login" and not ev[0]["ok"] and ev[0]["detail"] == "locked" and any(e["detail"] == "bad password" for e in ev)
+    sso = us.sso_login("jane@corp.com", "Jane", allowed_domains="corp.com", provider="google")
+    assert sso["provider"] == "google" and sso["role"] == "operator" and us.login("jane@corp.com", "") is None
+    assert us.sso_login("eve@other.com", allowed_domains="corp.com") is None
     assert us.sso_login("bob@corp.com", auto_create=False) is None
     with pytest.raises(ValueError):
         us.delete(first["id"])
@@ -46,10 +57,14 @@ def test_users(tmp_path):
 def test_oidc_secrets(tmp_path):
     p = tmp_path / ".streamlit" / "secrets.toml"
     p.parent.mkdir(); p.write_text('[other]\nx = "1"\n\n[auth]\ncookie_secret = "keepme"\nclient_id = "old"\n')
-    out = auth.write_oidc_secrets(p, "https://login.example.com/realm", "cid", 'se"cret', "https://wo.corp.com/oauth2callback")
+    out = auth.write_secrets(p, "https://wo.corp.com/oauth2callback", {"google": {"client_id": "g-id", "client_secret": "g-sec"},
+                                                                       "oidc": {"issuer": "https://login.example.com/realm", "client_id": "cid", "client_secret": 'se"cret'}})
     text = Path(out).read_text()
-    assert '[other]' in text and 'x = "1"' in text and text.count("[auth]") == 1 and 'cookie_secret = "keepme"' in text
+    assert '[other]' in text and 'x = "1"' in text and text.count("[auth]") == 1 and 'cookie_secret = "keepme"' in text and "[auth.google]" in text and "[auth.oidc]" in text
     assert 'client_secret = "se\\"cret"' in text and 'server_metadata_url = "https://login.example.com/realm/.well-known/openid-configuration"' in text and "old" not in text
+    assert auth.GOOGLE_METADATA in text and (Path(out).stat().st_mode & 0o777) == 0o600
+    text2 = Path(auth.write_secrets(p, "https://wo.corp.com/oauth2callback", {"google": {"client_id": "g2", "client_secret": "s2"}})).read_text()
+    assert "[auth.oidc]" not in text2 and 'client_id = "g2"' in text2 and 'cookie_secret = "keepme"' in text2
 
 
 def test_apply_zip_and_version(tmp_path):
