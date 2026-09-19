@@ -113,7 +113,7 @@ def test_login_gate_hides_the_app(tmp_path, monkeypatch):
     at = AppTest.from_file(str(root / "app.py"), default_timeout=60).run()
     assert not at.exception
     assert not at.sidebar.radio and not at.sidebar.markdown           # no navigation, no page content
-    assert at.info and "admin@watchover.local" in at.info[0].value      # first run: the built-in administrator's initial password is shown
+    assert not at.info and any(x.key == "login-google" for x in at.button)   # brand buttons are on the page, no credential hint
     assert not any(x.key == "reg_email" for x in at.text_input)        # self-registration is off by default
     at.session_state["user"] = {"id": 1, "email": "a@corp.com", "name": "Admin", "role": "admin", "provider": "local"}
     at.run()
@@ -124,19 +124,16 @@ def test_bootstrap_admin_and_forced_change(tmp_path):
     from watchover.knowledge import Knowledge
     from watchover import auth as wo_auth
     us = wo_auth.Users(Knowledge(str(tmp_path / "k.db")))
-    monkeypatch_home = tmp_path / "home"; monkeypatch_home.mkdir()
-    import os; os.environ["WATCHOVER_HOME"] = str(monkeypatch_home)
-    pw = us.bootstrap()
-    assert pw and not us.bootstrap() and us.count() == 1 and us.initial_password_active()
-    f = wo_auth.initial_password_file()
-    assert f.exists() and pw in f.read_text() and oct(f.stat().st_mode & 0o777) == "0o600"
-    u = us.login(wo_auth.INITIAL_EMAIL, pw)
+    assert us.bootstrap() and not us.bootstrap() and us.count() == 1 and us.initial_password_active()
+    u = us.login(wo_auth.INITIAL_EMAIL, wo_auth.INITIAL_PASSWORD)
     assert u and u["role"] == "admin" and u["must_change"] is True
     assert us.get(wo_auth.INITIAL_EMAIL)["pw_hash"].startswith("scrypt$")      # never the clear text
+    # an untouched administrator from an older build is re-keyed to the fixed initial password
+    us.kb._exec("UPDATE users SET pw_hash=? WHERE email=?", (wo_auth._hash("something-else-9"), wo_auth.INITIAL_EMAIL))
+    assert us.bootstrap() and us.login(wo_auth.INITIAL_EMAIL, wo_auth.INITIAL_PASSWORD)
     us.change_password(u["id"], "Yeni-Parola-2026")
     assert not us.initial_password_active() and us.login(wo_auth.INITIAL_EMAIL, "Yeni-Parola-2026")["must_change"] is False
-    assert us.login(wo_auth.INITIAL_EMAIL, pw) is None and not f.exists()          # the initial password is spent and its file removed
-    os.environ.pop("WATCHOVER_HOME", None)
+    assert us.login(wo_auth.INITIAL_EMAIL, wo_auth.INITIAL_PASSWORD) is None and not us.bootstrap()   # a changed password is never re-keyed
 
 
 def test_vault_encrypts_settings_and_source_secrets(tmp_path, monkeypatch):

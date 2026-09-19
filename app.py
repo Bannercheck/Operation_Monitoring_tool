@@ -209,6 +209,7 @@ GLASS = """<style>
 .st-key-login-apple button::before{background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22%3E%3Cpath fill=%22%23ffffff%22 d=%22M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701%22/%3E%3C/svg%3E")}
 .st-key-login-oidc button::before{background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22%3E%3Cpath fill=%22%237dd3fc%22 d=%22M12 2 3 6v6c0 5.25 3.84 10.15 9 11.4 5.16-1.25 9-6.15 9-11.4V6l-9-4zm0 4a3 3 0 1 1 0 6 3 3 0 0 1 0-6zm0 8c2.67 0 5 1.34 5 3v1H7v-1c0-1.66 2.33-3 5-3z%22/%3E%3C/svg%3E")}
 .st-key-login-apple button{background:#000!important;color:#fff!important;border-color:#333!important}
+.st-key-login-google button:disabled,.st-key-login-microsoft button:disabled,.st-key-login-apple button:disabled,.st-key-login-oidc button:disabled{opacity:.55;cursor:not-allowed}
 
 
 /* ---- liquid glass: translucent layered surfaces over a soft-lit backdrop; contrast kept for long operations shifts ---- */
@@ -1039,19 +1040,21 @@ def login_forms() -> None:
     ss = st.session_state
     us = users()
     first = (ss.get("auth_local") or not auth_enabled()) and us.count() == 0
-    provs = [k for k in ("google", "microsoft", "apple", "oidc") if ss.get("auth_" + k)]
-    if provs:
+    provs = ["google", "microsoft", "apple"] + (["oidc"] if ss.get("auth_oidc") else [])       # brand buttons are always shown; unconfigured ones are inactive
+    if True:
         st.markdown(f'<div class="muted" style="font-size:11px;letter-spacing:.8px;font-weight:700;margin:2px 0 6px">{upper(t("login_providers"))}</div>', unsafe_allow_html=True)
         labels = {"google": t("login_google_btn"), "microsoft": t("login_ms_btn"), "apple": t("login_apple_btn"), "oidc": t("login_sso_btn")}
         for row in range(0, len(provs), 2):
-            cols = st.columns(2) if len(provs[row:row + 2]) == 2 else [st.container()]
-            for col, k in zip(cols, provs[row:row + 2]):
-                if col.button(labels[k], key=f"login-{k}", **wide("button")):
+            chunk = provs[row:row + 2]
+            cols = st.columns(2) if len(chunk) == 2 else [st.container()]
+            for col, k in zip(cols, chunk):
+                on = bool(ss.get("auth_" + k))
+                if col.button(labels[k], key=f"login-{k}", disabled=not on, help=None if on else t("login_prov_off"), **wide("button")):
                     try:
                         st.login(k)
                     except Exception as e:  # noqa: BLE001
                         st.error(t("login_sso_err", e=e))
-        if ss.get("auth_local"):
+        if ss.get("auth_local") or not auth_enabled():
             st.markdown(f'<div class="muted" style="text-align:center;font-size:11px;margin:8px 0 4px">— {t("login_or")} —</div>', unsafe_allow_html=True)
     if ss.get("auth_local") or not auth_enabled():
         tabs = st.tabs([t("login_tab_in"), t("login_tab_up")]) if (ss.get("auth_self_register", True) or first) else [st.container()]
@@ -1154,8 +1157,6 @@ def page_login() -> None:
     with right:
         with st.container(border=True, key="login-card"):
             st.markdown(f'<div class="wo-login-head"><span style="display:inline-block;width:38px">{logo(38)}</span><div><div class="h">{t("login_title")}</div><div class="s">{t("login_card_sub")}</div></div></div>', unsafe_allow_html=True)
-            if users().initial_password_active():
-                st.info(t("login_initial", e=wo_auth.INITIAL_EMAIL, f=str(wo_auth.initial_password_file())))
             login_forms()
             _st = wo_stamp.stamp()
             st.markdown(f'<div class="wo-login-foot">Watchover v{_st["version"]} · {t("login_foot")}</div>', unsafe_allow_html=True)
