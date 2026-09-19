@@ -187,3 +187,14 @@ def test_apple_and_microsoft_secrets(tmp_path):
     body = wo_auth.secrets_toml("http://localhost:8501/oauth2callback", {"apple": {"client_id": "com.corp.watchover", "client_secret": tok}, "microsoft": {"tenant": "t-1", "client_id": "c", "client_secret": "s"}})
     assert "[auth.apple]" in body and "appleid.apple.com" in body and 'scope = "openid"' in body
     assert "[auth.microsoft]" in body and "login.microsoftonline.com/t-1/v2.0/.well-known" in body
+
+
+def test_clear_caches_purges_previous_version(tmp_path):
+    from watchover import admin
+    root = tmp_path / "code"; (root / "src" / "watchover" / "__pycache__").mkdir(parents=True); (root / ".venv" / "lib" / "__pycache__").mkdir(parents=True)
+    (root / "src" / "watchover" / "__pycache__" / "x.cpython-311.pyc").write_bytes(b"0"); (root / "old.pyc").write_bytes(b"0"); (root / ".pytest_cache").mkdir()
+    (root / ".venv" / "lib" / "__pycache__" / "keep.pyc").write_bytes(b"0")
+    out = admin.clear_caches(root)
+    assert out["dirs"] >= 2 and out["files"] >= 1
+    assert not (root / "src" / "watchover" / "__pycache__").exists() and not (root / "old.pyc").exists() and not (root / ".pytest_cache").exists()
+    assert (root / ".venv" / "lib" / "__pycache__" / "keep.pyc").exists()          # the virtual environment is never touched

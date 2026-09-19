@@ -136,7 +136,7 @@ Kurucuyu yeniden çalıştırmak ajanı günceller ve servisi yeniden başlatır
 
 ## 6. Güncelleme
 
-- **Dashboard**: `watchover update ~/Downloads/watchover.zip` (zip) veya `watchover update` (git). Kod değişir, bağımlılıklar kurulur, uygulama yeniden başlar; `data/` (ayarlar, token'lar, bilgi tabanı, `.env`) korunur. `watchover` komutu da kendini yeniler.
+- **Dashboard**: `watchover update ~/Downloads/watchover.zip` (zip) veya `watchover update` (git), ya da uygulama içinden Sistem › Güncelleme. Önce anlık görüntü alınır, kod değişir, bağımlılıklar kurulur, önceki sürümün önbellekleri (`__pycache__`, `.pytest_cache`, Streamlit disk önbelleği) temizlenir ve uygulama **sert yeniden başlatma** ile (`watchover restart --hard`: durdur, temizle, temiz başlat) açılır; `data/` (ayarlar, token'lar, bilgi tabanı, `.env`) korunur. `watchover` komutu da kendini yeniler.
 - **Ajanlar**: kurulum komutunu aynı token / anahtarla yeniden çalıştırmak yeni `agent.py`'yi indirir ve servisi yeniden başlatır. Toplu: Ansible ile aynı satır.
 - **Linux sunucu kurulumu**: `sudo bash scripts/install_linux.sh` yeniden çalıştırılır; systemd servisi yeniden başlar.
 

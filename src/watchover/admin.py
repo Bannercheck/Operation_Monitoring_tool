@@ -79,14 +79,42 @@ def git_update(src: Path | None = None, branch: str = "") -> tuple[bool, str]:
         return False, str(e)
 
 
-def restart_app(delay: float = 1.0) -> str:
+def clear_caches(root: Path | None = None) -> dict:
+    """Remove what the previous version left behind: every __pycache__ under the code tree (never the venv), .pytest_cache,
+    Streamlit's on-disk cache and stale *.pyc files. Called after a deploy so the new code starts from a clean slate."""
+    root = root or repo_root()
+    dirs = files = 0
+    for p in list(root.rglob("__pycache__")) + [root / ".pytest_cache"]:
+        if not p.exists() or ".venv" in p.parts or "node_modules" in p.parts:
+            continue
+        shutil.rmtree(p, ignore_errors=True); dirs += 1
+    for p in root.rglob("*.pyc"):
+        if ".venv" not in p.parts:
+            try:
+                p.unlink(); files += 1
+            except OSError:
+                pass
+    st_cache = Path.home() / ".streamlit" / "cache"
+    if st_cache.exists():
+        shutil.rmtree(st_cache, ignore_errors=True); dirs += 1
+    return {"dirs": dirs, "files": files}
+
+
+def deploy_finish(reason: str = "deploy") -> dict:
+    """After an update or a rollback: purge caches, then hard-restart (launcher stop/start or process exit for the service manager)."""
+    out = clear_caches()
+    out["restart"] = restart_app(delay=2.0, hard=True)
+    return out
+
+
+def restart_app(delay: float = 1.0, hard: bool = False) -> str:
     """Restart through the launcher when installed (service-aware), otherwise exit and let the service manager restart us."""
     launcher = os.environ.get("WATCHOVER_LAUNCHER", "")
 
     def go():
         time.sleep(delay)
         if launcher and Path(launcher).exists():
-            subprocess.Popen([launcher, "restart"], start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.Popen([launcher, "restart", "--hard"] if hard else [launcher, "restart"], start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             time.sleep(2)
         os._exit(3)
     threading.Thread(target=go, daemon=True).start()

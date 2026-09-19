@@ -2367,6 +2367,13 @@ def notify_tab() -> None:
             st.info(t("ntf_no_log"))
 
 
+def _deploy_finish() -> None:
+    """After a deploy or rollback: drop Streamlit caches and the previous version's __pycache__, then hard-restart automatically."""
+    st.cache_data.clear(); st.cache_resource.clear()
+    out = wo_admin.deploy_finish()
+    st.info(t("sys_deploy_finish", d=out["dirs"], f=out["files"]) + " " + (t("sys_restarting_launcher") if out["restart"] == "launcher" else t("sys_restarting_exit")))
+
+
 def page_system() -> None:
     ss = st.session_state
     u = current_user()
@@ -2438,7 +2445,7 @@ def page_system() -> None:
                 ok, msg = wo_admin.apply_zip(up.getvalue())
                 (st.success if ok else st.error)(msg)
                 if ok:
-                    ss["sys_restart_needed"] = True
+                    _deploy_finish()
         with c2:
             st.markdown(f'<div class="card act2"><div class="act2-t">🔄 {t("sys_upd_git")}</div><div class="act2-b">{t("sys_upd_git_body")}</div></div>', unsafe_allow_html=True)
             if st.button(t("sys_upd_pull"), key="sys-pull", **wide("button")):
@@ -2446,7 +2453,7 @@ def page_system() -> None:
                 ok, msg = wo_admin.git_update()
                 (st.success if ok else st.error)(msg or "-")
                 if ok and "Already up to date" not in msg:
-                    ss["sys_restart_needed"] = True
+                    _deploy_finish()
         with c3:
             st.markdown(f'<div class="card act2"><div class="act2-t">⏻ {t("sys_restart")}</div><div class="act2-b">{t("sys_restart_body")}</div></div>', unsafe_allow_html=True)
             if st.button(t("sys_restart"), key="sys-restart", type="primary" if ss.get("sys_restart_needed") else "secondary", **wide("button")):
@@ -2480,7 +2487,7 @@ def page_system() -> None:
                     (st.success if ok else st.error)(msg)
                     ss.pop("ver_confirm", None)
                     if ok:
-                        ss["sys_restart_needed"] = True
+                        _deploy_finish()
                 if k2.button(t("ver_cancel"), key=f"ver-no-{m['id']}", **wide("button")):
                     ss.pop("ver_confirm", None); st.rerun()
 

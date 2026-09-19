@@ -29,11 +29,26 @@ case "${1:-start}" in
                for i in $(seq 1 20); do kill -0 "$(cat "$PID")" 2>/dev/null || break; sleep 0.5; done; rm -f "$PID"; echo "stopped"
              else echo "not running"; fi;;
         esac;;
-  restart) case "$(svc)" in
-             launchd) launchctl kickstart -k "gui/$(id -u)/$LABEL";;
-             systemd) systemctl --user restart watchover;;
-             *) "$0" stop; sleep 1; "$0" start; exit $?;;
-           esac; wait_up && echo "restarted → http://localhost:$PORT";;
+  restart) if [[ "${2:-}" == "--hard" ]]; then   # hard reset: stop, purge the previous version's caches, start clean
+             case "$(svc)" in
+               launchd) launchctl kill TERM "gui/$(id -u)/$LABEL" 2>/dev/null; sleep 2;;
+               systemd) systemctl --user stop watchover;;
+               *) "$0" stop;;
+             esac
+             find "$SRC" -path "$SRC/.venv" -prune -o -name __pycache__ -type d -print0 2>/dev/null | xargs -0 rm -rf; rm -rf "$SRC/.pytest_cache" "$HOME/.streamlit/cache"
+             echo "caches cleared"
+             case "$(svc)" in
+               launchd) launchctl kickstart -k "gui/$(id -u)/$LABEL";;
+               systemd) systemctl --user start watchover;;
+               *) "$0" start; exit $?;;
+             esac
+           else
+             case "$(svc)" in
+               launchd) launchctl kickstart -k "gui/$(id -u)/$LABEL";;
+               systemd) systemctl --user restart watchover;;
+               *) "$0" stop; sleep 1; "$0" start; exit $?;;
+             esac
+           fi; wait_up && echo "restarted → http://localhost:$PORT";;
   status) if curl -fsS "http://127.0.0.1:$PORT/" >/dev/null 2>&1; then echo "running ($(svc)) → http://localhost:$PORT  ·  code: $SRC  ·  data: $DIR/data"; else echo "stopped"; fi;;
   open) command -v open >/dev/null && open "http://localhost:$PORT" || xdg-open "http://localhost:$PORT";;
   update)  # watchover update            → git pull (a cloned checkout)
@@ -56,8 +71,8 @@ case "${1:-start}" in
       sed "s#${P}DIR${P}#$DIR#g; s#${P}SRC${P}#$SRC#g; s#${P}PORT${P}#$PORT#g; s#${P}REPO${P}#$REPO#g; s#${P}BRANCH${P}#$BRANCH#g" "$SRC/scripts/watchover-launcher.sh" > "$DIR/bin/watchover.new" \
         && chmod +x "$DIR/bin/watchover.new" && mv "$DIR/bin/watchover.new" "$DIR/bin/watchover"
     fi
-    exec "$DIR/bin/watchover" restart;;
+    exec "$DIR/bin/watchover" restart --hard;;
   logs) tail -f "$LOG";;
   agent) shift; cd "$SRC" && exec "$DIR/.venv/bin/python" agent.py "$@";;
-  *) echo "usage: watchover start|stop|restart|status|run|open|update [file.zip]|logs|agent [args]"; exit 1;;
+  *) echo "usage: watchover start|stop|restart [--hard]|status|run|open|update [file.zip]|logs|agent [args]"; exit 1;;
 esac
