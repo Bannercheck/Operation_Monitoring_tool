@@ -679,7 +679,7 @@ def receiver_url(port: int) -> str:
     return f"http://{host}:{port}/ingest"
 
 
-def agent_install_cmd(port: int, token: str, logs: str = "/var/log/syslog,/var/log/messages", env: str = "") -> str:
+def agent_install_cmd(port: int, token: str, logs: str = "auto", env: str = "") -> str:
     url = receiver_url(port); base = url[: -len("/ingest")]
     return (f"curl -fsSL {base}/agent/install.sh | sudo bash -s -- --url {url} --token {token} --logs \"{logs}\"" + (f" --env {env}" if env else ""))
 
@@ -712,12 +712,12 @@ def agents_panel(port: int, wizard: bool = False) -> None:
         name = c[0].text_input(t("ag_name"), placeholder="db-01")
         env = c[1].selectbox(t("environment"), ["prod", "staging", "test", "dev", "qa", "dr"])
         site = c[2].text_input(t("ag_site"), placeholder="IST-DC1")
-        logs = c[3].text_input(t("ag_logs"), value="/var/log/syslog,/var/log/messages", help=t("ag_logs_help"))
+        logs = c[3].text_input(t("ag_logs"), value="auto", help=t("ag_logs_help"))
         tags = st.text_input(t("ag_tags"), placeholder="oracle, core")
         if st.form_submit_button(f"➕ {t('ag_enroll')}", **wide("button")) and name.strip():
             try:
                 rec, tok = reg.enroll(name, env, site, tags)
-                ss["ag_new"] = (rec, tok, logs.strip() or "/var/log/syslog,/var/log/messages")
+                ss["ag_new"] = (rec, tok, logs.strip() or "auto")
             except ValueError:
                 st.warning(t("ag_dup", n=name.strip()))
     if ss.get("ag_new"):
@@ -774,7 +774,7 @@ def agents_panel(port: int, wizard: bool = False) -> None:
                 if c[5].button("⏏", key=f"ag-rev-{r['id']}", help=t("ag_revoke")):
                     reg.revoke(r["id"]); st.rerun()
             elif c[5].button("↻", key=f"ag-rot-{r['id']}", help=t("ag_rotate")):
-                ss["ag_new"] = (r, reg.rotate(r["id"]), "/var/log/syslog,/var/log/messages"); st.rerun()
+                ss["ag_new"] = (r, reg.rotate(r["id"]), "auto"); st.rerun()
             if c[6].button("🗑", key=f"ag-del-{r['id']}", help=t("ag_delete")):
                 reg.delete(r["id"]); st.rerun()
 
@@ -1220,11 +1220,11 @@ def metric_chart(d: pd.DataFrame, height: int, thr: float | None = None):
     return base.properties(height=height).configure_view(strokeWidth=0)
 
 
-def metrics_block(ms: dict, clickable: bool = False) -> None:
-    """CPU / GPU / memory / disk live tiles: value, worst host, per-minute sparkline (mean over hosts) with the threshold line."""
+def metrics_block(ms: dict, clickable: bool = False, files: list | None = None) -> None:
+    """CPU / GPU / memory / disk live tiles (+ log files): value, worst host, per-minute sparkline (mean over hosts) with the threshold line."""
     thr = __import__("watchover.scenario", fromlist=["x"]).METRIC_THRESHOLDS
     pm = pd.DataFrame(ms["per_minute"]) if ms["per_minute"] else pd.DataFrame(columns=["minute", "host", "metric", "env", "value"])
-    ic = st.columns(4)
+    ic = st.columns(5 if files is not None else 4)
     for col, metric, icon in zip(ic, ("cpu", "gpu", "memory", "disk"), ("🧠", "🎮", "💾", "🗄")):
         sm = ms["summary"][metric]
         val = f"{sm['avg']:.0f}%" if sm["avg"] is not None else t("no_data")
@@ -1234,6 +1234,13 @@ def metrics_block(ms: dict, clickable: bool = False) -> None:
         series = d.groupby("minute").value.mean().sort_index().tolist() if len(d) else []
         with col:
             ops_tile(metric, live_tile(val, t(metric), icon, color, sub, series[-15:], ymax=100, target=thr[metric]), clickable)
+    if files is not None:
+        bad = [f for f in files if f["errors"]]
+        worst = bad[0] if bad else None
+        sub = f"{t('worst')} {Path(worst['file']).name[:22]} · {worst['errors']} ERROR+" if worst else (f"{len(files)} {t('files_n')}" if files else t("files_none"))
+        color = "#f87171" if bad else ("#2dd4bf" if files else "#8b98ad")
+        with ic[4]:
+            ops_tile("files", live_tile(f"{len(bad)}/{len(files)}" if files else t("no_data"), t("files_tile"), "📄", color, sub, [f["errors"] for f in files[:15]][::-1], muted=not bad), clickable)
 
 
 def slo_block(slo: dict, stt: dict, clickable: bool = False, det: dict | None = None) -> None:
@@ -1306,6 +1313,38 @@ def ops_detail_panel(kind: str, ls: LiveStore, env, host, ms: dict, stt: dict, s
             c1, c2 = st.columns(2)
             c1.dataframe(pd.DataFrame(stt["services"], columns=[t("service"), t("env_events")]), hide_index=True, **wide("dataframe"))
             c2.dataframe(pd.DataFrame(Counter((o.host or "-") for o in obs).most_common(), columns=[t("host"), t("env_events")]), hide_index=True, **wide("dataframe"))
+            return
+        if kind == "files":
+            files = ls.files(15, env, host)
+            disc = ls.discoveries()
+            if disc:
+                with st.expander(f"🔎 {t('files_discovered')} · {sum(len(v) for v in disc.values())}", expanded=not files):
+                    for ag, apps in disc.items():
+                        st.markdown(f"**{esc(ag)}** · " + " · ".join(f"{esc(a['app'])} ({len(a['files'])})" for a in apps))
+                        for a in apps:
+                            with st.expander(f"{esc(a['app'])} · {len(a['files'])} {t('files_n')}"):
+                                st.code("\n".join(a["files"]), language=None)
+            if not files:
+                st.info(t("files_none_hint")); return
+            df_ = pd.DataFrame([{t("host"): f["host"], t("live_agents"): f["agent"], t("files_file"): f["file"], t("env_events"): f["total"], "ERROR+": f["errors"],
+                                 t("service"): ", ".join(f["services"]), t("files_last_err"): f["last_error"].strftime("%H:%M:%S") if f["last_error"] else "-",
+                                 t("files_last_msg"): (f["last_msg"] or "")[:120]} for f in files])
+            st.dataframe(df_, hide_index=True, **wide("dataframe"), height=min(360, 60 + 36 * len(files)),
+                         column_config={"ERROR+": st.column_config.ProgressColumn(min_value=0, max_value=max(1, max(f["errors"] for f in files)), format="%d")})
+            labels = [f"{f['host']} · {f['file']} · {f['errors']} ERROR+" for f in files]
+            pick = st.selectbox(t("files_pick"), range(len(files)), format_func=lambda i: labels[i], key="files_pick")
+            f = files[pick]
+            c1, c2, c3 = st.columns([1.2, 1.2, 3])
+            only_err = c1.toggle(t("files_only_err"), value=f["errors"] > 0, key="files_only_err")
+            lines = ls.file_lines(f["agent"], f["file"], 400, only_err, f["host"] if f["host"] != "-" else None)
+            export = "\n".join(f"{o.timestamp.isoformat(timespec='seconds')} {o.severity:<8} {o.service or '-':<18} {o.message}" for o in lines) + "\n"
+            c2.download_button(f"⬇ {t('files_export')}", export.encode("utf-8"), file_name=f"{f['host']}_{Path(f['file']).name}_{datetime.now(UTC).strftime('%Y%m%d-%H%M')}.log",
+                               mime="text/plain", key="files-export", **wide("download_button"))
+            c3.caption(t("files_export_hint", n=len(lines)))
+            st.markdown("<div class='mono' style='max-height:420px;overflow:auto;background:rgba(6,10,16,.55);border:1px solid var(--wo-line);border-radius:12px;padding:10px 12px;font-size:12px;line-height:1.55'>" +
+                        "".join(f'<div style="color:{"#f87171" if o.severity in ("ERROR", "CRITICAL") else "#fbbf24" if o.severity == "WARN" else "#b6c0cf"}">'
+                                f'<span class="muted">{o.timestamp.strftime("%H:%M:%S")}</span> <b>{esc(o.severity)}</b> <span style="color:#a5b4c9">{esc(o.service or "-")}</span> {esc(o.message)[:400]}</div>'
+                                for o in lines) + "</div>", unsafe_allow_html=True)
             return
         if kind == "errors":
             if not det["recent"]:
@@ -1420,10 +1459,11 @@ def tail_block(ls: LiveStore, n: int = 12, env: str | None = None, host: str | N
 def page_ops() -> None:
     ls = live_store()
     _k = st.session_state.pop("open_ops_detail", None)          # popped before the fragment: the fragment only asks for a full rerun
+    _c = st.session_state.pop("open_connect", False)
 
     @st.fragment(run_every="2s")
     def _panel():
-        if st.session_state.get("open_ops_detail"):
+        if st.session_state.get("open_ops_detail") or st.session_state.get("open_connect"):
             st.rerun(scope="app")
         all_stt = ls.stats(15)
         real_agents = [a_ for a_ in all_stt["agents"] if a_ != "simulator"]
@@ -1433,8 +1473,11 @@ def page_ops() -> None:
             badge_txt, badge_col = t("live_real_badge"), "#2dd4bf"
         else:
             badge_txt, badge_col = t("live_wait_badge"), "#64748b"
-        th1, th2 = st.columns([5, 1.4])
+        th1, th0, th2 = st.columns([4.2, 1.2, 1.4])
         th1.markdown(f'## {t("live_title")}')
+        with th0:
+            st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+            st.button(f"🔗 {t('ops_connect')}", key="ops-connect", help=t("ops_connect_help"), **wide("button"), on_click=lambda: st.session_state.__setitem__("open_connect", True))
         with th2:
             sim_now = st.toggle(f"🧪 {t('sim_mode')}", value=bool(st.session_state.get("sim_on", False)), key="sim_mode_toggle", help=t("sim_mode_help"))
             if sim_now != bool(st.session_state.get("sim_on", False)):
@@ -1454,7 +1497,7 @@ def page_ops() -> None:
         scope_html = f" <span class='pill' style='background:#60a5fa'>{t('ops_filter_on')}: {esc(scope)}</span>" if scope else ""
         with main:
             st.markdown(f"#### {t('ops_infra')}{scope_html} <span class='muted'>· {ms['samples']} {t('od_samples')}</span>", unsafe_allow_html=True)
-            metrics_block(ms, clickable=True)
+            metrics_block(ms, clickable=True, files=ls.files(15, env, host))
             st.markdown(f"#### {t('ops_slo')}{scope_html}", unsafe_allow_html=True, help=t("ops_slo_basis"))
             slo_block(slo, stt, clickable=True, det=det)
         st.markdown("")
@@ -1469,6 +1512,12 @@ def page_ops() -> None:
         tail_block(ls, env=env, host=host)
 
     _panel()
+    if _c:
+        @st.dialog(t("ops_connect_title"), width="large")
+        def _connect_dialog() -> None:
+            info_btn("ops_connect_info")
+            agents_panel(int(st.session_state.get("live_port", LIVE_PORT)), wizard=True)
+        _connect_dialog()
     if _k:
         _all = t("ops_all")
         _env = st.session_state.get("ops_env_pick") or None

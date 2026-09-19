@@ -30,7 +30,7 @@ if [[ $UNINSTALL -eq 1 ]]; then
   rm -rf "$DIR"; log "Done"; exit 0
 fi
 [[ -n "$URL" && ( -n "$TOKEN" || -n "$EKEY" ) ]] || die "--url http://<dashboard>:<port>/ingest and --token wo_... (or --enroll-key wk_...) are required (both come from the Agents panel)"
-[[ -z "$LOGS" ]] && LOGS="/var/log/syslog,/var/log/messages"
+[[ -z "$LOGS" ]] && LOGS="auto"   # discover the applications on this server and follow their logs
 [[ "$URL" == */ingest ]] || URL="${URL%/}/ingest"
 BASE="${URL%/ingest}"
 
@@ -82,7 +82,7 @@ ENVEOF
 chmod 600 "$DIR/agent.env"; mkdir -p -m 700 "$DIR/spool"; chmod 700 "$DIR/spool"
 umask 022
 IFS=',' read -ra _paths <<<"$LOGS"
-for _p in "${_paths[@]}"; do _p="$(echo "$_p" | xargs)"; [[ -z "$_p" || "$_p" == *"*"* || -r "$_p" ]] || echo "  warning: $_p does not exist yet on this server (the agent keeps waiting for it)"; done
+for _p in "${_paths[@]}"; do _p="$(echo "$_p" | xargs)"; [[ -z "$_p" || "$_p" == "auto" || "$_p" == "journal" || "$_p" == "windows-events" || "$_p" == *"*"* || -r "$_p" ]] || echo "  warning: $_p does not exist yet on this server (the agent keeps waiting for it)"; done
 
 if [[ $TEST -eq 1 ]]; then
   log "Connectivity test"

@@ -237,3 +237,30 @@ def test_self_enrolment(tmp_path):
     finally:
         srv.shutdown(); srv.server_close()
 
+
+
+def test_agent_discovery_and_file_stats(tmp_path, monkeypatch):
+    """--discover finds application logs by profile; the live store reports per-file error stats and discovery events."""
+    import sys
+    sys.path.insert(0, str(ROOT)); import agent
+    sap = tmp_path / "usr" / "sap" / "TPD" / "D00" / "work"; sap.mkdir(parents=True)
+    (sap / "dev_w0").write_text("x"); (sap / "dev_disp").write_text("x"); (sap / "available.log").write_text("x")
+    ora = tmp_path / "u01" / "app" / "oracle" / "diag" / "rdbms" / "orcl" / "orcl" / "trace"; ora.mkdir(parents=True); (ora / "alert_orcl.log").write_text("x")
+    monkeypatch.setattr(agent, "PROFILES", [(n, [str(tmp_path) + m for m in ms], [str(tmp_path) + g for g in gs]) for n, ms, gs in agent.PROFILES if n in ("SAP NetWeaver ABAP", "Oracle Database", "nginx")])
+    found = agent.discover_logs()
+    assert [f["app"] for f in found] == ["SAP NetWeaver ABAP", "Oracle Database"]
+    assert sum(len(f["files"]) for f in found) == 4 and any(p.endswith("alert_orcl.log") for p in found[1]["files"])
+    store = LiveStore(); srv = start_receiver(store, 0, None); port = srv.server_address[1]
+    try:
+        s = agent.Sender(f"http://127.0.0.1:{port}/ingest", None, "sap-01")
+        agent.discovery_report(s, "prod", found)
+        s.send(b'{"level":"error","msg":"tp fail","host":"sap-01"}\n{"level":"info","msg":"ok","host":"sap-01"}\n', "dev_w0")
+        s.send(b'{"level":"info","msg":"fine","host":"sap-01"}\n', "available.log")
+        disc = store.discoveries()
+        assert set(a["app"] for a in disc["sap-01"]) == {"SAP NetWeaver ABAP", "Oracle Database"} and len(disc["sap-01"][1]["files"]) == 3
+        files = store.files(15)
+        assert files[0]["file"] == "dev_w0" and files[0]["errors"] == 1 and files[0]["total"] == 2 and files[0]["last_msg"] == "tp fail"
+        assert [f["file"] for f in files] == ["dev_w0", "available.log"] and all(f["file"] != "discovery.jsonl" for f in files)
+        assert [o.message for o in store.file_lines("sap-01", "dev_w0", errors_only=True)] == ["tp fail"]
+    finally:
+        srv.shutdown(); srv.server_close()

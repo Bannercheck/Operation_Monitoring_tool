@@ -142,6 +142,41 @@ class LiveStore:
                 out.setdefault(r[1], r[4] or "unknown")
         return dict(sorted(out.items()))
 
+    def files(self, window_min: int = 15, env: str | None = None, host=None) -> list[dict]:
+        """Which log files (per sender / host) the events came from, with totals, ERROR+ counts and the last error."""
+        start = datetime.now(UTC) - timedelta(minutes=window_min)
+        out: dict[tuple, dict] = {}
+        for o in self.snapshot(env, host):
+            if o.timestamp < start or o.attributes.get("discovery_app"):
+                continue
+            k = (o.attributes.get("agent", "-"), o.host or "-", o.source or "-")
+            g = out.setdefault(k, {"agent": k[0], "host": k[1], "file": k[2], "total": 0, "errors": 0, "last": o.timestamp, "last_error": None, "last_msg": "", "services": set()})
+            g["total"] += 1
+            g["last"] = max(g["last"], o.timestamp)
+            if o.service:
+                g["services"].add(o.service)
+            if SEV_RANK[o.severity] >= 3:
+                g["errors"] += 1
+                if g["last_error"] is None or o.timestamp >= g["last_error"]:
+                    g["last_error"], g["last_msg"] = o.timestamp, o.message
+        rows = [dict(g, services=sorted(g["services"])[:5]) for g in out.values()]
+        return sorted(rows, key=lambda r: (-r["errors"], -r["total"]))
+
+    def file_lines(self, agent: str, source: str, n: int = 400, errors_only: bool = False, host: str | None = None) -> list[Observation]:
+        obs = [o for o in self.snapshot() if o.attributes.get("agent", "-") == agent and (o.source or "-") == source and (host is None or o.host == host)
+               and (not errors_only or SEV_RANK[o.severity] >= 3)]
+        return obs[-n:]
+
+    def discoveries(self) -> dict[str, list[dict]]:
+        """agent -> [{app, files}] from the discovery events agents send at start-up (latest per app)."""
+        out: dict[str, dict[str, dict]] = {}
+        for o in self.snapshot():
+            app = o.attributes.get("discovery_app")
+            if app:
+                files = o.attributes.get("discovery_files") or []
+                out.setdefault(o.attributes.get("agent", "-"), {})[app] = {"app": app, "files": files if isinstance(files, list) else [str(files)], "ts": o.timestamp}
+        return {a: sorted(v.values(), key=lambda x: x["app"]) for a, v in out.items()}
+
     def tail(self, n: int = 50, env: str | None = None, host: str | None = None) -> list[Observation]:
         return self.snapshot(env, host)[-n:]
 

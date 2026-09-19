@@ -5,7 +5,10 @@
     python3 agent.py --url http://<dashboard>:8600/ingest --test    # prove the address, port and token work, then exit
     python3 agent.py --url http://<dashboard>:8600/ingest --file export.csv   # one-shot upload
 
-Standard library only: runs on any Linux / macOS host with Python 3.9+ (no Prometheus, no Zabbix, no pip). Any log
+    python3 agent.py --url http://<dashboard>:8600/ingest --auto --metrics   # discover SAP / Oracle / EBS / Java / web / db / container logs and follow them
+    python3 agent.py --discover                                              # only print what --auto would follow
+
+Standard library only: runs on any Linux / macOS / Windows host with Python 3.9+ (no Prometheus, no Zabbix, no pip). Any log
 format works (JSON / JSONL / CSV / syslog / key=value / text); the receiver runs the same parsers as the dashboard.
 With --spool DIR, batches that cannot be delivered are kept on disk and re-sent when the dashboard is reachable again.
 """
@@ -16,6 +19,7 @@ import glob
 import json
 import os
 import random
+import re
 import socket
 import sys
 import threading
@@ -25,7 +29,7 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
-__version__ = "0.4.1"
+__version__ = "0.5.0"
 
 
 def host_metrics() -> dict:
@@ -237,6 +241,157 @@ def metrics_loop(sender: Sender, interval: float, env: str, stop: threading.Even
         stop.wait(max(interval, 1.0))
 
 
+# ---------------------------------------------------------------- automatic log discovery (Linux / macOS / Windows / Kubernetes nodes)
+PROFILES = [
+    # name, detector (any path exists), log globs
+    ("SAP NetWeaver ABAP", ["/usr/sap/*/D*/work", "/usr/sap/*/DVEBMGS*/work", "/usr/sap/*/ASCS*/work"],
+     ["/usr/sap/*/D*/work/dev_w*", "/usr/sap/*/D*/work/dev_disp", "/usr/sap/*/D*/work/dev_rfc*", "/usr/sap/*/D*/work/available.log", "/usr/sap/*/DVEBMGS*/work/dev_w*",
+      "/usr/sap/*/DVEBMGS*/work/dev_disp", "/usr/sap/*/ASCS*/work/dev_ms", "/usr/sap/*/ASCS*/work/dev_enq*", "/usr/sap/*/*/work/sapstart.log", "/usr/sap/*/*/work/available.log"]),
+    ("SAP NetWeaver Java", ["/usr/sap/*/J*/j2ee/cluster", "/usr/sap/*/J*/work"],
+     ["/usr/sap/*/J*/j2ee/cluster/server*/log/defaultTrace*.trc", "/usr/sap/*/J*/j2ee/cluster/server*/log/applications*.log", "/usr/sap/*/J*/work/dev_server*", "/usr/sap/*/J*/work/*.jvm", "/usr/sap/*/J*/work/std_server*.out"]),
+    ("SAP HANA", ["/usr/sap/*/HDB*", "/hana/shared/*/HDB*"],
+     ["/usr/sap/*/HDB*/*/trace/indexserver_*.trc", "/usr/sap/*/HDB*/*/trace/nameserver_*.trc", "/usr/sap/*/HDB*/*/trace/xsengine_*.trc", "/usr/sap/*/HDB*/*/trace/*alert*.trc", "/usr/sap/*/HDB*/*/trace/daemon_*.trc"]),
+    ("SAP Host Agent", ["/usr/sap/hostctrl"], ["/usr/sap/hostctrl/work/dev_saphostexec", "/usr/sap/hostctrl/work/sapstartsrv.log"]),
+    ("Oracle Database", ["/u01/app/oracle/diag/rdbms", "/opt/oracle/diag/rdbms", "/oracle/*/diag/rdbms", "$ORACLE_BASE/diag/rdbms"],
+     ["/u01/app/oracle/diag/rdbms/*/*/trace/alert_*.log", "/opt/oracle/diag/rdbms/*/*/trace/alert_*.log", "/oracle/*/diag/rdbms/*/*/trace/alert_*.log", "$ORACLE_BASE/diag/rdbms/*/*/trace/alert_*.log",
+      "/u01/app/oracle/diag/tnslsnr/*/listener/trace/listener.log", "$ORACLE_BASE/diag/tnslsnr/*/*/trace/*.log"]),
+    ("Oracle E-Business Suite", ["/u01/*/inst/apps", "/u01/install/APPS/inst/apps", "$INST_TOP/logs", "/oracle/*/inst/apps"],
+     ["/u01/*/inst/apps/*/logs/appl/conc/log/*.log", "/u01/*/inst/apps/*/logs/appl/conc/log/*.mgr", "/u01/*/inst/apps/*/logs/appl/rgf/*.log", "/u01/*/inst/apps/*/logs/ora/10.1.3/opmn/*.log",
+      "/u01/*/inst/apps/*/logs/ora/10.1.3/j2ee/oacore/*.log", "$INST_TOP/logs/appl/conc/log/*.log", "$INST_TOP/logs/ora/10.1.3/opmn/*.log", "/u01/*/fs1/inst/apps/*/logs/appl/conc/log/*.log", "/u01/*/fs2/inst/apps/*/logs/appl/conc/log/*.log"]),
+    ("Oracle WebLogic", ["/u01/*/user_projects/domains", "/opt/oracle/*/user_projects/domains"],
+     ["/u01/*/user_projects/domains/*/servers/*/logs/*.log", "/u01/*/user_projects/domains/*/servers/*/logs/*.out", "/opt/oracle/*/user_projects/domains/*/servers/*/logs/*.log"]),
+    ("Apache Tomcat", ["/opt/tomcat*", "/usr/share/tomcat*", "/var/log/tomcat*"], ["/opt/tomcat*/logs/catalina.out", "/opt/tomcat*/logs/*.log", "/usr/share/tomcat*/logs/*.log", "/var/log/tomcat*/*.log", "/var/log/tomcat*/catalina.out"]),
+    ("JBoss / WildFly", ["/opt/wildfly*", "/opt/jboss*"], ["/opt/wildfly*/standalone/log/server.log", "/opt/jboss*/standalone/log/server.log", "/opt/wildfly*/domain/servers/*/log/server.log"]),
+    ("IBM WebSphere", ["/opt/IBM/WebSphere"], ["/opt/IBM/WebSphere/AppServer/profiles/*/logs/*/SystemOut.log", "/opt/IBM/WebSphere/AppServer/profiles/*/logs/*/SystemErr.log"]),
+    ("nginx", ["/var/log/nginx"], ["/var/log/nginx/*.log"]),
+    ("Apache httpd", ["/var/log/httpd", "/var/log/apache2"], ["/var/log/httpd/*log", "/var/log/apache2/*.log"]),
+    ("PostgreSQL", ["/var/log/postgresql", "/var/lib/pgsql"], ["/var/log/postgresql/*.log", "/var/lib/pgsql/*/data/log/*.log", "/var/lib/pgsql/data/log/*.log"]),
+    ("MySQL / MariaDB", ["/var/log/mysql", "/var/log/mariadb"], ["/var/log/mysql/*.log", "/var/log/mariadb/*.log", "/var/log/mysqld.log"]),
+    ("MongoDB", ["/var/log/mongodb"], ["/var/log/mongodb/*.log"]),
+    ("Redis", ["/var/log/redis"], ["/var/log/redis/*.log"]),
+    ("Kafka", ["/opt/kafka*", "/var/log/kafka"], ["/opt/kafka*/logs/server.log", "/var/log/kafka/*.log"]),
+    ("Elasticsearch", ["/var/log/elasticsearch"], ["/var/log/elasticsearch/*.log"]),
+    ("Docker containers", ["/var/lib/docker/containers"], ["/var/lib/docker/containers/*/*-json.log"]),
+    ("Kubernetes node", ["/var/log/containers", "/var/log/pods", "/var/lib/kubelet"], ["/var/log/containers/*.log", "/var/log/kube-apiserver.log", "/var/log/kube-scheduler.log", "/var/log/kubelet.log"]),
+    ("Linux system", ["/var/log"], ["/var/log/syslog", "/var/log/messages", "/var/log/auth.log", "/var/log/secure", "/var/log/kern.log", "/var/log/cron", "/var/log/dmesg"]),
+    ("macOS system", ["/var/log/system.log"], ["/var/log/system.log", "/var/log/install.log"]),
+    ("Windows IIS", [r"C:\inetpub\logs\LogFiles"], [r"C:\inetpub\logs\LogFiles\*\*.log"]),
+    ("SAP on Windows", [r"*:\usr\sap"], [r"*:\usr\sap\*\D*\work\dev_w*", r"*:\usr\sap\*\D*\work\dev_disp", r"*:\usr\sap\*\*\work\available.log", r"*:\usr\sap\*\J*\j2ee\cluster\server*\log\defaultTrace*.trc"]),
+    ("Oracle on Windows", [r"*:\app\*\diag\rdbms", r"*:\oracle\*\diag\rdbms"], [r"*:\app\*\diag\rdbms\*\*\trace\alert_*.log", r"*:\oracle\*\diag\rdbms\*\*\trace\alert_*.log"]),
+    ("Windows applications", [r"C:\ProgramData"], [r"C:\ProgramData\*\logs\*.log", r"C:\ProgramData\*\log\*.log"]),
+]
+MAX_AUTO_FILES = 200
+
+
+def _expand(pattern: str) -> list[str]:
+    pattern = os.path.expandvars(pattern)
+    if "$" in pattern:
+        return []
+    if pattern.startswith("*:"):                                # every Windows drive letter
+        out = []
+        for d in "CDEFGH":
+            out += glob.glob(f"{d}:" + pattern[2:])
+        return out
+    return glob.glob(pattern)
+
+
+def discover_logs() -> list[dict]:
+    """Applications present on this host and the log files they write, newest-modified first, capped per profile."""
+    found = []
+    for name, markers, globs in PROFILES:
+        if not any(_expand(m) for m in markers):   # detector first: cheap check before the globs
+            continue
+        files: dict[str, float] = {}
+        for g in globs:
+            for f in _expand(g):
+                try:
+                    if os.path.isfile(f) and os.access(f, os.R_OK):
+                        files[f] = os.path.getmtime(f)
+                except OSError:
+                    pass
+        if files:
+            ordered = sorted(files, key=files.get, reverse=True)
+            found.append({"app": name, "files": ordered[:40], "skipped": max(0, len(ordered) - 40)})
+    return found
+
+
+def discovery_report(sender: "Sender", env: str, found: list[dict]) -> None:
+    """One informational event per detected application so the dashboard can show what this server ships."""
+    if not found:
+        return
+    lines = []
+    for f in found:
+        lines.append(json.dumps({"ts": datetime.now(timezone.utc).isoformat(), "level": "info", "service": "watchover-agent", "host": sender.agent, "env": env,
+                                 "msg": f"discovered {f['app']}: {len(f['files'])} log files" + (f" (+{f['skipped']} older skipped)" if f["skipped"] else ""),
+                                 "discovery_app": f["app"], "discovery_files": f["files"][:40]}, ensure_ascii=False))
+    sender.send(("\n".join(lines) + "\n").encode(), "discovery.jsonl")
+
+
+def journal_loop(sender: "Sender", batch_secs: float, stop: threading.Event) -> None:
+    """systemd journal as a stream (hosts without /var/log/syslog): journalctl -f -o json."""
+    import subprocess
+    try:
+        proc = subprocess.Popen(["journalctl", "-f", "-n", "0", "-o", "json"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+    except OSError:
+        return
+    buf: list[str] = []
+    last = time.time()
+    while not stop.is_set():
+        line = proc.stdout.readline()
+        if line:
+            try:
+                j = json.loads(line)
+                buf.append(json.dumps({"ts": datetime.fromtimestamp(int(j.get("__REALTIME_TIMESTAMP", 0)) / 1e6, tz=timezone.utc).isoformat(),
+                                       "level": {0: "critical", 1: "critical", 2: "critical", 3: "error", 4: "warn"}.get(int(j.get("PRIORITY", 6)), "info"),
+                                       "service": j.get("SYSLOG_IDENTIFIER") or j.get("_COMM") or "journal", "host": j.get("_HOSTNAME", sender.agent), "msg": str(j.get("MESSAGE", ""))[:2000]}))
+            except (ValueError, TypeError):
+                pass
+        if buf and time.time() - last >= batch_secs:
+            sender.send(("\n".join(buf) + "\n").encode(), "journal.jsonl"); buf, last = [], time.time()
+        if not line:
+            stop.wait(0.2)
+    proc.terminate()
+
+
+def windows_events_loop(sender: "Sender", interval: float, stop: threading.Event, channels=("System", "Application")) -> None:
+    """Windows Event Log through wevtutil (no extra packages): new Warning / Error / Critical records every interval."""
+    import subprocess
+    import xml.etree.ElementTree as ET
+    seen: dict[str, str] = {}
+    while not stop.is_set():
+        out_lines = []
+        for ch in channels:
+            try:
+                r = subprocess.run(["wevtutil", "qe", ch, "/c:100", "/rd:true", "/f:xml", "/q:*[System[(Level<=3)]]"], capture_output=True, text=True, timeout=30)
+            except (OSError, subprocess.TimeoutExpired):
+                continue
+            newest = None
+            for m in re.finditer(r"<Event .*?</Event>", r.stdout, flags=re.S):
+                try:
+                    ev = ET.fromstring(m.group(0))
+                    ns = {"e": "http://schemas.microsoft.com/win/2004/08/events/event"}
+                    sysn = ev.find("e:System", ns)
+                    rid = sysn.findtext("e:EventRecordID", default="", namespaces=ns)
+                    if newest is None:
+                        newest = rid
+                    if seen.get(ch) and rid <= seen[ch]:
+                        break
+                    lvl = {"1": "critical", "2": "error", "3": "warn"}.get(sysn.findtext("e:Level", default="4", namespaces=ns), "info")
+                    tc = sysn.find("e:TimeCreated", ns)
+                    prov = sysn.find("e:Provider", ns)
+                    msg = " ".join(d.text or "" for d in ev.iter("{http://schemas.microsoft.com/win/2004/08/events/event}Data"))[:2000]
+                    out_lines.append(json.dumps({"ts": (tc.get("SystemTime") if tc is not None else datetime.now(timezone.utc).isoformat()), "level": lvl,
+                                                 "service": (prov.get("Name") if prov is not None else ch), "host": sender.agent, "msg": msg or f"{ch} event {sysn.findtext('e:EventID', default='', namespaces=ns)}",
+                                                 "channel": ch, "event_id": sysn.findtext("e:EventID", default="", namespaces=ns)}, ensure_ascii=False))
+                except ET.ParseError:
+                    continue
+            if newest:
+                seen[ch] = newest
+        if out_lines:
+            sender.send(("\n".join(reversed(out_lines)) + "\n").encode(), "windows-events.jsonl")
+        stop.wait(max(interval, 5.0))
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--url", default=os.environ.get("WATCHOVER_URL", "http://localhost:8600/ingest"), help="receiver URL (…/ingest); env WATCHOVER_URL")
@@ -244,6 +399,10 @@ def main(argv=None) -> int:
     ap.add_argument("--agent", default=os.environ.get("WATCHOVER_AGENT") or socket.gethostname(), help="name sent as X-Agent (a registered token overrides it)")
     ap.add_argument("--env", default=os.environ.get("AGENT_ENV", ""), help="environment tag for this host (a registered token overrides it)")
     ap.add_argument("--tail", action="append", default=[], help="follow a log file or glob; repeatable (env WATCHOVER_LOGS, comma separated)")
+    ap.add_argument("--auto", action="store_true", help="discover the applications on this host (SAP, Oracle, EBS, Java servers, web, databases, containers, Kubernetes, system) and follow their logs; env WATCHOVER_LOGS=auto")
+    ap.add_argument("--discover", action="store_true", help="print what --auto would follow and exit")
+    ap.add_argument("--journal", action="store_true", help="also stream the systemd journal (Linux)")
+    ap.add_argument("--windows-events", action="store_true", help="also poll the Windows Event Log (System, Application)")
     ap.add_argument("--metrics", action="store_true", help="ship this host's CPU / memory / disk / GPU every --interval seconds")
     ap.add_argument("--file", help="send a file once and exit")
     ap.add_argument("--simulate", action="store_true", help="generate synthetic traffic (needs the dashboard checkout)")
@@ -252,7 +411,30 @@ def main(argv=None) -> int:
     ap.add_argument("--spool", default=os.environ.get("WATCHOVER_SPOOL", ""), help="directory for undeliverable batches (re-sent when the receiver is back)")
     args = ap.parse_args(argv)
     if os.environ.get("WATCHOVER_LOGS"):
-        args.tail += [x.strip() for x in os.environ["WATCHOVER_LOGS"].split(",") if x.strip()]
+        for x in os.environ["WATCHOVER_LOGS"].split(","):
+            x = x.strip()
+            if x == "auto":
+                args.auto = True
+            elif x == "journal":
+                args.journal = True
+            elif x == "windows-events":
+                args.windows_events = True
+            elif x:
+                args.tail.append(x)
+    if args.discover:
+        for f in discover_logs():
+            print(f"{f['app']}: {len(f['files'])} files" + (f" (+{f['skipped']} older)" if f["skipped"] else ""))
+            for path in f["files"]:
+                print(f"    {path}")
+        return 0
+    found = discover_logs() if args.auto else []
+    if args.auto:
+        auto_files = [p for f in found for p in f["files"]][:MAX_AUTO_FILES]
+        args.tail += [p for p in auto_files if p not in args.tail]
+        if sys.platform.startswith("win"):
+            args.windows_events = True
+        elif not any(p in ("/var/log/syslog", "/var/log/messages") for p in args.tail) and os.path.exists("/run/systemd/system"):
+            args.journal = True
     if os.environ.get("WATCHOVER_METRICS", "").lower() in ("1", "true", "yes"):
         args.metrics = True
     sender = Sender(args.url, args.key, args.agent, args.spool or None)
@@ -274,15 +456,22 @@ def main(argv=None) -> int:
             tick += 1
             sender.send(simulate_batch(rng, rng.randint(4, 12), 90 <= tick % 150 < 110), "sim.jsonl")
             time.sleep(max(args.interval, 0.2))
-    if not args.tail and not args.metrics:
-        ap.error("nothing to ship: use --metrics and/or --tail PATH (or --test / --file)")
+    if not args.tail and not args.metrics and not args.journal and not args.windows_events:
+        ap.error("nothing to ship: use --metrics, --auto and/or --tail PATH (or --test / --file)")
     hello(sender, args.env)
+    if found:
+        discovery_report(sender, args.env, found)
     stop = threading.Event()
     threads = [threading.Thread(target=metrics_loop, args=(sender, args.interval, args.env, stop), daemon=True)] if args.metrics else []
     threads += [threading.Thread(target=tail_loop, args=(p, sender, 1.0, stop), daemon=True) for p in args.tail]
+    if args.journal:
+        threads.append(threading.Thread(target=journal_loop, args=(sender, 1.0, stop), daemon=True))
+    if args.windows_events:
+        threads.append(threading.Thread(target=windows_events_loop, args=(sender, max(args.interval, 5.0), stop), daemon=True))
     for th in threads:
         th.start()
-    print(f"watchover agent {__version__} -> {args.url} · metrics={'on' if args.metrics else 'off'} · tails={len(args.tail)} · spool={args.spool or 'off'} (Ctrl+C to stop)")
+    apps = ", ".join(f"{f['app']} ({len(f['files'])})" for f in found) if found else "-"
+    print(f"watchover agent {__version__} -> {args.url} · metrics={'on' if args.metrics else 'off'} · tails={len(args.tail)} · auto={apps} · spool={args.spool or 'off'} (Ctrl+C to stop)")
     try:
         while True:
             for _ in range(60):
