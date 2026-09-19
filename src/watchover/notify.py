@@ -22,12 +22,53 @@ from email.utils import formataddr
 UTC = timezone.utc
 CONDITIONS = ("slo", "errors", "metric", "agent_offline", "source_failing", "incident")
 SEVERITIES = ("critical", "high", "medium", "low")
+# SMS gateways. fields: which inputs the settings form shows; number: how the recipient number is written (e164 +90…, digits 90…, national 0…);
+# custom: the URL and body come from the provider's own integration document (operator corporate SMS contracts carry a per-customer endpoint);
+# fail: a regex on the HTTP 200 body that still means rejection (several Turkish gateways answer 200 with an error code).
 SMS_PRESETS = {
     "twilio": {"label": "Twilio", "url": "https://api.twilio.com/2010-04-01/Accounts/{account}/Messages.json", "method": "POST", "auth": "basic",
-               "body": "From={from}&To={to}&Body={msg}", "content_type": "application/x-www-form-urlencoded"},
-    "netgsm": {"label": "Netgsm (TR)", "url": "https://api.netgsm.com.tr/sms/send/get?usercode={user}&password={password}&gsmno={to}&message={msg}&msgheader={from}", "method": "GET", "auth": "none", "body": "", "content_type": ""},
-    "http": {"label": "HTTP gateway (template)", "url": "https://sms.example.com/send", "method": "POST", "auth": "bearer", "body": '{"to": "{to}", "text": "{msg}"}', "content_type": "application/json"},
+               "body": "From={from}&To={to}&Body={msg}", "content_type": "application/x-www-form-urlencoded", "fields": ["account", "token", "from"], "number": "e164"},
+    "netgsm": {"label": "Netgsm", "url": "https://api.netgsm.com.tr/sms/send/get?usercode={user}&password={password}&gsmno={to}&message={msg}&msgheader={from}", "method": "GET", "auth": "none",
+               "body": "", "content_type": "", "fields": ["user", "password", "header"], "number": "digits", "fail": r"^\s*(20|30|40|50|51|60|70|80|85)\b"},
+    "iletimerkezi": {"label": "İleti Merkezi", "url": "https://api.iletimerkezi.com/v1/send-sms/json", "method": "POST", "auth": "none",
+                     "body": '{"request": {"authentication": {"username": "{user}", "password": "{password}"}, "order": {"sender": "{from}", "message": {"text": "{msg}", "receipents": {"number": ["{to}"]}}}}}',
+                     "content_type": "application/json", "fields": ["user", "password", "header"], "number": "digits", "fail": r'"code"\s*:\s*"?(?!200)\d'},
+    "verimor": {"label": "Verimor", "url": "https://sms.verimor.com.tr/v2/send.json", "method": "POST", "auth": "none",
+                "body": '{"username": "{user}", "password": "{password}", "source_addr": "{from}", "messages": [{"msg": "{msg}", "dest": "{to}"}]}',
+                "content_type": "application/json", "fields": ["user", "password", "header"], "number": "digits"},
+    "mutlucell": {"label": "Mutlucell", "url": "https://smsgw.mutlucell.com/smsgw-ws/sndblkex", "method": "POST", "auth": "none",
+                  "body": '<smspack ka="{user}" pwd="{password}" org="{from}"><mesaj><metin>{msg}</metin><nums>{to}</nums></mesaj></smspack>',
+                  "content_type": "text/xml", "fields": ["user", "password", "header"], "number": "digits", "fail": r"^\s*(2\d|30)\s*$"},
+    "jetsms": {"label": "JetSMS (Biotekno)", "url": "https://service.jetsms.com.tr/SMS-Web/HttpSmsSend?Username={user}&Password={password}&Msisdns={to}&Messages={msg}&Originator={from}&TransmissionID={account}",
+               "method": "GET", "auth": "none", "body": "", "content_type": "", "fields": ["user", "password", "header", "account"], "number": "digits"},
+    "postaguvercini": {"label": "Posta Güvercini", "url": "https://www.postaguvercini.com/api_json/v1/Sms/Send_1_N", "method": "POST", "auth": "none",
+                       "body": '{"user": "{user}", "password": "{password}", "sender": "{from}", "message": "{msg}", "receipients": ["{to}"]}',
+                       "content_type": "application/json", "fields": ["user", "password", "header"], "number": "digits", "custom": True},
+    "turkcell": {"label": "Turkcell Kurumsal Mesaj", "url": "", "method": "POST", "auth": "basic", "body": '{"from": "{from}", "to": "{to}", "text": "{msg}"}',
+                 "content_type": "application/json", "fields": ["url", "user", "password", "header", "body"], "number": "digits", "custom": True},
+    "turktelekom": {"label": "Türk Telekom Kurumsal SMS", "url": "", "method": "POST", "auth": "basic", "body": '{"from": "{from}", "to": "{to}", "text": "{msg}"}',
+                    "content_type": "application/json", "fields": ["url", "user", "password", "header", "body"], "number": "digits", "custom": True},
+    "vodafone": {"label": "Vodafone Kurumsal Mesaj", "url": "", "method": "POST", "auth": "basic", "body": '{"from": "{from}", "to": "{to}", "text": "{msg}"}',
+                 "content_type": "application/json", "fields": ["url", "user", "password", "header", "body"], "number": "digits", "custom": True},
+    "http": {"label": "HTTP gateway (template)", "url": "https://sms.example.com/send", "method": "POST", "auth": "bearer", "body": '{"to": "{to}", "text": "{msg}"}',
+             "content_type": "application/json", "fields": ["url", "method", "auth", "content_type", "token", "from", "body"], "number": "e164", "custom": True},
 }
+
+
+def format_number(number: str, style: str = "e164") -> str:
+    """+90 555 111 22 33 / 0555… / 90555… -> the shape the gateway wants: e164 (+905551112233), digits (905551112233), national (05551112233)."""
+    d = re.sub(r"[^\d]", "", number or "")
+    if d.startswith("00"):
+        d = d[2:]
+    if len(d) == 10 and d.startswith("5"):
+        d = "90" + d                                   # bare Turkish mobile number
+    elif len(d) == 11 and d.startswith("05"):
+        d = "9" + d
+    if style == "digits":
+        return d
+    if style == "national":
+        return "0" + d[2:] if d.startswith("90") else d
+    return "+" + d
 
 
 # ---------------------------------------------------------------- channels
@@ -65,28 +106,41 @@ def send_email(cfg: dict, to: list[str], subject: str, text: str, html: str | No
 
 
 def send_sms(cfg: dict, to: str, text: str) -> str:
-    """cfg: preset (twilio|netgsm|http), url, method, auth (none|basic|bearer), user, password, token, from, account, body, content_type.
-    Placeholders {to} {msg} {from} {user} {password} {account} {token} are filled (URL-encoded in the URL / form body)."""
+    """cfg: preset (a SMS_PRESETS key), url, method, auth (none|basic|bearer), user, password, token, from, account, body, content_type.
+    Placeholders {to} {msg} {from} {user} {password} {account} {token} are filled (URL-encoded in the URL / form body, escaped in JSON / XML).
+    A custom preset takes the URL / body from cfg; a fixed one always uses the catalogue's. A 200 whose body matches the preset's fail regex raises."""
     preset = SMS_PRESETS.get(cfg.get("preset", "http"), SMS_PRESETS["http"])
-    url_t, method = cfg.get("url") or preset["url"], (cfg.get("method") or preset["method"]).upper()
-    body_t, ctype = cfg.get("body") if cfg.get("body") is not None and cfg.get("preset") == "http" else preset["body"], cfg.get("content_type") or preset["content_type"]
+    custom = preset.get("custom", False)
+    url_t = (cfg.get("url") or preset["url"]) if custom else preset["url"]
+    method = ((cfg.get("method") if custom else "") or preset["method"]).upper()
+    body_t = (cfg.get("body") or preset["body"]) if custom else preset["body"]
+    ctype = ((cfg.get("content_type") if custom else "") or preset["content_type"])
+    if not url_t:
+        raise RuntimeError("the provider's endpoint URL is missing")
+    to = format_number(to, preset.get("number", "e164"))
     vals = {"to": to, "msg": text[:600], "from": cfg.get("from", ""), "user": cfg.get("user", ""), "password": cfg.get("password", ""), "account": cfg.get("account", ""), "token": cfg.get("token", "")}
     url = _fill(url_t, {k: urllib.parse.quote(str(v), safe="") for k, v in vals.items()})
     if "json" in ctype:
         body = _fill(body_t, {k: json.dumps(str(v))[1:-1] for k, v in vals.items()}).encode()
+    elif "xml" in ctype:
+        import html as _h
+        body = _fill(body_t, {k: _h.escape(str(v), quote=True) for k, v in vals.items()}).encode()
     else:
         body = _fill(body_t, {k: urllib.parse.quote_plus(str(v)) for k, v in vals.items()}).encode() if body_t else None
     headers = {"User-Agent": "watchover-notify/1.0"}
     if ctype:
         headers["Content-Type"] = ctype
-    auth = cfg.get("auth") or preset["auth"]
+    auth = ((cfg.get("auth") if custom else "") or preset["auth"])
     if auth == "basic":
         headers["Authorization"] = "Basic " + base64.b64encode(f"{cfg.get('account') or cfg.get('user', '')}:{cfg.get('token') or cfg.get('password', '')}".encode()).decode()
     elif auth == "bearer" and (cfg.get("token") or cfg.get("password")):
         headers["Authorization"] = f"Bearer {cfg.get('token') or cfg.get('password')}"
     req = urllib.request.Request(url, data=body if method != "GET" else None, method=method, headers=headers)
     with urllib.request.urlopen(req, timeout=20) as r:
-        return r.read().decode("utf-8", "replace")[:300]
+        out = r.read().decode("utf-8", "replace")[:300]
+    if preset.get("fail") and re.search(preset["fail"], out):
+        raise RuntimeError(f"gateway rejected the message: {out[:80]}")
+    return out
 
 
 # ---------------------------------------------------------------- recipients, groups, rules, alert log

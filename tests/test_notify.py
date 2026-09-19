@@ -99,3 +99,41 @@ def test_engine_evaluates_live_feed(kb):
     assert all(o.get("ok") == 1 for o in out) and len(sent) == 3
     assert eng.evaluate() and all(o.get("skipped") == "cooldown" for o in eng.evaluate())
     assert eng.runs == 3 and eng.last_run
+
+
+def test_turkish_gateways_number_format_and_rejection(monkeypatch):
+    assert wo_notify.format_number("+90 555 111 22 33", "digits") == "905551112233"
+    assert wo_notify.format_number("0555 111 2233", "e164") == "+905551112233"
+    assert wo_notify.format_number("5551112233", "national") == "05551112233"
+    assert wo_notify.format_number("0090 555 111 2233", "digits") == "905551112233"
+    seen = {}
+
+    class R:
+        def __init__(self, body): self.body = body
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+        def read(self): return self.body
+
+    def fake_open(req, timeout=0):
+        seen["url"], seen["body"], seen["ctype"] = req.full_url, req.data, req.headers.get("Content-type")
+        return R(seen.pop("reply", b"ok"))
+    monkeypatch.setattr(wo_notify.urllib.request, "urlopen", fake_open)
+    # fixed preset: the catalogue URL wins over cfg, the number is written as digits, Netgsm's 200-with-error-code is a rejection
+    cfg = {"preset": "netgsm", "url": "http://evil", "user": "850", "password": "p w", "from": "WATCHOVER"}
+    seen["reply"] = b"00 1234567"
+    assert wo_notify.send_sms(cfg, "+90 555 111 22 33", "merhaba dünya").startswith("00")
+    assert seen["url"].startswith("https://api.netgsm.com.tr/") and "gsmno=905551112233" in seen["url"] and "password=p%20w" in seen["url"]
+    seen["reply"] = b"30"
+    with pytest.raises(RuntimeError):
+        wo_notify.send_sms(cfg, "+905551112233", "x")
+    # XML gateway escapes the text; JSON gateway carries the digits number
+    seen["reply"] = b"$123"
+    wo_notify.send_sms({"preset": "mutlucell", "user": "u", "password": "p", "from": "ORG"}, "05551112233", 'a<b & "c"')
+    assert b"<metin>a&lt;b &amp; &quot;c&quot;</metin><nums>905551112233</nums>" in seen["body"] and seen["ctype"] == "text/xml"
+    wo_notify.send_sms({"preset": "verimor", "user": "u", "password": "p", "from": "ORG"}, "+905551112233", "m")
+    assert json.loads(seen["body"]) == {"username": "u", "password": "p", "source_addr": "ORG", "messages": [{"msg": "m", "dest": "905551112233"}]}
+    # operator presets need the contract's endpoint
+    with pytest.raises(RuntimeError):
+        wo_notify.send_sms({"preset": "turkcell", "user": "u", "password": "p"}, "+905551112233", "m")
+    for k, pre in wo_notify.SMS_PRESETS.items():
+        assert pre["fields"] and pre.get("number") in ("e164", "digits", "national"), k

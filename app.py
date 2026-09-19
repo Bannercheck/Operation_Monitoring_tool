@@ -2120,30 +2120,34 @@ def notify_tab() -> None:
             preset = st.selectbox(t("ntf_provider"), presets, index=presets.index(cfg.get("sms_preset", "http")) if cfg.get("sms_preset", "http") in presets else 2,
                                   format_func=lambda k: wo_notify.SMS_PRESETS[k]["label"], key="ntf_sms_preset")
             pre = wo_notify.SMS_PRESETS[preset]
+            fields = pre.get("fields", [])
+            if pre.get("custom"):
+                st.caption(t("ntf_sms_custom_note") if preset != "http" else t("ntf_sms_placeholders"))
             with st.form("sms-form", border=False):
-                if preset == "twilio":
-                    a, b = st.columns(2)
-                    acc = a.text_input("Account SID", value=cfg.get("sms_account", ""))
-                    tok = b.text_input("Auth token", value=cfg.get("sms_token", ""), type="password")
-                    frm_s = st.text_input(t("ntf_sms_from"), value=cfg.get("sms_from", ""), placeholder="+1415…")
-                    vals = {"sms_preset": preset, "sms_account": acc.strip(), "sms_token": tok.strip(), "sms_from": frm_s.strip(), "sms_url": "", "sms_body": "", "sms_method": pre["method"], "sms_auth": pre["auth"], "sms_content_type": pre["content_type"]}
-                elif preset == "netgsm":
-                    a, b = st.columns(2)
-                    usr = a.text_input(t("ntf_user"), value=cfg.get("sms_user", ""))
-                    pws = b.text_input(t("ntf_password"), value=cfg.get("sms_password", ""), type="password")
-                    frm_s = st.text_input(t("ntf_sms_header"), value=cfg.get("sms_from", ""))
-                    vals = {"sms_preset": preset, "sms_user": usr.strip(), "sms_password": pws, "sms_from": frm_s.strip(), "sms_url": "", "sms_body": "", "sms_method": pre["method"], "sms_auth": pre["auth"], "sms_content_type": pre["content_type"]}
-                else:
-                    url = st.text_input("URL", value=cfg.get("sms_url", "") or pre["url"], help=t("ntf_sms_placeholders"))
+                vals = {"sms_preset": preset, "sms_method": pre["method"], "sms_auth": pre["auth"], "sms_content_type": pre["content_type"], "sms_url": "", "sms_body": ""}
+                if "url" in fields:
+                    vals["sms_url"] = st.text_input("URL", value=cfg.get("sms_url", "") if cfg.get("sms_preset") == preset else pre["url"], placeholder=t("ntf_sms_url_ph")).strip()
+                if "method" in fields:
                     a, b, c = st.columns(3)
-                    meth = a.selectbox(t("ntf_method"), ["POST", "GET"], index=0 if (cfg.get("sms_method", "POST") or "POST").upper() == "POST" else 1)
-                    auth = b.selectbox(t("ntf_auth"), ["bearer", "basic", "none"], index=["bearer", "basic", "none"].index(cfg.get("sms_auth", "bearer") or "bearer"))
-                    ctype = c.selectbox("Content-Type", ["application/json", "application/x-www-form-urlencoded"], index=0 if "json" in (cfg.get("sms_content_type") or "json") else 1)
-                    a, b = st.columns(2)
-                    tok = a.text_input(t("ntf_token"), value=cfg.get("sms_token", ""), type="password")
-                    frm_s = b.text_input(t("ntf_sms_from"), value=cfg.get("sms_from", ""))
-                    body = st.text_area(t("ntf_body_tpl"), value=cfg.get("sms_body", "") or pre["body"], height=70)
-                    vals = {"sms_preset": preset, "sms_url": url.strip(), "sms_method": meth, "sms_auth": auth, "sms_content_type": ctype, "sms_token": tok.strip(), "sms_from": frm_s.strip(), "sms_body": body}
+                    vals["sms_method"] = a.selectbox(t("ntf_method"), ["POST", "GET"], index=0 if (cfg.get("sms_method", "POST") or "POST").upper() == "POST" else 1)
+                    vals["sms_auth"] = b.selectbox(t("ntf_auth"), ["bearer", "basic", "none"], index=["bearer", "basic", "none"].index(cfg.get("sms_auth", "bearer") or "bearer"))
+                    vals["sms_content_type"] = c.selectbox("Content-Type", ["application/json", "application/x-www-form-urlencoded", "text/xml"], index=["application/json", "application/x-www-form-urlencoded", "text/xml"].index(cfg.get("sms_content_type") or "application/json") if (cfg.get("sms_content_type") or "application/json") in ("application/json", "application/x-www-form-urlencoded", "text/xml") else 0)
+                a, b = st.columns(2)
+                if "user" in fields:
+                    vals["sms_user"] = a.text_input(t("ntf_user"), value=cfg.get("sms_user", "")).strip()
+                if "password" in fields:
+                    vals["sms_password"] = b.text_input(t("ntf_password"), value=cfg.get("sms_password", ""), type="password")
+                if "account" in fields:
+                    vals["sms_account"] = a.text_input("Account SID" if preset == "twilio" else "Transmission ID", value=cfg.get("sms_account", "")).strip()
+                if "token" in fields:
+                    vals["sms_token"] = b.text_input("Auth token" if preset == "twilio" else t("ntf_token"), value=cfg.get("sms_token", ""), type="password").strip()
+                if "header" in fields:
+                    vals["sms_from"] = st.text_input(t("ntf_sms_header"), value=cfg.get("sms_from", ""), help=t("ntf_sms_header_help")).strip()
+                elif "from" in fields:
+                    vals["sms_from"] = st.text_input(t("ntf_sms_from"), value=cfg.get("sms_from", ""), placeholder="+1415…").strip()
+                if "body" in fields:
+                    vals["sms_body"] = st.text_area(t("ntf_body_tpl"), value=cfg.get("sms_body", "") if cfg.get("sms_preset") == preset and cfg.get("sms_body") else pre["body"], height=90)
+                st.caption(t("ntf_sms_number_fmt", fmt={"e164": "+905551112233", "digits": "905551112233", "national": "05551112233"}[pre.get("number", "e164")]))
                 if st.form_submit_button(f"💾 {t('ntf_save')}", type="primary", **wide("form_submit_button")):
                     ss.update(vals); wo_settings.save(vals); st.success(t("ntf_saved"))
             a, b = st.columns([3, 1.2])
