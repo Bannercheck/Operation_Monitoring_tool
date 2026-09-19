@@ -48,6 +48,17 @@ Arayüzü dışarı açmak gerekiyorsa önüne TLS ve kimlik doğrulaması olan 
 3. **Ajanlar**: alıcı adresini seçin ve ilk sunucuyu kaydedin (bölüm 4). Bu adım atlanabilir, aynı panel Bağlantı ayarları › Canlı alım altında da vardır.
 4. **Bitir**: özet ve kaydet. Sihirbaz `Bağlantı ayarları › Kurulum sihirbazını yeniden çalıştır` ile her zaman geri gelir.
 
+### 2.1 İlk giriş
+
+Uygulama giriş yapılmadan hiçbir bilgi göstermez. İlk açılışta yerleşik yönetici hesabı hazırdır:
+
+| Alan | Değer |
+|---|---|
+| E-posta | `admin@watchover.local` |
+| Başlangıç parolası | `Watchover2026!` |
+
+İlk girişin hemen ardından yeni bir parola istenir; başlangıç parolası korunamaz. Diğer hesaplar Sistem › Kullanıcılar sekmesinden açılır (kendi kendine kayıt varsayılan olarak kapalıdır). Parolalar yalnız scrypt karması olarak, SMTP / SMS / LLM / SSO sırları ise `data/.vault.key` anahtarıyla şifreli saklanır; yedek alırken `data/` klasörünü anahtar dosyasıyla birlikte alın.
+
 ## 3. Alıcı: adres, port, güvenlik duvarı
 
 Sunucular veriyi **dashboard makinesindeki** alıcıya gönderir. Üç şeyi netleştirin:

@@ -97,3 +97,75 @@ def test_simulation_purge():
     assert len(store.snapshot()) == 11 and store.metrics and "simulator" in store.agents
     n = store.purge("simulator", tuple(SIM_HOSTS))
     assert n == 10 and [o.host for o in store.snapshot()] == ["real-01"] and not store.metrics and "simulator" not in store.agents and "agent-a" in store.agents
+
+
+def test_login_gate_hides_the_app(tmp_path, monkeypatch):
+    """Without a signed-in user nothing but the sign-in page renders; a session user opens the app."""
+    from pathlib import Path
+    import json
+    from streamlit.testing.v1 import AppTest
+    home = tmp_path / "home"; home.mkdir()
+    (home / "config.json").write_text(json.dumps({"setup_done": True, "lang": "tr", "sim_on": False}))
+    for k, v in {"ACTIONS_DB": "a.db", "KNOWLEDGE_DB": "k.db", "PLAYBOOK_DB": "pb.db", "LIVE_SPOOL": "live.jsonl"}.items():
+        monkeypatch.setenv(k, str(tmp_path / v))
+    monkeypatch.setenv("WATCHOVER_HOME", str(home)); monkeypatch.setenv("LIVE_PORT", "8698"); monkeypatch.delenv("WATCHOVER_SKIP_SETUP", raising=False)
+    root = Path(__file__).resolve().parents[1]
+    at = AppTest.from_file(str(root / "app.py"), default_timeout=60).run()
+    assert not at.exception
+    assert not at.sidebar.radio and not at.sidebar.markdown           # no navigation, no page content
+    assert at.info and "admin@watchover.local" in at.info[0].value      # first run: the built-in administrator's initial password is shown
+    assert not any(x.key == "reg_email" for x in at.text_input)        # self-registration is off by default
+    at.session_state["user"] = {"id": 1, "email": "a@corp.com", "name": "Admin", "role": "admin", "provider": "local"}
+    at.run()
+    assert not at.exception and at.sidebar.radio(key="page")
+
+
+def test_bootstrap_admin_and_forced_change(tmp_path):
+    from watchover.knowledge import Knowledge
+    from watchover import auth as wo_auth
+    us = wo_auth.Users(Knowledge(str(tmp_path / "k.db")))
+    assert us.bootstrap() and not us.bootstrap() and us.count() == 1 and us.initial_password_active()
+    u = us.login(wo_auth.INITIAL_EMAIL, wo_auth.INITIAL_PASSWORD)
+    assert u and u["role"] == "admin" and u["must_change"] is True
+    assert us.get(wo_auth.INITIAL_EMAIL)["pw_hash"].startswith("scrypt$")      # never the clear text
+    us.change_password(u["id"], "Yeni-Parola-2026")
+    assert not us.initial_password_active() and us.login(wo_auth.INITIAL_EMAIL, "Yeni-Parola-2026")["must_change"] is False
+    assert us.login(wo_auth.INITIAL_EMAIL, wo_auth.INITIAL_PASSWORD) is None
+
+
+def test_vault_encrypts_settings_and_source_secrets(tmp_path, monkeypatch):
+    import json
+    monkeypatch.setenv("WATCHOVER_HOME", str(tmp_path / "home"))
+    from watchover import settings, vault, sources
+    from watchover.knowledge import Knowledge
+    vault._FERNET = None
+    settings.save({"smtp_password": "gizli-parola", "sms_token": "tok", "smtp_host": "smtp.corp"})
+    raw = json.loads(settings.path().read_text())
+    assert raw["smtp_password"].startswith("enc:v1:") and raw["sms_token"].startswith("enc:v1:") and raw["smtp_host"] == "smtp.corp"
+    assert settings.load()["smtp_password"] == "gizli-parola"
+    assert vault.status()["key_exists"] and vault.status()["mode"] == "0o600"
+    store = sources.SourceStore(Knowledge(str(tmp_path / "k.db")))
+    src = store.add(sources.Source(None, "es", "elasticsearch", "http://es:9200", auth="basic", user="u", secret="s3cret"))
+    assert src.secret == "s3cret" and store.kb._exec("SELECT secret FROM sources")[0]["secret"].startswith("enc:v1:")
+    store.update(src.id, secret="other")
+    assert store.get(src.id).secret == "other" and store.kb._exec("SELECT secret FROM sources")[0]["secret"].startswith("enc:v1:")
+    vault._FERNET = None
+
+
+def test_version_snapshot_and_rollback(tmp_path, monkeypatch):
+    from watchover import admin
+    from watchover.knowledge import Knowledge
+    monkeypatch.setenv("WATCHOVER_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("KNOWLEDGE_DB", str(tmp_path / "k.db")); monkeypatch.setenv("ACTIONS_DB", str(tmp_path / "none.db")); monkeypatch.setenv("PLAYBOOK_DB", str(tmp_path / "none2.db"))
+    kb = Knowledge(str(tmp_path / "k.db")); kb._exec("CREATE TABLE marker (v TEXT)"); kb._exec("INSERT INTO marker VALUES ('one')")
+    root = tmp_path / "code"; (root / "src" / "watchover").mkdir(parents=True); (root / "data").mkdir()
+    (root / "app.py").write_text("v1"); (root / "src" / "watchover" / "analysis.py").write_text("a"); (root / "data" / "x").write_text("keep"); (root / ".env").write_text("S=1")
+    m = admin.snapshot("before update", root=root)
+    assert m["files"] == 2 and m["dbs"] == ["k.db"] and admin.versions()[0]["id"] == m["id"]
+    (root / "app.py").write_text("v2"); kb._exec("UPDATE marker SET v='two'")
+    ok, msg = admin.rollback(m["id"], root=root)
+    assert ok and (root / "app.py").read_text() == "v1" and (root / "data" / "x").read_text() == "keep" and (root / ".env").read_text() == "S=1"
+    assert Knowledge(str(tmp_path / "k.db"))._exec("SELECT v FROM marker")[0]["v"] == "one"
+    assert len(admin.versions()) == 2 and admin.versions()[0]["reason"].startswith("before rollback")
+    admin.delete_version(m["id"]); assert len(admin.versions()) == 1
+    assert admin.prune_versions(0) == 1 and admin.versions() == []

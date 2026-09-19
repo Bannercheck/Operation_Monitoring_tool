@@ -3,6 +3,8 @@ service manager, database size / vacuum."""
 from __future__ import annotations
 
 import io
+import json
+import shutil
 import os
 import platform
 import subprocess
@@ -120,3 +122,105 @@ def tail_log(path: str, n: int = 80) -> str:
     with p.open("rb") as f:
         f.seek(0, 2); size = f.tell(); f.seek(max(0, size - 64_000))
         return "\n".join(f.read().decode("utf-8", "replace").splitlines()[-n:])
+
+
+# ---------------------------------------------------------------- version history: snapshots before updates / maintenance, rollback
+SNAP_EXCLUDE = {"data", ".git", ".venv", "__pycache__", "node_modules", ".pytest_cache", "demo", "samples"}
+DB_FILES = ("knowledge.db", "actions.db", "playbook.db")
+
+
+def versions_dir() -> Path:
+    from . import settings
+    p = settings.home() / "versions"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def _db_paths() -> list[Path]:
+    out = []
+    for env, name in (("KNOWLEDGE_DB", "knowledge.db"), ("ACTIONS_DB", "actions.db"), ("PLAYBOOK_DB", "playbook.db")):
+        p = Path(os.environ.get(env) or name)
+        if not p.is_absolute():
+            p = Path.cwd() / p
+        if p.exists() and p.suffix == ".db":
+            out.append(p)
+    return out
+
+
+def snapshot(reason: str, code: bool = True, db: bool = True, root: Path | None = None) -> dict:
+    """Freeze the running version: code.zip (the code tree without data / .git / venv) plus copies of the SQLite files, with meta.json.
+    Called before a zip / git update and before database maintenance; the System page also offers it by hand."""
+    from . import stamp
+    root = root or repo_root()
+    base = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+    sid, n = base, 1
+    while (versions_dir() / sid).exists():                # two snapshots within a second (rollback snapshots first) keep distinct ids
+        n += 1; sid = f"{base}-{n}"
+    d = versions_dir() / sid
+    d.mkdir(parents=True, exist_ok=True)
+    files = 0
+    if code:
+        with zipfile.ZipFile(d / "code.zip", "w", zipfile.ZIP_DEFLATED) as zf:
+            for p in sorted(root.rglob("*")):
+                rel = p.relative_to(root)
+                if p.is_dir() or any(part in SNAP_EXCLUDE for part in rel.parts) or rel.name.endswith((".db", ".pyc")) or rel.name in (".env",):
+                    continue
+                zf.write(p, f"watchover/{rel.as_posix()}")
+                files += 1
+    dbs = []
+    if db:
+        for p in _db_paths():
+            shutil.copy2(p, d / p.name)
+            dbs.append(p.name)
+    st_ = stamp.stamp()
+    meta = {"id": sid, "ts": datetime.now(UTC).isoformat(timespec="seconds"), "reason": reason, "version": st_["version"], "git": st_["git"], "engine": st_["engine"],
+            "files": files, "dbs": dbs, "size": sum(f.stat().st_size for f in d.iterdir()), "db_url": os.environ.get("DATABASE_URL", "")[:12]}
+    (d / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
+    return meta
+
+
+def versions() -> list[dict]:
+    out = []
+    for d in sorted(versions_dir().iterdir(), reverse=True):
+        m = d / "meta.json"
+        if m.exists():
+            try:
+                out.append(json.loads(m.read_text(encoding="utf-8")))
+            except ValueError:
+                continue
+    return out
+
+
+def rollback(sid: str, code: bool = True, db: bool = True, root: Path | None = None) -> tuple[bool, str]:
+    """Bring a snapshot back: the current state is snapshotted first (reason 'before rollback'), then code.zip is unpacked over the code
+    folder and the database files are copied back. A restart follows so that open SQLite connections re-open the restored files."""
+    d = versions_dir() / sid
+    if not (d / "meta.json").exists():
+        return False, "unknown version"
+    snapshot(f"before rollback to {sid}", root=root)
+    msgs = []
+    if code and (d / "code.zip").exists():
+        ok, msg = apply_zip((d / "code.zip").read_bytes(), dest=root)
+        if not ok:
+            return False, msg
+        msgs.append(msg)
+    if db:
+        targets = {p.name: p for p in _db_paths()}
+        for f in d.glob("*.db"):
+            target = targets.get(f.name) or (Path.cwd() / f.name)
+            shutil.copy2(f, target)
+            msgs.append(f"{f.name} restored")
+    return True, "; ".join(msgs) or "nothing to restore"
+
+
+def delete_version(sid: str) -> None:
+    d = versions_dir() / sid
+    if (d / "meta.json").exists():
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def prune_versions(keep: int = 10) -> int:
+    old = versions()[keep:]
+    for m in old:
+        delete_version(m["id"])
+    return len(old)

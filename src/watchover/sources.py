@@ -310,7 +310,8 @@ class SourceStore:
             cursor TEXT DEFAULT '', last_ok TEXT DEFAULT '', last_err TEXT DEFAULT '', events INTEGER DEFAULT 0, polls INTEGER DEFAULT 0)""")
 
     def _row(self, r: dict) -> Source:
-        d = dict(r); d["enabled"] = bool(d.get("enabled", 1)); d["verify_tls"] = bool(d.get("verify_tls", 1))
+        from . import vault
+        d = dict(r); d["enabled"] = bool(d.get("enabled", 1)); d["verify_tls"] = bool(d.get("verify_tls", 1)); d["secret"] = vault.decrypt(d.get("secret", "") or "")
         return Source(**{k: d.get(k, "") for k in ("id",) + self.COLS})
 
     def list(self) -> list[Source]:
@@ -326,13 +327,17 @@ class SourceStore:
         if src.kind not in FETCHERS:
             raise ValueError(f"unknown kind {src.kind}")
         cols = ", ".join(f'"{c}"' if c == "user" else c for c in self.COLS)
-        vals = tuple(int(v) if isinstance(v, bool) else v for v in (getattr(src, c) for c in self.COLS))
+        from . import vault
+        vals = tuple(int(v) if isinstance(v, bool) else (vault.encrypt(v) if c == "secret" else v) for c, v in ((c, getattr(src, c)) for c in self.COLS))
         sid = self.kb._insert(f"INSERT INTO sources ({cols}) VALUES ({', '.join('?' * len(self.COLS))})", vals)
         return self.get(sid)
 
     def update(self, sid: int, **fields) -> None:
         if not fields:
             return
+        from . import vault
+        if "secret" in fields:
+            fields["secret"] = vault.encrypt(fields["secret"] or "")
         sets = ", ".join(f'"{k}"=?' if k == "user" else f"{k}=?" for k in fields)
         self.kb._exec(f"UPDATE sources SET {sets} WHERE id=?", tuple(int(v) if isinstance(v, bool) else v for v in fields.values()) + (sid,))
 

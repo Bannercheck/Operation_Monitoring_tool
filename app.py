@@ -39,6 +39,7 @@ from watchover import sources as wo_sources
 from watchover import report as wo_report
 from watchover import history as wo_history
 from watchover import notify as wo_notify
+from watchover import vault as wo_vault
 from watchover import autolearn as wo_learn
 from watchover import inventory as wo_inv
 from watchover import auth as wo_auth
@@ -528,7 +529,11 @@ def set_simulation(on: bool) -> None:
 
 
 def users() -> wo_auth.Users:
-    return _singleton("users", wo_auth.Users, lambda: wo_auth.Users(knowledge()))
+    def make():
+        us = wo_auth.Users(knowledge())
+        us.bootstrap()                                   # first start: the built-in administrator (password must be changed at first sign-in)
+        return us
+    return _singleton("users", wo_auth.Users, make)
 
 
 def notify_channels() -> dict:
@@ -1013,7 +1018,7 @@ def login_forms() -> None:
     """Sign-in / registration forms plus provider buttons; used by the sidebar dialog and the locked page."""
     ss = st.session_state
     us = users()
-    first = ss.get("auth_local") and us.count() == 0
+    first = (ss.get("auth_local") or not auth_enabled()) and us.count() == 0
     if ss.get("auth_google") or ss.get("auth_oidc"):
         st.markdown(f'<div class="muted" style="font-size:11px;letter-spacing:.8px;font-weight:700;margin:2px 0 6px">{upper(t("login_providers"))}</div>', unsafe_allow_html=True)
         pc = st.columns(2) if (ss.get("auth_google") and ss.get("auth_oidc")) else [st.container()]
@@ -1031,8 +1036,6 @@ def login_forms() -> None:
                     st.error(t("login_sso_err", e=e))
         if ss.get("auth_local"):
             st.markdown(f'<div class="muted" style="text-align:center;font-size:11px;margin:8px 0 4px">— {t("login_or")} —</div>', unsafe_allow_html=True)
-    if not auth_enabled():
-        st.info(t("login_off_hint"))
     if ss.get("auth_local") or not auth_enabled():
         tabs = st.tabs([t("login_tab_in"), t("login_tab_up")]) if (ss.get("auth_self_register", True) or first) else [st.container()]
         with tabs[0]:
@@ -1078,15 +1081,64 @@ def login_dialog() -> None:
     login_forms()
 
 
-def page_locked() -> None:
-    """Auth is on and nobody is signed in: a calm locked screen; the sidebar (or this button) opens the sign-in dialog."""
-    _, mid, _ = st.columns([1, 1.1, 1])
-    with mid:
-        st.markdown(f'<div class="card" style="text-align:center;padding:34px 24px;margin-top:60px"><span style="display:inline-block;width:64px">{logo(64)}</span>'
-                    f'<div class="wo-brand" style="justify-content:center;padding:6px 0 0"><div class="name" style="font-size:30px">Watchover</div></div>'
-                    f'<div class="muted" style="margin:6px 0 18px">{t("login_locked_hint")}</div></div>', unsafe_allow_html=True)
-        if st.button(f"🔐 {t('login_open')}", type="primary", key="locked-login", **wide("button")):
-            st.session_state["login_open"] = True; st.rerun()
+LOGIN_CSS = """
+<style>
+[data-testid="stSidebar"], [data-testid="stSidebarCollapsedControl"], [data-testid="collapsedControl"] {display:none !important}
+header[data-testid="stHeader"] {background:transparent}
+.block-container {padding-top:3.2rem; max-width:1280px}
+.wo-login-bg {position:fixed; inset:0; z-index:-1; overflow:hidden; background:radial-gradient(1200px 700px at 12% -10%, #10233a 0%, transparent 60%), #070b14}
+.wo-login-bg::before {content:""; position:absolute; inset:0; background-image:linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px); background-size:44px 44px; mask-image:radial-gradient(ellipse at 40% 30%, #000 20%, transparent 75%)}
+.wo-orb {position:absolute; border-radius:50%; filter:blur(70px); opacity:.55; animation:wo-drift 22s ease-in-out infinite alternate}
+.wo-orb.a {width:520px; height:520px; left:-120px; top:-80px; background:#2dd4bf}
+.wo-orb.b {width:460px; height:460px; right:-80px; top:10%; background:#6366f1; animation-delay:-8s}
+.wo-orb.c {width:380px; height:380px; left:38%; bottom:-140px; background:#0ea5e9; animation-delay:-15s}
+@keyframes wo-drift {from {transform:translate(0,0) scale(1)} to {transform:translate(60px,40px) scale(1.12)}}
+.wo-hero {padding:26px 8px 0 0}
+.wo-hero .mark {width:96px; filter:drop-shadow(0 0 28px rgba(45,212,191,.55)); animation:wo-glow 4s ease-in-out infinite alternate}
+@keyframes wo-glow {from {filter:drop-shadow(0 0 18px rgba(45,212,191,.35))} to {filter:drop-shadow(0 0 34px rgba(96,165,250,.6))}}
+.wo-hero .name {font-size:54px; font-weight:800; letter-spacing:-1.5px; line-height:1; margin-top:16px; background:linear-gradient(120deg, #e2e8f0 0%, #2dd4bf 55%, #60a5fa 100%); -webkit-background-clip:text; background-clip:text; color:transparent}
+.wo-hero .tag {font-size:12px; letter-spacing:3px; color:#7dd3fc; margin-top:8px; font-weight:700}
+.wo-hero .lead {font-size:17px; color:#cbd5e1; line-height:1.55; margin:18px 0 22px; max-width:560px}
+.wo-flow {display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:26px}
+.wo-flow .step {padding:8px 14px; border-radius:999px; font-size:12px; font-weight:700; letter-spacing:1.2px; color:#e2e8f0; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.14); backdrop-filter:blur(10px)}
+.wo-flow .step.hot {background:linear-gradient(120deg, rgba(45,212,191,.28), rgba(96,165,250,.22)); border-color:rgba(45,212,191,.55)}
+.wo-flow .arrow {color:#64748b; font-size:16px}
+.wo-feats {display:grid; grid-template-columns:1fr 1fr; gap:12px; max-width:600px}
+.wo-feat {padding:14px 16px; border-radius:16px; background:linear-gradient(160deg, rgba(255,255,255,.075), rgba(255,255,255,.025)); border:1px solid rgba(255,255,255,.12); backdrop-filter:blur(14px); box-shadow:0 12px 32px rgba(2,6,23,.35), inset 0 1px 0 rgba(255,255,255,.12)}
+.wo-feat .ic {font-size:22px}
+.wo-feat .t {font-size:14px; font-weight:700; color:#f1f5f9; margin-top:6px}
+.wo-feat .b {font-size:12px; color:#94a3b8; line-height:1.5; margin-top:4px}
+.st-key-login-card {background:linear-gradient(165deg, rgba(255,255,255,.10), rgba(255,255,255,.035)) !important; border:1px solid rgba(255,255,255,.16) !important; border-radius:24px !important; padding:26px 26px 18px !important; backdrop-filter:blur(26px) saturate(140%); box-shadow:0 30px 80px rgba(2,6,23,.55), inset 0 1px 0 rgba(255,255,255,.18); margin-top:26px}
+.wo-login-head {display:flex; align-items:center; gap:12px; margin-bottom:6px}
+.wo-login-head .h {font-size:26px; font-weight:800; color:#f8fafc; letter-spacing:-.5px}
+.wo-login-head .s {font-size:12px; color:#94a3b8}
+.wo-login-foot {font-size:11px; color:#64748b; margin-top:14px; text-align:center}
+@media (max-width: 900px) {.wo-hero .name {font-size:40px} .wo-feats {grid-template-columns:1fr} .st-key-login-card {margin-top:8px}}
+</style>
+<div class="wo-login-bg"><div class="wo-orb a"></div><div class="wo-orb b"></div><div class="wo-orb c"></div></div>
+"""
+
+
+def page_login() -> None:
+    """Nobody is signed in: the whole app stays hidden behind a full-page sign-in (hero on the left, glass card with the forms on the right)."""
+    st.markdown(LOGIN_CSS, unsafe_allow_html=True)
+    feats = [("📡", t("login_f1_t"), t("login_f1_b")), ("🧠", t("login_f2_t"), t("login_f2_b")), ("🎯", t("login_f3_t"), t("login_f3_b")), ("🔔", t("login_f4_t"), t("login_f4_b"))]
+    steps = [t("login_s1"), t("login_s2"), t("login_s3"), t("login_s4")]
+    left, right = st.columns([1.3, 1], gap="large")
+    with left:
+        flow = '<span class="arrow">→</span>'.join(f'<span class="step{" hot" if i == 2 else ""}">{upper(x)}</span>' for i, x in enumerate(steps))
+        st.markdown(f'<div class="wo-hero"><div class="mark">{logo(96)}</div><div class="name">Watchover</div><div class="tag">{upper(t("brand_tag"))}</div>'
+                    f'<div class="lead">{t("login_lead")}</div><div class="wo-flow">{flow}</div><div class="wo-feats">'
+                    + "".join(f'<div class="wo-feat"><div class="ic">{ic}</div><div class="t">{esc(a)}</div><div class="b">{esc(b)}</div></div>' for ic, a, b in feats)
+                    + "</div></div>", unsafe_allow_html=True)
+    with right:
+        with st.container(border=True, key="login-card"):
+            st.markdown(f'<div class="wo-login-head"><span style="display:inline-block;width:38px">{logo(38)}</span><div><div class="h">{t("login_title")}</div><div class="s">{t("login_card_sub")}</div></div></div>', unsafe_allow_html=True)
+            if users().initial_password_active():
+                st.info(t("login_initial", e=wo_auth.INITIAL_EMAIL, p=wo_auth.INITIAL_PASSWORD))
+            login_forms()
+            _st = wo_stamp.stamp()
+            st.markdown(f'<div class="wo-login-foot">Watchover v{_st["version"]} · {t("login_foot")}</div>', unsafe_allow_html=True)
 
 
 if auth_enabled() and getattr(st.user, "is_logged_in", False) and not current_user():
@@ -1096,6 +1148,39 @@ if auth_enabled() and getattr(st.user, "is_logged_in", False) and not current_us
         st.session_state["user"] = _u
     else:
         st.error(t("login_sso_denied", e=st.user.email)); st.logout(); st.stop()
+
+def page_change_password() -> None:
+    """The built-in administrator (or any account flagged must_change) sets a new password before anything else opens."""
+    st.markdown(LOGIN_CSS, unsafe_allow_html=True)
+    _, mid, _ = st.columns([1, 1.1, 1])
+    with mid:
+        with st.container(border=True, key="login-card"):
+            st.markdown(f'<div class="wo-login-head"><span style="display:inline-block;width:38px">{logo(38)}</span><div><div class="h">{t("pwc_title")}</div><div class="s">{t("pwc_lead")}</div></div></div>', unsafe_allow_html=True)
+            with st.form("pwc-form", border=False):
+                p1 = st.text_input(t("pwc_new"), type="password", help=t("login_pw_help"))
+                p2 = st.text_input(t("pwc_again"), type="password")
+                if st.form_submit_button(f"🔑 {t('pwc_btn')}", type="primary", **wide("form_submit_button")):
+                    if p1 != p2:
+                        st.error(t("login_pw_mismatch"))
+                    elif p1 == wo_auth.INITIAL_PASSWORD:
+                        st.error(t("pwc_same"))
+                    else:
+                        try:
+                            users().change_password(int(st.session_state["user"]["id"]), p1)
+                            st.session_state["user"]["must_change"] = False
+                            st.toast(t("pwc_done"), icon="✅"); st.rerun()
+                        except ValueError as e:
+                            st.error(t("login_policy", e=e))
+            if st.button(f"⏻ {t('logout')}", key="pwc-logout"):
+                st.session_state.pop("user", None); st.rerun()
+
+
+if not current_user() and not os.environ.get("WATCHOVER_SKIP_SETUP"):   # nothing of the app is visible before sign-in (the env flag is for tests / dev)
+    page_login()
+    st.stop()
+if current_user() and current_user().get("must_change"):
+    page_change_password()
+    st.stop()
 
 with st.sidebar:
     st.markdown(f'<div class="wo-brand">{logo(40)}<div><div class="name">Watchover</div><div class="tag">{upper(t("brand_tag"))}</div></div></div>', unsafe_allow_html=True)
@@ -1119,12 +1204,7 @@ with st.sidebar:
     if True:                                                     # account card is always shown: who is signed in, or that sign-in is off
         st.markdown(f'<div class="sb-cap">{upper(t("sb_account"))}</div>', unsafe_allow_html=True)
         _u = current_user()
-        if not _u and not auth_enabled():
-            st.markdown(f'<div class="sb-user off"><span class="av">👤</span><div><div class="nm">{t("login_off_title")}</div><div class="em">{t("login_off_sub")}</div>'
-                        f'<span class="role r-admin">{t("role_admin")} · {t("login_off_role")}</span></div></div>', unsafe_allow_html=True)
-            if st.button(f"🔐 {t('login_open')}", key="sb-login-off", **wide("button"), help=t("login_enable_help")):
-                st.session_state["login_open"] = True
-        elif _u:
+        if _u:
             uc1, uc2 = st.columns([3.2, 1])
             _ini = (_u.get("name") or _u["email"])[:1].upper()
             uc1.markdown(f'<div class="sb-user"><span class="av">{esc(_ini)}</span><div><div class="nm">{esc(_u.get("name") or _u["email"])}</div>'
@@ -1134,10 +1214,6 @@ with st.sidebar:
                 if getattr(st.user, "is_logged_in", False):
                     st.logout()
                 st.rerun()
-        else:
-            st.markdown(f'<div class="sb-user off"><span class="av">?</span><div><div class="nm">{t("login_nobody")}</div><div class="em">{t("login_nobody_sub")}</div></div></div>', unsafe_allow_html=True)
-            if st.button(f"🔐 {t('login_open')}", key="sb-login", type="primary", **wide("button")):
-                st.session_state["login_open"] = True
     if st.session_state.pop("login_open", False) and not current_user():
         login_dialog()
     st.caption(t("footer"))
@@ -2317,7 +2393,7 @@ def page_system() -> None:
             keep = {k_: ss[k_] for k_ in ("user", "lang", "page", *wo_settings.SESSION_KEYS) if k_ in ss}
             ss.clear(); ss.update(keep); st.toast(t("sys_done"), icon="✅"); st.rerun()
         _action_card(c[2], "m-sess", "♻️", t("sys_cache_session"), t("sys_cache_session_body"), t("sys_run"), _reset)
-        _action_card(c[3], "m-vac", "🧽", t("sys_vacuum"), t("sys_vacuum_body"), t("sys_run"), lambda: st.toast(wo_admin.vacuum(kb), icon="✅"))
+        _action_card(c[3], "m-vac", "🧽", t("sys_vacuum"), t("sys_vacuum_body"), t("sys_run"), lambda: (wo_admin.snapshot(t("ver_r_maint"), code=False), st.toast(wo_admin.vacuum(kb), icon="✅")))
 
     with tab_upd:
         hc1, hc2 = st.columns([8, 0.6])
@@ -2329,6 +2405,7 @@ def page_system() -> None:
             st.markdown(f'<div class="card act2"><div class="act2-t">📦 {t("sys_upd_zip")}</div><div class="act2-b">{t("sys_upd_zip_body")}</div></div>', unsafe_allow_html=True)
             up = st.file_uploader("zip", type=["zip"], key="sys_zip", label_visibility="collapsed")
             if up is not None and st.button(t("sys_upd_apply"), key="sys-apply", type="primary", **wide("button")):
+                wo_admin.snapshot(t("ver_r_update")); wo_admin.prune_versions(12)
                 ok, msg = wo_admin.apply_zip(up.getvalue())
                 (st.success if ok else st.error)(msg)
                 if ok:
@@ -2336,6 +2413,7 @@ def page_system() -> None:
         with c2:
             st.markdown(f'<div class="card act2"><div class="act2-t">🔄 {t("sys_upd_git")}</div><div class="act2-b">{t("sys_upd_git_body")}</div></div>', unsafe_allow_html=True)
             if st.button(t("sys_upd_pull"), key="sys-pull", **wide("button")):
+                wo_admin.snapshot(t("ver_r_update")); wo_admin.prune_versions(12)
                 ok, msg = wo_admin.git_update()
                 (st.success if ok else st.error)(msg or "-")
                 if ok and "Already up to date" not in msg:
@@ -2347,6 +2425,35 @@ def page_system() -> None:
                 st.info(t("sys_restarting_launcher") if how == "launcher" else t("sys_restarting_exit"))
         if ss.get("sys_restart_needed"):
             st.warning(t("sys_restart_needed"))
+        vh1, vh2, vh3 = st.columns([6, 1.6, 0.5])
+        vh1.markdown(f"#### {t('ver_title')}")
+        if vh2.button(f"📸 {t('ver_snapshot_btn')}", key="ver-snap", **wide("button")):
+            m = wo_admin.snapshot(t("ver_r_manual")); st.toast(t("ver_snap_done", id=m["id"]), icon="✅"); st.rerun()
+        with vh3:
+            info_btn("ver_info")
+        vers = wo_admin.versions()
+        if not vers:
+            st.info(t("ver_none"))
+        for i, m in enumerate(vers):
+            a, b, c = st.columns([7, 1.6, 0.6])
+            _cur = " · <span class='role r-admin'>" + t("ver_current") + "</span>" if m.get("git") == vi["git"].split(" ")[0] and i == 0 else ""
+            a.markdown(f'<div class="card svc"><div class="svc-h">🗂 <b>{esc(m["id"])}</b> · v{esc(str(m.get("version", "-")))} · git {esc(str(m.get("git", "-")))}{_cur}</div>'
+                       f'<div class="svc-v">{esc(m["ts"][:19].replace("T", " "))} · {esc(m.get("reason", ""))} · {m.get("files", 0)} {t("ver_files")} · {", ".join(m.get("dbs", [])) or "-"} · {m.get("size", 0) / 1e6:.1f} MB</div></div>', unsafe_allow_html=True)
+            if b.button(f"↩ {t('ver_restore')}", key=f"ver-rb-{m['id']}", **wide("button")):
+                ss["ver_confirm"] = m["id"]
+            if c.button("🗑", key=f"ver-del-{m['id']}", help=t("ntf_delete")):
+                wo_admin.delete_version(m["id"]); st.rerun()
+            if ss.get("ver_confirm") == m["id"]:
+                st.warning(t("ver_confirm", id=m["id"]))
+                k1, k2 = st.columns(2)
+                if k1.button(f"↩ {t('ver_restore_go')}", key=f"ver-go-{m['id']}", type="primary", **wide("button")):
+                    ok, msg = wo_admin.rollback(m["id"])
+                    (st.success if ok else st.error)(msg)
+                    ss.pop("ver_confirm", None)
+                    if ok:
+                        ss["sys_restart_needed"] = True
+                if k2.button(t("ver_cancel"), key=f"ver-no-{m['id']}", **wide("button")):
+                    ss.pop("ver_confirm", None); st.rerun()
 
     with tab_users:
         rows = us.list()
@@ -2439,6 +2546,9 @@ def page_system() -> None:
         notify_tab()
 
     with tab_sec:
+        _v = wo_vault.status()
+        st.markdown(f'<div class="card" style="padding:10px 14px"><b>🔐 {t("sec_vault")}</b><br><span class="muted" style="font-size:12px">'
+                    f'{t("sec_vault_on", k=_v["key_file"], m=_v["mode"]) if _v["available"] and _v["key_exists"] else (t("sec_vault_nokey") if _v["available"] else t("sec_vault_off"))}</span></div>', unsafe_allow_html=True)
         st.caption(t("sec_log_lead"))
         ev = us.events(80)
         if ev:
@@ -2894,9 +3004,6 @@ def compare_view(da: dict, db: dict, ka: str, kb: str) -> None:
     ib.dataframe(pd.DataFrame(c["incidents_b"]) if c["incidents_b"] else pd.DataFrame(columns=["id"]), hide_index=True, **wide("dataframe"))
 
 
-if auth_enabled() and not current_user():
-    page_locked()
-    st.stop()
 if page == "ops":
     page_ops()
     st.stop()

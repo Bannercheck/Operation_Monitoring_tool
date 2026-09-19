@@ -11,7 +11,7 @@ from pathlib import Path
 
 DEFAULTS = {"setup_done": False, "lang": "tr", "workspace": "", "llm_provider": "auto", "llm_base": "", "llm_model": "", "llm_key": "", "llm_embed": "",
             "live_port": int(os.environ.get("LIVE_PORT", "8600") or 8600),      # the env var is what the receiver actually binds
-            "live_key": "", "public_host": "", "sim_on": False, "learn_min": 15, "auth_local": False, "auth_google": False, "auth_oidc": False, "google_client_id": "", "google_client_secret": "", "auth_self_register": True, "auth_domains": "", "oidc_issuer": "", "oidc_client_id": "", "oidc_client_secret": "", "oidc_redirect": "http://localhost:8501/oauth2callback",
+            "live_key": "", "public_host": "", "sim_on": False, "learn_min": 15, "auth_local": False, "auth_google": False, "auth_oidc": False, "google_client_id": "", "google_client_secret": "", "auth_self_register": False, "auth_domains": "", "oidc_issuer": "", "oidc_client_id": "", "oidc_client_secret": "", "oidc_redirect": "http://localhost:8501/oauth2callback",
             "alerts_on": True, "smtp_host": "", "smtp_port": 587, "smtp_security": "starttls", "smtp_user": "", "smtp_password": "", "smtp_from": "", "smtp_from_name": "Watchover",
             "sms_preset": "http", "sms_url": "", "sms_method": "POST", "sms_auth": "bearer", "sms_user": "", "sms_password": "", "sms_token": "", "sms_from": "", "sms_account": "", "sms_body": "", "sms_content_type": "application/json", "demo_on_start": False, "version": 1}
 SESSION_KEYS = ("lang", "llm_provider", "llm_base", "llm_model", "llm_key", "llm_embed", "live_port", "live_key", "public_host", "sim_on", "learn_min", "auth_local", "auth_google", "auth_oidc", "google_client_id", "google_client_secret", "auth_self_register", "auth_domains", "oidc_issuer", "oidc_client_id", "oidc_client_secret", "oidc_redirect",
@@ -29,6 +29,9 @@ def path() -> Path:
     return home() / "config.json"
 
 
+SECRET_KEYS = ("llm_key", "live_key", "google_client_secret", "oidc_client_secret", "smtp_password", "sms_password", "sms_token")   # encrypted at rest (vault.py)
+
+
 def load() -> dict:
     cfg = dict(DEFAULTS)
     try:
@@ -40,12 +43,20 @@ def load() -> dict:
         cfg["auth_local"] = True
     elif legacy == "oidc":
         cfg["auth_oidc"] = True
+    from . import vault
+    for k in SECRET_KEYS:
+        if isinstance(cfg.get(k), str):
+            cfg[k] = vault.decrypt(cfg[k])
     return cfg
 
 
 def save(values: dict) -> dict:
     cfg = load()
     cfg.update({k: v for k, v in values.items() if k in DEFAULTS or k.startswith("x_")})
+    from . import vault
+    for k in SECRET_KEYS:                                  # secrets never reach the disk in clear text
+        if isinstance(cfg.get(k), str):
+            cfg[k] = vault.encrypt(cfg[k])
     p = path()
     p.write_text(json.dumps(cfg, ensure_ascii=False, indent=1), encoding="utf-8")
     try:

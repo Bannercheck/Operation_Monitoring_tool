@@ -22,6 +22,7 @@ ROLES = ("admin", "operator", "viewer")
 PROVIDERS = ("local", "google", "oidc")
 SCRYPT = {"n": 2 ** 15, "r": 8, "p": 2}
 LOCK_FAILURES, LOCK_MINUTES = 5, 15
+INITIAL_EMAIL, INITIAL_PASSWORD = "admin@watchover.local", "Watchover2026!"     # built-in administrator; the password must be changed at first sign-in
 MIN_PASSWORD = 10
 _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 GOOGLE_METADATA = "https://accounts.google.com/.well-known/openid-configuration"
@@ -65,10 +66,29 @@ class Users:
         pk = "SERIAL PRIMARY KEY" if kb.pg else "INTEGER PRIMARY KEY AUTOINCREMENT"
         kb._exec(f"""CREATE TABLE IF NOT EXISTS users (id {pk}, email TEXT NOT NULL UNIQUE, name TEXT DEFAULT '', pw_hash TEXT DEFAULT '',
             role TEXT DEFAULT 'operator', status TEXT DEFAULT 'active', provider TEXT DEFAULT 'local', created_at TEXT, last_login TEXT DEFAULT '')""")
+        try:
+            kb._exec("ALTER TABLE users ADD COLUMN must_change INTEGER DEFAULT 0")     # forced password change at first sign-in
+        except Exception:  # noqa: BLE001
+            pass
         kb._exec(f"CREATE TABLE IF NOT EXISTS auth_events (id {pk}, ts TEXT, email TEXT, event TEXT, ok INTEGER, detail TEXT DEFAULT '')")
         kb._exec("CREATE INDEX IF NOT EXISTS auth_events_email ON auth_events(email, ts)")
 
     # ---- queries
+    def bootstrap(self, email: str = "", password: str = "") -> bool:
+        """No accounts yet: create the built-in administrator with the initial password, which must be changed at first sign-in."""
+        if self.count():
+            return False
+        email, password = email or INITIAL_EMAIL, password or INITIAL_PASSWORD
+        self.kb._exec("INSERT INTO users (email, name, pw_hash, role, status, provider, created_at, must_change) VALUES (?,?,?,?,?,?,?,1)",
+                      (email, "Administrator", _hash(password), "admin", "active", "local", datetime.now(UTC).isoformat(timespec="seconds")))
+        self._event(email, "bootstrap", True, "built-in administrator created")
+        return True
+
+    def initial_password_active(self) -> bool:
+        """True while the built-in administrator still carries the initial password (shown as a hint on the sign-in page)."""
+        rows = self.kb._exec("SELECT must_change FROM users WHERE email=? AND provider='local'", (INITIAL_EMAIL,))
+        return bool(rows and rows[0]["must_change"])
+
     def count(self) -> int:
         return int(self.kb._exec("SELECT COUNT(*) AS n FROM users")[0]["n"])
 
@@ -133,7 +153,7 @@ class Users:
             self.kb._exec("UPDATE users SET pw_hash=? WHERE id=?", (_hash(password), u["id"]))
         self.kb._exec("UPDATE users SET last_login=? WHERE id=?", (datetime.now(UTC).isoformat(timespec="seconds"), u["id"]))
         self._event(email, "login", True)
-        return {k: u[k] for k in ("id", "email", "name", "role", "provider")}
+        return {k: u[k] for k in ("id", "email", "name", "role", "provider")} | {"must_change": bool(u.get("must_change"))}
 
     def sso_login(self, email: str, name: str = "", allowed_domains: str = "", auto_create: bool = True, provider: str = "oidc") -> dict | None:
         """An identity the provider vouched for: create on first sight (if allowed), refuse disabled accounts."""
@@ -171,7 +191,9 @@ class Users:
         why = password_policy(password)
         if why:
             raise ValueError(why)
-        self.kb._exec("UPDATE users SET pw_hash=? WHERE id=?", (_hash(password), uid))
+        self.kb._exec("UPDATE users SET pw_hash=?, must_change=0 WHERE id=?", (_hash(password), uid))
+        rows = self.kb._exec("SELECT email FROM users WHERE id=?", (uid,))
+        self._event(rows[0]["email"] if rows else str(uid), "password_change", True)
 
     def delete(self, uid: int) -> None:
         if self._is_last_admin(uid):

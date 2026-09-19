@@ -26,3 +26,5 @@ Thumbs.db
 .vscode/
 
 data/config.json
+data/versions/
+data/.vault.key
