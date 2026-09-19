@@ -79,17 +79,25 @@ def git_update(src: Path | None = None, branch: str = "") -> tuple[bool, str]:
         return False, str(e)
 
 
+CACHE_PROTECTED = (".venv", "node_modules", "data", "models", ".ollama", ".cache", "knowledge.db", "actions.db", "playbook.db")   # never touched by any cache cleanup
+
+
 def clear_caches(root: Path | None = None) -> dict:
-    """Remove what the previous version left behind: every __pycache__ under the code tree (never the venv), .pytest_cache,
-    Streamlit's on-disk cache and stale *.pyc files. Called after a deploy so the new code starts from a clean slate."""
+    """Remove what the previous version left behind: every __pycache__ under the code tree, .pytest_cache, Streamlit's on-disk
+    cache and stale *.pyc files. Downloaded LLM models (Ollama's ~/.ollama, any models/ folder), the data folder, the databases
+    and the virtual environment are never touched (CACHE_PROTECTED). Called after a deploy so the new code starts clean."""
     root = root or repo_root()
     dirs = files = 0
+
+    def protected(p: Path) -> bool:
+        return any(part in CACHE_PROTECTED for part in p.parts)
+
     for p in list(root.rglob("__pycache__")) + [root / ".pytest_cache"]:
-        if not p.exists() or ".venv" in p.parts or "node_modules" in p.parts:
+        if not p.exists() or protected(p.relative_to(root)):
             continue
         shutil.rmtree(p, ignore_errors=True); dirs += 1
     for p in root.rglob("*.pyc"):
-        if ".venv" not in p.parts:
+        if not protected(p.relative_to(root)):
             try:
                 p.unlink(); files += 1
             except OSError:

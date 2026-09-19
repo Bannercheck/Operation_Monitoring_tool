@@ -200,6 +200,20 @@ def test_clear_caches_purges_previous_version(tmp_path):
     assert (root / ".venv" / "lib" / "__pycache__" / "keep.pyc").exists()          # the virtual environment is never touched
 
 
+def test_clear_caches_keeps_llm_models_and_data(tmp_path):
+    from watchover import admin
+    root = tmp_path / "code"
+    for d in ("models/qwen2.5", ".ollama/models/blobs", "data/versions/x", "data/live"):
+        (root / d).mkdir(parents=True)
+    (root / "models" / "qwen2.5" / "weights.gguf").write_bytes(b"\x00" * 64); (root / ".ollama" / "models" / "blobs" / "sha256-abc").write_bytes(b"\x00" * 64)
+    (root / "models" / "qwen2.5" / "__pycache__").mkdir(); (root / "data" / "live" / "events.jsonl").write_text("{}")
+    (root / "src").mkdir(); (root / "src" / "__pycache__").mkdir(); (root / "src" / "x.pyc").write_bytes(b"0")
+    admin.clear_caches(root)
+    assert (root / "models" / "qwen2.5" / "weights.gguf").exists() and (root / ".ollama" / "models" / "blobs" / "sha256-abc").exists()
+    assert (root / "models" / "qwen2.5" / "__pycache__").exists() and (root / "data" / "live" / "events.jsonl").exists()   # protected trees stay whole
+    assert not (root / "src" / "__pycache__").exists() and not (root / "src" / "x.pyc").exists()
+
+
 def test_remember_me_tokens(tmp_path):
     from watchover.knowledge import Knowledge
     from watchover import auth as wo_auth
@@ -217,3 +231,21 @@ def test_remember_me_tokens(tmp_path):
     assert us.remember_lookup(tok2) is None                                                                     # a password change ends remembered sessions
     tok3 = us.remember_issue(u["id"]); us.remember_revoke(tok3)
     assert us.remember_lookup(tok3) is None
+
+
+def test_email_otp_codes(tmp_path):
+    from watchover.knowledge import Knowledge
+    from watchover import auth as wo_auth
+    us = wo_auth.Users(Knowledge(str(tmp_path / "k.db")))
+    u = us.register("ops@corp.com", "Parola-2026-x", "Ops")
+    code = us.otp_issue(u["id"])
+    assert len(code) == 6 and code.isdigit() and us.kb._exec("SELECT code_hash FROM otp_codes")[0]["code_hash"] != code
+    assert us.otp_verify(u["id"], "000000" if code != "000000" else "111111") == (False, wo_auth.OTP_ATTEMPTS - 1)
+    assert us.otp_verify(u["id"], code) == (True, 0) and not us.kb._exec("SELECT 1 FROM otp_codes")            # single use
+    assert us.otp_verify(u["id"], code) == (False, 0)
+    code = us.otp_issue(u["id"])
+    for _ in range(wo_auth.OTP_ATTEMPTS):
+        us.otp_verify(u["id"], "999999" if code != "999999" else "888888")
+    assert not us.kb._exec("SELECT 1 FROM otp_codes") and us.otp_verify(u["id"], code) == (False, 0)          # too many attempts void the code
+    code = us.otp_issue(u["id"]); us.kb._exec("UPDATE otp_codes SET expires_at='2000-01-01T00:00:00+00:00'")
+    assert us.otp_verify(u["id"], code) == (False, 0)                                                            # expired

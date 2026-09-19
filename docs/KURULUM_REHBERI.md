@@ -57,7 +57,7 @@ Uygulama giriş yapılmadan hiçbir bilgi göstermez. İlk açılışta yerleşi
 | E-posta | `admin@watchover.local` |
 | Başlangıç parolası | Kuruluma ayrıca iletilir (giriş ekranında ve belgelerde yazmaz) |
 
-İlk girişin hemen ardından yeni bir parola istenir. **Beni hatırla** işaretliyse tarayıcı 30 gün boyunca oturumu açık tutar; çıkış yapmak veya parolayı değiştirmek bunu sonlandırır. Google, Microsoft 365 / Exchange, Apple ve kurumsal OpenID Connect girişleri Sistem › Giriş sekmesinden açılır. Diğer hesaplar Sistem › Kullanıcılar sekmesinden açılır (kendi kendine kayıt varsayılan olarak kapalıdır). Parolalar yalnız scrypt karması olarak, SMTP / SMS / LLM / SSO sırları ise `data/.vault.key` anahtarıyla şifreli saklanır; yedek alırken `data/` klasörünü anahtar dosyasıyla birlikte alın.
+İlk girişin hemen ardından yeni bir parola istenir. **Beni hatırla** işaretliyse tarayıcı 30 gün boyunca oturumu açık tutar; çıkış yapmak veya parolayı değiştirmek bunu sonlandırır. **MFA:** yönetici dışındaki hesaplar girişte kayıtlı e-posta adreslerine 6 haneli kod alır; bunun için Sistem › Bildirimler › Kanallar altında SMTP tanımlı olmalıdır. Google, Microsoft 365 / Exchange, Apple ve kurumsal OpenID Connect girişleri Sistem › Giriş sekmesinden açılır. Diğer hesaplar Sistem › Kullanıcılar sekmesinden açılır (kendi kendine kayıt varsayılan olarak kapalıdır). Parolalar yalnız scrypt karması olarak, SMTP / SMS / LLM / SSO sırları ise `data/.vault.key` anahtarıyla şifreli saklanır; yedek alırken `data/` klasörünü anahtar dosyasıyla birlikte alın.
 
 ## 3. Alıcı: adres, port, güvenlik duvarı
 

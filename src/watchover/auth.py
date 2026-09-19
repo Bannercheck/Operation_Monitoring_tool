@@ -24,6 +24,7 @@ PROVIDERS = ("local", "google", "oidc")
 SCRYPT = {"n": 2 ** 15, "r": 8, "p": 2}
 LOCK_FAILURES, LOCK_MINUTES = 5, 15
 REMEMBER_DAYS, REMEMBER_COOKIE = 30, "wo_remember"
+OTP_MINUTES, OTP_ATTEMPTS = 5, 5
 INITIAL_EMAIL, INITIAL_PASSWORD = "admin@watchover.local", "Watchover!Admin2026"     # built-in administrator; must be changed at first sign-in
 APPLE_METADATA = "https://appleid.apple.com/.well-known/openid-configuration"
 MS_METADATA = "https://login.microsoftonline.com/{tenant}/v2.0/.well-known/openid-configuration"
@@ -83,6 +84,7 @@ class Users:
             kb._exec("ALTER TABLE users ADD COLUMN must_change INTEGER DEFAULT 0")     # forced password change at first sign-in
         except Exception:  # noqa: BLE001
             pass
+        kb._exec(f"CREATE TABLE IF NOT EXISTS otp_codes (id {pk}, user_id INTEGER NOT NULL UNIQUE, code_hash TEXT NOT NULL, created_at TEXT, expires_at TEXT, attempts INTEGER DEFAULT 0)")
         kb._exec(f"CREATE TABLE IF NOT EXISTS remember_tokens (id {pk}, user_id INTEGER NOT NULL, token_hash TEXT NOT NULL UNIQUE, created_at TEXT, expires_at TEXT, agent TEXT DEFAULT '')")
         kb._exec(f"CREATE TABLE IF NOT EXISTS auth_events (id {pk}, ts TEXT, email TEXT, event TEXT, ok INTEGER, detail TEXT DEFAULT '')")
         kb._exec("CREATE INDEX IF NOT EXISTS auth_events_email ON auth_events(email, ts)")
@@ -206,6 +208,35 @@ class Users:
         if status == "disabled" and self._is_last_admin(uid):
             raise ValueError("the last admin cannot be disabled")
         self.kb._exec("UPDATE users SET status=? WHERE id=?", ("disabled" if status == "disabled" else "active", uid))
+
+    # ---- e-mail MFA: a 6-digit one-time code, 5 minutes, 5 attempts, only its hash stored; administrators are exempt by policy
+    def otp_issue(self, uid: int) -> str:
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        now = datetime.now(UTC)
+        self.kb._exec("DELETE FROM otp_codes WHERE user_id=?", (uid,))
+        self.kb._exec("INSERT INTO otp_codes (user_id, code_hash, created_at, expires_at, attempts) VALUES (?,?,?,?,0)",
+                      (uid, hashlib.sha256(f"{uid}:{code}".encode()).hexdigest(), now.isoformat(timespec="seconds"), (now + timedelta(minutes=OTP_MINUTES)).isoformat(timespec="seconds")))
+        return code
+
+    def otp_verify(self, uid: int, code: str) -> tuple[bool, int]:
+        """(ok, attempts_left). A wrong code counts; after OTP_ATTEMPTS or after expiry the code is void and a new one is needed."""
+        rows = self.kb._exec("SELECT * FROM otp_codes WHERE user_id=?", (uid,))
+        if not rows:
+            return False, 0
+        r = rows[0]
+        if r["expires_at"] < datetime.now(UTC).isoformat(timespec="seconds"):
+            self.kb._exec("DELETE FROM otp_codes WHERE user_id=?", (uid,)); return False, 0
+        if hmac.compare_digest(r["code_hash"], hashlib.sha256(f"{uid}:{code.strip()}".encode()).hexdigest()):
+            self.kb._exec("DELETE FROM otp_codes WHERE user_id=?", (uid,))
+            self._event(str(uid), "mfa", True)
+            return True, 0
+        left = OTP_ATTEMPTS - int(r["attempts"]) - 1
+        if left <= 0:
+            self.kb._exec("DELETE FROM otp_codes WHERE user_id=?", (uid,))
+        else:
+            self.kb._exec("UPDATE otp_codes SET attempts=attempts+1 WHERE user_id=?", (uid,))
+        self._event(str(uid), "mfa", False, f"wrong code, {max(left, 0)} left")
+        return False, max(left, 0)
 
     # ---- "remember me": a random token in a browser cookie, only its sha256 in the database, 30 days, revoked at sign-out
     def remember_issue(self, uid: int, days: int = REMEMBER_DAYS, agent: str = "") -> str:

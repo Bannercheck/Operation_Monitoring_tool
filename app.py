@@ -1043,6 +1043,33 @@ def remember_cookie() -> str:
         return ""
 
 
+def _mask_email(e: str) -> str:
+    a, _, d = e.partition("@")
+    return (a[:1] + "***" if a else "***") + "@" + d
+
+
+def send_otp(us, u: dict) -> tuple[bool, str]:
+    """E-mail the one-time code through the alerting SMTP channel; (False, reason) when it cannot be sent."""
+    cfg = notify_channels().get("email", {})
+    if not cfg.get("host"):
+        return False, "smtp"
+    code = us.otp_issue(int(u["id"]))
+    try:
+        wo_notify.send_email(cfg, [u["email"]], f"[Watchover] {t('mfa_subject')}", t("mfa_mail_text", c=code, m=wo_auth.OTP_MINUTES),
+                             f'<div style="font-family:-apple-system,Inter,Arial,sans-serif;max-width:520px"><h2 style="margin:0 0 8px;color:#0f172a">{t("mfa_subject")}</h2>'
+                             f'<p style="color:#334155">{t("mfa_mail_lead", m=wo_auth.OTP_MINUTES)}</p><div style="font-size:34px;letter-spacing:10px;font-weight:800;color:#0f172a;padding:14px 18px;background:#f1f5f9;border-radius:12px;display:inline-block">{code}</div>'
+                             f'<p style="font-size:11px;color:#94a3b8;margin-top:16px">Watchover</p></div>')
+        return True, ""
+    except Exception as e:  # noqa: BLE001
+        return False, f"{type(e).__name__}: {str(e)[:120]}"
+
+
+def mfa_required(u: dict) -> bool:
+    """E-mail MFA applies to every account that is not an administrator, whichever provider signed it in (Google, Microsoft,
+    Apple, OIDC or local); the code goes to the address the account is registered with."""
+    return bool(st.session_state.get("mfa_email", True)) and u.get("role") != "admin"
+
+
 def sign_out() -> None:
     """Drop the session, revoke the remembered token, clear the cookie, end the SSO session."""
     us = users()
@@ -1064,6 +1091,32 @@ def login_forms() -> None:
     ss = st.session_state
     us = users()
     first = (ss.get("auth_local") or not auth_enabled()) and us.count() == 0
+    if ss.get("mfa_pending"):
+        pend = ss["mfa_pending"]; pu = pend["user"]
+        st.info(t("mfa_sent", e=_mask_email(pu["email"]), m=wo_auth.OTP_MINUTES))
+        with st.form("otp-form", border=False):
+            code = st.text_input(t("mfa_code"), max_chars=6, placeholder="123456")
+            if st.form_submit_button(t("mfa_verify"), type="primary", **wide("form_submit_button")):
+                ok_, left = us.otp_verify(int(pu["id"]), code)
+                if ok_:
+                    ss["user"] = pu; ss.pop("mfa_pending", None); ss.pop("login_open", None)
+                    if pend.get("remember"):
+                        ss["set_cookie"] = us.remember_issue(int(pu["id"]))
+                    st.rerun()
+                elif left:
+                    st.error(t("mfa_wrong", n=left))
+                else:
+                    ss.pop("mfa_pending", None); st.error(t("mfa_void")); st.rerun()
+        m1, m2 = st.columns(2)
+        if m1.button(f"↻ {t('mfa_resend')}", key="otp-resend", **wide("button")):
+            ok_, why = send_otp(us, pu)
+            (st.success if ok_ else st.error)(t("mfa_resent") if ok_ else t("mfa_send_fail", e=why))
+        if m2.button(t("mfa_cancel"), key="otp-cancel", **wide("button")):
+            ss.pop("mfa_pending", None)
+            if pend.get("sso") and getattr(st.user, "is_logged_in", False):
+                st.logout()
+            st.rerun()
+        return
     if ss.get("auth_local") or not auth_enabled():
         tabs = st.tabs([t("login_tab_in"), t("login_tab_up")]) if (ss.get("auth_self_register", True) or first) else [st.container()]
         with tabs[0]:
@@ -1076,7 +1129,19 @@ def login_forms() -> None:
                 if st.form_submit_button(t("login_continue"), type="primary", **wide("form_submit_button")):
                     lock = us.locked_until(email)
                     u = None if lock else us.login(email, pw)
-                    if u:
+                    if u and mfa_required(u):
+                        ok_, why = send_otp(us, u)
+                        if ok_:
+                            ss["mfa_pending"] = {"user": u, "remember": remember}; st.rerun()
+                        elif why == "smtp":
+                            us._event(u["email"], "mfa", False, "skipped: SMTP not configured")
+                            ss["user"] = u; ss.pop("login_open", None)
+                            if remember:
+                                ss["set_cookie"] = us.remember_issue(int(u["id"]))
+                            st.rerun()
+                        else:
+                            st.error(t("mfa_send_fail", e=why))
+                    elif u:
                         ss["user"] = u; ss.pop("login_open", None)
                         if remember:
                             ss["set_cookie"] = us.remember_issue(int(u["id"]), agent=str(st.context.headers.get("User-Agent", ""))[:120] if hasattr(st.context, "headers") else "")
@@ -1186,10 +1251,7 @@ def page_login() -> None:
         with st.container(border=True, key="login-card"):
             st.markdown(f'<div class="wo-login-title">{t("login_title")}</div>', unsafe_allow_html=True)
             login_forms()
-        steps = [t("login_s1"), t("login_s2"), t("login_s3"), t("login_s4")]
-        flow = '<span class="arrow">→</span>'.join(f'<span class="step{" hot" if i == 2 else ""}">{upper(x)}</span>' for i, x in enumerate(steps))
-        _st = wo_stamp.stamp()
-        st.markdown(f'<div class="wo-flow center">{flow}</div><div class="wo-login-foot">Watchover v{_st["version"]} · {t("login_foot")}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="wo-login-foot">Watchover v{wo_stamp.stamp()["version"]}</div>', unsafe_allow_html=True)
 
 
 def _sso_provider(iss: str) -> str:
@@ -1202,10 +1264,18 @@ def _sso_provider(iss: str) -> str:
     return "oidc"
 
 
-if auth_enabled() and getattr(st.user, "is_logged_in", False) and not current_user():
+if auth_enabled() and getattr(st.user, "is_logged_in", False) and not current_user() and not st.session_state.get("mfa_pending"):
     _u = users().sso_login(str(st.user.email), str(getattr(st.user, "name", "") or ""), st.session_state.get("auth_domains", ""),
                            bool(st.session_state.get("auth_self_register", True)), _sso_provider(str(getattr(st.user, "iss", ""))))
-    if _u:
+    if _u and mfa_required(_u):
+        _ok, _why = send_otp(users(), _u)                 # the code goes to the address the identity provider vouched for
+        if _ok:
+            st.session_state["mfa_pending"] = {"user": _u, "remember": True, "sso": True}
+        elif _why == "smtp":
+            users()._event(_u["email"], "mfa", False, "skipped: SMTP not configured"); st.session_state["user"] = _u
+        else:
+            st.error(t("mfa_send_fail", e=_why)); st.logout(); st.stop()
+    elif _u:
         st.session_state["user"] = _u
     else:
         st.error(t("login_sso_denied", e=st.user.email)); st.logout(); st.stop()
@@ -2572,6 +2642,9 @@ def page_system() -> None:
             st.markdown(f'<div class="card prov"><div class="prov-t">🔑 {t("auth_local_title")}</div><div class="prov-b">{t("auth_local_body")}</div></div>', unsafe_allow_html=True)
             a_local = st.toggle(t("auth_enable"), value=bool(ss.get("auth_local", False)), key="auth_local_in")
             selfreg = st.toggle(t("auth_self_register"), value=bool(ss.get("auth_self_register", True)), key="auth_selfreg_in", disabled=not a_local)
+            mfa = st.toggle(t("auth_mfa"), value=bool(ss.get("mfa_email", True)), key="auth_mfa_in", help=t("auth_mfa_help"))
+            if mfa and not wo_settings.load().get("smtp_host"):
+                st.caption(f"⚠️ {t('auth_mfa_nosmtp')}")
         with pc[1]:
             st.markdown(f'<div class="card prov"><div class="prov-t">🟢 {t("auth_google_title")}</div><div class="prov-b">{t("auth_google_body")}</div></div>', unsafe_allow_html=True)
             a_google = st.toggle(t("auth_enable"), value=bool(ss.get("auth_google", False)), key="auth_google_in")
@@ -2607,7 +2680,7 @@ def page_system() -> None:
         if a_local and not selfreg and us.count() == 0:
             st.warning(t("auth_need_user"))
         if st.button(f"💾 {t('cfg_save')}", key="auth-save", type="primary"):
-            vals = {"auth_local": bool(a_local), "auth_google": bool(a_google), "auth_oidc": bool(a_oidc), "auth_self_register": bool(selfreg), "auth_domains": domains.strip(),
+            vals = {"auth_local": bool(a_local), "auth_google": bool(a_google), "auth_oidc": bool(a_oidc), "auth_self_register": bool(selfreg), "auth_domains": domains.strip(), "mfa_email": bool(mfa),
                     "auth_microsoft": bool(a_ms), "ms_tenant": (ms_tenant or "common").strip(), "ms_client_id": (ms_id or "").strip(), "ms_client_secret": ms_sec or "",
                     "auth_apple": bool(a_apple), "apple_client_id": (ap_id or "").strip(), "apple_team_id": (ap_team or "").strip(), "apple_key_id": (ap_key or "").strip(), "apple_private_key": ap_p8 or "",
                     "google_client_id": (g_id or "").strip(), "google_client_secret": g_sec or "", "oidc_issuer": (issuer or "").strip(), "oidc_client_id": (o_id or "").strip(),
