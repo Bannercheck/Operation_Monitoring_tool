@@ -198,3 +198,22 @@ def test_clear_caches_purges_previous_version(tmp_path):
     assert out["dirs"] >= 2 and out["files"] >= 1
     assert not (root / "src" / "watchover" / "__pycache__").exists() and not (root / "old.pyc").exists() and not (root / ".pytest_cache").exists()
     assert (root / ".venv" / "lib" / "__pycache__" / "keep.pyc").exists()          # the virtual environment is never touched
+
+
+def test_remember_me_tokens(tmp_path):
+    from watchover.knowledge import Knowledge
+    from watchover import auth as wo_auth
+    us = wo_auth.Users(Knowledge(str(tmp_path / "k.db")))
+    u = us.register("ops@corp.com", "Parola-2026-x", "Ops")
+    tok = us.remember_issue(u["id"], agent="Safari")
+    assert len(tok) > 30 and us.kb._exec("SELECT token_hash FROM remember_tokens")[0]["token_hash"] != tok     # only the hash is stored
+    r = us.remember_lookup(tok)
+    assert r and r["email"] == "ops@corp.com" and r["must_change"] is False
+    assert us.remember_lookup("nope") is None and us.remember_lookup("") is None
+    us.kb._exec("UPDATE remember_tokens SET expires_at='2000-01-01T00:00:00+00:00'")
+    assert us.remember_lookup(tok) is None and not us.kb._exec("SELECT 1 FROM remember_tokens")                 # expired tokens are dropped
+    tok2 = us.remember_issue(u["id"])
+    us.change_password(u["id"], "Baska-Parola-2026")
+    assert us.remember_lookup(tok2) is None                                                                     # a password change ends remembered sessions
+    tok3 = us.remember_issue(u["id"]); us.remember_revoke(tok3)
+    assert us.remember_lookup(tok3) is None

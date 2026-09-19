@@ -23,6 +23,7 @@ ROLES = ("admin", "operator", "viewer")
 PROVIDERS = ("local", "google", "oidc")
 SCRYPT = {"n": 2 ** 15, "r": 8, "p": 2}
 LOCK_FAILURES, LOCK_MINUTES = 5, 15
+REMEMBER_DAYS, REMEMBER_COOKIE = 30, "wo_remember"
 INITIAL_EMAIL, INITIAL_PASSWORD = "admin@watchover.local", "Watchover!Admin2026"     # built-in administrator; must be changed at first sign-in
 APPLE_METADATA = "https://appleid.apple.com/.well-known/openid-configuration"
 MS_METADATA = "https://login.microsoftonline.com/{tenant}/v2.0/.well-known/openid-configuration"
@@ -82,6 +83,7 @@ class Users:
             kb._exec("ALTER TABLE users ADD COLUMN must_change INTEGER DEFAULT 0")     # forced password change at first sign-in
         except Exception:  # noqa: BLE001
             pass
+        kb._exec(f"CREATE TABLE IF NOT EXISTS remember_tokens (id {pk}, user_id INTEGER NOT NULL, token_hash TEXT NOT NULL UNIQUE, created_at TEXT, expires_at TEXT, agent TEXT DEFAULT '')")
         kb._exec(f"CREATE TABLE IF NOT EXISTS auth_events (id {pk}, ts TEXT, email TEXT, event TEXT, ok INTEGER, detail TEXT DEFAULT '')")
         kb._exec("CREATE INDEX IF NOT EXISTS auth_events_email ON auth_events(email, ts)")
 
@@ -205,11 +207,42 @@ class Users:
             raise ValueError("the last admin cannot be disabled")
         self.kb._exec("UPDATE users SET status=? WHERE id=?", ("disabled" if status == "disabled" else "active", uid))
 
+    # ---- "remember me": a random token in a browser cookie, only its sha256 in the database, 30 days, revoked at sign-out
+    def remember_issue(self, uid: int, days: int = REMEMBER_DAYS, agent: str = "") -> str:
+        tok = secrets.token_urlsafe(32)
+        now = datetime.now(UTC)
+        self.kb._exec("INSERT INTO remember_tokens (user_id, token_hash, created_at, expires_at, agent) VALUES (?,?,?,?,?)",
+                      (uid, hashlib.sha256(tok.encode()).hexdigest(), now.isoformat(timespec="seconds"), (now + timedelta(days=days)).isoformat(timespec="seconds"), agent[:120]))
+        self.kb._exec("DELETE FROM remember_tokens WHERE expires_at < ?", (now.isoformat(timespec="seconds"),))
+        return tok
+
+    def remember_lookup(self, tok: str) -> dict | None:
+        """The session user for a valid cookie token (unexpired, account still active), else None."""
+        if not tok:
+            return None
+        rows = self.kb._exec("SELECT r.expires_at, u.* FROM remember_tokens r JOIN users u ON u.id = r.user_id WHERE r.token_hash=?", (hashlib.sha256(tok.encode()).hexdigest(),))
+        if not rows:
+            return None
+        r = rows[0]
+        if r["expires_at"] < datetime.now(UTC).isoformat(timespec="seconds") or r["status"] != "active":
+            self.remember_revoke(tok)
+            return None
+        self._event(r["email"], "login", True, "remembered session")
+        return {k: r[k] for k in ("id", "email", "name", "role", "provider")} | {"must_change": bool(r.get("must_change"))}
+
+    def remember_revoke(self, tok: str) -> None:
+        if tok:
+            self.kb._exec("DELETE FROM remember_tokens WHERE token_hash=?", (hashlib.sha256(tok.encode()).hexdigest(),))
+
+    def remember_revoke_all(self, uid: int) -> None:
+        self.kb._exec("DELETE FROM remember_tokens WHERE user_id=?", (uid,))
+
     def change_password(self, uid: int, password: str) -> None:
         why = password_policy(password)
         if why:
             raise ValueError(why)
         self.kb._exec("UPDATE users SET pw_hash=?, must_change=0 WHERE id=?", (_hash(password), uid))
+        self.remember_revoke_all(uid)                                      # a new password ends every remembered session
         rows = self.kb._exec("SELECT email FROM users WHERE id=?", (uid,))
         self._event(rows[0]["email"] if rows else str(uid), "password_change", True)
 

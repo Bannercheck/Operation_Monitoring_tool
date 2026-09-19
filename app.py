@@ -202,14 +202,14 @@ div[data-testid="stDialog"] [data-testid="stMarkdownContainer"] h4{margin-top:0}
 div[data-testid="stExpander"] details{border:1px solid var(--wo-border);border-radius:12px;background:var(--wo-surface)}
 </style>"""
 GLASS = """<style>
-.st-key-login-google button,.st-key-login-microsoft button,.st-key-login-apple button,.st-key-login-oidc button{position:relative;padding-left:40px!important;justify-content:flex-start!important;text-align:left}
-.st-key-login-google button::before,.st-key-login-microsoft button::before,.st-key-login-apple button::before,.st-key-login-oidc button::before{content:"";position:absolute;left:14px;top:50%;width:18px;height:18px;transform:translateY(-50%);background-repeat:no-repeat;background-size:contain;background-position:center}
-.st-key-login-google button::before{background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 48 48%22%3E%3Cpath fill=%22%23EA4335%22 d=%22M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z%22/%3E%3Cpath fill=%22%234285F4%22 d=%22M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z%22/%3E%3Cpath fill=%22%23FBBC05%22 d=%22M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z%22/%3E%3Cpath fill=%22%2334A853%22 d=%22M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z%22/%3E%3C/svg%3E")}
-.st-key-login-microsoft button::before{background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 21 21%22%3E%3Crect x=%221%22 y=%221%22 width=%229%22 height=%229%22 fill=%22%23F25022%22/%3E%3Crect x=%2211%22 y=%221%22 width=%229%22 height=%229%22 fill=%22%237FBA00%22/%3E%3Crect x=%221%22 y=%2211%22 width=%229%22 height=%229%22 fill=%22%2300A4EF%22/%3E%3Crect x=%2211%22 y=%2211%22 width=%229%22 height=%229%22 fill=%22%23FFB900%22/%3E%3C/svg%3E")}
-.st-key-login-apple button::before{background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22%3E%3Cpath fill=%22%23ffffff%22 d=%22M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701%22/%3E%3C/svg%3E")}
-.st-key-login-oidc button::before{background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22%3E%3Cpath fill=%22%237dd3fc%22 d=%22M12 2 3 6v6c0 5.25 3.84 10.15 9 11.4 5.16-1.25 9-6.15 9-11.4V6l-9-4zm0 4a3 3 0 1 1 0 6 3 3 0 0 1 0-6zm0 8c2.67 0 5 1.34 5 3v1H7v-1c0-1.66 2.33-3 5-3z%22/%3E%3C/svg%3E")}
-.st-key-login-apple button{background:#000!important;color:#fff!important;border-color:#333!important}
-.st-key-login-google button:disabled,.st-key-login-microsoft button:disabled,.st-key-login-apple button:disabled,.st-key-login-oidc button:disabled{opacity:.55;cursor:not-allowed}
+.st-key-login-google button,.st-key-login-microsoft button,.st-key-login-apple button,.st-key-login-oidc button{height:46px;border-radius:14px!important;background:rgba(255,255,255,.05)!important;border:1px solid rgba(255,255,255,.14)!important;color:#e2e8f0!important;font-weight:600}
+.st-key-login-google button:hover,.st-key-login-microsoft button:hover,.st-key-login-apple button:hover,.st-key-login-oidc button:hover{background:rgba(255,255,255,.1)!important;border-color:rgba(255,255,255,.28)!important}
+.st-key-login-google button p::before,.st-key-login-microsoft button p::before,.st-key-login-apple button p::before,.st-key-login-oidc button p::before{content:"";display:inline-block;width:18px;height:18px;margin-right:10px;vertical-align:-4px;background-repeat:no-repeat;background-size:contain;background-position:center}
+.st-key-login-google button p::before{background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 48 48%22%3E%3Cpath fill=%22%23EA4335%22 d=%22M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z%22/%3E%3Cpath fill=%22%234285F4%22 d=%22M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z%22/%3E%3Cpath fill=%22%23FBBC05%22 d=%22M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z%22/%3E%3Cpath fill=%22%2334A853%22 d=%22M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z%22/%3E%3C/svg%3E")}
+.st-key-login-microsoft button p::before{background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 21 21%22%3E%3Crect x=%221%22 y=%221%22 width=%229%22 height=%229%22 fill=%22%23F25022%22/%3E%3Crect x=%2211%22 y=%221%22 width=%229%22 height=%229%22 fill=%22%237FBA00%22/%3E%3Crect x=%221%22 y=%2211%22 width=%229%22 height=%229%22 fill=%22%2300A4EF%22/%3E%3Crect x=%2211%22 y=%2211%22 width=%229%22 height=%229%22 fill=%22%23FFB900%22/%3E%3C/svg%3E")}
+.st-key-login-apple button p::before{background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22%3E%3Cpath fill=%22%23ffffff%22 d=%22M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701%22/%3E%3C/svg%3E")}
+.st-key-login-oidc button p::before{background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22%3E%3Cpath fill=%22%237dd3fc%22 d=%22M12 2 3 6v6c0 5.25 3.84 10.15 9 11.4 5.16-1.25 9-6.15 9-11.4V6l-9-4zm0 4a3 3 0 1 1 0 6 3 3 0 0 1 0-6zm0 8c2.67 0 5 1.34 5 3v1H7v-1c0-1.66 2.33-3 5-3z%22/%3E%3C/svg%3E")}
+.st-key-login-google button:disabled,.st-key-login-microsoft button:disabled,.st-key-login-apple button:disabled,.st-key-login-oidc button:disabled{opacity:.5;cursor:not-allowed}
 
 
 /* ---- liquid glass: translucent layered surfaces over a soft-lit backdrop; contrast kept for long operations shifts ---- */
@@ -1030,6 +1030,30 @@ def current_user() -> dict | None:
     return st.session_state.get("user")
 
 
+def _cookie_js(name: str, value: str, days: int) -> None:
+    """Set (or with days=0 clear) a cookie from the browser side; the component iframe shares the page origin."""
+    secure = "; Secure" if str(getattr(st.context, "url", "") or "").startswith("https") else ""
+    components.html(f"<script>document.cookie='{name}={value}; path=/; max-age={days * 86400}; SameSite=Lax{secure}';</script>", height=0)
+
+
+def remember_cookie() -> str:
+    try:
+        return str(st.context.cookies.get(wo_auth.REMEMBER_COOKIE, "") or "")
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def sign_out() -> None:
+    """Drop the session, revoke the remembered token, clear the cookie, end the SSO session."""
+    us = users()
+    us.remember_revoke(remember_cookie())
+    st.session_state.pop("user", None)
+    st.session_state["clear_cookie"] = True
+    if getattr(st.user, "is_logged_in", False):
+        st.logout()
+    st.rerun()
+
+
 def auth_enabled() -> bool:
     ss = st.session_state
     return bool(ss.get("auth_local") or ss.get("auth_google") or ss.get("auth_apple") or ss.get("auth_microsoft") or ss.get("auth_oidc"))
@@ -1040,22 +1064,6 @@ def login_forms() -> None:
     ss = st.session_state
     us = users()
     first = (ss.get("auth_local") or not auth_enabled()) and us.count() == 0
-    provs = ["google", "microsoft", "apple"] + (["oidc"] if ss.get("auth_oidc") else [])       # brand buttons are always shown; unconfigured ones are inactive
-    if True:
-        st.markdown(f'<div class="muted" style="font-size:11px;letter-spacing:.8px;font-weight:700;margin:2px 0 6px">{upper(t("login_providers"))}</div>', unsafe_allow_html=True)
-        labels = {"google": t("login_google_btn"), "microsoft": t("login_ms_btn"), "apple": t("login_apple_btn"), "oidc": t("login_sso_btn")}
-        for row in range(0, len(provs), 2):
-            chunk = provs[row:row + 2]
-            cols = st.columns(2) if len(chunk) == 2 else [st.container()]
-            for col, k in zip(cols, chunk):
-                on = bool(ss.get("auth_" + k))
-                if col.button(labels[k], key=f"login-{k}", disabled=not on, help=None if on else t("login_prov_off"), **wide("button")):
-                    try:
-                        st.login(k)
-                    except Exception as e:  # noqa: BLE001
-                        st.error(t("login_sso_err", e=e))
-        if ss.get("auth_local") or not auth_enabled():
-            st.markdown(f'<div class="muted" style="text-align:center;font-size:11px;margin:8px 0 4px">— {t("login_or")} —</div>', unsafe_allow_html=True)
     if ss.get("auth_local") or not auth_enabled():
         tabs = st.tabs([t("login_tab_in"), t("login_tab_up")]) if (ss.get("auth_self_register", True) or first) else [st.container()]
         with tabs[0]:
@@ -1064,11 +1072,15 @@ def login_forms() -> None:
             with st.form("login-form", border=False):
                 email = st.text_input(t("login_email"), placeholder="ad.soyad@sirket.com")
                 pw = st.text_input(t("login_pw"), type="password")
-                if st.form_submit_button(f"→ {t('login_btn')}", type="primary", **wide("form_submit_button")):
+                remember = st.checkbox(t("login_remember"), value=True, help=t("login_remember_help", d=wo_auth.REMEMBER_DAYS))
+                if st.form_submit_button(t("login_continue"), type="primary", **wide("form_submit_button")):
                     lock = us.locked_until(email)
                     u = None if lock else us.login(email, pw)
                     if u:
-                        ss["user"] = u; ss.pop("login_open", None); st.rerun()
+                        ss["user"] = u; ss.pop("login_open", None)
+                        if remember:
+                            ss["set_cookie"] = us.remember_issue(int(u["id"]), agent=str(st.context.headers.get("User-Agent", ""))[:120] if hasattr(st.context, "headers") else "")
+                        st.rerun()
                     elif lock:
                         st.error(t("login_locked", m=wo_auth.LOCK_MINUTES))
                     else:
@@ -1090,6 +1102,16 @@ def login_forms() -> None:
                                 ss.pop("login_open", None); st.toast(t("login_welcome", n=u["name"] or u["email"]), icon="👋"); st.rerun()
                             except ValueError as e:
                                 st.error(t("login_policy", e=e))
+    st.markdown(f'<div class="wo-or">{t("login_or")}</div>', unsafe_allow_html=True)
+    provs = ["google", "microsoft", "apple"] + (["oidc"] if ss.get("auth_oidc") else [])       # brand buttons are always shown; unconfigured ones are inactive
+    labels = {"google": t("login_google_btn"), "microsoft": t("login_ms_btn"), "apple": t("login_apple_btn"), "oidc": t("login_sso_btn")}
+    for k in provs:
+        on = bool(ss.get("auth_" + k))
+        if st.button(labels[k], key=f"login-{k}", disabled=not on, help=None if on else t("login_prov_off"), **wide("button")):
+            try:
+                st.login(k)
+            except Exception as e:  # noqa: BLE001
+                st.error(t("login_sso_err", e=e))
     if ss.get("auth_domains"):
         st.caption(t("login_domains", d=ss["auth_domains"]))
 
@@ -1129,12 +1151,24 @@ header[data-testid="stHeader"] {background:transparent}
 .wo-feat .t {font-size:14px; font-weight:700; color:#f1f5f9; margin-top:6px}
 .wo-feat .b {font-size:12px; color:#94a3b8; line-height:1.5; margin-top:4px}
 .st-key-login-card {background:linear-gradient(165deg, rgba(255,255,255,.10), rgba(255,255,255,.035)) !important; border:1px solid rgba(255,255,255,.16) !important; border-radius:24px !important; padding:26px 26px 18px !important; backdrop-filter:blur(26px) saturate(140%); box-shadow:0 30px 80px rgba(2,6,23,.55), inset 0 1px 0 rgba(255,255,255,.18); margin-top:26px}
+.wo-pill-wrap {text-align:center; margin:10px 0 18px}
+.wo-brand-pill {display:inline-flex; align-items:center; gap:12px; padding:10px 20px 10px 12px; border-radius:20px; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.13); backdrop-filter:blur(14px); text-align:left}
+.wo-brand-pill .n {font-size:22px; font-weight:800; letter-spacing:-.5px; background:linear-gradient(120deg,#e2e8f0,#2dd4bf 60%,#60a5fa); -webkit-background-clip:text; background-clip:text; color:transparent}
+.wo-brand-pill .s {font-size:10px; letter-spacing:2.4px; color:#7dd3fc; font-weight:700}
+.wo-login-title {text-align:center; font-size:30px; font-weight:800; color:#f8fafc; letter-spacing:-.5px; margin:4px 0 14px}
+.wo-or {display:flex; align-items:center; gap:12px; color:#94a3b8; font-size:12px; margin:16px 4px 12px}
+.wo-or::before,.wo-or::after {content:""; flex:1; height:1px; background:rgba(255,255,255,.13)}
+.wo-flow.center {justify-content:center; margin:22px 0 4px}
+.st-key-login-card {max-width:560px; margin:0 auto; padding:30px 28px 22px !important}
+.st-key-login-card [data-testid="stFormSubmitButton"] button {height:48px; border-radius:14px !important; border:0 !important; color:#fff !important; font-weight:700; background:linear-gradient(100deg,#14b8a6 0%,#3b82f6 55%,#6366f1 100%) !important; box-shadow:0 10px 30px rgba(59,130,246,.35)}
+.st-key-login-card [data-testid="stTextInput"] input {height:46px; border-radius:12px}
+.st-key-login-card [data-testid="stCheckbox"] {margin:2px 0 6px}
 .wo-login-head {display:flex; align-items:center; gap:12px; margin-bottom:6px}
 .wo-login-head .h {font-size:26px; font-weight:800; color:#f8fafc; letter-spacing:-.5px}
 .wo-login-head .s {font-size:12px; color:#94a3b8; line-height:1.45}
 .st-key-login-card [data-testid="stForm"] {padding:6px 8px 2px}
 .st-key-login-card .stTabs [data-baseweb="tab-list"] {margin:0 6px}
-.wo-login-foot {font-size:11px; color:#64748b; margin-top:14px; text-align:center}
+.wo-login-foot {font-size:11px; color:#64748b; margin-top:10px; text-align:center}
 @media (max-width: 900px) {.wo-hero .name {font-size:40px} .wo-feats {grid-template-columns:1fr} .st-key-login-card {margin-top:8px}
   [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {flex:1 1 100% !important; min-width:100% !important}}
 </style>
@@ -1143,23 +1177,19 @@ header[data-testid="stHeader"] {background:transparent}
 
 
 def page_login() -> None:
-    """Nobody is signed in: the whole app stays hidden behind a full-page sign-in (hero on the left, glass card with the forms on the right)."""
+    """Nobody is signed in: one centred glass card (e-mail + password, gradient Continue, 'or', stacked provider buttons)."""
     st.markdown(LOGIN_CSS, unsafe_allow_html=True)
-    feats = [("📡", t("login_f1_t"), t("login_f1_b")), ("🧠", t("login_f2_t"), t("login_f2_b")), ("🎯", t("login_f3_t"), t("login_f3_b")), ("🔔", t("login_f4_t"), t("login_f4_b"))]
-    steps = [t("login_s1"), t("login_s2"), t("login_s3"), t("login_s4")]
-    left, right = st.columns([1.3, 1], gap="large")
-    with left:
-        flow = '<span class="arrow">→</span>'.join(f'<span class="step{" hot" if i == 2 else ""}">{upper(x)}</span>' for i, x in enumerate(steps))
-        st.markdown(f'<div class="wo-hero"><div class="mark">{logo(96)}</div><div class="name">Watchover</div><div class="tag">{upper(t("brand_tag"))}</div>'
-                    f'<div class="lead">{t("login_lead")}</div><div class="wo-flow">{flow}</div><div class="wo-feats">'
-                    + "".join(f'<div class="wo-feat"><div class="ic">{ic}</div><div class="t">{esc(a)}</div><div class="b">{esc(b)}</div></div>' for ic, a, b in feats)
-                    + "</div></div>", unsafe_allow_html=True)
-    with right:
+    _, mid, _ = st.columns([1, 1.25, 1])
+    with mid:
+        st.markdown(f'<div class="wo-pill-wrap"><div class="wo-brand-pill"><span style="display:inline-block;width:44px">{logo(44)}</span>'
+                    f'<div><div class="n">Watchover</div><div class="s">{upper(t("brand_tag"))}</div></div></div></div>', unsafe_allow_html=True)
         with st.container(border=True, key="login-card"):
-            st.markdown(f'<div class="wo-login-head"><span style="display:inline-block;width:38px">{logo(38)}</span><div><div class="h">{t("login_title")}</div><div class="s">{t("login_card_sub")}</div></div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="wo-login-title">{t("login_title")}</div>', unsafe_allow_html=True)
             login_forms()
-            _st = wo_stamp.stamp()
-            st.markdown(f'<div class="wo-login-foot">Watchover v{_st["version"]} · {t("login_foot")}</div>', unsafe_allow_html=True)
+        steps = [t("login_s1"), t("login_s2"), t("login_s3"), t("login_s4")]
+        flow = '<span class="arrow">→</span>'.join(f'<span class="step{" hot" if i == 2 else ""}">{upper(x)}</span>' for i, x in enumerate(steps))
+        _st = wo_stamp.stamp()
+        st.markdown(f'<div class="wo-flow center">{flow}</div><div class="wo-login-foot">Watchover v{_st["version"]} · {t("login_foot")}</div>', unsafe_allow_html=True)
 
 
 def _sso_provider(iss: str) -> str:
@@ -1201,9 +1231,17 @@ def page_change_password() -> None:
                         except ValueError as e:
                             st.error(t("login_policy", e=e))
             if st.button(f"⏻ {t('logout')}", key="pwc-logout"):
-                st.session_state.pop("user", None); st.rerun()
+                sign_out()
 
 
+if not current_user() and not st.session_state.get("clear_cookie") and remember_cookie():     # "remember me": a valid cookie signs in silently
+    _ru = users().remember_lookup(remember_cookie())
+    if _ru:
+        st.session_state["user"] = _ru
+if st.session_state.pop("clear_cookie", False):
+    _cookie_js(wo_auth.REMEMBER_COOKIE, "", 0)
+if st.session_state.get("set_cookie"):
+    _cookie_js(wo_auth.REMEMBER_COOKIE, st.session_state.pop("set_cookie"), wo_auth.REMEMBER_DAYS)
 if not current_user() and not os.environ.get("WATCHOVER_SKIP_SETUP"):   # nothing of the app is visible before sign-in (the env flag is for tests / dev)
     page_login()
     st.stop()
@@ -1239,10 +1277,7 @@ with st.sidebar:
             uc1.markdown(f'<div class="sb-user"><span class="av">{esc(_ini)}</span><div><div class="nm">{esc(_u.get("name") or _u["email"])}</div>'
                          f'<div class="em">{esc(_u["email"])}</div><span class="role r-{_u["role"]}">{t("role_" + _u["role"])}</span></div></div>', unsafe_allow_html=True)
             if uc2.button("⏻", key="logout", help=t("logout")):
-                st.session_state.pop("user", None)
-                if getattr(st.user, "is_logged_in", False):
-                    st.logout()
-                st.rerun()
+                sign_out()
     if st.session_state.pop("login_open", False) and not current_user():
         login_dialog()
     st.caption(t("footer"))
