@@ -1378,7 +1378,12 @@ def page_ops() -> None:
             st.rerun(scope="app")
         all_stt = ls.stats(15)
         real_agents = [a_ for a_ in all_stt["agents"] if a_ != "simulator"]
-        badge_txt, badge_col = (t("live_real_badge"), "#2dd4bf") if real_agents else (t("live_sim_badge"), "#fbbf24")
+        if st.session_state.get("sim_on", False):                # the switch decides the badge, not the data
+            badge_txt, badge_col = t("live_sim_badge"), "#fbbf24"
+        elif real_agents:
+            badge_txt, badge_col = t("live_real_badge"), "#2dd4bf"
+        else:
+            badge_txt, badge_col = t("live_wait_badge"), "#64748b"
         th1, th2 = st.columns([5, 1.4])
         th1.markdown(f'## {t("live_title")}')
         with th2:
