@@ -49,6 +49,7 @@ class LiveStore:
         self.spool = Path(spool) if spool else None
         self.received = 0
         self.agents: dict[str, float] = {}      # agent name -> last seen epoch
+        self.on_ingest = None                    # optional hook(events): service-level history rollups
         self.started = time.time()
         if self.spool:
             self.spool.parent.mkdir(parents=True, exist_ok=True)
@@ -79,6 +80,11 @@ class LiveStore:
             self.received += len(obs)
             self.agents[agent] = time.time()
         obs = events
+        if self.on_ingest and events:
+            try:
+                self.on_ingest(events)
+            except Exception:  # noqa: BLE001 - history is best effort
+                pass
         if self.spool and obs:
             try:
                 self._rotate_spool()

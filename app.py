@@ -37,6 +37,8 @@ from watchover import settings as wo_settings
 from watchover import assistant as wo_assistant
 from watchover import sources as wo_sources
 from watchover import report as wo_report
+from watchover import history as wo_history
+from watchover import autolearn as wo_learn
 from watchover.llm import LLMConfig, PROVIDERS, chat as llm_chat, embed as llm_embed, list_models as llm_models, set_sink as llm_set_sink, test_connection as llm_test
 from watchover import ollama as wo_ollama
 from watchover import llm_eval as wo_eval
@@ -329,6 +331,21 @@ def sources() -> wo_sources.SourceStore:
 
 def source_poller() -> wo_sources.Poller:
     return _singleton("poller", wo_sources.Poller, lambda: wo_sources.Poller(sources(), live_store()).start())
+
+
+def history() -> wo_history.History:
+    """Minute rollups of the live feed (weekly / monthly reports); hooked into the live store on first use."""
+    def make():
+        h = wo_history.History(knowledge()).start()
+        live_store().on_ingest = h.add
+        return h
+    return _singleton("history", wo_history.History, make)
+
+
+def learner() -> wo_learn.LiveLearner:
+    def make():
+        return wo_learn.LiveLearner(live_store(), knowledge(), int(st.session_state.get("learn_min", 15) or 0), lang=current_lang()).start()
+    return _singleton("learner", wo_learn.LiveLearner, make)
 
 
 @st.cache_resource
@@ -836,6 +853,8 @@ with st.sidebar:
 # always-on receiver + optional simulator (started once per process)
 _srv = receiver(int(st.session_state.get("live_port", LIVE_PORT)), st.session_state.get("live_key", ""))
 _poller = source_poller()                                       # pull sources (Elasticsearch, Loki, Splunk, Graylog, HTTP) poll in the background
+_hist = history()                                               # minute rollups for weekly / monthly service-level reports
+_learn = learner()                                              # live learning: patterns from the live feed land in the knowledge base
 if st.session_state.get("sim_on", True):
     simulator()
 
@@ -908,8 +927,10 @@ def _set_scope(env_key: str, host_key: str, env=None, host=None) -> None:
     """Button callback: runs before widgets are built, so the popover pickers can be updated safely."""
     all_ = t("ops_all")
     st.session_state[env_key] = env or all_
-    st.session_state[host_key] = list(host) if isinstance(host, (list, tuple)) else ([host] if host else [])
-    st.session_state["ops_scope_hosts"] = list(st.session_state[host_key])
+    sel = list(host) if isinstance(host, (list, tuple)) else ([host] if host else [])
+    st.session_state["ops_scope_hosts"] = sel
+    for k in [k for k in st.session_state.keys() if k.startswith("ops_h_")]:
+        st.session_state[k] = k[6:] in sel
 
 
 def scope_panel(ls: LiveStore) -> tuple[str | None, str | None]:
@@ -925,16 +946,18 @@ def scope_panel(ls: LiveStore) -> tuple[str | None, str | None]:
                 f"{esc(e)} · {pct(r['availability'], 1)} · {r['errors']} {t('env_errors')}" for e, r in summary.items()) + "</div>", unsafe_allow_html=True)
         hosts = [h for h, e in host_env.items() if not env or e == env]
         st.markdown(f"**🖥 {t('ops_hosts')}** <span class='muted'>· {len(hosts)}</span>", unsafe_allow_html=True)
-        # The pills live inside the 2 s fragment: on the next full rerun (opening a detail dialog) Streamlit drops the widget's
-        # own state, so the chosen hosts are mirrored in a plain key and re-seeded from it before the widget is built.
-        if "ops_host_pick" not in st.session_state and st.session_state.get("ops_scope_hosts"):
-            st.session_state["ops_host_pick"] = [h for h in st.session_state["ops_scope_hosts"] if h in hosts]
-        cur = [h for h in (st.session_state.get("ops_host_pick") or []) if h in hosts]
-        if hosts and cur != list(st.session_state.get("ops_host_pick") or []):   # prune only against a known host list
-            st.session_state["ops_host_pick"] = cur
-        pick = st.pills("host", hosts, selection_mode="multi", key="ops_host_pick", label_visibility="collapsed", help=t("ops_host_hint"),
-                        format_func=lambda h: h if env else f"{h} · {host_env.get(h, '')}")
-        st.session_state["ops_scope_hosts"] = list(pick or [])
+        # One checkbox per host. The widgets live inside the 2 s fragment: on the next full rerun (opening a detail dialog)
+        # Streamlit drops widget state, so the selection is mirrored in a plain key and re-seeded from it before the widgets are built.
+        mirror = [h for h in (st.session_state.get("ops_scope_hosts") or []) if h in hosts]
+        st.caption(t("ops_host_hint"))
+        pick = []
+        for h in hosts:
+            k = f"ops_h_{h}"
+            if k not in st.session_state:
+                st.session_state[k] = h in mirror
+            if st.checkbox(h if env else f"{h} · {host_env.get(h, '')}", key=k):
+                pick.append(h)
+        st.session_state["ops_scope_hosts"] = list(pick)
         host = scope_hosts(pick)
         if isinstance(host, (list, tuple)):
             st.caption(t("ops_multi", n=len(host)))
@@ -1061,11 +1084,20 @@ def ops_detail_panel(kind: str, ls: LiveStore, env, host, ms: dict, stt: dict, s
             return
         # availability / sla / budget / p95 -> what lowers the figure
         with st.container(border=True):
-            r1, r2, r3 = st.columns([1.2, 1.2, 3])
-            win = r1.selectbox(t("rep_window"), [15, 60, 240, 1440], index=1, key="rep_window", format_func=lambda m: f"{m} {t('min_short')}" if m < 60 else f"{m // 60} {t('hour_short')}")
-            _html = wo_report.slo_report(ls, st.session_state.get("analysis"), env, host, int(win), current_lang(), st.session_state.get("workspace", ""), LOGO_SVG)
-            r2.download_button(f"📄 {t('rep_download')}", _html.encode("utf-8"), file_name=f"watchover-slo-{datetime.now(UTC).strftime('%Y%m%d-%H%M')}.html", mime="text/html", key="rep-dl", **wide("download_button"))
-            r3.caption(t("rep_hint"))
+            r1, r2, r3, r4 = st.columns([1.3, 1.2, 1.3, 2.6])
+            wins = {15: f"15 {t('min_short')}", 60: f"1 {t('hour_short')}", 240: f"4 {t('hour_short')}", 1440: f"24 {t('hour_short')}", 7 * 1440: t("rep_weekly"), 30 * 1440: t("rep_monthly")}
+            win = r1.selectbox(t("rep_window"), list(wins), index=1, key="rep_window", format_func=wins.get)
+            whole = r2.checkbox(t("rep_all"), key="rep_all", help=t("rep_all_help"))
+            _env, _hst = (None, None) if whole else (env, host)
+            if win <= 1440:
+                fig = wo_report.figures_live(ls, _env, _hst, int(win))
+            else:
+                _now = datetime.now(UTC)
+                fig = history().figures(_now - timedelta(minutes=int(win)), _now, _env, _hst, "day" if win > 7 * 1440 else "hour")
+            _html = wo_report.slo_report(fig, st.session_state.get("analysis"), scope_label(_env, _hst), "", current_lang(), st.session_state.get("workspace", ""), LOGO_SVG)
+            r3.download_button(f"📄 {t('rep_download')}", _html.encode("utf-8"), file_name=f"watchover-slo-{datetime.now(UTC).strftime('%Y%m%d-%H%M')}.html", mime="text/html", key="rep-dl", **wide("download_button"))
+            cov = history().coverage()
+            r4.caption(t("rep_hint") + (f" · {t('rep_coverage', d=str(cov['first'])[:10])}" if cov.get("first") else f" · {t('rep_no_history')}"))
         target = slo["slo"]["availability"] if kind != "sla" else slo["sla"]["availability"]
         k = st.columns(4)
         k[0].markdown(kpi2(pct(slo["availability"], 2), t("availability"), "🎯", "#2dd4bf" if (slo["availability"] or 0) >= target else "#f87171", t("od_target", v=pct(target, 1))), unsafe_allow_html=True)
@@ -1196,7 +1228,7 @@ def page_ops() -> None:
         _all = t("ops_all")
         _env = st.session_state.get("ops_env_pick") or None
         _env = None if _env in ("", _all) else _env
-        _host = scope_hosts(st.session_state.get("ops_scope_hosts") or st.session_state.get("ops_host_pick"))
+        _host = scope_hosts(st.session_state.get("ops_scope_hosts"))
 
         @st.dialog(t("od_" + _k), width="large")
         def _ops_dialog() -> None:
@@ -1500,9 +1532,9 @@ def page_assist() -> None:
                             st.toast(t("as_saved"), icon="✅")
                         if not meta.get("rated"):
                             if c2_.button("👍", key=f"as-up-{i}", help=t("as_fb_help")):
-                                kb.rate_answer(cfg.model or "-", q_prev, "up"); meta["rated"] = "up"; st.toast(t("as_fb_thanks"), icon="👍"); st.rerun()
+                                kb.rate_answer(cfg.model or "-", q_prev, "up", answer=m["content"]); meta["rated"] = "up"; st.toast(t("as_fb_thanks"), icon="👍"); st.rerun()
                             if c3_.button("👎", key=f"as-down-{i}", help=t("as_fb_help")):
-                                kb.rate_answer(cfg.model or "-", q_prev, "down"); meta["rated"] = "down"; st.toast(t("as_fb_thanks"), icon="👎"); st.rerun()
+                                kb.rate_answer(cfg.model or "-", q_prev, "down", answer=m["content"]); meta["rated"] = "down"; st.toast(t("as_fb_thanks"), icon="👎"); st.rerun()
         pending = st.session_state.pop("as_pending", None)
         q = st.chat_input(t("as_input")) or pending
         if q:
@@ -1830,6 +1862,23 @@ def page_llm() -> None:
         k2_[3].markdown(kpi2(stt["by_kind"].get("embed", 0), t("llm_kind_embed"), "🧬", "#a78bfa", cfg.embed_model or "-"), unsafe_allow_html=True)
         with st.expander(f"ℹ️ {t('llm_metrics_help_title')}"):
             st.markdown(t("llm_metrics_help"))
+        st.markdown(f"#### {t('learn_title')}")
+        st.caption(t("learn_hint"))
+        lr = learner()
+        lc = st.columns([1.2, 1.2, 1.4, 2.2])
+        lm = lc[0].number_input(t("learn_every"), 0, 1440, int(ss.get("learn_min", 15) or 0), key="learn_min_in", help=t("learn_every_help"))
+        if int(lm) != int(ss.get("learn_min", 15) or 0):
+            ss["learn_min"] = int(lm); lr.interval_min = int(lm); wo_settings.save({"learn_min": int(lm)})
+        if lc[1].button(f"🧠 {t('learn_now')}", key="learn-now", **wide("button")):
+            ss["learn_out"] = lr.learn_once()
+        lc[2].download_button(f"⬇ {t('learn_export')}", wo_learn.training_export(kb, current_lang()), file_name="watchover-training.jsonl", mime="application/jsonl", key="learn-export", help=t("learn_export_help"), **wide("download_button"))
+        runs_ = lr.history(8)
+        lc[3].caption(t("learn_last", ts=runs_[0]["ts"][:16], e=runs_[0]["events"], i=runs_[0]["incidents"], l=runs_[0]["lessons"]) if runs_ else t("learn_none"))
+        lo_ = ss.pop("learn_out", None)
+        if lo_:
+            (st.success if not lo_["note"] else st.info)(t("learn_done", e=lo_["events"], i=lo_["incidents"], l=lo_["lessons"]) + (f" · {lo_['note']}" if lo_["note"] else ""))
+        if runs_:
+            st.dataframe(pd.DataFrame([{t("time"): r["ts"][:16], t("events_n"): r["events"], "incident": r["incidents"], t("kb_lessons"): r["lessons"], "not": r["note"]} for r in runs_]), hide_index=True, **wide("dataframe"))
         st.markdown(f"#### {t('llm_bench')}")
         a = ss.get("analysis")
         bc1, bc2 = st.columns([1.5, 4])

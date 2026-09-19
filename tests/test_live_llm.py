@@ -149,9 +149,47 @@ def test_slo_report_and_multi_host_scope():
     one, both = store.slo(15, None, hosts[0]), store.slo(15, None, two)
     assert both["total"] == store.slo(15, None, hosts[0])["total"] + store.slo(15, None, hosts[1])["total"]
     assert {o.host for o in store.snapshot(None, two)} <= set(two) and store.metric_stats(15, None, two)
-    html = report.slo_report(store, None, None, two, 15, "tr", "Acme", "<svg/>")
-    assert html.startswith("<!doctype html>") and "Yönetici özeti" in html and hosts[0] in html and "<svg" in html and "Acme" in html
-    assert report.slo_report(store, None, None, two, 15, "tr", "Acme", "<svg/>").split("Oluşturulma")[1][30:] == html.split("Oluşturulma")[1][30:]
-    assert "Executive summary" in report.slo_report(store, None, "prod", None, 60, "en")
-    empty = report.slo_report(LiveStore(), None, None, None, 15, "tr")
+    fig = report.figures_live(store, None, two, 15)
+    html = report.slo_report(fig, None, ", ".join(two), "", "tr", "Acme", "<svg/>")
+    assert html.startswith("<!doctype html>") and "Yönetici özeti" in html and hosts[0] in html and "<svg" in html and "Acme" in html and "sim" in html
+    assert report.slo_report(fig, None, ", ".join(two), "", "tr", "Acme", "<svg/>").split("Oluşturulma")[1][30:] == html.split("Oluşturulma")[1][30:]
+    assert "Executive summary" in report.slo_report(report.figures_live(store, "prod", None, 60), None, "prod", "", "en")
+    empty = report.slo_report(report.figures_live(LiveStore(), None, None, 15), None, "", "", "tr")
     assert "olay yok" in empty
+
+
+def test_history_rollups_and_live_learning(tmp_path):
+    """Ingest hook → minute rollups → weekly figures from the database; live learner records patterns; training export."""
+    import random
+    from datetime import datetime, timedelta, timezone
+    UTC = timezone.utc
+    from watchover.history import History
+    from watchover.knowledge import Knowledge
+    from watchover.autolearn import LiveLearner, training_export
+    from watchover import report
+    kb = Knowledge(str(tmp_path / "k.db")); store = LiveStore(); hist = History(kb)
+    store.on_ingest = hist.add
+    rng = random.Random(5)
+    for i in range(80):
+        store.ingest("sim.jsonl", simulate_batch(rng, 8, 20 <= i < 50), agent="sim")
+    assert hist.flush() > 0 and hist.flush() == 0
+    now = datetime.now(UTC)
+    fig = hist.figures(now - timedelta(days=7), now + timedelta(minutes=1), bucket="hour")
+    assert fig["total"] == store.received - len(store.metrics) and fig["errors"] > 0 and fig["by_host"] and fig["by_sender"][0][0] == "sim" and fig["by_service"]
+    assert 0 < fig["availability"] < 1 and fig["p95_ms"] is not None and len(fig["series"]) >= 168 and fig["bucket"] == "hour"
+    one = hist.figures(now - timedelta(days=1), now + timedelta(minutes=1), host=sorted(store.hosts())[0], bucket="minute")
+    assert one["total"] < fig["total"] and one["by_service"] == []
+    html = report.slo_report(fig, None, "", "", "tr")
+    assert "saat" in html and "sim" in html
+    assert hist.coverage()["rows_"] > 0
+    # live learning
+    lr = LiveLearner(store, kb, interval_min=0, window_min=60, min_events=10)
+    out = lr.learn_once()
+    assert out["events"] > 10 and out["incidents"] >= 1 and out["lessons"] >= 1 and not out["note"] and lr.history()[0]["lessons"] == out["lessons"]
+    again = lr.learn_once()
+    assert again["lessons"] >= 0 and kb.stats()["lessons"].get("pattern", 0) >= 1
+    kb.rate_answer("m", "neden?", "up", answer="çünkü")
+    data = training_export(kb, "tr").decode()
+    lines = [l for l in data.splitlines() if l]
+    assert len(lines) >= 2 and all('"messages"' in l for l in lines) and "çünkü" in data
+

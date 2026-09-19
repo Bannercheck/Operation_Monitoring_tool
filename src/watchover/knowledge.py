@@ -361,8 +361,12 @@ class Knowledge:
         if rows:
             self._exec("UPDATE llm_calls SET citations=?, grounded=?, invalid=? WHERE id=?", (citations, grounded, invalid, rows[0]["id"]))
 
-    def rate_answer(self, model: str, question: str, verdict: str, note: str = "") -> None:
-        self._exec("INSERT INTO answer_feedback (ts, model, question, verdict, note) VALUES (?,?,?,?,?)", (_now(), model, question[:300], verdict, note[:300]))
+    def rate_answer(self, model: str, question: str, verdict: str, note: str = "", answer: str = "") -> None:
+        try:
+            self._exec("ALTER TABLE answer_feedback ADD COLUMN answer TEXT DEFAULT ''")
+        except Exception:  # noqa: BLE001 - column already there
+            pass
+        self._exec("INSERT INTO answer_feedback (ts, model, question, verdict, note, answer) VALUES (?,?,?,?,?,?)", (_now(), model, question[:300], verdict, note[:300], answer[:4000]))
 
     def save_eval(self, model: str, dataset: str, result: dict) -> int:
         return self._insert("INSERT INTO eval_runs (ts, model, dataset, n, correct, cited, grounded, latency_ms, detail) VALUES (?,?,?,?,?,?,?,?,?)",
