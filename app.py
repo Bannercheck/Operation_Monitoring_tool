@@ -1781,12 +1781,55 @@ def page_conn() -> None:
 
 
 # ------------------------------------------------------------------ page: Ask Watchover (chat + knowledge base + rules)
+@st.cache_data(ttl=20, show_spinner=False)
+def _ollama_models(base: str) -> list[dict]:
+    try:
+        return wo_ollama.installed(base)
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def model_switcher(prefix: str, with_embed: bool = True) -> None:
+    """Pick the active chat model (and embedding model) among every model Ollama has downloaded; saved as a setting."""
+    ss = st.session_state
+    cfg = llm_cfg()
+    base = cfg.root if cfg.kind == "ollama" else wo_ollama.discover()
+    if not base:
+        return
+    inst = _ollama_models(base)
+    if not inst:
+        return
+    is_embed = lambda n: any(e in n for e in ("embed", "bge", "minilm", "e5-"))  # noqa: E731
+    chat_opts = [m["name"] for m in inst if not is_embed(m["name"])]
+    emb_opts = [""] + [m["name"] for m in inst if is_embed(m["name"])]
+    cur = ss.get("llm_model", "")
+    if cur and cur not in chat_opts:
+        chat_opts = [cur] + chat_opts
+    sizes = {m["name"]: m["size_gb"] for m in inst}
+    cols = st.columns([2, 2] if with_embed else [1])
+    pick = cols[0].selectbox(t("llm_switch"), chat_opts, index=chat_opts.index(cur) if cur in chat_opts else 0, key=f"{prefix}-model",
+                             format_func=lambda n: f"{n}  ·  {sizes[n]} GB" if n in sizes else n, help=t("llm_switch_help"))
+    changed = {}
+    if pick and pick != cur:
+        changed.update({"llm_model": pick, "llm_base": base, "llm_provider": "ollama"})
+    if with_embed:
+        cur_e = ss.get("llm_embed", "")
+        pe = cols[1].selectbox(t("llm_embed"), emb_opts, index=emb_opts.index(cur_e) if cur_e in emb_opts else 0, key=f"{prefix}-embed", format_func=lambda n: n or t("llm_embed_none"))
+        if pe != cur_e:
+            changed["llm_embed"] = pe
+    if changed:
+        ss.update(changed); wo_settings.save(changed); st.toast(t("llm_switched", m=changed.get("llm_model", ss.get("llm_model", ""))), icon="⭐"); st.rerun()
+
+
 def page_assist() -> None:
     kb = kb_with_embedder()
     a = st.session_state.get("analysis")
     cfg = llm_cfg()
-    st.markdown(f'<div class="wo-brand" style="padding:0 0 6px"><span style="display:inline-block;width:44px">{logo(44)}</span>'
-                f'<div><div class="name" style="font-size:30px">{t("as_title_plain")}</div><div class="tag">{upper(t("as_title_tag"))}</div></div></div>', unsafe_allow_html=True)
+    hc1, hc2 = st.columns([3, 2])
+    hc1.markdown(f'<div class="wo-brand" style="padding:0 0 6px"><span style="display:inline-block;width:44px">{logo(44)}</span>'
+                 f'<div><div class="name" style="font-size:30px">{t("as_title_plain")}</div><div class="tag">{upper(t("as_title_tag"))}</div></div></div>', unsafe_allow_html=True)
+    with hc2:
+        model_switcher("as", with_embed=False)
     stt = kb.stats()
     chips = [("#2dd4bf" if cfg.enabled else "#64748b", f"LLM: {cfg.model or t('as_no_llm')}"), ("#60a5fa", f"{sum(stt['lessons'].values())} {t('kb_lessons')}"),
              ("#a78bfa", f"{stt['rules'].get('approved', 0)} {t('kb_rules_on')} · {stt['rules'].get('proposed', 0)} {t('kb_rules_wait')}"),
@@ -2396,6 +2439,9 @@ def page_llm() -> None:
             k[0].markdown(kpi2(len(inst), t("llm_installed"), "📦", "#60a5fa", f"{sum(m['size_gb'] for m in inst):.1f} GB"), unsafe_allow_html=True)
             k[1].markdown(kpi2(len(run), t("llm_loaded"), "🧠", "#2dd4bf", ", ".join(list(run)[:2]) or "-"), unsafe_allow_html=True)
             k[2].markdown(kpi2(cfg.model or "-", t("llm_active"), "⭐", "#a78bfa", cfg.embed_model or ""), unsafe_allow_html=True)
+            with st.container(border=True):
+                st.markdown(f"**⭐ {t('llm_switch_title')}**")
+                model_switcher("llmpage")
             st.markdown(f"#### {t('llm_installed')}")
             if not inst:
                 st.caption(t("llm_none_yet"))
@@ -2405,11 +2451,8 @@ def page_llm() -> None:
                 c[0].markdown(f"**{esc(m['name'])}** {mem_pill}", unsafe_allow_html=True)
                 c[1].caption(f"{m['size_gb']} GB"); c[2].caption(m["params"] or m["family"]); c[3].caption(m["quant"])
                 if c[4].button(t("llm_use"), key=f"use-{m['name']}", help=t("llm_use_help"), **wide("button")):
-                    if any(e in m["name"] for e in ("embed", "bge")):
-                        ss["llm_embed"] = m["name"]
-                    else:
-                        ss["llm_model"] = m["name"]
-                    ss["llm_base"], ss["llm_provider"] = base, "ollama"; st.rerun()
+                    chg = {"llm_embed": m["name"]} if any(e in m["name"] for e in ("embed", "bge", "minilm", "e5-")) else {"llm_model": m["name"]}
+                    chg.update({"llm_base": base, "llm_provider": "ollama"}); ss.update(chg); wo_settings.save(chg); st.rerun()
                 if c[5].button("🗑", key=f"rm-{m['name']}", help=t("llm_remove")):
                     wo_ollama.remove(base, m["name"]); st.rerun()
             st.markdown(f"#### {t('llm_recommended')}")
