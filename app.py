@@ -40,6 +40,8 @@ from watchover import report as wo_report
 from watchover import history as wo_history
 from watchover import autolearn as wo_learn
 from watchover import inventory as wo_inv
+from watchover import auth as wo_auth
+from watchover import admin as wo_admin
 from watchover.llm import LLMConfig, PROVIDERS, chat as llm_chat, embed as llm_embed, list_models as llm_models, set_sink as llm_set_sink, test_connection as llm_test
 from watchover import ollama as wo_ollama
 from watchover import llm_eval as wo_eval
@@ -458,8 +460,23 @@ def receiver(port: int, api_key: str):
 
 
 @st.cache_resource
-def simulator():
-    return start_simulator(live_store(), interval=1.0)
+def _sim_holder() -> dict:
+    return {}
+
+
+def set_simulation(on: bool) -> None:
+    """Simulation mode (Operations page only): synthetic hosts feed the live store; off = stop and purge everything it shipped."""
+    from watchover.live import SIM_HOSTS
+    h = _sim_holder()
+    if on and "stop" not in h:
+        h["stop"] = start_simulator(live_store(), interval=1.0)
+    elif not on and "stop" in h:
+        h.pop("stop").set()
+        live_store().purge("simulator", tuple(SIM_HOSTS))
+
+
+def users() -> wo_auth.Users:
+    return _singleton("users", wo_auth.Users, lambda: wo_auth.Users(knowledge()))
 
 
 def llm_cfg() -> LLMConfig:
@@ -809,8 +826,8 @@ def minute_chart(df: pd.DataFrame, incidents=None, height=200):
 # ------------------------------------------------------------------ sidebar navigation
 demo = Path(__file__).with_name("samples") / "demo_mixed.zip"
 LIVE_PORT = int(os.environ.get("LIVE_PORT", "8600"))
-PAGES = ["ops", "data", "src", "inv", "map", "assist", "llm", "pb", "itsm", "conn", "readme"]
-PAGE_KEYS = {"ops": "sb_ops", "data": "sb_data", "src": "sb_src", "inv": "sb_inv", "map": "sb_map", "assist": "sb_assist", "llm": "sb_llm", "pb": "sb_pb", "itsm": "sb_itsm", "conn": "sb_conn", "readme": "sb_readme"}
+PAGES = ["ops", "data", "src", "inv", "map", "assist", "llm", "pb", "itsm", "conn", "sys", "readme"]
+PAGE_KEYS = {"ops": "sb_ops", "data": "sb_data", "src": "sb_src", "inv": "sb_inv", "map": "sb_map", "assist": "sb_assist", "llm": "sb_llm", "pb": "sb_pb", "itsm": "sb_itsm", "conn": "sb_conn", "sys": "sb_sys", "readme": "sb_readme"}
 
 
 # ------------------------------------------------------------------ first-run setup wizard
@@ -829,7 +846,7 @@ def page_setup() -> None:
             st.radio(t("su_lang"), ["tr", "en"], horizontal=True, key="lang", format_func=lambda x: {"tr": "🇹🇷 Türkçe", "en": "🇬🇧 English"}[x])
             st.text_input(t("su_workspace"), key="su_workspace", placeholder="Turkcell NOC")
             st.number_input(t("live_port"), 1024, 65535, int(ss.get("live_port", LIVE_PORT)), key="su_port")
-            st.toggle(t("live_sim"), value=ss.get("sim_on", True), key="su_sim")
+            st.toggle(t("live_sim"), value=ss.get("sim_on", False), key="su_sim")
         elif step == 1:
             st.markdown(f"### {t('su_s2')}")
             info_btn("su_s2_hint")
@@ -890,11 +907,11 @@ def page_setup() -> None:
     if step < len(steps) - 1:
         if b2.button(f"{t('su_next')} →", key="su-next", type="primary", **wide("button")):
             if step == 0:                                    # widgets vanish with their step: keep what matters in plain session keys
-                ss["live_port"], ss["sim_on"], ss["workspace"] = int(ss.get("su_port", LIVE_PORT)), bool(ss.get("su_sim", True)), ss.get("su_workspace", "")
+                ss["live_port"], ss["sim_on"], ss["workspace"] = int(ss.get("su_port", LIVE_PORT)), bool(ss.get("su_sim", False)), ss.get("su_workspace", "")
             ss["setup_step"] = step + 1; st.rerun()
     elif b2.button(f"✓ {t('su_finish')}", key="su-finish", type="primary", **wide("button")):
         wo_settings.save({"setup_done": True, "lang": ss.get("lang", "tr"), "workspace": ss.get("workspace", ""), "live_port": int(ss.get("live_port", LIVE_PORT)),
-                          "sim_on": bool(ss.get("sim_on", True)), "demo_on_start": bool(ss.get("su_demo", True)),
+                          "sim_on": bool(ss.get("sim_on", False)), "demo_on_start": bool(ss.get("su_demo", True)),
                           **{k: ss.get(k, "") for k in ("llm_provider", "llm_base", "llm_model", "llm_key", "llm_embed")}})
         ss["setup_done"] = True
         if ss.get("su_demo", True) and "analysis" not in ss and demo.exists():
@@ -907,6 +924,75 @@ def page_setup() -> None:
 
 if not (st.session_state.get("setup_done") or wo_settings.setup_done()):
     page_setup()
+    st.stop()
+
+
+# ------------------------------------------------------------------ sign-in gate (off / local accounts / corporate SSO)
+def current_user() -> dict | None:
+    return st.session_state.get("user")
+
+
+def page_login() -> None:
+    ss = st.session_state
+    mode = ss.get("auth_mode", "off")
+    us = users()
+    _, mid, _ = st.columns([1, 1.2, 1])
+    with mid:
+        st.markdown(f'<div class="wo-brand" style="justify-content:center;padding:28px 0 10px"><span style="display:inline-block;width:56px">{logo(56)}</span>'
+                    f'<div><div class="name" style="font-size:34px">Watchover</div><div class="tag">{upper(t("brand_tag"))}</div></div></div>', unsafe_allow_html=True)
+        if mode == "oidc":
+            st.markdown(f"#### {t('login_sso_title')}")
+            st.caption(t("login_sso_hint"))
+            if st.button(f"🔐 {t('login_sso_btn')}", type="primary", **wide("button")):
+                try:
+                    st.login()
+                except Exception as e:  # noqa: BLE001
+                    st.error(t("login_sso_err", e=e))
+            return
+        first = us.count() == 0
+        tabs = st.tabs([t("login_tab_in"), t("login_tab_up")]) if (ss.get("auth_self_register", True) or first) else [st.container()]
+        with tabs[0]:
+            if first:
+                st.info(t("login_first"))
+            with st.form("login-form", border=True):
+                email = st.text_input(t("login_email"), placeholder="ad.soyad@sirket.com")
+                pw = st.text_input(t("login_pw"), type="password")
+                if st.form_submit_button(f"→ {t('login_btn')}", type="primary", **wide("form_submit_button")):
+                    u = us.login(email, pw)
+                    if u:
+                        ss["user"] = u; st.rerun()
+                    else:
+                        st.error(t("login_bad"))
+        if len(tabs) > 1:
+            with tabs[1]:
+                with st.form("register-form", border=True):
+                    name = st.text_input(t("login_name"))
+                    email = st.text_input(t("login_email"), placeholder="ad.soyad@sirket.com", key="reg_email")
+                    pw = st.text_input(t("login_pw"), type="password", key="reg_pw", help=t("login_pw_help"))
+                    pw2 = st.text_input(t("login_pw2"), type="password", key="reg_pw2")
+                    if st.form_submit_button(f"➕ {t('login_register')}", **wide("form_submit_button")):
+                        if pw != pw2:
+                            st.error(t("login_pw_mismatch"))
+                        else:
+                            try:
+                                u = us.register(email, pw, name, ss.get("auth_domains", ""))
+                                ss["user"] = {k: u[k] for k in ("id", "email", "name", "role", "provider")}
+                                st.toast(t("login_welcome", n=u["name"] or u["email"]), icon="👋"); st.rerun()
+                            except ValueError as e:
+                                st.error(str(e))
+        if ss.get("auth_domains"):
+            st.caption(t("login_domains", d=ss["auth_domains"]))
+
+
+_mode = st.session_state.get("auth_mode", "off")
+if _mode == "oidc" and getattr(st.user, "is_logged_in", False) and not current_user():
+    _u = users().sso_login(str(st.user.email), str(getattr(st.user, "name", "") or ""), st.session_state.get("auth_domains", ""), bool(st.session_state.get("auth_self_register", True)))
+    if _u:
+        st.session_state["user"] = _u
+    else:
+        st.error(t("login_sso_denied", e=st.user.email)); st.logout(); st.stop()
+if _mode in ("local", "oidc") and not current_user():
+    page_login()
     st.stop()
 
 with st.sidebar:
@@ -928,6 +1014,15 @@ with st.sidebar:
         st.markdown('<div class="sb-status">' + "<br>".join(f'<span class="dot" style="background:{c};box-shadow:0 0 0 3px {c}33"></span>{txt}' for c, txt in rows) + "</div>", unsafe_allow_html=True)
 
     _status()
+    if current_user():
+        _u = current_user()
+        uc1, uc2 = st.columns([3, 1])
+        uc1.markdown(f'<div class="sb-status" style="padding:6px 10px">👤 {esc(_u.get("name") or _u["email"])}<br><span class="muted">{esc(_u["email"])} · {t("role_" + _u["role"])}</span></div>', unsafe_allow_html=True)
+        if uc2.button("⏻", key="logout", help=t("logout")):
+            st.session_state.pop("user", None)
+            if st.session_state.get("auth_mode") == "oidc" and getattr(st.user, "is_logged_in", False):
+                st.logout()
+            st.rerun()
     st.caption(t("footer"))
     _st = wo_stamp.stamp()
     st.caption(f"Watchover v{_st['version']} · {t('stamp_engine')} {_st['engine']} · git {_st['git']} · {t('stamp_scenario')} {_st['scenario']}", help=t("stamp_hint"))
@@ -940,8 +1035,7 @@ _poller = source_poller()                                       # pull sources (
 _hist = history()                                               # minute rollups for weekly / monthly service-level reports
 _learn = learner()                                              # live learning: patterns from the live feed land in the knowledge base
 _inv = inventory()                                              # inventory matching on every incoming event
-if st.session_state.get("sim_on", True):
-    simulator()
+set_simulation(bool(st.session_state.get("sim_on", False)))
 
 
 def fetch_tickets(system: str) -> list:
@@ -1285,7 +1379,12 @@ def page_ops() -> None:
         all_stt = ls.stats(15)
         real_agents = [a_ for a_ in all_stt["agents"] if a_ != "simulator"]
         badge_txt, badge_col = (t("live_real_badge"), "#2dd4bf") if real_agents else (t("live_sim_badge"), "#fbbf24")
-        st.markdown(f'## {t("live_title")}')
+        th1, th2 = st.columns([5, 1.4])
+        th1.markdown(f'## {t("live_title")}')
+        with th2:
+            sim_now = st.toggle(f"🧪 {t('sim_mode')}", value=bool(st.session_state.get("sim_on", False)), key="sim_mode_toggle", help=t("sim_mode_help"))
+            if sim_now != bool(st.session_state.get("sim_on", False)):
+                st.session_state["sim_on"] = sim_now; set_simulation(sim_now); wo_settings.save({"sim_on": sim_now}); st.rerun(scope="app")
         agents = ", ".join(list(all_stt["agents"])[:4]) or t("live_no_agent")
         st.markdown('<div class="chips">' + "".join(f'<span class="chip"><span class="d" style="background:{c}"></span>{esc(x)}</span>' for c, x in (
             (badge_col, badge_txt), ("#60a5fa", f"{len(all_stt['agents'])} {t('live_agents')} · {agents}"), ("#8b98ad", t("live_sub_short")),
@@ -1565,11 +1664,10 @@ def page_conn() -> None:
         c1, c2 = st.columns(2)
         port = c1.number_input(t("live_port"), 1024, 65535, LIVE_PORT, key="live_port")
         key = c2.text_input(t("live_key"), key="live_key", type="password", placeholder="secret")
-        st.toggle(t("live_sim"), value=st.session_state.get("sim_on", True), key="sim_on")
         srv = receiver(int(port), key)
         (st.error(str(srv)) if isinstance(srv, OSError) else st.success(t("live_running", port=int(port))))
         if st.button(t("cfg_save"), key="live-save"):
-            wo_settings.save({"live_port": int(port), "live_key": key, "sim_on": st.session_state.get("sim_on", True)}); st.toast(t("cfg_saved"), icon="💾")
+            wo_settings.save({"live_port": int(port), "live_key": key}); st.toast(t("cfg_saved"), icon="💾")
         st.caption(t("live_key_legacy"))
         st.caption("⚠ " + t("ag_http_warn"))
         agents_panel(int(port))
@@ -1740,6 +1838,148 @@ def page_assist() -> None:
             c[1].code(r_["key"][:80], language=None); c[2].markdown(f"→ **{esc(r_['value'])}**"); c[3].caption(f"{r_['reason'][:120]} · {str(r_.get('decided_at', ''))[:16]}")
             if c[4].button("⏏", key=f"rule-off-{r_['id']}", help=t("rules_revoke")):
                 kb.decide(r_["id"], False); reanalyze(); st.rerun()
+
+
+# ------------------------------------------------------------------ page: System (version, services, cache, update, users, SSO)
+def page_system() -> None:
+    ss = st.session_state
+    u = current_user()
+    if ss.get("auth_mode", "off") != "off" and (not u or u["role"] != "admin"):
+        st.warning(t("sys_admin_only")); return
+    st.markdown(f'<div class="wo-brand" style="padding:0 0 6px"><span style="display:inline-block;width:44px">{logo(44)}</span>'
+                f'<div><div class="name" style="font-size:30px">{t("sys_page")}</div><div class="tag">{upper(t("sys_page_tag"))}</div></div></div>', unsafe_allow_html=True)
+    vi = wo_admin.version_info()
+    ls = live_store(); kb = knowledge()
+    chips = [("#2dd4bf", f"git {vi['git'][:7] or '-'}"), ("#60a5fa", f"{t('sys_uptime')} {vi['uptime_s'] // 3600}h {(vi['uptime_s'] % 3600) // 60}m"),
+             ("#a78bfa", f"Streamlit {vi['streamlit']} · Python {vi['python']}"), ("#fbbf24" if not vi["launcher"] else "#2dd4bf", t("sys_launcher_ok") if vi["launcher"] else t("sys_launcher_none"))]
+    st.markdown('<div class="chips">' + "".join(f'<span class="chip"><span class="d" style="background:{c}"></span>{esc(str(x))}</span>' for c, x in chips) + "</div>", unsafe_allow_html=True)
+    tab_st, tab_cache, tab_upd, tab_users, tab_auth = st.tabs([t("sys_tab_status"), t("sys_tab_cache"), t("sys_tab_update"), f"{t('sys_tab_users')} · {users().count()}", t("sys_tab_auth")])
+
+    with tab_st:
+        h = history(); p = source_poller(); lr = learner()
+        rows = [(t("live_port"), f":{ss.get('live_port', LIVE_PORT)} · {ls.received:,} {t('events_n')} · {len(ls.agents)} {t('live_agents')}", "#2dd4bf"),
+                (t("sb_src").split(" ", 1)[1], f"{len([x for x in sources().list() if x.enabled])} {t('src_active')} · {p.thread.is_alive()}", "#60a5fa"),
+                (t("rep_window"), f"{t('sys_hist_rows', n=h.coverage()['rows_'])} · {t('sys_last_flush')} {h.last_flush[11:19] or '-'}", "#a78bfa"),
+                (t("learn_title"), f"{t('learn_every')}: {lr.interval_min} · {lr.runs} {t('src_polls')}", "#fbbf24"),
+                (t("sim_mode"), t("on") if ss.get("sim_on") else t("off"), "#fbbf24" if ss.get("sim_on") else "#64748b"),
+                (t("inv_page"), f"{inventory().stats(ls.hosts())['matched']}/{len(ls.hosts())} {t('inv_matched')}", "#2dd4bf")]
+        for lb, val, col in rows:
+            st.markdown(f'<div class="card" style="padding:8px 14px"><span class="dot" style="display:inline-block;width:8px;height:8px;border-radius:4px;background:{col};margin-right:8px"></span><b>{esc(lb)}</b> <span class="muted">· {esc(val)}</span></div>', unsafe_allow_html=True)
+        di = wo_admin.db_info(kb)
+        st.markdown(f"**{t('sys_db')}** · `{esc(di['url'])}`" + (f" · {di['size_mb']} MB" if di["size_mb"] is not None else ""))
+        if di["tables"]:
+            st.dataframe(pd.DataFrame([{t("sys_table"): k, t("sys_rows"): v} for k, v in di["tables"].items()]), hide_index=True, height=300, **wide("dataframe"))
+        st.markdown(f"**{t('sys_facts')}**")
+        st.code("\n".join(f"{k}: {v}" for k, v in vi.items()), language=None)
+        logp = os.environ.get("WATCHOVER_LOG", "")
+        if logp and Path(logp).exists():
+            with st.expander(t("sys_log")):
+                st.code(wo_admin.tail_log(logp), language=None)
+
+    with tab_cache:
+        info_btn("sys_cache_hint")
+        c = st.columns(4)
+        if c[0].button(f"🧹 {t('sys_cache_data')}", **wide("button")):
+            st.cache_data.clear(); st.toast(t("sys_done"), icon="🧹")
+        if c[1].button(f"🗑 {t('sys_cache_live')}", **wide("button")):
+            ls.clear(); st.toast(t("sys_done"), icon="🗑")
+        if c[2].button(f"♻️ {t('sys_cache_session')}", **wide("button")):
+            keep = {k: ss[k] for k in ("user", "lang", "page", *wo_settings.SESSION_KEYS) if k in ss}
+            ss.clear(); ss.update(keep); st.toast(t("sys_done"), icon="♻️"); st.rerun()
+        if c[3].button(f"🧽 {t('sys_vacuum')}", **wide("button")):
+            st.toast(wo_admin.vacuum(kb), icon="🧽")
+
+    with tab_upd:
+        info_btn("sys_upd_hint")
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown(f"**⬆ {t('sys_upd_zip')}**")
+            up = st.file_uploader("zip", type=["zip"], key="sys_zip", label_visibility="collapsed")
+            if up is not None and st.button(f"📦 {t('sys_upd_apply')}", key="sys-apply", type="primary"):
+                ok, msg = wo_admin.apply_zip(up.getvalue())
+                (st.success if ok else st.error)(msg)
+                if ok:
+                    ss["sys_restart_needed"] = True
+        with c2:
+            st.markdown(f"**⬇ {t('sys_upd_git')}**")
+            if st.button(f"🔄 {t('sys_upd_pull')}", key="sys-pull"):
+                ok, msg = wo_admin.git_update()
+                (st.success if ok else st.error)(msg or "-")
+                if ok and "Already up to date" not in msg:
+                    ss["sys_restart_needed"] = True
+        if ss.get("sys_restart_needed"):
+            st.warning(t("sys_restart_needed"))
+        if st.button(f"⏻ {t('sys_restart')}", key="sys-restart"):
+            how = wo_admin.restart_app()
+            st.info(t("sys_restarting_launcher") if how == "launcher" else t("sys_restarting_exit"))
+
+    with tab_users:
+        us = users()
+        for r in us.list():
+            c = st.columns([2.4, 1.6, 1.2, 1.2, 1, 0.7])
+            c[0].markdown(f"**{esc(r['email'])}**"); c[1].caption(f"{r['name'] or '-'} · {r['provider']}")
+            role = c[2].selectbox("role", list(wo_auth.ROLES), index=list(wo_auth.ROLES).index(r["role"]), key=f"u-role-{r['id']}", label_visibility="collapsed", format_func=lambda x: t("role_" + x))
+            if role != r["role"]:
+                try:
+                    us.set_role(r["id"], role); st.rerun()
+                except ValueError as e:
+                    st.warning(str(e))
+            c[3].caption(f"{(r['last_login'] or '-')[:16]}")
+            if c[4].button(t("user_disable") if r["status"] == "active" else t("user_enable"), key=f"u-st-{r['id']}"):
+                try:
+                    us.set_status(r["id"], "disabled" if r["status"] == "active" else "active"); st.rerun()
+                except ValueError as e:
+                    st.warning(str(e))
+            if c[5].button("🗑", key=f"u-del-{r['id']}"):
+                try:
+                    us.delete(r["id"]); st.rerun()
+                except ValueError as e:
+                    st.warning(str(e))
+        if not us.list():
+            st.caption(t("user_none"))
+        with st.expander(t("user_add")):
+            with st.form("user-add", border=False):
+                a = st.columns([2, 1.6, 1.6])
+                em = a[0].text_input(t("login_email")); nm = a[1].text_input(t("login_name")); pw = a[2].text_input(t("login_pw"), type="password")
+                if st.form_submit_button(f"➕ {t('user_add')}") and em:
+                    try:
+                        us.register(em, pw, nm); st.rerun()
+                    except ValueError as e:
+                        st.error(str(e))
+
+    with tab_auth:
+        info_btn("auth_hint")
+        mode = st.selectbox(t("auth_mode"), list(wo_auth.MODES), index=list(wo_auth.MODES).index(ss.get("auth_mode", "off")), key="auth_mode_in", format_func=lambda m: t("auth_mode_" + m))
+        c = st.columns([1, 2])
+        selfreg = c[0].toggle(t("auth_self_register"), value=bool(ss.get("auth_self_register", True)), key="auth_selfreg_in")
+        domains = c[1].text_input(t("auth_domains"), value=ss.get("auth_domains", ""), key="auth_domains_in", placeholder="sirket.com, grup.com.tr")
+        if mode == "oidc":
+            st.markdown(f"**{t('auth_oidc_title')}**")
+            st.caption(t("auth_oidc_hint"))
+            o = st.columns(2)
+            issuer = o[0].text_input("Issuer URL", value=ss.get("oidc_issuer", ""), key="oidc_issuer_in", placeholder="https://login.microsoftonline.com/<tenant>/v2.0")
+            redirect = o[1].text_input("Redirect URI", value=ss.get("oidc_redirect", "http://localhost:8501/oauth2callback"), key="oidc_redirect_in")
+            cid = o[0].text_input("Client ID", value=ss.get("oidc_client_id", ""), key="oidc_cid_in")
+            csec = o[1].text_input("Client secret", value=ss.get("oidc_client_secret", ""), key="oidc_csec_in", type="password")
+        else:
+            issuer = redirect = cid = csec = None
+        if mode == "local" and users().count() == 0 and not selfreg:
+            st.warning(t("auth_need_user"))
+        if st.button(f"💾 {t('cfg_save')}", key="auth-save", type="primary"):
+            vals = {"auth_mode": mode, "auth_self_register": bool(selfreg), "auth_domains": domains.strip()}
+            if mode == "oidc":
+                if not (issuer and cid and csec and redirect):
+                    st.error(t("auth_oidc_missing")); return
+                vals.update({"oidc_issuer": issuer.strip(), "oidc_client_id": cid.strip(), "oidc_client_secret": csec, "oidc_redirect": redirect.strip()})
+                try:
+                    import authlib  # noqa: F401
+                except ImportError:
+                    st.error(t("auth_authlib")); return
+                path = wo_auth.write_oidc_secrets(Path(__file__).with_name(".streamlit") / "secrets.toml", issuer.strip(), cid.strip(), csec, redirect.strip())
+                st.info(t("auth_secrets_written", p=path))
+            ss.update(vals); wo_settings.save(vals); st.toast(t("cfg_saved"), icon="💾")
+            if mode != "off" and not current_user() and mode == "local" and users().count() == 0:
+                st.info(t("auth_first_admin"))
 
 
 # ------------------------------------------------------------------ page: Inventory (CMDB-lite, matched to the live feed)
@@ -2214,6 +2454,9 @@ if page == "itsm":
     st.stop()
 if page == "conn":
     page_conn()
+    st.stop()
+if page == "sys":
+    page_system()
     st.stop()
 if page == "readme":
     readme = Path(__file__).with_name("README.md")

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Watchover launcher (installed by scripts/install.sh). Usage: watchover start|stop|restart|status|run|open|update [file.zip]|logs|agent
 DIR="__DIR__"; SRC="__SRC__"; PORT="__PORT__"; REPO="__REPO__"; BRANCH="__BRANCH__"
-export WATCHOVER_HOME="$DIR/data"
+export WATCHOVER_HOME="$DIR/data"; export WATCHOVER_LAUNCHER="$DIR/bin/watchover"; export WATCHOVER_LOG="$DIR/data/watchover.log"
 [[ -f "$DIR/data/.env" ]] && set -a && . "$DIR/data/.env" && set +a
 ADDR="${WATCHOVER_UI_ADDRESS:-127.0.0.1}"   # dashboard UI: loopback by default; WATCHOVER_UI_ADDRESS=0.0.0.0 in data/.env to expose it (put TLS/SSO in front)
 PID="$DIR/data/watchover.pid"; LOG="$DIR/data/watchover.log"

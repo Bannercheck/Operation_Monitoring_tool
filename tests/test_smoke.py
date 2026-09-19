@@ -48,6 +48,8 @@ def test_multi_dataset_registry_and_compare(tmp_path, monkeypatch):
     at.button(key="demo_main").click().run()
     at.button(key="demo_main").click().run()            # same file twice -> same key (not duplicated)
     assert not at.exception and len(at.session_state["datasets"]) == 1
+    at.session_state["sim_on"] = True                   # simulation is off by default: switch it on so the live buffer fills
+    at.run(); import time; time.sleep(4); at.run()
     at.button(key="live_an_data").click().run()         # live buffer -> second dataset
     assert not at.exception and len(at.session_state["datasets"]) == 2
     assert at.selectbox(key="ds_select").value == "live_buffer.jsonl"

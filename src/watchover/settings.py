@@ -11,8 +11,8 @@ from pathlib import Path
 
 DEFAULTS = {"setup_done": False, "lang": "tr", "workspace": "", "llm_provider": "auto", "llm_base": "", "llm_model": "", "llm_key": "", "llm_embed": "",
             "live_port": int(os.environ.get("LIVE_PORT", "8600") or 8600),      # the env var is what the receiver actually binds
-            "live_key": "", "public_host": "", "sim_on": True, "learn_min": 15, "demo_on_start": False, "version": 1}
-SESSION_KEYS = ("lang", "llm_provider", "llm_base", "llm_model", "llm_key", "llm_embed", "live_port", "live_key", "public_host", "sim_on", "learn_min")
+            "live_key": "", "public_host": "", "sim_on": False, "learn_min": 15, "auth_mode": "off", "auth_self_register": True, "auth_domains": "", "oidc_issuer": "", "oidc_client_id": "", "oidc_client_secret": "", "oidc_redirect": "http://localhost:8501/oauth2callback", "demo_on_start": False, "version": 1}
+SESSION_KEYS = ("lang", "llm_provider", "llm_base", "llm_model", "llm_key", "llm_embed", "live_port", "live_key", "public_host", "sim_on", "learn_min", "auth_mode", "auth_self_register", "auth_domains", "oidc_issuer", "oidc_client_id", "oidc_client_secret", "oidc_redirect")
 
 
 def home() -> Path:

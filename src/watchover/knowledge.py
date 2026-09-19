@@ -71,6 +71,7 @@ class Knowledge:
     def __init__(self, url: str | None = None, embedder: Callable[[list[str]], list[list[float]]] | None = None):
         url = url or os.environ.get("DATABASE_URL") or os.environ.get("KNOWLEDGE_DB", "knowledge.db")
         self.pg = url.startswith(("postgres://", "postgresql://"))
+        self.url = url
         self.embedder = embedder
         if self.pg:
             import psycopg  # type: ignore

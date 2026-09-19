@@ -51,6 +51,7 @@ class LiveStore:
         self.agents: dict[str, float] = {}      # agent name -> last seen epoch
         self.on_ingest = None                    # optional hook(events): service-level history rollups
         self.enricher = None                     # optional hook(observation) -> bool: inventory match (IP → hostname, dc, criticality)
+        self.metric_hosts: dict[str, set] = {}   # sender -> hosts it reported metrics for (purge on simulation off)
         self.matched = 0                         # events matched to the inventory
         self.started = time.time()
         if self.spool:
@@ -85,6 +86,8 @@ class LiveStore:
         with self.lock:
             self.buf.extend(events)
             self.metrics.extend(metric_rows)
+            if metric_rows:
+                self.metric_hosts.setdefault(agent, set()).update(r[1] for r in metric_rows)
             self.received += len(obs)
             self.agents[agent] = time.time()
         obs = events
@@ -175,6 +178,19 @@ class LiveStore:
         with self.lock:
             self.buf.clear()
             self.metrics.clear()
+
+    def purge(self, agent: str, hosts: tuple = ()) -> int:
+        """Drop everything one sender shipped (simulation mode off): its events, its metrics rows (by host) and its presence."""
+        with self.lock:
+            keep = [o for o in self.buf if o.attributes.get("agent") != agent]
+            n = len(self.buf) - len(keep)
+            self.buf.clear(); self.buf.extend(keep)
+            gone = set(hosts) | self.metric_hosts.pop(agent, set())
+            if gone:
+                mk = [r for r in self.metrics if r[1] not in gone]
+                self.metrics.clear(); self.metrics.extend(mk)
+            self.agents.pop(agent, None)
+        return n
 
     # ---- infra metrics
     def metric_stats(self, window_min: int = 15, env: str | None = None, host: str | None = None) -> dict:
