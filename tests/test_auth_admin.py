@@ -269,3 +269,65 @@ def test_useradmin_cli(tmp_path, monkeypatch, capsys):
     assert useradmin.main(["delete", "ops@sirket.com"]) == 0 and us.get("ops@sirket.com") is None
     assert useradmin.main(["promote", "nobody@sirket.com"]) == 1
     assert useradmin.main(["list"]) == 0 and "tayfur@sirket.com" in capsys.readouterr().out
+
+
+def test_roles_and_permissions(tmp_path):
+    from watchover.knowledge import Knowledge
+    from watchover import rbac, auth as wo_auth
+    kb = Knowledge(str(tmp_path / "k.db"))
+    rl = rbac.Roles(kb)
+    assert rl.names() == ["admin", "operator", "viewer"]
+    assert rl.can("admin", "sys.users") and not rl.can("operator", "page.sys") and rl.can("operator", "act.connect") and not rl.can("viewer", "act.sim")
+    r = rl.save("dba_lead", {"page.ops", "page.inv", "act.inventory", "bogus.perm"}, "DBA lideri")
+    assert r["perms"] == {"page.ops", "page.inv", "act.inventory"} and not r["builtin"] and rl.can("dba_lead", "page.inv")
+    us = wo_auth.Users(kb); us.bootstrap()
+    u = us.register("dba@corp.com", "Parola-2026-x", "DBA")
+    us.set_role(u["id"], "dba_lead", valid=rl.names())
+    assert us.get("dba@corp.com")["role"] == "dba_lead"
+    import pytest
+    with pytest.raises(ValueError):
+        rl.delete("dba_lead")                                  # still assigned
+    with pytest.raises(ValueError):
+        rl.delete("operator")                                  # built-in
+    with pytest.raises(ValueError):
+        rl.save("admin", set())                                # admin is never narrowed
+    rl.save("operator", {"page.ops"})
+    assert rl.perms("operator") == {"page.ops"}
+    rl.reset("operator")
+    assert rl.perms("operator") == rbac.BUILTIN["operator"]["perms"]
+    us.set_role(u["id"], "viewer", valid=rl.names()); rl.delete("dba_lead")
+    assert "dba_lead" not in rl.names()
+
+
+def test_pending_registration_until_verified(tmp_path):
+    from watchover.knowledge import Knowledge
+    from watchover import auth as wo_auth
+    us = wo_auth.Users(Knowledge(str(tmp_path / "k.db")))
+    us.bootstrap()
+    u = us.register("new@corp.com", "Parola-2026-x", "New", status="pending")
+    assert u["status"] == "pending" and us.login("new@corp.com", "Parola-2026-x") is None       # not before the e-mail is verified
+    code = us.otp_issue(u["id"])
+    assert us.otp_verify(u["id"], code)[0]
+    us.activate(u["id"])
+    assert us.login("new@corp.com", "Parola-2026-x")["role"] == "operator"
+
+
+def test_selfmon_command_and_token(tmp_path, monkeypatch):
+    from watchover.knowledge import Knowledge
+    from watchover import selfmon, agents, settings
+    monkeypatch.setenv("WATCHOVER_HOME", str(tmp_path / "home"))
+    reg = agents.AgentRegistry(Knowledge(str(tmp_path / "k.db")))
+    tok = selfmon.ensure_token(reg, settings)
+    assert tok.startswith("wo_") and reg.verify(tok)["name"] == selfmon.host_name() and settings.load()["self_agent_token"] == tok
+    assert selfmon.ensure_token(reg, settings) == tok                                             # stable across restarts
+    settings.save({"self_agent_token": ""})
+    tok2 = selfmon.ensure_token(reg, settings)
+    assert tok2 != tok and reg.verify(tok2) and reg.verify(tok) is None                         # lost token: rotated, old one dead
+    # pid file: a stale agent from a previous application process is replaced, never duplicated
+    import subprocess, sys
+    stale = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)  # agent.py stand-in"])
+    selfmon.pid_file().write_text(str(stale.pid))
+    selfmon._kill_stale()
+    assert stale.wait(timeout=5) is not None and not selfmon.pid_file().exists()
+    cmd = selfmon.command(8600, tok2, root=tmp_path)
+    assert "--auto" in cmd and "--metrics" in cmd and f"http://127.0.0.1:8600/ingest" in cmd and str(tmp_path / "agent.py") in cmd

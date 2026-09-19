@@ -40,6 +40,8 @@ from watchover import report as wo_report
 from watchover import history as wo_history
 from watchover import notify as wo_notify
 from watchover import vault as wo_vault
+from watchover import rbac as wo_rbac
+from watchover import selfmon as wo_selfmon
 from watchover import autolearn as wo_learn
 from watchover import inventory as wo_inv
 from watchover import auth as wo_auth
@@ -270,7 +272,7 @@ h1,h2,h3{color:#eef3f9}
 .sb-user.off .av{background:rgba(255,255,255,.10);color:#94a0b4}
 .sb-user .nm{font-size:13px;font-weight:600;color:#eef3f9;line-height:1.2}.sb-user .em{font-size:11px;color:var(--wo-muted);margin:1px 0 3px;word-break:break-all}
 .role{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;padding:1px 8px;border-radius:999px;border:1px solid var(--wo-line2)}
-.role.r-admin{color:#2dd4bf;border-color:rgba(45,212,191,.5)}.role.r-operator{color:#60a5fa;border-color:rgba(96,165,250,.5)}.role.r-viewer{color:#94a0b4}
+.role.r-admin{color:#2dd4bf;border-color:rgba(45,212,191,.5)}.role.r-operator{color:#60a5fa;border-color:rgba(96,165,250,.5)}.role.r-viewer{color:#94a0b4}.role.r-custom{color:#f0abfc;border-color:rgba(240,171,252,.5)}
 .pillx{display:inline-block;font-size:10px;font-weight:700;padding:1px 8px;border-radius:999px}.pillx.ok{background:rgba(45,212,191,.14);color:#2dd4bf}.pillx.off{background:rgba(248,113,113,.14);color:#f87171}
 .card.svc{padding:12px 14px;min-height:74px}.svc-h{display:flex;align-items:center;gap:8px;font-weight:700;font-size:13.5px;color:#eef3f9}.svc-h .d{width:8px;height:8px;border-radius:4px;flex:none}.svc-v{font-size:12.5px;color:var(--wo-muted);margin-top:6px}
 .card.act2{min-height:118px;margin-bottom:8px}.act2-t{font-size:15px;font-weight:700;color:#eef3f9;margin-bottom:6px}.act2-b{font-size:12.5px;line-height:1.5;color:#b6c0cf}
@@ -555,6 +557,34 @@ def users() -> wo_auth.Users:
         us.bootstrap()                                   # first start: the built-in administrator (password must be changed at first sign-in)
         return us
     return _singleton("users", wo_auth.Users, make)
+
+
+def roles() -> wo_rbac.Roles:
+    return _singleton("roles", wo_rbac.Roles, lambda: wo_rbac.Roles(knowledge()))
+
+
+def can(perm: str) -> bool:
+    """Permission check for the signed-in account (administrators hold everything; tests / dev without a user see everything)."""
+    u = current_user()
+    if not u:
+        return bool(os.environ.get("WATCHOVER_SKIP_SETUP"))
+    return roles().can(u.get("role", ""), perm)
+
+
+def role_label(name: str) -> str:
+    if name in wo_rbac.BUILTIN:
+        return t("role_" + name)
+    r = roles().get(name)
+    return (r["label"] if r else name) or name
+
+
+def self_monitor() -> wo_selfmon.SelfMonitor:
+    """The built-in agent for the machine Watchover runs on (CPU / memory / disk, discovered logs, journal)."""
+    def make():
+        tok = wo_selfmon.ensure_token(agents(), wo_settings)
+        sm = wo_selfmon.SelfMonitor(int(st.session_state.get("live_port", LIVE_PORT)), tok, log=os.environ.get("WATCHOVER_LOG", ""))
+        return sm.start() if st.session_state.get("self_monitor", True) else sm
+    return _singleton("self_monitor", wo_selfmon.SelfMonitor, make)
 
 
 def notify_channels() -> dict:
@@ -1093,12 +1123,14 @@ def login_forms() -> None:
     first = (ss.get("auth_local") or not auth_enabled()) and us.count() == 0
     if ss.get("mfa_pending"):
         pend = ss["mfa_pending"]; pu = pend["user"]
-        st.info(t("mfa_sent", e=_mask_email(pu["email"]), m=wo_auth.OTP_MINUTES))
+        st.info(t("reg_sent" if pend.get("verify") else "mfa_sent", e=_mask_email(pu["email"]), m=wo_auth.OTP_MINUTES))
         with st.form("otp-form", border=False):
             code = st.text_input(t("mfa_code"), max_chars=6, placeholder="123456")
             if st.form_submit_button(t("mfa_verify"), type="primary", **wide("form_submit_button")):
                 ok_, left = us.otp_verify(int(pu["id"]), code)
                 if ok_:
+                    if pend.get("verify"):
+                        us.activate(int(pu["id"])); st.toast(t("reg_done"), icon="✅")
                     ss["user"] = pu; ss.pop("mfa_pending", None); ss.pop("login_open", None)
                     if pend.get("remember"):
                         ss["set_cookie"] = us.remember_issue(int(pu["id"]))
@@ -1118,6 +1150,7 @@ def login_forms() -> None:
             st.rerun()
         return
     if ss.get("auth_local") or not auth_enabled():
+        smtp_ok = bool(wo_settings.load().get("smtp_host"))
         tabs = st.tabs([t("login_tab_in"), t("login_tab_up")]) if (ss.get("auth_self_register", True) or first) else [st.container()]
         with tabs[0]:
             if first:
@@ -1152,6 +1185,8 @@ def login_forms() -> None:
                         st.error(t("login_bad"))
         if len(tabs) > 1:
             with tabs[1]:
+                if not smtp_ok and not first:
+                    st.info(t("reg_need_smtp"))
                 with st.form("register-form", border=False):
                     name = st.text_input(t("login_name"))
                     email = st.text_input(t("login_email"), placeholder="ad.soyad@sirket.com", key="reg_email")
@@ -1162,9 +1197,24 @@ def login_forms() -> None:
                             st.error(t("login_pw_mismatch"))
                         else:
                             try:
-                                u = us.register(email, pw, name, ss.get("auth_domains", ""))
-                                ss["user"] = {k: u[k] for k in ("id", "email", "name", "role", "provider")}
-                                ss.pop("login_open", None); st.toast(t("login_welcome", n=u["name"] or u["email"]), icon="👋"); st.rerun()
+                                if first:                                     # the very first account (no SMTP yet) becomes the administrator directly
+                                    u = us.register(email, pw, name, ss.get("auth_domains", ""))
+                                    ss["user"] = {k: u[k] for k in ("id", "email", "name", "role", "provider")}
+                                    ss.pop("login_open", None); st.toast(t("login_welcome", n=u["name"] or u["email"]), icon="👋"); st.rerun()
+                                elif not smtp_ok:
+                                    st.error(t("reg_need_smtp"))
+                                else:
+                                    ex = us.get(email.strip().lower())
+                                    if ex and ex["status"] == "pending":       # unfinished registration: a fresh code, same account
+                                        u = ex
+                                    else:
+                                        u = us.register(email, pw, name, ss.get("auth_domains", ""), status="pending")
+                                    pu = {k: u[k] for k in ("id", "email", "name", "role", "provider")} | {"must_change": False}
+                                    ok_, why = send_otp(us, pu)
+                                    if ok_:
+                                        ss["mfa_pending"] = {"user": pu, "remember": False, "verify": True}; st.rerun()
+                                    else:
+                                        st.error(t("mfa_send_fail", e=why))
                             except ValueError as e:
                                 st.error(t("login_policy", e=e))
     st.markdown(f'<div class="wo-or">{t("login_or")}</div>', unsafe_allow_html=True)
@@ -1304,6 +1354,20 @@ def page_change_password() -> None:
                 sign_out()
 
 
+# background services start with the first page load, signed in or not: the receiver, this machine's agent, pollers, rollups, alerts
+# always-on receiver + optional simulator (started once per process)
+_srv = receiver(int(st.session_state.get("live_port", LIVE_PORT)), st.session_state.get("live_key", ""))
+if not os.environ.get("WATCHOVER_SKIP_SETUP") and os.environ.get("WATCHOVER_SELFMON", "1") != "0":   # this machine monitors itself (WATCHOVER_SELFMON=0 disables; tests)
+    _selfmon = self_monitor()
+    if st.session_state.get("self_monitor", True):
+        _selfmon.ensure()
+_poller = source_poller()                                       # pull sources (Elasticsearch, Loki, Splunk, Graylog, HTTP) poll in the background
+_hist = history()                                               # minute rollups for weekly / monthly service-level reports
+_alerts = alert_engine()                                        # e-mail / SMS alert rules evaluated against the live feed
+_learn = learner()                                              # live learning: patterns from the live feed land in the knowledge base
+_inv = inventory()                                              # inventory matching on every incoming event
+set_simulation(bool(st.session_state.get("sim_on", False)))
+
 if not current_user() and not st.session_state.get("clear_cookie") and remember_cookie():     # "remember me": a valid cookie signs in silently
     _ru = users().remember_lookup(remember_cookie())
     if _ru:
@@ -1324,7 +1388,10 @@ with st.sidebar:
     st.radio("Language", ["tr", "en"], horizontal=True, label_visibility="collapsed",
              format_func=lambda x: {"tr": "TR", "en": "EN"}[x], key="lang")
     st.markdown(f'<div class="sb-cap">{upper(t("sb_nav"))}</div>', unsafe_allow_html=True)
-    page = st.radio("nav", PAGES, format_func=lambda x: t(PAGE_KEYS[x]), label_visibility="collapsed", key="page")
+    _allowed = [p_ for p_ in PAGES if can("page." + p_)] or ["readme"]
+    if st.session_state.get("page") not in _allowed:
+        st.session_state["page"] = _allowed[0]
+    page = st.radio("nav", _allowed, format_func=lambda x: t(PAGE_KEYS[x]), label_visibility="collapsed", key="page")
     st.markdown(f'<div class="sb-cap">{upper(t("sb_status"))}</div>', unsafe_allow_html=True)
 
     @st.fragment(run_every="5s")
@@ -1356,14 +1423,6 @@ with st.sidebar:
     if (_stale := wo_stamp.stale_package(__file__)):
         st.warning(t("stale_pkg", path=_stale))
 
-# always-on receiver + optional simulator (started once per process)
-_srv = receiver(int(st.session_state.get("live_port", LIVE_PORT)), st.session_state.get("live_key", ""))
-_poller = source_poller()                                       # pull sources (Elasticsearch, Loki, Splunk, Graylog, HTTP) poll in the background
-_hist = history()                                               # minute rollups for weekly / monthly service-level reports
-_alerts = alert_engine()                                        # e-mail / SMS alert rules evaluated against the live feed
-_learn = learner()                                              # live learning: patterns from the live feed land in the knowledge base
-_inv = inventory()                                              # inventory matching on every incoming event
-set_simulation(bool(st.session_state.get("sim_on", False)))
 
 
 def fetch_tickets(system: str) -> list:
@@ -1617,7 +1676,7 @@ def ops_detail_panel(kind: str, ls: LiveStore, env, host, ms: dict, stt: dict, s
             only_err = c1.toggle(t("files_only_err"), value=f["errors"] > 0, key="files_only_err")
             lines = ls.file_lines(f["agent"], f["file"], 400, only_err, f["host"] if f["host"] != "-" else None)
             export = "\n".join(f"{o.timestamp.isoformat(timespec='seconds')} {o.severity:<8} {o.service or '-':<18} {o.message}" for o in lines) + "\n"
-            c2.download_button(f"⬇ {t('files_export')}", export.encode("utf-8"), file_name=f"{f['host']}_{Path(f['file']).name}_{datetime.now(UTC).strftime('%Y%m%d-%H%M')}.log",
+            can("act.export") and c2.download_button(f"⬇ {t('files_export')}", export.encode("utf-8"), file_name=f"{f['host']}_{Path(f['file']).name}_{datetime.now(UTC).strftime('%Y%m%d-%H%M')}.log",
                                mime="text/plain", key="files-export", **wide("download_button"))
             c3.caption(t("files_export_hint", n=len(lines)))
             st.markdown("<div class='mono' style='max-height:420px;overflow:auto;background:rgba(6,10,16,.55);border:1px solid var(--wo-line);border-radius:12px;padding:10px 12px;font-size:12px;line-height:1.55'>" +
@@ -1645,7 +1704,7 @@ def ops_detail_panel(kind: str, ls: LiveStore, env, host, ms: dict, stt: dict, s
                 _now = datetime.now(UTC)
                 fig = history().figures(_now - timedelta(minutes=int(win)), _now, _env, _hst, "day" if win > 7 * 1440 else "hour")
             _html = wo_report.slo_report(fig, st.session_state.get("analysis"), scope_label(_env, _hst), "", current_lang(), st.session_state.get("workspace", ""), LOGO_SVG)
-            r3.download_button(f"📄 {t('rep_download')}", _html.encode("utf-8"), file_name=f"watchover-slo-{datetime.now(UTC).strftime('%Y%m%d-%H%M')}.html", mime="text/html", key="rep-dl", **wide("download_button"))
+            can("act.report") and r3.download_button(f"📄 {t('rep_download')}", _html.encode("utf-8"), file_name=f"watchover-slo-{datetime.now(UTC).strftime('%Y%m%d-%H%M')}.html", mime="text/html", key="rep-dl", **wide("download_button"))
             cov = history().coverage()
             r4a, r4b = r4.columns([0.5, 4])
             with r4a:
@@ -1756,9 +1815,9 @@ def page_ops() -> None:
         th1.markdown(f'## {t("live_title")}')
         with th0:
             st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
-            st.button(f"🔗 {t('ops_connect')}", key="ops-connect", help=t("ops_connect_help"), **wide("button"), on_click=lambda: st.session_state.__setitem__("open_connect", True))
+            st.button(f"🔗 {t('ops_connect')}", key="ops-connect", help=t("ops_connect_help") if can("act.connect") else t("perm_denied"), disabled=not can("act.connect"), **wide("button"), on_click=lambda: st.session_state.__setitem__("open_connect", True))
         with th2:
-            sim_now = st.toggle(f"🧪 {t('sim_mode')}", value=bool(st.session_state.get("sim_on", False)), key="sim_mode_toggle", help=t("sim_mode_help"))
+            sim_now = st.toggle(f"🧪 {t('sim_mode')}", value=bool(st.session_state.get("sim_on", False)), key="sim_mode_toggle", help=t("sim_mode_help") if can("act.sim") else t("perm_denied"), disabled=not can("act.sim"))
             if sim_now != bool(st.session_state.get("sim_on", False)):
                 st.session_state["sim_on"] = sim_now; set_simulation(sim_now); wo_settings.save({"sim_on": sim_now}); st.rerun(scope="app")
         agents = ", ".join(list(all_stt["agents"])[:4]) or t("live_no_agent")
@@ -2472,6 +2531,50 @@ def notify_tab() -> None:
             st.info(t("ntf_no_log"))
 
 
+def roles_editor() -> None:
+    """System › Users › Roles and permissions: a matrix of checkboxes per role; built-in roles can be reset, custom roles added or removed."""
+    rl, us = roles(), users()
+    h1, h2 = st.columns([8, 0.5])
+    h1.markdown(f"##### {t('roles_title')}")
+    with h2:
+        info_btn("roles_info")
+    names = rl.names()
+    counts: dict = {}
+    for r in us.list():
+        counts[r["role"]] = counts.get(r["role"], 0) + 1
+    pick = st.selectbox(t("roles_pick"), names + ["__new__"], key="role_pick", format_func=lambda x: f"➕ {t('roles_new')}" if x == "__new__" else f"{role_label(x)} · {counts.get(x, 0)} {t('roles_assigned')}")
+    cur = rl.get(pick) if pick != "__new__" else None
+    lang = current_lang()
+    with st.form("role-form", border=False):
+        a, b = st.columns(2)
+        new_name = a.text_input(t("roles_name"), value="" if cur is None else cur["name"], disabled=cur is not None, placeholder="dba_lead")
+        label = b.text_input(t("roles_label"), value="" if cur is None else (cur["label"] or ""), placeholder="DBA lideri")
+        if cur is not None and cur["builtin"]:
+            st.caption(wo_rbac.BUILTIN[cur["name"]]["desc"][0 if lang == "tr" else 1])
+        chosen = set()
+        for g, (gtr, gen) in wo_rbac.GROUPS.items():
+            st.markdown(f'<div class="muted" style="font-size:11px;letter-spacing:.8px;font-weight:700;margin:10px 0 2px">{upper(gtr if lang == "tr" else gen)}</div>', unsafe_allow_html=True)
+            keys = [k for k, v in wo_rbac.PERMISSIONS.items() if v[0] == g]
+            cols = st.columns(3)
+            for i, k in enumerate(keys):
+                lbl = wo_rbac.PERMISSIONS[k][1 if lang == "tr" else 2]
+                if cols[i % 3].checkbox(lbl, value=(cur is not None and k in cur["perms"]) or pick == "admin", key=f"perm-{pick}-{k}", disabled=pick == "admin"):
+                    chosen.add(k)
+        f1, f2, f3 = st.columns(3)
+        if f1.form_submit_button(f"💾 {t('roles_save')}", type="primary", **wide("form_submit_button")):
+            try:
+                rl.save(new_name if cur is None else cur["name"], chosen, label); st.toast(t("roles_saved"), icon="✅"); st.rerun()
+            except ValueError as e:
+                st.error(str(e))
+        if cur is not None and cur["builtin"] and f2.form_submit_button(f"↺ {t('roles_reset')}", **wide("form_submit_button")):
+            rl.reset(cur["name"]); st.rerun()
+        if cur is not None and not cur["builtin"] and f3.form_submit_button(f"🗑 {t('roles_delete')}", **wide("form_submit_button")):
+            try:
+                rl.delete(cur["name"]); st.rerun()
+            except ValueError as e:
+                st.error(str(e))
+
+
 def _deploy_finish() -> None:
     """After a deploy or rollback: drop Streamlit caches and the previous version's __pycache__, then hard-restart automatically."""
     st.cache_data.clear(); st.cache_resource.clear()
@@ -2482,7 +2585,7 @@ def _deploy_finish() -> None:
 def page_system() -> None:
     ss = st.session_state
     u = current_user()
-    if auth_enabled() and (not u or u["role"] != "admin"):
+    if not can("page.sys"):
         st.warning(t("sys_admin_only")); return
     st.markdown(f'<div class="wo-brand" style="padding:0 0 6px"><span style="display:inline-block;width:44px">{logo(44)}</span>'
                 f'<div><div class="name" style="font-size:30px">{t("sys_page")}</div><div class="tag">{upper(t("sys_page_tag"))}</div></div></div>', unsafe_allow_html=True)
@@ -2491,8 +2594,12 @@ def page_system() -> None:
     chips = [("#2dd4bf", f"git {vi['git'][:7] or '-'}"), ("#60a5fa", f"{t('sys_uptime')} {vi['uptime_s'] // 3600}h {(vi['uptime_s'] % 3600) // 60}m"),
              ("#a78bfa", f"Streamlit {vi['streamlit']} · Python {vi['python']}"), ("#2dd4bf" if vi["launcher"] else "#fbbf24", t("sys_launcher_ok") if vi["launcher"] else t("sys_launcher_none"))]
     st.markdown('<div class="chips">' + "".join(f'<span class="chip"><span class="d" style="background:{c}"></span>{esc(str(x))}</span>' for c, x in chips) + "</div>", unsafe_allow_html=True)
-    tab_st, tab_m, tab_upd, tab_users, tab_auth, tab_ntf, tab_sec = st.tabs([t("sys_tab_status"), t("sys_tab_maint"), t("sys_tab_update"), f"{t('sys_tab_users')} · {us.count()}", t("sys_tab_auth"),
-                                                                            f"{t('sys_tab_notify')} · {len(notifier().rules())}", t("sys_tab_security")])
+    _tabdefs = [("sys.status", t("sys_tab_status")), ("sys.maint", t("sys_tab_maint")), ("sys.update", t("sys_tab_update")), ("sys.users", f"{t('sys_tab_users')} · {us.count()}"),
+                ("sys.auth", t("sys_tab_auth")), ("sys.notify", f"{t('sys_tab_notify')} · {len(notifier().rules())}"), ("sys.security", t("sys_tab_security"))]
+    _shown = [d for d in _tabdefs if can(d[0])]
+    _tabs = dict(zip([d[0] for d in _shown], st.tabs([d[1] for d in _shown]))) if _shown else {}
+    _ph = st.empty(); _hidden = _ph.container()                         # tabs the role may not open render into a placeholder that is emptied below
+    tab_st, tab_m, tab_upd, tab_users, tab_auth, tab_ntf, tab_sec = (_tabs.get(k, _hidden) for k in ("sys.status", "sys.maint", "sys.update", "sys.users", "sys.auth", "sys.notify", "sys.security"))
 
     with tab_st:
         h = history(); p = source_poller(); lr = learner(); di = wo_admin.db_info(kb)
@@ -2513,6 +2620,16 @@ def page_system() -> None:
         c = st.columns(3)
         _ae = alert_engine()
         _svc_card(c[0], t("ntf_title"), f"{len(notifier().rules())} {t('ntf_rules')} · {_ae.runs} {t('src_polls')} · {t('ntf_last_run')} {_ae.last_run[11:19] or '-'}", bool(ss.get("alerts_on", True)), "🔔")
+        if not os.environ.get("WATCHOVER_SKIP_SETUP") and os.environ.get("WATCHOVER_SELFMON", "1") != "0":
+            _sm = self_monitor(); _sst = _sm.status()
+            _svc_card(c[1], f"{t('selfmon_title')} · {_sst['host']}", (t("selfmon_running", p=_sst["pid"]) if _sst["running"] else t("selfmon_stopped")) + (f" · {_sst['restarts']} {t('selfmon_restarts')}" if _sst["restarts"] else ""),
+                      _sst["running"] if ss.get("self_monitor", True) else None, "🖥")
+            with c[2]:
+                st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+                _on = st.toggle(t("selfmon_on"), value=bool(ss.get("self_monitor", True)), key="selfmon_tg", help=t("selfmon_body"))
+                if _on != bool(ss.get("self_monitor", True)):
+                    ss["self_monitor"] = _on; wo_settings.save({"self_monitor": _on})
+                    (_sm.start() if _on else _sm.stop()); st.rerun()
         with st.expander(t("sys_facts")):
             st.code("\n".join(f"{k_}: {v}" for k_, v in vi.items()), language=None)
             if di["tables"]:
@@ -2604,11 +2721,12 @@ def page_system() -> None:
             c = st.columns([0.5, 2.6, 1.6, 1.3, 1.3, 1.1, 0.6])
             c[0].markdown(f'<span class="av-sm">{esc((r["name"] or r["email"])[:1].upper())}</span>', unsafe_allow_html=True)
             c[1].markdown(f'<b>{esc(r["name"] or "-")}</b><br><span class="muted" style="font-size:12px">{esc(r["email"])}</span>', unsafe_allow_html=True)
-            c[2].markdown(f'<span class="role r-{r["role"]}">{t("role_" + r["role"])}</span> <span class="pillx {"ok" if r["status"] == "active" else "off"}">{t("user_active") if r["status"] == "active" else t("user_disabled")}</span> <span class="muted" style="font-size:11px">· {r["provider"]}</span>', unsafe_allow_html=True)
-            role = c[3].selectbox("role", list(wo_auth.ROLES), index=list(wo_auth.ROLES).index(r["role"]), key=f"u-role-{r['id']}", label_visibility="collapsed", format_func=lambda x: t("role_" + x))
+            c[2].markdown(f'<span class="role r-{r["role"] if r["role"] in wo_rbac.BUILTIN else "custom"}">{esc(role_label(r["role"]))}</span> <span class="pillx {"ok" if r["status"] == "active" else "off"}">{t("user_active") if r["status"] == "active" else t("user_disabled")}</span> <span class="muted" style="font-size:11px">· {r["provider"]}</span>', unsafe_allow_html=True)
+            _names = roles().names()
+            role = c[3].selectbox("role", _names, index=_names.index(r["role"]) if r["role"] in _names else 0, key=f"u-role-{r['id']}", label_visibility="collapsed", format_func=role_label)
             if role != r["role"]:
                 try:
-                    us.set_role(r["id"], role); st.rerun()
+                    us.set_role(r["id"], role, valid=_names); st.rerun()
                 except ValueError as e:
                     st.warning(str(e))
             c[4].caption(f"{t('user_last')} {(r['last_login'] or '-')[:16]}")
@@ -2631,6 +2749,9 @@ def page_system() -> None:
                         us.register(em, pw, nm); st.rerun()
                     except ValueError as e:
                         st.error(t("login_policy", e=e))
+
+    with tab_users:
+        roles_editor()
 
     with tab_auth:
         hc1, hc2 = st.columns([8, 0.6])
@@ -2730,6 +2851,7 @@ def page_system() -> None:
                          hide_index=True, height=420, **wide("dataframe"))
         else:
             st.caption(t("sec_log_none"))
+    _ph.empty()
 
 
 # ------------------------------------------------------------------ page: Inventory (CMDB-lite, matched to the live feed)

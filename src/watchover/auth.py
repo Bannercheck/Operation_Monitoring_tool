@@ -141,7 +141,11 @@ class Users:
         self._event(email, "login", True, "unlocked by an administrator")
 
     # ---- lifecycle
-    def register(self, email: str, password: str, name: str = "", allowed_domains: str = "", provider: str = "local") -> dict:
+    def activate(self, uid: int) -> None:
+        self.kb._exec("UPDATE users SET status='active' WHERE id=? AND status='pending'", (uid,))
+        self._event(str(uid), "verify", True, "e-mail verified")
+
+    def register(self, email: str, password: str, name: str = "", allowed_domains: str = "", provider: str = "local", status: str = "active") -> dict:
         email = email.strip().lower()
         if not _EMAIL.match(email):
             raise ValueError("invalid e-mail address")
@@ -156,7 +160,7 @@ class Users:
             raise ValueError("an account with this e-mail already exists")
         role = "admin" if self.count() == 0 else "operator"
         self.kb._exec("INSERT INTO users (email, name, pw_hash, role, status, provider, created_at) VALUES (?,?,?,?,?,?,?)",
-                      (email, name.strip()[:80], _hash(password) if provider == "local" else "", role, "active", provider, datetime.now(UTC).isoformat(timespec="seconds")))
+                      (email, name.strip()[:80], _hash(password) if provider == "local" else "", role, status, provider, datetime.now(UTC).isoformat(timespec="seconds")))
         self._event(email, "register", True, provider)
         return self.get(email)
 
@@ -201,8 +205,8 @@ class Users:
         self._event(email, "sso", True, provider)
         return {k: u[k] for k in ("id", "email", "name", "role", "provider")}
 
-    def set_role(self, uid: int, role: str) -> None:
-        if role not in ROLES:
+    def set_role(self, uid: int, role: str, valid: set[str] | list[str] | None = None) -> None:
+        if role not in (valid if valid is not None else ROLES):
             raise ValueError("unknown role")
         if role != "admin" and self._is_last_admin(uid):
             raise ValueError("the last admin cannot be demoted")

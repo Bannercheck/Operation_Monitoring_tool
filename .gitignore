@@ -28,3 +28,4 @@ Thumbs.db
 data/config.json
 data/versions/
 data/.vault.key
+data/self-agent.pid
