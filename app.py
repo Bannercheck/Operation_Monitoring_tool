@@ -197,7 +197,65 @@ section[data-testid="stSidebar"] hr{margin:10px 0}
 div[data-testid="stDialog"] [data-testid="stMarkdownContainer"] h4{margin-top:0}
 div[data-testid="stExpander"] details{border:1px solid var(--wo-border);border-radius:12px;background:var(--wo-surface)}
 </style>"""
+GLASS = """
+<style>
+/* ---- liquid glass: translucent layered surfaces over a soft-lit backdrop; contrast kept for long operations shifts ---- */
+:root{--wo-bg:#0b1017;--wo-glass:rgba(255,255,255,.045);--wo-glass2:rgba(255,255,255,.07);--wo-line:rgba(255,255,255,.09);--wo-line2:rgba(255,255,255,.16);--wo-text:#e3e9f2;--wo-muted:#94a0b4}
+html,body,.stApp{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+.stApp{background:radial-gradient(1200px 640px at -8% -12%,rgba(45,212,191,.13),transparent 62%),radial-gradient(1100px 720px at 108% 112%,rgba(96,165,250,.13),transparent 60%),radial-gradient(700px 500px at 60% 40%,rgba(167,139,250,.05),transparent 65%),var(--wo-bg);background-attachment:fixed}
+[data-testid="stHeader"]{background:transparent;backdrop-filter:none}
+section[data-testid="stSidebar"]{background:rgba(9,14,22,.66);backdrop-filter:blur(22px) saturate(140%);-webkit-backdrop-filter:blur(22px) saturate(140%);border-right:1px solid var(--wo-line)}
+section[data-testid="stSidebar"] > div:first-child{background:transparent}
+.card,.kpi,.k2,.funnel,.facts,.act,.rowcard,.sb-status,.chip,div[data-testid="stExpander"] details,[data-testid="stVerticalBlockBorderWrapper"] > div:first-child,[data-testid="stForm"]{
+  background:linear-gradient(160deg,rgba(255,255,255,.075) 0%,rgba(255,255,255,.035) 55%,rgba(255,255,255,.02) 100%)!important;border:1px solid var(--wo-line)!important;
+  backdrop-filter:blur(18px) saturate(150%);-webkit-backdrop-filter:blur(18px) saturate(150%);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.10),inset 0 -1px 0 rgba(0,0,0,.25),0 22px 48px -32px rgba(0,0,0,.85)}
+.card,.kpi,.funnel,[data-testid="stVerticalBlockBorderWrapper"] > div:first-child,[data-testid="stForm"],div[data-testid="stExpander"] details{border-radius:18px!important}
+.k2{border-radius:18px 18px 0 0;border-top:2px solid var(--acc)!important}
+.k2:before{opacity:.085;filter:blur(10px)}
+.k2:hover{border-color:var(--wo-line2)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.14),0 0 0 1px color-mix(in srgb,var(--acc) 35%,transparent),0 24px 50px -30px rgba(0,0,0,.9)}
+[class*="st-key-tile-"] button{background:rgba(255,255,255,.035)!important;border:1px solid var(--wo-line)!important;border-top:0!important;border-radius:0 0 18px 18px!important;color:#9aa7ba!important;backdrop-filter:blur(18px)}
+[class*="st-key-tile-"] button:hover{color:var(--wo-accent)!important;background:rgba(45,212,191,.08)!important}
+.card.hot{border-color:rgba(248,113,113,.45)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 0 0 1px rgba(248,113,113,.10),0 20px 44px -26px rgba(248,113,113,.35)}
+.act{border-left:4px solid var(--wo-muted)!important}.rowcard{border-left:4px solid var(--wo-accent)!important}
+.chip{padding:4px 12px;color:#d3dae6;backdrop-filter:none;box-shadow:inset 0 1px 0 rgba(255,255,255,.08)}
+.facts .fact+.fact:before{background:var(--wo-line)}
+/* inputs, selects, text areas */
+.stApp [data-baseweb="input"],.stApp [data-baseweb="base-input"],.stApp [data-baseweb="select"] > div,.stApp [data-baseweb="textarea"],.stApp textarea{background:rgba(255,255,255,.05)!important;border-color:var(--wo-line)!important;border-radius:12px!important;color:var(--wo-text)}
+.stApp [data-baseweb="input"]:focus-within,.stApp [data-baseweb="select"] > div:focus-within,.stApp [data-baseweb="textarea"]:focus-within{border-color:rgba(45,212,191,.55)!important;box-shadow:0 0 0 3px rgba(45,212,191,.14)}
+.stApp [data-baseweb="input"] input,.stApp [data-baseweb="select"] input{background:transparent!important}
+[data-baseweb="popover"] [role="listbox"],[data-baseweb="menu"]{background:rgba(16,22,33,.92)!important;backdrop-filter:blur(20px);border:1px solid var(--wo-line2)!important;border-radius:14px!important}
+/* buttons */
+.stApp .stButton > button,.stApp .stDownloadButton > button,.stApp .stFormSubmitButton > button,.stApp [data-testid="stPopover"] > button{background:rgba(255,255,255,.06);border:1px solid var(--wo-line2);border-radius:12px;color:var(--wo-text);box-shadow:inset 0 1px 0 rgba(255,255,255,.10),0 8px 20px -16px rgba(0,0,0,.8);backdrop-filter:blur(14px);transition:background .15s,border-color .15s,transform .08s}
+.stApp .stButton > button:hover,.stApp .stDownloadButton > button:hover,.stApp .stFormSubmitButton > button:hover,.stApp [data-testid="stPopover"] > button:hover{background:rgba(255,255,255,.10);border-color:rgba(45,212,191,.55);color:#e6fffa}
+.stApp .stButton > button:active{transform:translateY(1px)}
+.stApp .stButton > button[kind="primary"],.stApp .stFormSubmitButton > button[kind="primary"]{background:linear-gradient(135deg,rgba(45,212,191,.92),rgba(96,165,250,.92));border-color:transparent;color:#07131a;font-weight:700;box-shadow:0 10px 26px -14px rgba(45,212,191,.7),inset 0 1px 0 rgba(255,255,255,.35)}
+.stApp .stButton > button[kind="primary"]:hover{filter:brightness(1.06)}
+/* tabs, pills, checkboxes, dataframe, dialog */
+.stTabs [data-baseweb="tab-list"]{gap:4px;border-bottom:1px solid var(--wo-line)}
+.stTabs [data-baseweb="tab"]{border-radius:10px 10px 0 0;padding:6px 14px}
+.stTabs [data-baseweb="tab-highlight"]{background:linear-gradient(90deg,#2dd4bf,#60a5fa);height:2px}
+div[data-testid="stPills"] button{background:rgba(255,255,255,.05);border:1px solid var(--wo-line2)}
+div[data-testid="stDialog"] > div[role="dialog"]{background:rgba(14,20,31,.82)!important;backdrop-filter:blur(26px) saturate(150%);-webkit-backdrop-filter:blur(26px) saturate(150%);border:1px solid var(--wo-line2);border-radius:22px;box-shadow:inset 0 1px 0 rgba(255,255,255,.12),0 40px 90px -40px rgba(0,0,0,.95)}
+div[data-testid="stDataFrame"],div[data-testid="stDataFrameResizable"]{border-radius:14px;overflow:hidden;border:1px solid var(--wo-line)}
+.stApp [data-testid="stMetric"]{background:var(--wo-glass);border:1px solid var(--wo-line);border-radius:14px;padding:10px 12px}
+.stApp [data-testid="stAlert"]{border-radius:14px;backdrop-filter:blur(12px)}
+.stApp code:not(pre code){background:rgba(255,255,255,.07);border:1px solid var(--wo-line);border-radius:6px;padding:1px 5px}
+.stApp pre{background:rgba(6,10,16,.55)!important;border:1px solid var(--wo-line);border-radius:14px;backdrop-filter:blur(12px)}
+/* sidebar nav */
+.st-key-page label[data-testid="stRadioOption"]{border-radius:12px}
+.st-key-page label[data-testid="stRadioOption"]:hover{background:rgba(255,255,255,.06)}
+.st-key-page label[data-testid="stRadioOption"][data-selected="true"]{background:linear-gradient(135deg,rgba(45,212,191,.16),rgba(96,165,250,.12));border-color:rgba(45,212,191,.35);box-shadow:inset 0 1px 0 rgba(255,255,255,.10)}
+.sb-status{border-radius:14px}
+/* scrollbars */
+::-webkit-scrollbar{width:9px;height:9px}::-webkit-scrollbar-thumb{background:rgba(255,255,255,.14);border-radius:8px;border:2px solid transparent;background-clip:padding-box}::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.24);background-clip:padding-box}
+hr{border-color:var(--wo-line)!important}
+h1,h2,h3{color:#eef3f9}
+.muted{color:var(--wo-muted)}
+@media (prefers-reduced-transparency: reduce){.card,.kpi,.k2,.funnel,.facts,section[data-testid="stSidebar"],div[data-testid="stDialog"] > div[role="dialog"]{backdrop-filter:none!important;background:#121a26!important}}
+</style>"""
 st.markdown(CSS, unsafe_allow_html=True)
+st.markdown(GLASS, unsafe_allow_html=True)
 
 
 esc = html.escape
@@ -2140,7 +2198,12 @@ if page == "conn":
     st.stop()
 if page == "readme":
     readme = Path(__file__).with_name("README.md")
-    st.markdown(readme.read_text(encoding="utf-8") if readme.exists() else "README.md not found")
+    text = readme.read_text(encoding="utf-8") if readme.exists() else "README.md not found"
+    wm = ASSETS / "logo-wordmark.png"
+    if wm.exists():
+        import base64 as _b64
+        text = text.replace('src="assets/logo-wordmark.png"', f'src="data:image/png;base64,{_b64.b64encode(wm.read_bytes()).decode()}"')
+    st.markdown(text, unsafe_allow_html=True)
     st.stop()
 
 datasets_controls()

@@ -9,19 +9,19 @@ gatherUsageStats = false
 [theme]
 base = "dark"
 primaryColor = "#2dd4bf"
-backgroundColor = "#0e1420"
-secondaryBackgroundColor = "#151d2b"
+backgroundColor = "#0b1017"
+secondaryBackgroundColor = "#121a26"
 textColor = "#e6ebf2"
 linkColor = "#7dd3fc"
-borderColor = "#243044"
+borderColor = "#26313f"
 codeBackgroundColor = "#111827"
-baseRadius = "10px"
+baseRadius = "12px"
 font = "Inter, sans-serif"
 headingFont = "Inter, sans-serif"
 codeFont = "JetBrains Mono, ui-monospace, monospace"
 
 [theme.sidebar]
-backgroundColor = "#0b111b"
+backgroundColor = "#0a0f17"
 secondaryBackgroundColor = "#151d2b"
 borderColor = "#243044"
 
