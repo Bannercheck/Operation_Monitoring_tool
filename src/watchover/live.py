@@ -50,6 +50,8 @@ class LiveStore:
         self.received = 0
         self.agents: dict[str, float] = {}      # agent name -> last seen epoch
         self.on_ingest = None                    # optional hook(events): service-level history rollups
+        self.enricher = None                     # optional hook(observation) -> bool: inventory match (IP → hostname, dc, criticality)
+        self.matched = 0                         # events matched to the inventory
         self.started = time.time()
         if self.spool:
             self.spool.parent.mkdir(parents=True, exist_ok=True)
@@ -63,6 +65,12 @@ class LiveStore:
             if o.attributes.pop("_no_ts", False) or o.timestamp.year < 2000:
                 o.timestamp = now
             o.attributes["agent"] = agent
+            if self.enricher is not None:
+                try:
+                    if self.enricher(o):
+                        self.matched += 1
+                except Exception:  # noqa: BLE001
+                    pass
             if env:                                          # the registered environment wins over guessing from host names
                 o.environment = env
             if site:

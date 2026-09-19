@@ -13,8 +13,9 @@ UTC = timezone.utc
 
 
 class LiveLearner:
-    def __init__(self, ls, kb, interval_min: int = 15, window_min: int = 60, min_events: int = 50, lang: str = "tr"):
+    def __init__(self, ls, kb, interval_min: int = 15, window_min: int = 60, min_events: int = 50, lang: str = "tr", inventory_fn=None):
         self.ls, self.kb, self.interval_min, self.window_min, self.min_events, self.lang = ls, kb, interval_min, window_min, min_events, lang
+        self.inventory_fn = inventory_fn
         self.stop = threading.Event()
         self.last: dict = {}
         self.runs = 0
@@ -31,7 +32,7 @@ class LiveLearner:
             out["note"] = "too few events"
         else:
             try:
-                a = Analysis(obs, [])
+                a = Analysis(obs, [], self.inventory_fn() if self.inventory_fn else None)
                 out["incidents"] = len(a.incidents)
                 out["lessons"] = self.kb.record(a, f"live:{out['ts'][:16]}", self.lang)
             except Exception as e:  # noqa: BLE001

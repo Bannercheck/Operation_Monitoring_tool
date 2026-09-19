@@ -39,6 +39,7 @@ from watchover import sources as wo_sources
 from watchover import report as wo_report
 from watchover import history as wo_history
 from watchover import autolearn as wo_learn
+from watchover import inventory as wo_inv
 from watchover.llm import LLMConfig, PROVIDERS, chat as llm_chat, embed as llm_embed, list_models as llm_models, set_sink as llm_set_sink, test_connection as llm_test
 from watchover import ollama as wo_ollama
 from watchover import llm_eval as wo_eval
@@ -256,6 +257,12 @@ def live_tile(value, label, icon: str, accent: str, sub: str, series: list, ymax
             f'{sparkline(series, accent, ymax, ymin, target)}</div>')
 
 
+def info_btn(key: str, **kw) -> None:
+    """Explanatory text behind an ℹ️ button instead of a paragraph on the page (keeps screens uncluttered)."""
+    with st.popover("ℹ️", help=t("info_help")):
+        st.markdown(t(key, **kw))
+
+
 def kpi2(value, label, icon: str, accent: str, sub: str = "", muted: bool = False) -> str:
     return (f'<div class="k2" style="--acc:{accent}"><span class="ic">{icon}</span><div class="lb">{upper(label)}</div>'
             f'<span class="v{" s" if len(str(value)) > 6 else ""}">{value}</span><div class="sub{" m" if muted else ""}">{esc(str(sub))}</div></div>')
@@ -344,8 +351,18 @@ def history() -> wo_history.History:
 
 def learner() -> wo_learn.LiveLearner:
     def make():
-        return wo_learn.LiveLearner(live_store(), knowledge(), int(st.session_state.get("learn_min", 15) or 0), lang=current_lang()).start()
+        return wo_learn.LiveLearner(live_store(), knowledge(), int(st.session_state.get("learn_min", 15) or 0), lang=current_lang(),
+                                    inventory_fn=lambda: inventory().as_engine()).start()
     return _singleton("learner", wo_learn.LiveLearner, make)
+
+
+def inventory() -> wo_inv.Inventory:
+    """CMDB-lite; hooked into the live store so every incoming event is matched (IP → hostname, dc, criticality, owner)."""
+    def make():
+        inv = wo_inv.Inventory(knowledge())
+        live_store().enricher = inv.enrich
+        return inv
+    return _singleton("inventory", wo_inv.Inventory, make)
 
 
 @st.cache_resource
@@ -398,7 +415,7 @@ def load(name: str, data: bytes | None = None, path: str | None = None, mapping:
         st.write(t("step_parse"))
         obs, report = ingest_bytes(name, data, mapping) if data is not None else ingest_path(path, mapping)
         st.write(t("step_analyze", n=f"{len(obs):,}"))
-        analysis = Analysis(obs, report)
+        analysis = Analysis(obs, report, inventory().as_engine())
         st.write(t("step_profile", s=len(analysis.signals), i=len(analysis.incidents)))
         prof = profile(obs, report)
         status.update(label=t("done", secs=f"{time.perf_counter() - t0:.1f}"), state="complete", expanded=False)
@@ -580,7 +597,7 @@ def agents_panel(port: int, wizard: bool = False) -> None:
         st.markdown(f"#### {t('ag_title')}")
     with st.container(border=True):
         st.markdown(f"**📡 {t('ag_addr_title')}**")
-        st.caption(t("ag_addr_hint"))
+        info_btn("ag_addr_hint")
         cands = wo_settings.local_addresses()
         c1, c2, c3 = st.columns([2.5, 1, 1.2])
         cur = ss.get("public_host") or cands[0]
@@ -614,7 +631,7 @@ def agents_panel(port: int, wizard: bool = False) -> None:
         st.markdown(f"**1 · {t('ag_step_run')}**")
         st.code(agent_install_cmd(port, tok, logs, rec.get("env", "")), language="bash")
         st.markdown(f"**2 · {t('ag_step_watch')}**")
-        st.caption(t("ag_step_watch_sub"))
+        info_btn("ag_step_watch_sub")
         with st.expander(t("ag_manual")):
             st.code(f"export WATCHOVER_URL={receiver_url(port)}\nexport WATCHOVER_TOKEN={tok}\ncurl -fsSL {receiver_url(port)[:-7]}/agent.py -o agent.py\n"
                     f"python3 agent.py --test\npython3 agent.py --metrics --tail \"{logs}\" --spool ./spool", language="bash")
@@ -725,8 +742,8 @@ def minute_chart(df: pd.DataFrame, incidents=None, height=200):
 # ------------------------------------------------------------------ sidebar navigation
 demo = Path(__file__).with_name("samples") / "demo_mixed.zip"
 LIVE_PORT = int(os.environ.get("LIVE_PORT", "8600"))
-PAGES = ["ops", "data", "src", "map", "assist", "llm", "pb", "itsm", "conn", "readme"]
-PAGE_KEYS = {"ops": "sb_ops", "data": "sb_data", "src": "sb_src", "map": "sb_map", "assist": "sb_assist", "llm": "sb_llm", "pb": "sb_pb", "itsm": "sb_itsm", "conn": "sb_conn", "readme": "sb_readme"}
+PAGES = ["ops", "data", "src", "inv", "map", "assist", "llm", "pb", "itsm", "conn", "readme"]
+PAGE_KEYS = {"ops": "sb_ops", "data": "sb_data", "src": "sb_src", "inv": "sb_inv", "map": "sb_map", "assist": "sb_assist", "llm": "sb_llm", "pb": "sb_pb", "itsm": "sb_itsm", "conn": "sb_conn", "readme": "sb_readme"}
 
 
 # ------------------------------------------------------------------ first-run setup wizard
@@ -741,14 +758,14 @@ def page_setup() -> None:
     with st.container(border=True):
         if step == 0:
             st.markdown(f"### {t('su_s1')}")
-            st.caption(t("su_s1_hint"))
+            info_btn("su_s1_hint")
             st.radio(t("su_lang"), ["tr", "en"], horizontal=True, key="lang", format_func=lambda x: {"tr": "🇹🇷 Türkçe", "en": "🇬🇧 English"}[x])
             st.text_input(t("su_workspace"), key="su_workspace", placeholder="Turkcell NOC")
             st.number_input(t("live_port"), 1024, 65535, int(ss.get("live_port", LIVE_PORT)), key="su_port")
             st.toggle(t("live_sim"), value=ss.get("sim_on", True), key="su_sim")
         elif step == 1:
             st.markdown(f"### {t('su_s2')}")
-            st.caption(t("su_s2_hint"))
+            info_btn("su_s2_hint")
             found = wo_ollama.discover()
             if found:
                 st.success(t("llm_found", u=found))
@@ -787,7 +804,7 @@ def page_setup() -> None:
                     st.rerun()
         elif step == 2:
             st.markdown(f"### {t('su_s3')}")
-            st.caption(t("su_s3_hint"))
+            info_btn("su_s3_hint")
             _port = int(ss.get("live_port", LIVE_PORT))
             _r = receiver(_port, ss.get("live_key", ""))                  # the receiver must already listen so the first agent can come online here
             if isinstance(_r, OSError):
@@ -796,7 +813,7 @@ def page_setup() -> None:
             agents_panel(_port, wizard=True)
         else:
             st.markdown(f"### {t('su_s4')}")
-            st.caption(t("su_s4_hint"))
+            info_btn("su_s4_hint")
             st.toggle(t("su_demo"), value=True, key="su_demo")
             cfg = llm_cfg()
             st.markdown(f'<div class="card"><b>{t("su_summary")}</b><br><span class="muted">{t("su_lang")}: {ss.get("lang", "tr")} · {t("live_port")}: {ss.get("live_port", LIVE_PORT)} · LLM: {cfg.kind} / {cfg.model or t("as_no_llm")} · {t("llm_embed")}: {cfg.embed_model or "-"} · {t("ag_title")}: {len(agents().list())}</span></div>', unsafe_allow_html=True)
@@ -855,6 +872,7 @@ _srv = receiver(int(st.session_state.get("live_port", LIVE_PORT)), st.session_st
 _poller = source_poller()                                       # pull sources (Elasticsearch, Loki, Splunk, Graylog, HTTP) poll in the background
 _hist = history()                                               # minute rollups for weekly / monthly service-level reports
 _learn = learner()                                              # live learning: patterns from the live feed land in the knowledge base
+_inv = inventory()                                              # inventory matching on every incoming event
 if st.session_state.get("sim_on", True):
     simulator()
 
@@ -949,7 +967,7 @@ def scope_panel(ls: LiveStore) -> tuple[str | None, str | None]:
         # One checkbox per host. The widgets live inside the 2 s fragment: on the next full rerun (opening a detail dialog)
         # Streamlit drops widget state, so the selection is mirrored in a plain key and re-seeded from it before the widgets are built.
         mirror = [h for h in (st.session_state.get("ops_scope_hosts") or []) if h in hosts]
-        st.caption(t("ops_host_hint"))
+        info_btn("ops_host_hint")
         pick = []
         for h in hosts:
             k = f"ops_h_{h}"
@@ -1337,7 +1355,7 @@ def page_map() -> None:
 def page_playbook() -> None:
     pb = playbook()
     st.markdown(f"## {t('pb_title')}")
-    st.caption(t("pb_sub"))
+    info_btn("pb_sub")
     q = st.text_input(t("pb_search"), key="pb_q")
     rows = pb.all(q)
     if not rows:
@@ -1448,7 +1466,7 @@ def page_conn() -> None:
             c_body = st.text_area(t("conn_body"), key="conn_body", height=68) if c_method == "POST" else ""
             c_path = st.text_input(t("conn_path"), key="conn_path")
         else:
-            st.caption(t("conn_mcp_hint"))
+            info_btn("conn_mcp_hint")
             if st.button(t("conn_list_tools"), key="conn_tools") and c_url:
                 try:
                     st.session_state["conn_toolnames"] = [x["name"] for x in mcp_tools(c_url, parse_headers(c_headers))]
@@ -1568,7 +1586,7 @@ def page_assist() -> None:
         with f2:
             with st.container(border=True):
                 st.markdown(f"**📄 {t('kb_add_doc')}**")
-                st.caption(t("kb_doc_hint"))
+                info_btn("kb_doc_hint")
                 ups = st.file_uploader(t("kb_add_doc"), type=["txt", "md", "log", "json", "csv", "yaml", "yml"], accept_multiple_files=True, key="kb_docs", label_visibility="collapsed")
                 if ups and st.button(t("kb_ingest"), key="kb-ingest", **wide("button")):
                     n = 0
@@ -1580,7 +1598,7 @@ def page_assist() -> None:
                     st.toast(t("kb_doc_saved", n=n), icon="✅")
             with st.form("kb-fact", border=True):
                 st.markdown(f"**📌 {t('kb_add_fact')}**")
-                st.caption(t("kb_fact_hint"))
+                info_btn("kb_fact_hint")
                 fk = st.selectbox(t("kb_fact_kind"), list(RULE_KINDS), format_func=lambda x: t("rule_" + x))
                 fkey = st.text_input(t("kb_fact_key"), placeholder="billing · disk_full · payment-api->payment-db")
                 fval = st.text_input(t("kb_fact_value"), placeholder="Faturalama ekibi · 5 · senkron")
@@ -1605,7 +1623,7 @@ def page_assist() -> None:
                 st.markdown(f'<div class="mono muted" style="white-space:pre-wrap;font-size:12px">{esc(d["text"][:900])}</div>' + (f'<div class="muted" style="font-size:11px">{esc(refs)}</div>' if refs else ""), unsafe_allow_html=True)
 
     with tab_rules:
-        st.caption(t("rules_hint"))
+        info_btn("rules_hint")
         lc, lh = st.columns([1.4, 4])
         if lc.button(f"🤖 {t('rules_ask_llm')}", key="rules-llm", disabled=not cfg.enabled, help=t("rules_ask_llm_help"), **wide("button")):
             with st.spinner(t("as_thinking")):
@@ -1647,6 +1665,111 @@ def page_assist() -> None:
                 kb.decide(r_["id"], False); reanalyze(); st.rerun()
 
 
+# ------------------------------------------------------------------ page: Inventory (CMDB-lite, matched to the live feed)
+def page_inventory() -> None:
+    inv = inventory()
+    ls = live_store()
+    ss = st.session_state
+    st.markdown(f'<div class="wo-brand" style="padding:0 0 6px"><span style="display:inline-block;width:44px">{logo(44)}</span>'
+                f'<div><div class="name" style="font-size:30px">{t("inv_page")}</div><div class="tag">{upper(t("inv_page_tag"))}</div></div></div>', unsafe_allow_html=True)
+    seen = ls.hosts()
+    stt = inv.stats(seen)
+    chips = [("#60a5fa", f"{stt['hosts']} {t('inv_hosts')}"), ("#f87171", f"{stt['critical']} {t('inv_critical')}"), ("#a78bfa", f"{stt['dcs']} DC"),
+             ("#2dd4bf" if not stt["unmatched"] else "#fbbf24", f"{stt['matched']}/{stt['seen']} {t('inv_matched')}")]
+    st.markdown('<div class="chips">' + "".join(f'<span class="chip"><span class="d" style="background:{c}"></span>{esc(str(x))}</span>' for c, x in chips) + "</div>", unsafe_allow_html=True)
+    info_btn("inv_intro")
+    tab_list, tab_add, tab_disc, tab_csv = st.tabs([f"{t('inv_tab_list')} · {stt['hosts']}", t("inv_tab_add"), f"{t('inv_tab_disc')} · {stt['unmatched']}", t("inv_tab_csv")])
+
+    with tab_list:
+        q = st.text_input(t("inv_search"), key="inv_q", placeholder="db-01, 10.20., IST-DC1, oracle …")
+        rows = inv.list(q.strip())
+        if not rows:
+            st.caption(t("inv_none"))
+        else:
+            cols = ["hostname", "ip", "env", "dc", "rack", "vlan", "role", "application", "owner", "criticality", "storage", "os", "status", "monitoring", "tags"]
+            df_ = pd.DataFrame(rows)[cols].rename(columns={c: t("inv_f_" + c) for c in cols})
+            st.dataframe(df_, hide_index=True, **wide("dataframe"), height=min(600, 60 + 36 * len(rows)),
+                         column_config={t("inv_f_criticality"): st.column_config.TextColumn(width="small"), t("inv_f_status"): st.column_config.TextColumn(width="small")})
+            pick = st.selectbox(t("inv_edit"), [""] + [r["hostname"] for r in rows], key="inv_pick")
+            if pick:
+                inventory_form(inv, inv.get(pick), key="inv-edit")
+
+    with tab_add:
+        inventory_form(inv, None, key="inv-add")
+
+    with tab_disc:
+        info_btn("inv_disc_hint")
+        disc = inv.discovered(seen, agents().list())
+        if not disc:
+            st.success(t("inv_disc_none"))
+        for d in disc:
+            c = st.columns([2, 1, 1.4, 1.4, 1.2])
+            c[0].markdown(f"**{esc(d['hostname'])}**"); c[1].caption(d.get("env") or "-"); c[2].caption(d.get("dc") or d.get("ip") or "-")
+            crit = c[3].selectbox(t("inv_f_criticality"), list(wo_inv.CRITICALITY), index=2, key=f"inv-dc-{d['hostname']}", label_visibility="collapsed")
+            if c[4].button(f"➕ {t('inv_add')}", key=f"inv-disc-{d['hostname']}", **wide("button")):
+                inv.upsert({**d, "criticality": crit, "monitoring": "agent" if any(a["name"] == d["hostname"] for a in agents().list()) else "live"}); st.rerun()
+
+    with tab_csv:
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown(f"**⬆ {t('inv_import')}**")
+            info_btn("inv_import_hint")
+            up = st.file_uploader("CSV", type=["csv", "txt"], key="inv_csv", label_visibility="collapsed")
+            if up is not None and st.button(t("inv_import_go"), key="inv-import"):
+                n, errs = inv.import_csv(up.getvalue())
+                st.success(t("inv_imported", n=n))
+                for e in errs[:10]:
+                    st.warning(e)
+            st.download_button(f"📄 {t('inv_template')}", wo_inv.Inventory.csv_template(), file_name="watchover-envanter-sablon.csv", mime="text/csv", key="inv-tpl")
+        with c2:
+            st.markdown(f"**⬇ {t('inv_export')}**")
+            info_btn("inv_export_hint")
+            st.download_button(f"📄 {t('inv_export_go')}", inv.export_csv(), file_name=f"watchover-envanter-{datetime.now(UTC).strftime('%Y%m%d')}.csv", mime="text/csv", key="inv-export")
+
+
+def inventory_form(inv, rec: dict | None, key: str) -> None:
+    r = rec or {}
+    with st.form(key, border=True):
+        st.markdown(f"**{'✏️ ' + t('inv_edit_title', h=r['hostname']) if rec else '➕ ' + t('inv_tab_add')}**")
+        c = st.columns([1.6, 1.2, 1.6, 1, 1.2])
+        hostname = c[0].text_input(t("inv_f_hostname"), value=r.get("hostname", ""), disabled=bool(rec), placeholder="db-01")
+        ip = c[1].text_input(t("inv_f_ip"), value=r.get("ip", ""), placeholder="10.20.1.15")
+        aliases = c[2].text_input(t("inv_f_aliases"), value=r.get("aliases", ""), placeholder="db01.corp.local, oradb1", help=t("inv_aliases_help"))
+        envs = ["", "prod", "staging", "test", "dev", "qa", "dr"]
+        env = c[3].selectbox(t("inv_f_env"), envs, index=envs.index(r["env"]) if r.get("env") in envs else 0)
+        crit = c[4].selectbox(t("inv_f_criticality"), list(wo_inv.CRITICALITY), index=list(wo_inv.CRITICALITY).index(r["criticality"]) if r.get("criticality") in wo_inv.CRITICALITY else 2)
+        c = st.columns(5)
+        dc = c[0].text_input(t("inv_f_dc"), value=r.get("dc", ""), placeholder="IST-DC1")
+        rack = c[1].text_input(t("inv_f_rack"), value=r.get("rack", ""), placeholder="R12")
+        vlan = c[2].text_input(t("inv_f_vlan"), value=r.get("vlan", ""), placeholder="VLAN-120")
+        subnet = c[3].text_input(t("inv_f_subnet"), value=r.get("subnet", ""), placeholder="10.20.1.0/24")
+        os_ = c[4].text_input(t("inv_f_os"), value=r.get("os", ""), placeholder="RHEL 9")
+        c = st.columns(5)
+        role = c[0].text_input(t("inv_f_role"), value=r.get("role", ""), placeholder="database", help=t("inv_role_help"))
+        app_ = c[1].text_input(t("inv_f_application"), value=r.get("application", ""), placeholder="Oracle ERP")
+        cluster = c[2].text_input(t("inv_f_cluster"), value=r.get("cluster", ""), placeholder="ora-rac-1")
+        owner = c[3].text_input(t("inv_f_owner"), value=r.get("owner", ""), placeholder="DBA")
+        storage = c[4].text_input(t("inv_f_storage"), value=r.get("storage", ""), placeholder="SAN LUN-042 2TB")
+        c = st.columns([1.2, 1, 1.2, 1, 1.6])
+        vendor = c[0].text_input(t("inv_f_vendor_model"), value=r.get("vendor_model", ""), placeholder="Dell R760")
+        serial = c[1].text_input(t("inv_f_serial"), value=r.get("serial", ""))
+        monitoring = c[2].text_input(t("inv_f_monitoring"), value=r.get("monitoring", ""), placeholder="agent:db-01 / es-prod")
+        status = c[3].selectbox(t("inv_f_status"), list(wo_inv.STATUS), index=list(wo_inv.STATUS).index(r["status"]) if r.get("status") in wo_inv.STATUS else 0)
+        tags = c[4].text_input(t("inv_f_tags"), value=r.get("tags", ""), placeholder="oracle, core")
+        notes = st.text_area(t("inv_f_notes"), value=r.get("notes", ""), height=68)
+        b = st.columns([1, 1, 4])
+        if b[0].form_submit_button(f"💾 {t('inv_save')}", type="primary", **wide("form_submit_button")):
+            try:
+                inv.upsert({"hostname": hostname, "ip": ip, "aliases": aliases, "env": env, "dc": dc, "rack": rack, "vlan": vlan, "subnet": subnet, "os": os_, "role": role,
+                            "application": app_, "cluster": cluster, "owner": owner, "criticality": crit, "storage": storage, "vendor_model": vendor, "serial": serial,
+                            "monitoring": monitoring, "status": status, "tags": tags, "notes": notes, "source": r.get("source") or "manual"})
+                st.toast(t("inv_saved", h=hostname.strip()), icon="💾"); st.rerun()
+            except ValueError as e:
+                st.warning(str(e))
+        if rec and b[1].form_submit_button(f"🗑 {t('inv_delete')}", **wide("form_submit_button")):
+            inv.delete(rec["hostname"]); st.rerun()
+
+
 # ------------------------------------------------------------------ page: Sources (pull from Elasticsearch / Loki / Splunk / Graylog / HTTP)
 def page_sources() -> None:
     store = sources()
@@ -1659,7 +1782,7 @@ def page_sources() -> None:
     chips = [("#60a5fa", f"{len(rows)} {t('src_n')}"), ("#2dd4bf", f"{len(on)} {t('src_active')}"), ("#f87171" if errs else "#64748b", f"{len(errs)} {t('src_err')}"),
              ("#a78bfa", f"{sum(r.events for r in rows):,} {t('events_n')}")]
     st.markdown('<div class="chips">' + "".join(f'<span class="chip"><span class="d" style="background:{c}"></span>{esc(str(x))}</span>' for c, x in chips) + "</div>", unsafe_allow_html=True)
-    st.caption(t("src_intro"))
+    info_btn("src_intro")
 
     with st.expander(t("src_catalog"), expanded=not rows):
         cols = st.columns(3)
@@ -1667,7 +1790,7 @@ def page_sources() -> None:
             cols[i % 3].markdown(f'<div class="card" style="min-height:190px"><b>{meta["icon"]} {esc(meta["label"])}</b> <span class="muted">· :{meta["port"]}</span><br>'
                                  f'<span class="muted"><b>{t("src_needs")}:</b> {esc(t("src_needs_" + k))}</span><br>'
                                  f'<span class="muted"><b>{t("src_logs")}:</b> {esc(t("src_logs_" + k))}</span></div>', unsafe_allow_html=True)
-        st.caption(t("src_catalog_note"))
+        info_btn("src_catalog_note")
 
     with st.container(border=True):
         st.markdown(f"**➕ {t('src_add')}**")
@@ -1756,7 +1879,7 @@ def page_llm() -> None:
         c1, c2 = st.columns([3, 2], gap="medium")
         with c1, st.container(border=True):
             st.markdown(f"**🔌 {t('llm_conn_title')}**")
-            st.caption(t("llm_conn_hint"))
+            info_btn("llm_conn_hint")
             st.selectbox(t("llm_provider"), list(PROVIDERS), key="llm_provider", format_func=lambda x: t("prov_" + x))
             st.text_input(t("llm_base"), key="llm_base", placeholder="http://localhost:11434  ·  http://localhost:8000/v1  ·  https://api.openai.com/v1")
             st.text_input(t("llm_key"), key="llm_key", type="password")
@@ -1849,7 +1972,7 @@ def page_llm() -> None:
                     st.error(f"{name}: {e}")
 
     with tab_q:
-        st.caption(t("llm_q_hint"))
+        info_btn("llm_q_hint")
         k = st.columns(4)
         k[0].markdown(kpi2(pct(stt["success"], 0) if stt["success"] is not None else "-", t("llm_success"), "✅", "#2dd4bf" if (stt["success"] or 0) >= 0.95 else "#fb923c", f"{stt['calls']} {t('llm_calls')} · {stt['fallbacks']} {t('llm_fallbacks')}"), unsafe_allow_html=True)
         k[1].markdown(kpi2(f"{stt['p50_ms'] / 1000:.1f} s" if stt["calls"] else "-", t("llm_latency"), "⏱", "#60a5fa", f"p95 {stt['p95_ms'] / 1000:.1f} s" if stt["calls"] else ""), unsafe_allow_html=True)
@@ -1863,7 +1986,7 @@ def page_llm() -> None:
         with st.expander(f"ℹ️ {t('llm_metrics_help_title')}"):
             st.markdown(t("llm_metrics_help"))
         st.markdown(f"#### {t('learn_title')}")
-        st.caption(t("learn_hint"))
+        info_btn("learn_hint")
         lr = learner()
         lc = st.columns([1.2, 1.2, 1.4, 2.2])
         lm = lc[0].number_input(t("learn_every"), 0, 1440, int(ss.get("learn_min", 15) or 0), key="learn_min_in", help=t("learn_every_help"))
@@ -1993,6 +2116,9 @@ if page == "ops":
     st.stop()
 if page == "src":
     page_sources()
+    st.stop()
+if page == "inv":
+    page_inventory()
     st.stop()
 if page == "map":
     page_map()
@@ -2267,7 +2393,7 @@ with tab_over:
                      column_config={t("conf"): st.column_config.ProgressColumn(min_value=0, max_value=1, format="%.2f")})
         if prof["relations"]:
             st.dataframe(pd.DataFrame(prof["relations"]), hide_index=True, **wide("dataframe"))
-        st.caption(t("mapping_hint"))
+        info_btn("mapping_hint")
         all_keys = sorted({k for r in a.report for k in r["keys"]})
         cur = st.session_state.get("mapping", {})
         with st.form("mapping_form"):

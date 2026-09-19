@@ -443,7 +443,7 @@ def storm_edges(sigs: list[Signal], c: dict, deps: list[dict]) -> list[dict]:
 
 
 class Analysis:
-    def __init__(self, observations: list[Observation], report: list[dict]):
+    def __init__(self, observations: list[Observation], report: list[dict], inventory: dict | None = None):
         self.report = report
         self.observations, self.report = observations, report
         self.dependencies = tables.dependencies(report) + [d for d in getattr(scenario, "EXTRA_DEPENDENCIES", []) if d not in tables.dependencies(report)]
@@ -452,6 +452,8 @@ class Analysis:
             d2, i2 = tables.from_observations(observations)
             self.dependencies = self.dependencies or d2
             self.inventory = self.inventory or i2
+        if inventory:                                            # the product inventory (Envanter page) fills what the dataset lacks
+            self.inventory = {**inventory, **self.inventory}
         fingerprint(observations)
         mode = scenario.CLUSTERING
         self.mode = "density" if mode == "density" or (mode == "auto" and self.dependencies) else "fingerprint"
