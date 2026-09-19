@@ -35,6 +35,7 @@ from watchover.knowledge import Knowledge, RULE_KINDS
 from watchover.agents import AgentRegistry
 from watchover import settings as wo_settings
 from watchover import assistant as wo_assistant
+from watchover import sources as wo_sources
 from watchover.llm import LLMConfig, PROVIDERS, chat as llm_chat, embed as llm_embed, list_models as llm_models, set_sink as llm_set_sink, test_connection as llm_test
 from watchover import ollama as wo_ollama
 from watchover import llm_eval as wo_eval
@@ -319,6 +320,14 @@ def live_store() -> LiveStore:
 
 def agents() -> AgentRegistry:
     return _singleton("agents", AgentRegistry, lambda: AgentRegistry(knowledge()))
+
+
+def sources() -> wo_sources.SourceStore:
+    return _singleton("sources", wo_sources.SourceStore, lambda: wo_sources.SourceStore(knowledge()))
+
+
+def source_poller() -> wo_sources.Poller:
+    return _singleton("poller", wo_sources.Poller, lambda: wo_sources.Poller(sources(), live_store()).start())
 
 
 @st.cache_resource
@@ -698,8 +707,8 @@ def minute_chart(df: pd.DataFrame, incidents=None, height=200):
 # ------------------------------------------------------------------ sidebar navigation
 demo = Path(__file__).with_name("samples") / "demo_mixed.zip"
 LIVE_PORT = int(os.environ.get("LIVE_PORT", "8600"))
-PAGES = ["ops", "data", "map", "assist", "llm", "pb", "itsm", "conn", "readme"]
-PAGE_KEYS = {"ops": "sb_ops", "data": "sb_data", "map": "sb_map", "assist": "sb_assist", "llm": "sb_llm", "pb": "sb_pb", "itsm": "sb_itsm", "conn": "sb_conn", "readme": "sb_readme"}
+PAGES = ["ops", "data", "src", "map", "assist", "llm", "pb", "itsm", "conn", "readme"]
+PAGE_KEYS = {"ops": "sb_ops", "data": "sb_data", "src": "sb_src", "map": "sb_map", "assist": "sb_assist", "llm": "sb_llm", "pb": "sb_pb", "itsm": "sb_itsm", "conn": "sb_conn", "readme": "sb_readme"}
 
 
 # ------------------------------------------------------------------ first-run setup wizard
@@ -825,6 +834,7 @@ with st.sidebar:
 
 # always-on receiver + optional simulator (started once per process)
 _srv = receiver(int(st.session_state.get("live_port", LIVE_PORT)), st.session_state.get("live_key", ""))
+_poller = source_poller()                                       # pull sources (Elasticsearch, Loki, Splunk, Graylog, HTTP) poll in the background
 if st.session_state.get("sim_on", True):
     simulator()
 
@@ -1582,6 +1592,97 @@ def page_assist() -> None:
                 kb.decide(r_["id"], False); reanalyze(); st.rerun()
 
 
+# ------------------------------------------------------------------ page: Sources (pull from Elasticsearch / Loki / Splunk / Graylog / HTTP)
+def page_sources() -> None:
+    store = sources()
+    ss = st.session_state
+    st.markdown(f'<div class="wo-brand" style="padding:0 0 6px"><span style="display:inline-block;width:44px">{logo(44)}</span>'
+                f'<div><div class="name" style="font-size:30px">{t("src_page")}</div><div class="tag">{upper(t("src_page_tag"))}</div></div></div>', unsafe_allow_html=True)
+    rows = store.list()
+    on = [r for r in rows if r.enabled]
+    errs = [r for r in rows if r.last_err]
+    chips = [("#60a5fa", f"{len(rows)} {t('src_n')}"), ("#2dd4bf", f"{len(on)} {t('src_active')}"), ("#f87171" if errs else "#64748b", f"{len(errs)} {t('src_err')}"),
+             ("#a78bfa", f"{sum(r.events for r in rows):,} {t('events_n')}")]
+    st.markdown('<div class="chips">' + "".join(f'<span class="chip"><span class="d" style="background:{c}"></span>{esc(str(x))}</span>' for c, x in chips) + "</div>", unsafe_allow_html=True)
+    st.caption(t("src_intro"))
+
+    with st.expander(t("src_catalog"), expanded=not rows):
+        cols = st.columns(3)
+        for i, (k, meta) in enumerate(wo_sources.KINDS.items()):
+            cols[i % 3].markdown(f'<div class="card" style="min-height:190px"><b>{meta["icon"]} {esc(meta["label"])}</b> <span class="muted">· :{meta["port"]}</span><br>'
+                                 f'<span class="muted"><b>{t("src_needs")}:</b> {esc(t("src_needs_" + k))}</span><br>'
+                                 f'<span class="muted"><b>{t("src_logs")}:</b> {esc(t("src_logs_" + k))}</span></div>', unsafe_allow_html=True)
+        st.caption(t("src_catalog_note"))
+
+    with st.container(border=True):
+        st.markdown(f"**➕ {t('src_add')}**")
+        kind = st.selectbox(t("src_kind"), list(wo_sources.KINDS), key="src_kind", format_func=lambda k: f"{wo_sources.KINDS[k]['icon']} {wo_sources.KINDS[k]['label']}")
+        meta = wo_sources.KINDS[kind]
+        c = st.columns([1.4, 2.2, 2])
+        name = c[0].text_input(t("src_name"), key="src_name", placeholder=f"{kind}-prod")
+        url = c[1].text_input("URL", key="src_url", placeholder=meta["path_hint"], help=t("src_url_help"))
+        selector = c[2].text_input(meta["selector"], key="src_sel", placeholder=meta["selector_ex"], help=t("src_sel_help_" + kind))
+        c = st.columns([1.2, 1.4, 1.6, 1, 1, 1])
+        auth = c[0].selectbox(t("src_auth"), list(meta["auth"]), key="src_auth", format_func=lambda a: t("src_auth_" + a))
+        user = c[1].text_input(t("src_user"), key="src_user", disabled=auth != "basic")
+        secret = c[2].text_input(t("src_secret"), key="src_secret", type="password", disabled=auth == "none", help=t("src_secret_help"))
+        interval = c[3].number_input(t("src_interval"), 5, 3600, 30, key="src_interval")
+        env = c[4].selectbox(t("environment"), ["", "prod", "staging", "test", "dev", "qa", "dr"], key="src_env")
+        site = c[5].text_input(t("ag_site"), key="src_site", placeholder="IST-DC1")
+        with st.expander(t("src_advanced")):
+            a = st.columns([1, 1, 2])
+            verify = a[0].toggle(t("src_verify_tls"), value=True, key="src_verify")
+            lookback = a[1].number_input(t("src_lookback"), 1, 1440, 15, key="src_lookback")
+            ts_field = a[2].text_input(t("src_ts_field"), key="src_ts_field", placeholder="@timestamp")
+            headers = st.text_area(t("src_headers"), key="src_headers", placeholder="X-Scope-OrgID: tenant-1", height=68)
+        draft = wo_sources.Source(None, name.strip(), kind, url.strip(), selector.strip(), auth, user.strip(), secret, int(interval), env, site.strip(), True,
+                                  bool(verify), headers, ts_field.strip(), int(lookback))
+        b = st.columns([1, 1, 4])
+        if b[0].button(f"🧪 {t('src_test')}", key="src-test", **wide("button")) and url.strip():
+            ok, msg, sample = wo_sources.test_source(draft)
+            ss["src_test"] = (ok, msg, sample)
+        if b[1].button(f"💾 {t('src_save')}", key="src-save", type="primary", **wide("button")) and url.strip() and name.strip():
+            try:
+                store.add(draft); ss.pop("src_test", None); st.toast(t("src_saved", n=name.strip()), icon="✅"); st.rerun()
+            except ValueError as e:
+                st.warning(str(e))
+        if ss.get("src_test"):
+            ok, msg, sample = ss["src_test"]
+            (st.success if ok else st.error)(msg)
+            if sample:
+                st.dataframe(pd.DataFrame(sample)[[c_ for c_ in ("ts", "level", "host", "service", "msg") if c_ in sample[0]]], hide_index=True, **wide("dataframe"))
+
+    st.markdown(f"#### {t('src_list')}")
+
+    @st.fragment(run_every="5s")
+    def _rows():
+        rows = store.list()
+        if not rows:
+            st.caption(t("src_none")); return
+        from datetime import datetime as _dt
+        for r in rows:
+            meta = wo_sources.KINDS[r.kind]
+            c = st.columns([2.2, 1.2, 2.4, 1, 1.4, 1.2, 0.7, 0.7, 0.7])
+            fresh = bool(r.last_ok) and (datetime.now(UTC) - _dt.fromisoformat(r.last_ok)).total_seconds() < max(r.interval * 3, 120)
+            dot = "#64748b" if not r.enabled else ("#f87171" if r.last_err else "#2dd4bf" if fresh else "#fbbf24")
+            state = t("src_off") if not r.enabled else (t("src_failing") if r.last_err else t("ag_online") if fresh else t("ag_waiting"))
+            c[0].markdown(f'<span style="display:inline-block;width:8px;height:8px;border-radius:4px;background:{dot};margin-right:6px;box-shadow:0 0 0 3px {dot}33"></span>'
+                          f'<b>{esc(r.name)}</b> <span class="muted">· {state}</span>', unsafe_allow_html=True)
+            c[1].caption(f"{meta['icon']} {meta['label']}"); c[2].caption(f"{r.url[:48]}  {r.selector[:30]}")
+            c[3].caption(f"{r.interval}s · {r.env or '-'}"); c[4].caption(f"{(r.last_ok or '-')[:19]}")
+            c[5].caption(f"{r.events:,} {t('events_n')} · {r.polls} {t('src_polls')}")
+            if c[6].button("⏸" if r.enabled else "▶", key=f"src-tog-{r.id}", help=t("src_toggle")):
+                store.update(r.id, enabled=not r.enabled, last_err=""); st.rerun(scope="app")
+            if c[7].button("🧪", key=f"src-tst-{r.id}", help=t("src_test")):
+                ok, msg, _ = wo_sources.test_source(r); (st.success if ok else st.error)(msg)
+            if c[8].button("🗑", key=f"src-del-{r.id}", help=t("src_delete")):
+                store.delete(r.id); st.rerun(scope="app")
+            if r.last_err:
+                st.caption(f"⚠ {r.last_err[:160]}")
+
+    _rows()
+
+
 # ------------------------------------------------------------------ page: LLM (connection, models, quality)
 def page_llm() -> None:
     kb = kb_with_embedder()
@@ -1817,6 +1918,9 @@ def compare_view(da: dict, db: dict, ka: str, kb: str) -> None:
 
 if page == "ops":
     page_ops()
+    st.stop()
+if page == "src":
+    page_sources()
     st.stop()
 if page == "map":
     page_map()
