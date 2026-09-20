@@ -55,6 +55,8 @@ from watchover.pipeline import ingest_bytes, ingest_path
 from watchover.profiler import profile
 from watchover import stamp as wo_stamp
 
+for _k, _v in (st.session_state.pop("_pending_settings", None) or {}).items():   # settings changed by a widget-keyed page (model switcher), applied before any widget
+    st.session_state[_k] = _v
 if "cfg_loaded" not in st.session_state:                      # persisted settings become the session's defaults, once
     _cfg = wo_settings.load()
     for _k in wo_settings.SESSION_KEYS:
@@ -318,8 +320,7 @@ h1,h2,h3{color:#eef3f9}
   div[data-testid="stDataFrame"]{overflow-x:auto}
   .wo-brand .name{font-size:22px!important}
   .st-key-page label[data-testid="stRadioOption"]{padding:11px 12px}
-  .stTabs [data-baseweb="tab-list"]{overflow-x:auto;flex-wrap:nowrap}
-  .stTabs [data-baseweb="tab"]{padding:6px 10px;white-space:nowrap}
+  .stTabs [data-baseweb="tab"]{padding:6px 10px 6px 10px!important;white-space:nowrap}
   /* header rows (a title next to a toggle or a button) and three-way rows stack fully on phones */
   [data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"] [data-testid="stMarkdownContainer"] h4) > [data-testid="stColumn"]{flex-basis:100%!important;min-width:100%!important}
   [data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"]:nth-child(3):last-child) > [data-testid="stColumn"]{flex-basis:100%!important;min-width:100%!important}
@@ -348,6 +349,18 @@ section[data-testid="stSidebar"]::before{content:"";position:absolute;inset:0;po
 section[data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"],section[data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] button{opacity:1!important;visibility:visible!important}
 section[data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] button{background:linear-gradient(160deg,rgba(255,255,255,.12),rgba(255,255,255,.04))!important;border:1px solid rgba(255,255,255,.18)!important;border-radius:10px!important;color:#e2e8f0!important;backdrop-filter:blur(10px)}
 [data-testid="stSidebarCollapsedControl"] button,[data-testid="stExpandSidebarButton"] button,[data-testid="collapsedControl"] button{background:linear-gradient(160deg,rgba(45,212,191,.30),rgba(96,165,250,.22))!important;border:1px solid rgba(45,212,191,.55)!important;border-radius:12px!important;color:#f8fffe!important;backdrop-filter:blur(12px);box-shadow:0 10px 26px rgba(45,212,191,.22)}
+
+/* ---- tabs everywhere look like the status chips: glass pills with a dot, the active one teal */
+.stTabs [role="tablist"]{gap:8px!important;border-bottom:0!important;padding:2px 0 8px;flex-wrap:wrap;background:transparent!important}
+.stTabs [role="tablist"]::after,.stTabs [role="tablist"]::before{display:none!important}
+.stTabs .react-aria-SelectionIndicator,.stTabs [data-testid="stTabHighlight"],.stTabs [data-baseweb="tab-border"],.stTabs [data-baseweb="tab-highlight"]{display:none!important}
+.stTabs [data-testid="stTab"],.stTabs [data-baseweb="tab"]{height:auto!important;padding:7px 14px 7px 12px!important;border-radius:999px!important;background:linear-gradient(160deg,rgba(255,255,255,.075),rgba(255,255,255,.03))!important;border:1px solid rgba(255,255,255,.13)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.09),0 4px 14px rgba(2,6,23,.25);backdrop-filter:blur(10px);color:#c7d0dd!important;font-size:13.5px;font-weight:600;transition:background .15s ease,border-color .15s ease,transform .12s ease;margin:0!important}
+.stTabs [data-testid="stTab"]::before,.stTabs [data-baseweb="tab"]::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:8px;background:#64748b;box-shadow:0 0 0 3px rgba(100,116,139,.18);vertical-align:1px}
+.stTabs [data-testid="stTab"]:hover,.stTabs [data-baseweb="tab"]:hover{background:linear-gradient(160deg,rgba(255,255,255,.12),rgba(255,255,255,.05))!important;border-color:rgba(255,255,255,.25)!important;transform:translateY(-1px)}
+.stTabs [data-testid="stTab"][aria-selected="true"],.stTabs [data-baseweb="tab"][aria-selected="true"]{background:linear-gradient(135deg,rgba(45,212,191,.26),rgba(96,165,250,.20))!important;border-color:rgba(45,212,191,.6)!important;color:#f8fffe!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.16),0 8px 22px rgba(45,212,191,.18)}
+.stTabs [data-testid="stTab"][aria-selected="true"]::before,.stTabs [data-baseweb="tab"][aria-selected="true"]::before{background:#2dd4bf;box-shadow:0 0 0 3px rgba(45,212,191,.22)}
+.stTabs [data-testid="stTab"] p,.stTabs [data-testid="stTab"] div,.stTabs [data-baseweb="tab"] p{color:inherit!important;font-size:inherit!important;font-weight:inherit!important;display:inline}
+.stTabs [data-testid="stTabPanel"],.stTabs [data-baseweb="tab-panel"]{padding-top:10px}
 </style>"""
 st.markdown(CSS, unsafe_allow_html=True)
 st.markdown(GLASS, unsafe_allow_html=True)
@@ -2168,7 +2181,9 @@ def model_switcher(prefix: str, with_embed: bool = True) -> None:
         if pe != cur_e:
             changed["llm_embed"] = pe
     if changed:
-        ss.update(changed); wo_settings.save(changed); st.toast(t("llm_switched", m=changed.get("llm_model", ss.get("llm_model", ""))), icon="⭐"); st.rerun()
+        wo_settings.save(changed)
+        ss["_pending_settings"] = changed                     # applied at the top of the next run: llm_model is also a widget key on the LLM page
+        st.toast(t("llm_switched", m=changed.get("llm_model", ss.get("llm_model", ""))), icon="⭐"); st.rerun()
 
 
 def page_assist() -> None:

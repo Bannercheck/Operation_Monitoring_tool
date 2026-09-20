@@ -69,3 +69,13 @@ def test_every_page_renders(monkeypatch, tmp_path):
         at.sidebar.radio(key="page").set_value(page).run()
         assert not at.exception, (page, at.exception)
 
+
+
+def test_model_switch_does_not_touch_widget_keys(tmp_path, monkeypatch):
+    """Regression: switching the Ollama model on the LLM page wrote llm_model into session state after the text_input with
+    that key was instantiated (StreamlitWidgetAlreadyInstantiatedError). The change is queued and applied before any widget."""
+    src = (ROOT / "app.py").read_text(encoding="utf-8")
+    i = src.index("def model_switcher(")
+    body = src[i:src.index("\ndef ", i + 10)]
+    assert "ss.update(changed)" not in body and '_pending_settings' in body
+    assert src.index('st.session_state.pop("_pending_settings"') < src.index('if "cfg_loaded" not in st.session_state')
