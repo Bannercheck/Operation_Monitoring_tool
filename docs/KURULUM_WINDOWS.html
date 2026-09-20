@@ -1,0 +1,75 @@
+<!doctype html><html lang="tr"><head><meta charset="utf-8"><title>Watchover · Windows kurulum rehberi</title>
+<style>
+@page{size:A4;margin:18mm 16mm}
+body{font-family:-apple-system,"Segoe UI",Inter,Arial,sans-serif;color:#0f172a;font-size:11.5pt;line-height:1.5}
+h1{font-size:24pt;margin:0 0 2px;color:#0f172a}
+.sub{color:#0e7490;font-weight:700;letter-spacing:2px;font-size:9pt;margin-bottom:18px}
+h2{font-size:14.5pt;margin:22px 0 6px;color:#0f172a;border-bottom:2px solid #2dd4bf;padding-bottom:3px}
+p{margin:6px 0}
+pre{background:#0b1220;color:#e2e8f0;padding:10px 12px;border-radius:8px;font-size:9.6pt;line-height:1.45;white-space:pre-wrap;word-break:break-word}
+code{font-family:"SF Mono",Consolas,Menlo,monospace}
+.note{background:#f1f5f9;border-left:4px solid #60a5fa;padding:8px 12px;border-radius:6px;margin:8px 0}
+table{border-collapse:collapse;width:100%;margin:6px 0;font-size:10.5pt}
+td,th{border:1px solid #cbd5e1;padding:6px 8px;text-align:left;vertical-align:top}
+th{background:#f8fafc}
+.foot{margin-top:26px;font-size:9pt;color:#64748b;border-top:1px solid #e2e8f0;padding-top:6px}
+</style></head><body>
+<h1>Watchover · Windows kurulum rehberi</h1>
+<div class="sub">DASHBOARD KURULUMU · ÇALIŞTIRMA · GÜNCELLEME · WINDOWS SUNUCUYA AJAN</div>
+
+<h2>0. Ön koşullar</h2>
+<p>Python 3.11 veya üzeri (<code>https://www.python.org/downloads/</code>, kurulumda <b>“Add python.exe to PATH”</b> işaretli olmalı) ve Git for Windows (<code>https://git-scm.com/download/win</code>). Windows'ta launcher olmadığı için kurulum PowerShell ile elle yapılır.</p>
+
+<h2>1. Dashboard kurulumu (PowerShell)</h2>
+<pre>cd $HOME\Desktop
+git clone https://github.com/Bannercheck/Operation_Monitoring_tool.git watchover
+cd watchover
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+pip install -e .
+python -m pytest -q          # 87 passed beklenir</pre>
+<div class="note"><b>“running scripts is disabled”</b> hatası alırsanız bir kez şunu çalıştırın: <code>Set-ExecutionPolicy -Scope CurrentUser RemoteSigned</code></div>
+
+<h2>2. Çalıştırma</h2>
+<pre>cd $HOME\Desktop\watchover
+.venv\Scripts\Activate.ps1
+$env:LIVE_PORT = "8600"
+streamlit run app.py --server.fileWatcherType none</pre>
+<p>Tarayıcı <code>http://localhost:8501</code> adresini açar; canlı alıcı 8600 portunda dinler. Giriş için yerleşik yönetici hesabı <code>admin@watchover.local</code> ve size ayrıca iletilen başlangıç parolası kullanılır; ilk girişte yeni parola istenir.</p>
+<p>Diğer makinelerden ajan bağlanacaksa 8600 portu güvenlik duvarında açılmalıdır (yönetici PowerShell):</p>
+<pre>New-NetFirewallRule -DisplayName "Watchover receiver" -Direction Inbound -Protocol TCP -LocalPort 8600 -Action Allow</pre>
+<div class="note">Uygulamanın kurulduğu Windows makine kendi kendini zaten izler (Sistem › Durum › Bu makineyi izle); ona ayrıca ajan kurmanız gerekmez.</div>
+
+<h2>3. Güncelleme (main dalından)</h2>
+<pre>cd $HOME\Desktop\watchover
+git pull origin main
+.venv\Scripts\Activate.ps1
+pip install -e .</pre>
+<p>Ardından çalışan uygulamayı kapatıp yeniden başlatın. Veriler, ayarlar ve token'lar <code>data\</code> altındadır; <code>git pull</code> onlara dokunmaz. Uygulama içindeki Sistem › Güncelleme de çalışır; Windows'ta launcher olmadığından yeniden başlatma elle yapılır.</p>
+
+<h2>4. Windows sunucuya ajan kurmak</h2>
+<p>İzlenecek Windows sunucu dashboard'a log ve metrik gönderir. Token'ı Operasyon › <b>Sunucu bağla</b> ya da Bağlantı ayarları › Ajanlar'dan alın.</p>
+<pre>mkdir C:\watchover; cd C:\watchover
+Invoke-WebRequest http://&lt;dashboard-ip&gt;:8600/agent/agent.py -OutFile agent.py
+python agent.py --url http://&lt;dashboard-ip&gt;:8600/ingest --key wo_... --auto --metrics --windows-events</pre>
+<table><tr><th>Seçenek</th><th>Ne yapar</th></tr>
+<tr><td><code>--auto</code></td><td>Sunucudaki uygulamaları (SAP, Oracle, IIS, Java sunucuları, veritabanları…) bulur ve log dosyalarını izler</td></tr>
+<tr><td><code>--metrics</code></td><td>CPU, bellek, disk (varsa GPU) değerlerini gönderir</td></tr>
+<tr><td><code>--windows-events</code></td><td>System ve Application olay günlüklerini gönderir</td></tr>
+<tr><td><code>--enroll-key wk_...</code></td><td>Token yerine filo kayıt anahtarıyla kendi kendine kayıt</td></tr></table>
+<p>Kalıcı çalışması için Görev Zamanlayıcı'da (<code>taskschd.msc</code>) “Bilgisayar başlatıldığında” tetiklenen, SYSTEM hesabıyla çalışan bir görev oluşturup aynı komutu verin; ya da yönetici PowerShell ile:</p>
+<pre>$a = New-ScheduledTaskAction -Execute "python" -Argument "C:\watchover\agent.py --url http://&lt;dashboard-ip&gt;:8600/ingest --key wo_... --auto --metrics --windows-events" -WorkingDirectory "C:\watchover"
+$t = New-ScheduledTaskTrigger -AtStartup
+Register-ScheduledTask -TaskName "Watchover Agent" -Action $a -Trigger $t -User "SYSTEM" -RunLevel Highest</pre>
+
+<h2>5. Sorun giderme</h2>
+<table><tr><th>Belirti</th><th>Çözüm</th></tr>
+<tr><td><code>python</code> bulunamıyor</td><td>Python kurulumunda PATH seçeneği işaretlenmemiş; yeniden kurun veya <code>py -3</code> kullanın</td></tr>
+<tr><td>Ajan bağlanamıyor</td><td>Dashboard makinesinde 8600 portu açık mı, <code>Test-NetConnection &lt;dashboard-ip&gt; -Port 8600</code></td></tr>
+<tr><td>Giriş yapılamıyor</td><td><code>python -m watchover.useradmin list</code> hesapları ve kilidi gösterir; <code>… password EMAIL</code> parola sıfırlar, <code>… unlock EMAIL</code> kilidi kaldırır</td></tr>
+<tr><td>Kart sayısı Mac'tekinden farklı</td><td>Sistem sayfasındaki sürüm / motor / git çiplerini karşılaştırın; <code>git pull origin main</code></td></tr></table>
+
+<div class="foot">Watchover v1.0 · Bannercheck/Operation_Monitoring_tool · 2026-09-20</div>
+</body></html>

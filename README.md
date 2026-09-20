@@ -35,7 +35,7 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev,mcp]"            # dev: pytest · mcp: MCP sunucusu için SDK
 ```
 
-Windows (PowerShell):
+Windows (PowerShell; adım adım rehber: `docs/KURULUM_WINDOWS.html`, PDF olarak da iletilir):
 
 ```powershell
 python -m venv .venv
