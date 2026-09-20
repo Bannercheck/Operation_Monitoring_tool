@@ -77,7 +77,8 @@ case "${1:-start}" in
     fi
     exec "$DIR/bin/watchover" restart --hard;;
   logs) tail -f "$LOG";;
+  version) cd "$SRC" && exec "$DIR/.venv/bin/python" -m watchover.release show;;          # Watchover v1.1 · date · notes
   agent) shift; cd "$SRC" && exec "$DIR/.venv/bin/python" agent.py "$@";;
   user) shift; cd "$SRC" && exec "$DIR/.venv/bin/python" -m watchover.useradmin "$@";;   # accounts from the terminal: list | add | promote | password | unlock | enable | disable | delete
-  *) echo "usage: watchover start|stop|restart [--hard]|status|run|open|update [file.zip]|logs|agent [args]|user [list|add|promote|password|unlock|enable|disable|delete]"; exit 1;;
+  *) echo "usage: watchover start|stop|restart [--hard]|status|run|open|update [file.zip]|version|logs|agent [args]|user [list|add|promote|password|unlock|enable|disable|delete]"; exit 1;;
 esac

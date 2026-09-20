@@ -338,3 +338,20 @@ def test_selfmon_command_and_token(tmp_path, monkeypatch):
     assert stale.wait(timeout=5) is not None and not selfmon.pid_file().exists()
     cmd = selfmon.command(8600, tok2, root=tmp_path)
     assert "--auto" in cmd and "--metrics" in cmd and f"http://127.0.0.1:8600/ingest" in cmd and str(tmp_path / "agent.py") in cmd
+
+
+def test_release_bump_and_changelog(tmp_path):
+    from watchover import release
+    from datetime import date
+    root = tmp_path; (root / "src" / "watchover").mkdir(parents=True)
+    (root / "src" / "watchover" / "__init__.py").write_text('__version__ = "1.0.0"\n'); (root / "pyproject.toml").write_text('[project]\nname = "x"\nversion = "1.0.0"\n')
+    assert release.display("1.0.0") == "v1.0" and release.display("1.2.0") == "v1.2" and release.display("1.2.3") == "v1.2.3"
+    assert release.next_version("1.0.0", "minor") == "1.1.0" and release.next_version("1.1.0", "patch") == "1.1.1" and release.next_version("1.1.1", "major") == "2.0.0"
+    assert release.bump("minor", "Bildirimler sekmesi\n- SMS sağlayıcıları", root, date(2026, 9, 20)) == "1.1.0"
+    assert release.current(root) == "1.1.0" and 'version = "1.1.0"' in (root / "pyproject.toml").read_text()
+    assert release.bump("patch", "MFA düzeltmesi", root, date(2026, 9, 21)) == "1.1.1"
+    e = release.entries(root / "CHANGELOG.md")
+    assert [x["version"] for x in e] == ["v1.1.1", "v1.1"] and e[1]["lines"] == ["Bildirimler sekmesi", "SMS sağlayıcıları"] and e[0]["kind"] == "düzeltme" and e[1]["date"] == "2026-09-20"
+    import pytest
+    with pytest.raises(ValueError):
+        release.next_version("1.0.0", "huge")

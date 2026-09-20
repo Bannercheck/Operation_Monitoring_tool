@@ -30,6 +30,7 @@ Watchover — AO Hackathon 2026 Enterprise katılımı. Operasyonel gürültü �
 - Stack kullanıcının seçimi, değiştirme: Python 3.9+, Streamlit, pandas, python-dateutil, pytest.
 - Motor `src/watchover/` altında; senaryoya özel ayar yalnız `scenario/`.
 - Her adım ayrı commit, `make test` yeşil; commit mesajı: kısa başlık + madde listesi.
+- **Sürümleme:** her devreye alınan adım bir sürümdür. Küçük güncelleme `python -m watchover.release minor "özet"` (v1.1, v1.2…), düzeltme `patch` (v1.1.1), büyük sürüm yalnız ürün sahibi isteyince `major` (v2). Komut `__init__.py`, `pyproject.toml` ve `CHANGELOG.md`'yi günceller; commit'e `vX.Y` etiketi atılır (`--commit`), Sistem › Güncelleme sürüm notlarını gösterir.
 - Depo: `Bannercheck/Operation_Monitoring_tool`, branch: `main` (eski geliştirme dalı `ollama_audit` deposundaki `claude/cool-tesla-dh9nw3` idi).
 
 ## Çalışma Kuralları

@@ -42,6 +42,7 @@ from watchover import notify as wo_notify
 from watchover import vault as wo_vault
 from watchover import rbac as wo_rbac
 from watchover import selfmon as wo_selfmon
+from watchover import release as wo_release
 from watchover import autolearn as wo_learn
 from watchover import inventory as wo_inv
 from watchover import auth as wo_auth
@@ -320,7 +321,7 @@ h1,h2,h3{color:#eef3f9}
   div[data-testid="stDataFrame"]{overflow-x:auto}
   .wo-brand .name{font-size:22px!important}
   .st-key-page label[data-testid="stRadioOption"]{padding:11px 12px}
-  .stTabs [data-baseweb="tab"]{padding:6px 10px 6px 10px!important;white-space:nowrap}
+  .stTabs [data-testid="stTab"]{height:34px!important;min-height:34px!important;max-height:34px!important;padding:0 12px 0 10px!important;font-size:13px!important}
   /* header rows (a title next to a toggle or a button) and three-way rows stack fully on phones */
   [data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"] [data-testid="stMarkdownContainer"] h4) > [data-testid="stColumn"]{flex-basis:100%!important;min-width:100%!important}
   [data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"]:nth-child(3):last-child) > [data-testid="stColumn"]{flex-basis:100%!important;min-width:100%!important}
@@ -350,16 +351,17 @@ section[data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"],section
 section[data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] button{background:linear-gradient(160deg,rgba(255,255,255,.12),rgba(255,255,255,.04))!important;border:1px solid rgba(255,255,255,.18)!important;border-radius:10px!important;color:#e2e8f0!important;backdrop-filter:blur(10px)}
 [data-testid="stSidebarCollapsedControl"] button,[data-testid="stExpandSidebarButton"] button,[data-testid="collapsedControl"] button{background:linear-gradient(160deg,rgba(45,212,191,.30),rgba(96,165,250,.22))!important;border:1px solid rgba(45,212,191,.55)!important;border-radius:12px!important;color:#f8fffe!important;backdrop-filter:blur(12px);box-shadow:0 10px 26px rgba(45,212,191,.22)}
 
-/* ---- tabs everywhere look like the status chips: glass pills with a dot, the active one teal */
-.stTabs [role="tablist"]{gap:8px!important;border-bottom:0!important;padding:2px 0 8px;flex-wrap:wrap;background:transparent!important}
+/* ---- tabs everywhere look like the status chips: same-height glass pills that grow sideways with their label; the strip scrolls */
+.stTabs [role="tablist"]{display:flex!important;flex-wrap:nowrap!important;gap:8px!important;border-bottom:0!important;padding:2px 2px 8px;background:transparent!important;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;align-items:center}
+.stTabs [role="tablist"]::-webkit-scrollbar{display:none}
 .stTabs [role="tablist"]::after,.stTabs [role="tablist"]::before{display:none!important}
 .stTabs .react-aria-SelectionIndicator,.stTabs [data-testid="stTabHighlight"],.stTabs [data-baseweb="tab-border"],.stTabs [data-baseweb="tab-highlight"]{display:none!important}
-.stTabs [data-testid="stTab"],.stTabs [data-baseweb="tab"]{height:auto!important;padding:7px 14px 7px 12px!important;border-radius:999px!important;background:linear-gradient(160deg,rgba(255,255,255,.075),rgba(255,255,255,.03))!important;border:1px solid rgba(255,255,255,.13)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.09),0 4px 14px rgba(2,6,23,.25);backdrop-filter:blur(10px);color:#c7d0dd!important;font-size:13.5px;font-weight:600;transition:background .15s ease,border-color .15s ease,transform .12s ease;margin:0!important}
-.stTabs [data-testid="stTab"]::before,.stTabs [data-baseweb="tab"]::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:8px;background:#64748b;box-shadow:0 0 0 3px rgba(100,116,139,.18);vertical-align:1px}
-.stTabs [data-testid="stTab"]:hover,.stTabs [data-baseweb="tab"]:hover{background:linear-gradient(160deg,rgba(255,255,255,.12),rgba(255,255,255,.05))!important;border-color:rgba(255,255,255,.25)!important;transform:translateY(-1px)}
+.stTabs [data-testid="stTab"],.stTabs [data-baseweb="tab"]{flex:0 0 auto!important;display:inline-flex!important;align-items:center;height:36px!important;min-height:36px!important;max-height:36px!important;line-height:1!important;white-space:nowrap!important;padding:0 14px 0 12px!important;margin:0!important;border-radius:999px!important;background:linear-gradient(160deg,rgba(255,255,255,.075),rgba(255,255,255,.03))!important;border:1px solid rgba(255,255,255,.13)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.09),0 4px 14px rgba(2,6,23,.25);backdrop-filter:blur(10px);color:#c7d0dd!important;font-size:13.5px!important;font-weight:600;transition:background .15s ease,border-color .15s ease}
+.stTabs [data-testid="stTab"]::before,.stTabs [data-baseweb="tab"]::before{content:"";flex:0 0 auto;width:7px;height:7px;border-radius:50%;margin-right:8px;background:#64748b;box-shadow:0 0 0 3px rgba(100,116,139,.18)}
+.stTabs [data-testid="stTab"]:hover,.stTabs [data-baseweb="tab"]:hover{background:linear-gradient(160deg,rgba(255,255,255,.12),rgba(255,255,255,.05))!important;border-color:rgba(255,255,255,.25)!important}
 .stTabs [data-testid="stTab"][aria-selected="true"],.stTabs [data-baseweb="tab"][aria-selected="true"]{background:linear-gradient(135deg,rgba(45,212,191,.26),rgba(96,165,250,.20))!important;border-color:rgba(45,212,191,.6)!important;color:#f8fffe!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.16),0 8px 22px rgba(45,212,191,.18)}
 .stTabs [data-testid="stTab"][aria-selected="true"]::before,.stTabs [data-baseweb="tab"][aria-selected="true"]::before{background:#2dd4bf;box-shadow:0 0 0 3px rgba(45,212,191,.22)}
-.stTabs [data-testid="stTab"] p,.stTabs [data-testid="stTab"] div,.stTabs [data-baseweb="tab"] p{color:inherit!important;font-size:inherit!important;font-weight:inherit!important;display:inline}
+.stTabs [data-testid="stTab"] [data-testid="stMarkdownContainer"],.stTabs [data-testid="stTab"] p,.stTabs [data-testid="stTab"] div,.stTabs [data-baseweb="tab"] p{display:inline!important;color:inherit!important;font-size:inherit!important;font-weight:inherit!important;line-height:1!important;margin:0!important;padding:0!important;white-space:nowrap!important}
 .stTabs [data-testid="stTabPanel"],.stTabs [data-baseweb="tab-panel"]{padding-top:10px}
 </style>"""
 st.markdown(CSS, unsafe_allow_html=True)
@@ -2710,7 +2712,7 @@ def page_system() -> None:
     vi = wo_admin.version_info()
     ls = live_store(); kb = knowledge(); us = users()
     _st = wo_stamp.stamp()
-    chips = [("#2dd4bf", f"Watchover v{_st['version']}"), ("#2dd4bf", f"{t('stamp_engine')} {_st['engine']}"), ("#2dd4bf", f"git {vi['git'][:7] or '-'}"), ("#2dd4bf", f"{t('stamp_scenario')} {_st['scenario']}"),
+    chips = [("#2dd4bf", f"Watchover {wo_release.display(_st['version'])}"), ("#2dd4bf", f"{t('stamp_engine')} {_st['engine']}"), ("#2dd4bf", f"git {vi['git'][:7] or '-'}"), ("#2dd4bf", f"{t('stamp_scenario')} {_st['scenario']}"),
              ("#60a5fa", f"{t('sys_uptime')} {vi['uptime_s'] // 3600}h {(vi['uptime_s'] % 3600) // 60}m"),
              ("#a78bfa", f"Streamlit {vi['streamlit']} · Python {vi['python']}"), ("#2dd4bf" if vi["launcher"] else "#fbbf24", t("sys_launcher_ok") if vi["launcher"] else t("sys_launcher_none"))]
     st.markdown('<div class="chips">' + "".join(f'<span class="chip"><span class="d" style="background:{c}"></span>{esc(str(x))}</span>' for c, x in chips) + "</div>", unsafe_allow_html=True)
@@ -2933,6 +2935,15 @@ def page_system() -> None:
                          hide_index=True, height=420, **wide("dataframe"))
         else:
             st.caption(t("sec_log_none"))
+    with tab_upd:
+        st.markdown(f"#### {t('rel_title')}")
+        _notes = wo_release.entries()
+        if not _notes:
+            st.caption(t("rel_none"))
+        for i, e in enumerate(_notes[:12]):
+            _kind_col = {"büyük sürüm": "#2dd4bf", "düzeltme": "#fbbf24"}.get(e["kind"], "#60a5fa")
+            st.markdown(f'<div class="card svc" style="margin-bottom:8px"><div class="svc-h"><span class="d" style="background:{_kind_col};box-shadow:0 0 0 3px {_kind_col}33"></span><b>{esc(e["version"])}</b> · {esc(e["date"])} · {esc(e["kind"])}'
+                        + (f' <span class="role r-admin">{t("ver_current")}</span>' if i == 0 else "") + '</div><div class="svc-v">' + "<br>".join("• " + esc(x) for x in e["lines"]) + "</div></div>", unsafe_allow_html=True)
     _ph.empty()
 
 
