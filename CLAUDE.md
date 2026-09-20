@@ -30,7 +30,7 @@ Watchover — AO Hackathon 2026 Enterprise katılımı. Operasyonel gürültü �
 - Stack kullanıcının seçimi, değiştirme: Python 3.9+, Streamlit, pandas, python-dateutil, pytest.
 - Motor `src/watchover/` altında; senaryoya özel ayar yalnız `scenario/`.
 - Her adım ayrı commit, `make test` yeşil; commit mesajı: kısa başlık + madde listesi.
-- Branch: `claude/cool-tesla-dh9nw3`.
+- Depo: `Bannercheck/Operation_Monitoring_tool`, branch: `main` (eski geliştirme dalı `ollama_audit` deposundaki `claude/cool-tesla-dh9nw3` idi).
 
 ## Çalışma Kuralları
 
@@ -69,4 +69,4 @@ Watchover — AO Hackathon 2026 Enterprise katılımı. Operasyonel gürültü �
 - Stack (kullanıcının seçimi, değiştirme): Python 3.11, Streamlit UI (`app.py`),
   pandas, stdlib csv/json, python-dateutil, pytest. Motor `src/watchover/`,
   case'e özel kod sadece `src/watchover/scenario/`. LLM opsiyonel, çekirdeğe bağlı değil.
-- Branch: `claude/cool-tesla-dh9nw3`. Her adım ayrı commit, `make test` yeşil.
+- Depo `Bannercheck/Operation_Monitoring_tool`, branch `main`. Her adım ayrı commit, `make test` yeşil.

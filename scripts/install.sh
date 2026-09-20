@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Watchover — one-line install for macOS and Linux, as the current user (no sudo, no Docker).
-#   curl -fsSL https://raw.githubusercontent.com/<org>/watchover/main/scripts/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/Bannercheck/Operation_Monitoring_tool/main/scripts/install.sh | bash
 #   curl -fsSL .../install.sh | bash -s -- --with-ollama --models "qwen2.5:7b-instruct bge-m3"
 #   Options: --dir <path>  --repo <git url>  --branch <name>  --port 8501  --with-ollama  --models "…"  --no-autostart  --no-open
 set -euo pipefail
-REPO="${WATCHOVER_REPO:-https://github.com/Bannercheck/ollama_audit.git}"
-BRANCH="${WATCHOVER_BRANCH:-claude/cool-tesla-dh9nw3}"   # main is still empty; switch to main after the merge
+REPO="${WATCHOVER_REPO:-https://github.com/Bannercheck/Operation_Monitoring_tool.git}"
+BRANCH="${WATCHOVER_BRANCH:-main}"
 PORT=8501; WITH_OLLAMA=0
 MODELS="qwen2.5:7b-instruct bge-m3"; AUTOSTART=1; OPEN=1
 OS="$(uname -s)"
