@@ -61,6 +61,10 @@ case "${1:-start}" in
       echo "code updated from $2 → $SRC"
     elif [[ -d "$SRC/.git" ]]; then
       git -C "$SRC" remote get-url origin >/dev/null 2>&1 || git -C "$SRC" remote add origin "$REPO"
+      REPO="$(git -C "$SRC" remote get-url origin)"                                   # follow a renamed / moved repository
+      if [[ "$BRANCH" == claude/* ]] && git -C "$SRC" ls-remote --exit-code --heads origin main >/dev/null 2>&1; then
+        BRANCH=main; echo "development branch retired → following main from now on"   # installs made from the hackathon branch migrate themselves
+      fi
       git -C "$SRC" fetch -q origin "$BRANCH" || { echo "cannot reach $REPO — use: watchover update /path/to/watchover.zip"; exit 1; }
       if [[ -n "$(git -C "$SRC" status --porcelain)" ]]; then git -C "$SRC" stash push -q -u -m "watchover update $(date +%F)"; echo "local changes stashed (git stash list)"; fi
       git -C "$SRC" checkout -q -B "$BRANCH" "origin/$BRANCH" && echo "code updated → $(git -C "$SRC" log -1 --format='%h %s')"
