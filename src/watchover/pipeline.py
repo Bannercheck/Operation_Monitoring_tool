@@ -15,27 +15,63 @@ from .parsers import PARSERS
 from . import scenario, tables
 
 
+PARALLEL_MIN_BYTES = 32 * 1024 * 1024    # archives / multi-file uploads above this parse their files on several cores...
+PARALLEL_MIN_FILES = 3
+PARALLEL_MIN_CPUS = 8                     # ...on machines with enough cores: returning parsed events from a worker costs about
+                                          # as much as parsing them (measured: 0.58 s parse vs 0.8 s transfer per 120k lines), so
+                                          # fewer cores lose. WATCHOVER_PARALLEL=1 forces it on, =0 off.
+
+
+def _parse_one(fname: str, text: str, mapping: dict | None) -> tuple[list[Observation], dict]:
+    """Parse one file (runs in the main process or in a worker); pure function of its inputs, so the order of results
+    is fixed by the caller and the outcome is identical either way."""
+    if tables.is_side_table(fname):        # reference data (dependencies, inventory, dictionary): kept, not parsed as events
+        rows = tables.read_table(fname, text)
+        return [], {"file": fname, "format": "table", "confidence": 1.0, "rows": len(rows), "kind": "table",
+                    "keys": list(rows[0].keys()) if rows else [], "roles": {}, "table": rows, "sha": stamp.file_id(fname, text)}
+    fmt, conf = detect_format(text)
+    parser = PARSERS[fmt]
+    head = [r for _, r in itertools.islice(parser.records(text), 50)]
+    keys: list[str] = []
+    for r in head:
+        keys.extend(k for k in r if k not in keys)
+    roles = auto_map(keys, head, mapping)
+    rows = list(parser.parse(text, fname, mapping, conf))
+    return rows, {"file": fname, "format": fmt, "confidence": conf, "rows": len(rows),
+                  "kind": rows[0].kind if rows else "-", "keys": keys, "roles": roles, "sha": stamp.file_id(fname, text)}
+
+
+def _workers(items: list[tuple[str, str]]) -> int:
+    import os
+    total = sum(len(t) for _, t in items)
+    flag = os.environ.get("WATCHOVER_PARALLEL", "")
+    cpus = os.cpu_count() or 2
+    if flag == "0" or len(items) < PARALLEL_MIN_FILES or total < PARALLEL_MIN_BYTES or (flag != "1" and cpus < PARALLEL_MIN_CPUS):
+        return 1
+    return max(1, min(len(items), cpus - 2, 8))
+
+
 def ingest(files: Iterator[tuple[str, str]], mapping: dict | None = None) -> tuple[list[Observation], list[dict]]:
     mapping = mapping or scenario.MAPPING or None
+    items = list(files)
     observations: list[Observation] = []
     report: list[dict] = []
-    for fname, text in files:
-        if tables.is_side_table(fname):        # reference data (dependencies, inventory, dictionary): kept, not parsed as events
-            rows = tables.read_table(fname, text)
-            report.append({"file": fname, "format": "table", "confidence": 1.0, "rows": len(rows), "kind": "table",
-                           "keys": list(rows[0].keys()) if rows else [], "roles": {}, "table": rows, "sha": stamp.file_id(fname, text)})
-            continue
-        fmt, conf = detect_format(text)
-        parser = PARSERS[fmt]
-        head = [r for _, r in itertools.islice(parser.records(text), 50)]
-        keys: list[str] = []
-        for r in head:
-            keys.extend(k for k in r if k not in keys)
-        roles = auto_map(keys, head, mapping)
-        rows = list(parser.parse(text, fname, mapping, conf))
+    n = _workers(items)
+    results = None
+    if n > 1:
+        try:
+            from concurrent.futures import ProcessPoolExecutor
+            order = sorted(range(len(items)), key=lambda i: -len(items[i][1]))      # biggest files first: better packing
+            with ProcessPoolExecutor(max_workers=n) as ex:
+                futs = {i: ex.submit(_parse_one, items[i][0], items[i][1], mapping) for i in order}
+                results = [futs[i].result() for i in range(len(items))]             # back in the caller's order
+        except Exception:  # noqa: BLE001  (no fork on this platform, pickling limits...): the sequential path is always right
+            results = None
+    if results is None:
+        results = [_parse_one(fname, text, mapping) for fname, text in items]
+    for rows, rep in results:
         observations.extend(rows)
-        report.append({"file": fname, "format": fmt, "confidence": conf, "rows": len(rows),
-                       "kind": rows[0].kind if rows else "-", "keys": keys, "roles": roles, "sha": stamp.file_id(fname, text)})
+        report.append(rep)
     observations = dedupe(observations, report)
     fill_missing_timestamps(observations)
     observations.sort(key=lambda o: o.timestamp)

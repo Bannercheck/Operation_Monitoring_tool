@@ -1892,7 +1892,7 @@ def page_ops() -> None:
     def _panel():
         if st.session_state.get("open_ops_detail") or st.session_state.get("open_connect"):
             st.rerun(scope="app")
-        all_stt = ls.stats(15)
+        all_stt = ls.cached("stats", 15)
         real_agents = [a_ for a_ in all_stt["agents"] if a_ != "simulator"]
         if st.session_state.get("sim_on", False):                # the switch decides the badge, not the data
             badge_txt, badge_col = t("live_sim_badge"), "#fbbf24"
@@ -1918,13 +1918,13 @@ def page_ops() -> None:
         with side:
             st.markdown(f"#### {t('ops_scope')}")
             env, host = scope_panel(ls)
-        stt, slo, ms = ls.stats(15, env, host), ls.slo(15, env, host), ls.metric_stats(15, env, host)
+        stt, slo, ms = ls.cached("stats", 15, env, host), ls.cached("slo", 15, env, host), ls.cached("metric_stats", 15, env, host)
         det = ls.slo_detail(15, env, host)
         scope = scope_label(env, host)
         scope_html = f" <span class='pill' style='background:#60a5fa'>{t('ops_filter_on')}: {esc(scope)}</span>" if scope else ""
         with main:
             st.markdown(f"#### {t('ops_infra')}{scope_html} <span class='muted'>· {ms['samples']} {t('od_samples')}</span>", unsafe_allow_html=True)
-            metrics_block(ms, clickable=True, files=ls.files(15, env, host))
+            metrics_block(ms, clickable=True, files=ls.cached("files", 15, env, host))
             st.markdown(f"#### {t('ops_slo')}{scope_html}", unsafe_allow_html=True, help=t("ops_slo_basis"))
             slo_block(slo, stt, clickable=True, det=det)
         st.markdown("")

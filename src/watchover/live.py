@@ -43,6 +43,7 @@ class LiveStore:
     """Thread-safe ring buffer of recent observations + append-only JSONL spool on disk."""
 
     def __init__(self, spool: str | Path | None = None, maxlen: int = 50_000):
+        self._memo: dict = {}
         self.buf: deque[Observation] = deque(maxlen=maxlen)
         self.metrics: deque[tuple] = deque(maxlen=maxlen)     # (ts, host, metric, value, env)
         self.lock = threading.Lock()
@@ -119,14 +120,42 @@ class LiveStore:
             if src.exists():
                 src.replace(dst)
 
-    def snapshot(self, env: str | None = None, host: str | None = None) -> list[Observation]:
+    def snapshot(self, env: str | None = None, host: str | None = None, since=None) -> list[Observation]:
+        """Events (optionally one env / host, optionally not older than `since`). Events arrive roughly in time order, so a
+        `since` scan walks the buffer from the newest end and stops once a run of 2000 older events is seen instead of
+        touching all 50k on every 2-second refresh."""
         with self.lock:
-            obs = list(self.buf)
+            if since is None:
+                obs = list(self.buf)
+            else:
+                obs, stale = [], 0
+                for o in reversed(self.buf):
+                    if o.timestamp >= since:
+                        obs.append(o); stale = 0
+                    else:
+                        stale += 1
+                        if stale > 2000:
+                            break
+                obs.reverse()
         if env:
             obs = [o for o in obs if (o.environment or "unknown") == env]
         if host:
             obs = [o for o in obs if host_match(o.host, host)]
         return obs
+
+    def cached(self, name: str, *args):
+        """Memoised query for the refreshing panels: the same (query, args) within the same 2-second tick and the same
+        buffer version is computed once, however many widgets ask for it."""
+        key = (name, args)
+        version = (self.received, len(self.metrics), int(time.time() // 2))
+        hit = self._memo.get(key)
+        if hit and hit[0] == version:
+            return hit[1]
+        if len(self._memo) > 64:
+            self._memo.clear()
+        out = getattr(self, name)(*args)
+        self._memo[key] = (version, out)
+        return out
 
     def environments(self) -> dict[str, int]:
         return dict(Counter((o.environment or "unknown") for o in self.snapshot()).most_common())
@@ -146,8 +175,8 @@ class LiveStore:
         """Which log files (per sender / host) the events came from, with totals, ERROR+ counts and the last error."""
         start = datetime.now(UTC) - timedelta(minutes=window_min)
         out: dict[tuple, dict] = {}
-        for o in self.snapshot(env, host):
-            if o.timestamp < start or o.attributes.get("discovery_app"):
+        for o in self.snapshot(env, host, since=start):
+            if o.attributes.get("discovery_app"):
                 continue
             k = (o.attributes.get("agent", "-"), o.host or "-", o.source or "-")
             g = out.setdefault(k, {"agent": k[0], "host": k[1], "file": k[2], "total": 0, "errors": 0, "last": o.timestamp, "last_error": None, "last_msg": "", "services": set()})
@@ -187,7 +216,7 @@ class LiveStore:
         per_min: Counter = Counter()
         services: Counter = Counter()
         errors = 0
-        obs = self.snapshot(env, host)
+        obs = self.snapshot(env, host, since=start)
         for o in obs:
             if o.timestamp >= start:
                 per_min[(o.timestamp.replace(second=0, microsecond=0), o.severity)] += 1
@@ -198,7 +227,12 @@ class LiveStore:
         rows = [{"minute": (start + timedelta(minutes=i)), "severity": sev, "events": per_min.get((start + timedelta(minutes=i), sev), 0)}
                 for i in range(window_min) for sev in SEV_RANK]
         recent = sum(1 for o in obs if o.timestamp >= now - timedelta(minutes=1))
-        return {"rows": rows, "services": services.most_common(8), "total": len(obs), "received": self.received,
+        if env or host:                                          # "total" is the whole scoped buffer, not only the window
+            total = len(self.snapshot(env, host))
+        else:
+            with self.lock:
+                total = len(self.buf)
+        return {"rows": rows, "services": services.most_common(8), "total": total, "received": self.received,
                 "errors": errors, "per_minute_now": recent, "agents": {k: round(time.time() - v) for k, v in self.agents.items()},
                 "last": obs[-1].timestamp if obs else None}
 
@@ -256,7 +290,7 @@ class LiveStore:
     def slo(self, window_min: int = 15, env: str | None = None, host: str | None = None) -> dict:
         """Availability = 1 - ERROR+/total, p95 latency from '<n>ms' in messages, error budget vs scenario.SLO / SLA."""
         start = datetime.now(UTC) - timedelta(minutes=window_min)
-        obs = [o for o in self.snapshot(env, host) if o.timestamp >= start]
+        obs = self.snapshot(env, host, since=start)
         total = len(obs)
         errors = sum(1 for o in obs if SEV_RANK[o.severity] >= 3)
         avail = 1 - errors / total if total else None

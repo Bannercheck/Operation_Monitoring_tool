@@ -16,6 +16,10 @@ from . import __version__
 PKG = Path(__file__).resolve().parent
 
 
+from functools import lru_cache
+
+
+@lru_cache(maxsize=1)
 def engine_id() -> str:
     """sha256 over every .py file of the package (sorted) -> 10 hex. Changes whenever any engine rule changes."""
     h = hashlib.sha256()
@@ -24,11 +28,13 @@ def engine_id() -> str:
     return h.hexdigest()[:10]
 
 
+@lru_cache(maxsize=1)
 def scenario_id() -> str:
     """sha256 of scenario/__init__.py (the knobs) -> 8 hex."""
     return hashlib.sha256((PKG / "scenario" / "__init__.py").read_bytes()).hexdigest()[:8]
 
 
+@lru_cache(maxsize=1)
 def git_rev() -> str:
     """Short git revision of the checkout the package lives in, without spawning git ("-" when not a checkout)."""
     for root in (PKG.parent.parent, PKG.parent):

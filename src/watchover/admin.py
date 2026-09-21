@@ -25,14 +25,19 @@ def repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+_git_cache: dict = {}
+
+
 def version_info() -> dict:
     from . import stamp
     root = repo_root()
-    git = ""
-    try:
-        git = subprocess.run(["git", "-C", str(root), "log", "-1", "--format=%h %cs %s"], capture_output=True, text=True, timeout=5).stdout.strip()
-    except Exception:  # noqa: BLE001
-        pass
+    git = _git_cache.get("line", "")
+    if time.time() - _git_cache.get("at", 0) > 60:                 # one git subprocess per minute at most, not one per render
+        try:
+            git = subprocess.run(["git", "-C", str(root), "log", "-1", "--format=%h %cs %s"], capture_output=True, text=True, timeout=5).stdout.strip()
+        except Exception:  # noqa: BLE001
+            git = ""
+        _git_cache.update({"line": git, "at": time.time()})
     import streamlit
     return {"engine": stamp.engine_id()[:12] if hasattr(stamp, "engine_id") else "-", "git": git or "-", "python": platform.python_version(),
             "streamlit": streamlit.__version__, "platform": f"{platform.system()} {platform.release()}", "root": str(root),

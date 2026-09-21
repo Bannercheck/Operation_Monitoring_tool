@@ -2,6 +2,12 @@
 
 Numaralandırma: büyük sürüm **v1, v2** (ürün sahibinin kararı), küçük güncelleme **v1.1, v1.2** (her devreye alınan özellik adımı), düzeltme **v1.1.1**. Her sürüm `python -m watchover.release <major|minor|patch> "özet"` ile açılır; Sistem › Güncelleme sayfası bu dosyayı gösterir, anlık görüntüler sürüm numarasını taşır.
 
+## v1.3 · 2026-09-21 · güncelleme
+
+- Donma giderme: canlı tampon sorguları pencereli ve tik başına memoize, Operasyon paneli aynı sorguyu bir kez hesaplar; damgalar ve git bilgisi önbellekte
+- ZIP / TAR / çoklu yüklemede dosyalar 8+ çekirdekte paralel ayrıştırılır (sonuçlar birebir aynı); az çekirdekte kapalı, WATCHOVER_PARALLEL anahtarı
+
+
 ## v1.2.1 · 2026-09-21 · düzeltme
 
 - Büyük dosyalarda yükleme hızı: ayrıştırma ve analiz 2 kat hızlandı (700 bin satır 22 s → 10 s), sonuçlar birebir aynı
