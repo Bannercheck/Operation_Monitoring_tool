@@ -698,17 +698,23 @@ def start_load_job(name: str, data: bytes, mapping: dict | None = None) -> str:
     on a later run (in the script thread, where session state and cached resources are safe to touch)."""
     import threading, uuid
     jid = uuid.uuid4().hex[:10]
-    job = {"id": jid, "name": name, "size": len(data), "state": "running", "stage": t("step_parse"), "started": time.time(), "error": "", "mapping": mapping or {}}
+    job = {"id": jid, "name": name, "size": len(data), "state": "running", "stage": t("step_parse"), "started": time.time(), "error": "", "mapping": mapping or {}, "pct": 0, "file": ""}
     inv = inventory().as_engine()
     lang = current_lang()
+    PARSE, ANALYSE = 50, 85                                   # measured shares: parse ~half, analysis ~a third, profile the rest
+
+    def on_progress(frac: float, fname: str) -> None:
+        job["pct"] = int(PARSE * frac); job["file"] = fname
 
     def run():
         try:
-            obs, report = ingest_bytes(name, data, mapping)
-            job["stage"] = t("step_analyze", lang, n=f"{len(obs):,}")
+            obs, report = ingest_bytes(name, data, mapping, progress=on_progress)
+            parse_secs = max(time.time() - job["started"], 0.2)
+            # analysis and profile have no inner progress hook: the bar advances on the measured ratio to the parse time (~0.65 / ~0.45)
+            job.update({"pct": PARSE, "stage": t("step_analyze", lang, n=f"{len(obs):,}"), "file": "", "est": (time.time(), 0.65 * parse_secs, PARSE, ANALYSE)})
             analysis = Analysis(obs, report, inv)
-            job["stage"] = t("step_profile", lang, s=len(analysis.signals), i=len(analysis.incidents))
-            job.update({"analysis": analysis, "profile": profile(obs, report), "data": data, "elapsed": time.time() - job["started"], "state": "done"})
+            job.update({"pct": ANALYSE, "stage": t("step_profile", lang, s=len(analysis.signals), i=len(analysis.incidents)), "est": (time.time(), 0.45 * parse_secs, ANALYSE, 99)})
+            job.update({"analysis": analysis, "profile": profile(obs, report), "data": data, "elapsed": time.time() - job["started"], "state": "done", "pct": 100})
         except Exception as e:  # noqa: BLE001
             job.update({"state": "error", "error": f"{type(e).__name__}: {str(e)[:200]}"})
     _load_jobs()[jid] = job
@@ -738,6 +744,15 @@ def collect_load_jobs() -> bool:
 def running_load_jobs() -> list[dict]:
     jobs = _load_jobs()
     return [jobs[j] for j in st.session_state.get("my_load_jobs", []) if j in jobs and jobs[j]["state"] == "running"]
+
+
+def job_pct(job: dict) -> int:
+    """Displayed percentage: the parser's real progress, then a time-based estimate through analysis and profiling."""
+    est = job.get("est")
+    if est and job["state"] == "running":
+        t0, expect, lo, hi = est
+        return min(hi, lo + int((hi - lo) * min((time.time() - t0) / max(expect, 0.2), 0.97)))
+    return int(job.get("pct", 0))
 
 
 def activate_dataset(key: str) -> None:
@@ -1484,7 +1499,7 @@ with st.sidebar:
     page = st.radio("nav", _allowed, format_func=lambda x: t(PAGE_KEYS[x]), label_visibility="collapsed", key="page")
     st.markdown(f'<div class="sb-cap">{upper(t("sb_status"))}</div>', unsafe_allow_html=True)
 
-    @st.fragment(run_every="5s")
+    @st.fragment(run_every="2s" if running_load_jobs() else "5s")   # faster while a dataset is loading so the percentage keeps pace
     def _status():
         if collect_load_jobs():
             st.rerun(scope="app")
@@ -1495,7 +1510,7 @@ with st.sidebar:
         if st.session_state.get("tickets"):
             rows.append(("#a78bfa", f"{len(st.session_state['tickets'])} {t('tickets_n')} · {esc(str(st.session_state.get('tickets_src', '-')))}"))
         for j in running_load_jobs():
-            rows.append(("#fbbf24", f"⏳ {esc(j['name'])} · {time.time() - j['started']:.0f} s"))
+            rows.append(("#fbbf24", f"⏳ {esc(j['name'])} · %{job_pct(j)} · {time.time() - j['started']:.0f} s"))
         st.markdown('<div class="sb-status">' + "<br>".join(f'<span class="dot" style="background:{c};box-shadow:0 0 0 3px {c}33"></span>{txt}' for c, txt in rows) + "</div>", unsafe_allow_html=True)
 
     _status()
@@ -3422,7 +3437,10 @@ def datasets_controls() -> None:
             if collect_load_jobs():
                 st.rerun(scope="app")
             for j in running_load_jobs():
-                st.info(f"⏳ **{esc(j['name'])}** · {j['size'] / 1e6:.1f} MB · {esc(j['stage'])} · {time.time() - j['started']:.0f} s — {t('load_bg_hint')}")
+                el, pct = time.time() - j["started"], job_pct(j)
+                eta = f" · {t('load_eta')} ~{el * (100 - pct) / pct:.0f} s" if 5 <= pct < 100 else ""
+                st.markdown(f"⏳ **{esc(j['name'])}** · {j['size'] / 1e6:.1f} MB · {esc(j['stage'])}{(' · ' + esc(j['file'])) if j['file'] and j['file'] != j['name'] else ''} · {el:.0f} s{eta}")
+                st.progress(min(pct, 100) / 100, text=f"%{pct} — {t('load_bg_hint')}")
         _jobs_panel()
     reg = st.session_state.get("datasets", {})
     if reg:

@@ -22,7 +22,7 @@ PARALLEL_MIN_CPUS = 8                     # ...on machines with enough cores: re
                                           # fewer cores lose. WATCHOVER_PARALLEL=1 forces it on, =0 off.
 
 
-def _parse_one(fname: str, text: str, mapping: dict | None) -> tuple[list[Observation], dict]:
+def _parse_one(fname: str, text: str, mapping: dict | None, progress=None, base: float = 0.0, span: float = 1.0) -> tuple[list[Observation], dict]:
     """Parse one file (runs in the main process or in a worker); pure function of its inputs, so the order of results
     is fixed by the caller and the outcome is identical either way."""
     if tables.is_side_table(fname):        # reference data (dependencies, inventory, dictionary): kept, not parsed as events
@@ -36,7 +36,16 @@ def _parse_one(fname: str, text: str, mapping: dict | None) -> tuple[list[Observ
     for r in head:
         keys.extend(k for k in r if k not in keys)
     roles = auto_map(keys, head, mapping)
-    rows = list(parser.parse(text, fname, mapping, conf))
+    if progress is None:
+        rows = list(parser.parse(text, fname, mapping, conf))
+    else:                                                    # report every 5000 rows: share of this file's lines done
+        rows = []
+        n_lines = max(text.count("\n"), 1)
+        for o in parser.parse(text, fname, mapping, conf):
+            rows.append(o)
+            if len(rows) % 5000 == 0:
+                progress(base + span * min(o.line_no / n_lines, 1.0), fname)
+        progress(base + span, fname)
     return rows, {"file": fname, "format": fmt, "confidence": conf, "rows": len(rows),
                   "kind": rows[0].kind if rows else "-", "keys": keys, "roles": roles, "sha": stamp.file_id(fname, text)}
 
@@ -51,9 +60,11 @@ def _workers(items: list[tuple[str, str]]) -> int:
     return max(1, min(len(items), cpus - 2, 8))
 
 
-def ingest(files: Iterator[tuple[str, str]], mapping: dict | None = None) -> tuple[list[Observation], list[dict]]:
+def ingest(files: Iterator[tuple[str, str]], mapping: dict | None = None, progress=None) -> tuple[list[Observation], list[dict]]:
+    """progress(fraction 0..1, current file name) is called while parsing (by bytes of input done), so a UI can show a percentage."""
     mapping = mapping or scenario.MAPPING or None
     items = list(files)
+    total_bytes = sum(len(t) for _, t in items) or 1
     observations: list[Observation] = []
     report: list[dict] = []
     n = _workers(items)
@@ -64,11 +75,19 @@ def ingest(files: Iterator[tuple[str, str]], mapping: dict | None = None) -> tup
             order = sorted(range(len(items)), key=lambda i: -len(items[i][1]))      # biggest files first: better packing
             with ProcessPoolExecutor(max_workers=n) as ex:
                 futs = {i: ex.submit(_parse_one, items[i][0], items[i][1], mapping) for i in order}
+                done_bytes = 0
+                for i in order:                                                       # completion order ~ submission order
+                    futs[i].result(); done_bytes += len(items[i][1])
+                    if progress:
+                        progress(done_bytes / total_bytes, items[i][0])
                 results = [futs[i].result() for i in range(len(items))]             # back in the caller's order
         except Exception:  # noqa: BLE001  (no fork on this platform, pickling limits...): the sequential path is always right
             results = None
     if results is None:
-        results = [_parse_one(fname, text, mapping) for fname, text in items]
+        results, done_bytes = [], 0
+        for fname, text in items:
+            results.append(_parse_one(fname, text, mapping, progress, done_bytes / total_bytes, len(text) / total_bytes))
+            done_bytes += len(text)
     for rows, rep in results:
         observations.extend(rows)
         report.append(rep)
@@ -126,5 +145,5 @@ def ingest_path(path: str, mapping: dict | None = None):
     return ingest(iter_path(path), mapping)
 
 
-def ingest_bytes(name: str, data: bytes, mapping: dict | None = None):
-    return ingest(iter_bytes(name, data), mapping)
+def ingest_bytes(name: str, data: bytes, mapping: dict | None = None, progress=None):
+    return ingest(iter_bytes(name, data), mapping, progress)

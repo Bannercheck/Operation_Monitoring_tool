@@ -111,3 +111,17 @@ def test_background_load_job(tmp_path, monkeypatch):
     assert "start_load_job(" in src and "collect_load_jobs()" in src and "threading.Thread(target=run" in src
     i = src.index("def datasets_controls("); body = src[i:src.index("\ndef ", i + 10)]
     assert "load(u.name" not in body and "start_load_job" in body            # uploads never block the script thread
+
+
+def test_ingest_progress_callback():
+    """The parse stage reports its progress (share of input bytes / lines) so the UI can show a percentage."""
+    import io, zipfile
+    from watchover.pipeline import ingest_bytes
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("a.log", "".join(f"2026-09-21 10:00:{i % 60:02d} ERROR svc: boom {i}\n" for i in range(12000)))
+        z.writestr("b.log", "".join(f"2026-09-21 10:01:{i % 60:02d} INFO svc: ok {i}\n" for i in range(6000)))
+    seen = []
+    obs, rep = ingest_bytes("two.zip", buf.getvalue(), progress=lambda f, name: seen.append((round(f, 2), name)))
+    assert len(obs) == 18000 and seen and seen[-1][0] == 1.0 and seen == sorted(seen, key=lambda x: x[0])
+    assert any(0 < f < 1 for f, _ in seen) and {n for _, n in seen} == {"a.log", "b.log"}
