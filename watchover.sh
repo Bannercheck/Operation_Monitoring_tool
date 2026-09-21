@@ -28,7 +28,7 @@ version() { sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml | head -1; }
 git_rev() { (git rev-parse --short HEAD 2>/dev/null) || echo "-"; }
 env_get() { sed -n "s/^$1=//p" "$ENV_FILE" 2>/dev/null | head -1; }
 env_set() { if grep -q "^$1=" "$ENV_FILE" 2>/dev/null; then sed -i.bak "s|^$1=.*|$1=$2|" "$ENV_FILE" && rm -f "$ENV_FILE.bak"; else printf '%s=%s\n' "$1" "$2" >> "$ENV_FILE"; fi; }
-host_ip() { (hostname -I 2>/dev/null | awk '{print $1}') || (ipconfig getifaddr en0 2>/dev/null) || echo "<sunucu-ip>"; }
+host_ip() { local ip; ip=$(hostname -I 2>/dev/null | awk '{print $1}'); [ -n "$ip" ] || ip=$(ipconfig getifaddr en0 2>/dev/null); [ -n "$ip" ] || ip=$(ipconfig getifaddr en1 2>/dev/null); echo "${ip:-localhost}"; }   # Linux, then macOS (Wi-Fi / Ethernet)
 
 write_env() {
   if [ ! -f "$ENV_FILE" ]; then
