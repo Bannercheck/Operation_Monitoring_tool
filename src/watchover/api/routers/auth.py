@@ -37,6 +37,17 @@ class PasswordIn(BaseModel):
     new: str
 
 
+class RegisterIn(BaseModel):
+    email: str
+    password: str
+    name: str = ""
+
+
+class VerifyIn(BaseModel):
+    email: str
+    code: str
+
+
 def _send_otp(users, u: dict) -> tuple[bool, str]:
     cfg = notify_channels().get("email", {})
     if not cfg.get("host"):
@@ -93,6 +104,47 @@ def change_password(body: PasswordIn, user: dict = Depends(current_user), svc=De
         raise HTTPException(400, why)
     svc.users.change_password(int(user["id"]), body.new)
     return {"ok": True}
+
+
+@router.get("/options")
+def options():
+    """What the sign-in page offers: local self-registration (needs SMTP for the verification code) and the providers."""
+    cfg = wo_settings.load()
+    return {"register": bool(cfg.get("auth_self_register")) and bool(notify_channels().get("email", {}).get("host")), "mfa": bool(cfg.get("mfa_email", True))}
+
+
+@router.post("/register", status_code=202)
+def register(body: RegisterIn, svc=Depends(services)):
+    """Local account: created pending, a verification code goes to the e-mail; /auth/verify activates it and signs in."""
+    cfg = wo_settings.load()
+    if not cfg.get("auth_self_register"):
+        raise HTTPException(403, "self-registration is off")
+    if not notify_channels().get("email", {}).get("host"):
+        raise HTTPException(400, "smtp not configured")
+    us = svc.users
+    ex = us.get(body.email.strip().lower())
+    if ex and ex["status"] == "pending":
+        u = ex
+    else:
+        u = us.register(body.email, body.password, body.name, cfg.get("auth_domains", ""), status="pending")
+    ok, why = _send_otp(us, u)
+    if not ok:
+        raise HTTPException(502, why)
+    return {"pending": True, "minutes": wo_auth.OTP_MINUTES}
+
+
+@router.post("/verify")
+def verify_registration(body: VerifyIn, svc=Depends(services)):
+    us = svc.users
+    u = us.get(body.email.strip().lower())
+    if not u or u["status"] != "pending":
+        raise HTTPException(404, "no pending registration")
+    ok, left = us.otp_verify(int(u["id"]), body.code)
+    if not ok:
+        raise HTTPException(401, f"wrong code, {left} attempts left")
+    us.activate(int(u["id"]))
+    u = us.get(u["email"])
+    return {"token": access_token(u), "user": {k: u[k] for k in ("id", "email", "name", "role")}}
 
 
 @router.post("/logout")

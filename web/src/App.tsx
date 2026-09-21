@@ -14,6 +14,10 @@ import Knowledge from "./pages/Knowledge";
 import Notify from "./pages/Notify";
 import Users from "./pages/Users";
 import System from "./pages/System";
+import MapPage from "./pages/Map";
+import Assist from "./pages/Assist";
+import Llm from "./pages/Llm";
+import Itsm from "./pages/Itsm";
 
 export default function App() {
   const { user, ready, acceptToken } = useAuth();
@@ -40,6 +44,10 @@ export default function App() {
         <Route path="/alerts" element={<Notify />} />
         <Route path="/users" element={<Users />} />
         <Route path="/system" element={<System />} />
+        <Route path="/map" element={<MapPage />} />
+        <Route path="/assist" element={<Assist />} />
+        <Route path="/llm" element={<Llm />} />
+        <Route path="/itsm" element={<Itsm />} />
         <Route path="/login" element={<Navigate to="/ops" replace />} />
         <Route path="*" element={<Navigate to="/ops" replace />} />
       </Route>

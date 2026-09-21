@@ -13,6 +13,9 @@ from ... import release as wo_release
 from ... import settings as wo_settings
 from ..security import require, services
 
+SETTING_KEYS = ("self_monitor", "learn_min", "alerts_on", "live_port", "live_key", "public_host", "lang", "workspace", "demo_on_start")
+CHANNEL_KEYS = ("smtp_host", "smtp_port", "smtp_security", "smtp_user", "smtp_password", "smtp_from", "smtp_from_name",
+                "sms_preset", "sms_url", "sms_method", "sms_auth", "sms_user", "sms_password", "sms_token", "sms_from", "sms_account", "sms_body", "sms_content_type")
 AUTH_KEYS = ("auth_google", "google_client_id", "google_client_secret", "auth_microsoft", "ms_tenant", "ms_client_id", "ms_client_secret",
              "auth_apple", "apple_client_id", "apple_team_id", "apple_key_id", "apple_private_key", "auth_oidc", "oidc_issuer", "oidc_client_id", "oidc_client_secret",
              "auth_self_register", "auth_domains", "public_host", "mfa_email")
@@ -86,3 +89,64 @@ def save_auth_settings(body: dict, user=Depends(require("sys.auth"))):
         vals[k] = bool(v) if k.startswith("auth_") and k != "auth_domains" or k == "mfa_email" else str(v or "").strip()
     wo_settings.save(vals)
     return {"ok": True, "changed": sorted(vals)}
+
+
+def _masked(keys: tuple) -> dict:
+    cfg = wo_settings.load()
+    return {k: (MASK if k in wo_settings.SECRET_KEYS and cfg.get(k) else cfg.get(k, "")) for k in keys}
+
+
+def _save(keys: tuple, body: dict) -> list:
+    vals = {}
+    for k in keys:
+        if k in body and not (k in wo_settings.SECRET_KEYS and body[k] == MASK):
+            vals[k] = body[k]
+    wo_settings.save(vals)
+    return sorted(vals)
+
+
+@router.get("/settings")
+def get_settings(user=Depends(require("sys.status"))):
+    return _masked(SETTING_KEYS)
+
+
+@router.put("/settings")
+def put_settings(body: dict, user=Depends(require("sys.maint")), svc=Depends(services)):
+    changed = _save(SETTING_KEYS, body)
+    if "alerts_on" in body:
+        (svc.alerts.start() if body["alerts_on"] else svc.alerts.stop.set())
+    if "self_monitor" in body and svc.selfmon is not None:
+        (svc.selfmon.start() if body["self_monitor"] else svc.selfmon.stop())
+    return {"ok": True, "changed": changed}
+
+
+@router.get("/channels")
+def get_channels(user=Depends(require("sys.notify"))):
+    return _masked(CHANNEL_KEYS)
+
+
+@router.put("/channels")
+def put_channels(body: dict, user=Depends(require("sys.notify"))):
+    return {"ok": True, "changed": _save(CHANNEL_KEYS, body)}
+
+
+@router.get("/update")
+def update_info(user=Depends(require("sys.update"))):
+    """How this installation updates: in Docker the commands, elsewhere the launcher; plus the release notes."""
+    return {"docker": wo_admin.in_docker(), "commands": ["./watchover.sh update", "./watchover.sh backup", "./watchover.sh restore backups/<file>.tgz"] if wo_admin.in_docker() else ["scripts/watchover-launcher.sh update"],
+            "releases": wo_release.entries()[:10]}
+
+
+@router.post("/snapshots/{sid}/rollback")
+def rollback(sid: str, code: bool = True, db: bool = True, user=Depends(require("sys.update")), svc=Depends(services)):
+    """Bring a snapshot back and restart (Docker's restart policy or the launcher brings the process up again)."""
+    ok, msg = wo_admin.rollback(sid, code, db, kb=svc.kb)
+    if not ok:
+        raise ValueError(msg)
+    out = wo_admin.deploy_finish("rollback")
+    return {"ok": True, "message": msg, "restart": out.get("restart")}
+
+
+@router.post("/restart")
+def restart(user=Depends(require("sys.update"))):
+    return {"restart": wo_admin.restart_app(delay=1.0, hard=True)}

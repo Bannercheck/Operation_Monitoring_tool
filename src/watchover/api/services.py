@@ -22,6 +22,9 @@ from ..i18n import t
 from ..inventory import Inventory
 from ..knowledge import Knowledge
 from ..live import LiveStore, start_receiver, start_simulator, SIM_HOSTS
+from ..llm import LLMConfig, embed as llm_embed, set_sink as llm_set_sink
+from .. import ollama as wo_ollama
+from .. import selfmon as wo_selfmon
 from ..pipeline import ingest_bytes, ingest_path
 from ..playbook import Playbook
 from ..profiler import profile
@@ -62,13 +65,57 @@ class Services:
         self.poller = Poller(self.sources, self.live)
         self.receiver = None
         self.sim_stop = None
+        self.selfmon = None
+        self._live_an: tuple[int, object] | None = None
         self.datasets = DatasetRegistry(self)
         self.started = time.time()
+        llm_set_sink(self.kb.log_call)                       # every LLM call lands in the quality log
+        self.refresh_llm()
         if bg:
             self.history.start(); self.anomalies.start(); self.alerts.start(); self.poller.start()
-            if os.environ.get("WATCHOVER_API_RECEIVER", "0") == "1":
-                c = wo_settings.load()
-                self.receiver = start_receiver(self.live, int(os.environ.get("LIVE_PORT", c.get("live_port", 8600)) or 8600), c.get("live_key") or None, self.agents)
+            c = wo_settings.load()
+            if os.environ.get("WATCHOVER_API_RECEIVER", "1") == "1":      # the API is the product now: it owns the agent receiver
+                try:
+                    self.receiver = start_receiver(self.live, int(os.environ.get("LIVE_PORT", c.get("live_port", 8600)) or 8600), c.get("live_key") or None, self.agents)
+                except OSError:
+                    self.receiver = None
+            if os.environ.get("WATCHOVER_SELFMON", "1") != "0" and c.get("self_monitor", True) and self.receiver is not None:
+                try:
+                    tok = wo_selfmon.ensure_token(self.agents, wo_settings)
+                    self.selfmon = wo_selfmon.SelfMonitor(int(os.environ.get("LIVE_PORT", c.get("live_port", 8600)) or 8600), tok, log=os.environ.get("WATCHOVER_LOG", "")).start()
+                except Exception:  # noqa: BLE001 - the host agent is best effort
+                    self.selfmon = None
+
+    # ---- LLM (optional, never in the core path)
+    def llm_cfg(self) -> LLMConfig:
+        c = wo_settings.load()
+        return LLMConfig(c.get("llm_base", "") or os.environ.get("LLM_BASE_URL", ""), c.get("llm_model", "") or os.environ.get("LLM_MODEL", ""),
+                         c.get("llm_key", "") or os.environ.get("LLM_API_KEY", ""), embed_model=c.get("llm_embed", "") or os.environ.get("LLM_EMBED_MODEL", ""),
+                         provider=c.get("llm_provider", "") or os.environ.get("LLM_PROVIDER", "auto"))
+
+    def refresh_llm(self) -> LLMConfig:
+        """Adopt a local Ollama on first run (like the dashboard did), attach the embedder to the knowledge base."""
+        c = wo_settings.load()
+        if not c.get("llm_base") and not os.environ.get("LLM_BASE_URL") and not c.get("x_llm_probed"):
+            found = wo_ollama.discover()
+            vals = {"x_llm_probed": True}
+            if found:
+                inst = [m["name"] for m in wo_ollama.installed(found)]
+                vals.update({"llm_base": found, "llm_provider": "ollama", "llm_model": next((m for m in inst if not any(e in m for e in ("embed", "bge"))), ""),
+                             "llm_embed": next((m for m in inst if any(e in m for e in ("embed", "bge"))), "")})
+            wo_settings.save(vals)
+        cfg = self.llm_cfg()
+        self.kb.embedder = (lambda texts, c_=cfg: llm_embed(c_, texts)) if cfg.base_url and cfg.embed_model else None
+        return cfg
+
+    def live_analysis(self):
+        """Analysis over the live buffer, recomputed only when new events arrived."""
+        from ..analysis import Analysis
+        n = self.live.received
+        if self._live_an is None or self._live_an[0] != n:
+            obs = self.live.snapshot()
+            self._live_an = (n, Analysis(list(obs), []) if obs else None)
+        return self._live_an[1]
 
     def simulate(self, on: bool) -> bool:
         if on and self.sim_stop is None:
@@ -81,7 +128,9 @@ class Services:
     def status(self) -> dict:
         from .. import __version__
         return {"version": {"version": __version__, **wo_admin.version_info()}, "database": wo_admin.db_info(self.kb), "uptime_s": int(time.time() - self.started),
-                "live": {"received": self.live.received, "agents": len(self.live.agents), "receiver": bool(self.receiver), "simulator": self.sim_stop is not None},
+                "live": {"received": self.live.received, "agents": len(self.live.agents), "receiver": bool(self.receiver), "simulator": self.sim_stop is not None,
+                         "selfmon": self.selfmon.status() if self.selfmon else None},
+                "llm": {"provider": self.llm_cfg().kind, "model": self.llm_cfg().model, "enabled": self.llm_cfg().enabled},
                 "services": {"history": bool(self.history.thread and self.history.thread.is_alive()) if hasattr(self.history, "thread") else None,
                              "anomalies": bool(self.anomalies.thread and self.anomalies.thread.is_alive()), "alerts": self.alerts.runs, "poller": self.poller.thread.is_alive() if getattr(self.poller, "thread", None) else False},
                 "anomalies": self.anomalies.stats(), "datasets": len(self.datasets.items), "users": self.users.count()}
@@ -94,6 +143,11 @@ class Services:
                 pass
         if self.receiver is not None:
             self.receiver.shutdown()
+        if self.selfmon is not None:
+            try:
+                self.selfmon.stop()
+            except Exception:  # noqa: BLE001
+                pass
         self.kb.close()
 
 

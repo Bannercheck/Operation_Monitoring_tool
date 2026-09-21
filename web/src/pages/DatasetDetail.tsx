@@ -5,7 +5,7 @@ import { api, get } from "../api";
 import { useT } from "../i18n";
 import { Badge, Btn, Card, Empty, Kpi, Modal, Table, Tabs } from "../components/ui";
 
-type Tab = "overview" | "incidents" | "signals" | "noise";
+type Tab = "overview" | "incidents" | "signals" | "noise" | "search";
 
 export default function DatasetDetail() {
   const { key = "" } = useParams(); const { t } = useT();
@@ -22,11 +22,12 @@ export default function DatasetDetail() {
         <div className="row"><a className="btn sm" href={`/api/datasets/${key}/export?fmt=csv`} onClick={(e) => { e.preventDefault(); download(`/datasets/${key}/export?fmt=csv`, `${d.data?.name}.csv`); }}>CSV</a></div></div>
       <div className="grid k4">
         <Kpi value={(f.raw_events ?? 0).toLocaleString()} label={t("funnel_raw")} />
-        <Kpi value={f.signals ?? 0} label={t("funnel_signals")} accent="#60a5fa" sub={`${f.fingerprints ?? f.signals ?? 0} fp`} />
+        <Kpi value={f.meaningful_signals ?? 0} label={t("funnel_signals")} accent="#60a5fa" sub={`${f.fingerprints ?? 0} fp`} />
         <Kpi value={f.incidents ?? 0} label={t("funnel_incidents")} accent="#f87171" />
         <Kpi value={f.reduction ? `${f.reduction}×` : "-"} label={t("funnel_reduction")} accent="#a78bfa" />
       </div>
-      <Tabs value={tab} onChange={setTab} tabs={[{ k: "overview", label: t("tab_overview") }, { k: "incidents", label: `${t("tab_incidents")} · ${incs.data?.length ?? ""}` }, { k: "signals", label: t("tab_signals") }, { k: "noise", label: t("tab_noise") }]} />
+      <Tabs value={tab} onChange={setTab} tabs={[{ k: "overview", label: t("tab_overview") }, { k: "incidents", label: `${t("tab_incidents")} · ${incs.data?.length ?? ""}` }, { k: "signals", label: t("tab_signals") }, { k: "noise", label: t("tab_noise") }, { k: "search", label: t("tab_search") }]} />
+      {tab === "search" && <SearchTab dataset={key} />}
       {tab === "overview" && <div className="grid k2">
         <Card title={t("ds_files")}><Table cols={[{ k: "file", label: t("name") }, { k: "format", label: t("ds_format") }, { k: "records", label: t("ds_records"), num: true }]} rows={(d.data?.files ?? []).map((x: any, i: number) => ({ id: i, ...x }))} /></Card>
         <Card title={t("tab_overview")}><div className="stack small">
@@ -46,6 +47,13 @@ export default function DatasetDetail() {
       {inc && <IncidentModal dataset={key} iid={inc} onClose={() => setInc(null)} />}
     </div>
   );
+}
+
+function SearchTab({ dataset }: { dataset: string }) {
+  const { t } = useT(); const [q, setQ] = useState(""); const [regex, setRegex] = useState(false); const [sev, setSev] = useState("");
+  const r = useQuery({ queryKey: ["search", dataset, q, regex, sev], queryFn: () => get(`/datasets/${dataset}/search?q=${encodeURIComponent(q)}&regex=${regex}&severity=${sev}&limit=300`) });
+  return <Card><div className="row"><input className="input grow" placeholder={t("search_help")} value={q} onChange={(e) => setQ(e.target.value)} /><select className="input" style={{ width: 130 }} value={sev} onChange={(e) => setSev(e.target.value)}><option value="">{t("severity")}: {t("all")}</option>{["CRITICAL", "ERROR", "WARN", "INFO", "DEBUG"].map((x) => <option key={x}>{x}</option>)}</select><label className="check"><input type="checkbox" checked={regex} onChange={(e) => setRegex(e.target.checked)} /> {t("search_regex")}</label><span className="muted small">{r.data?.total ?? 0} {t("search_total")}</span></div>
+    <div style={{ marginTop: 8 }}><Table cols={[{ k: "timestamp", label: t("time"), render: (x) => <span className="mono">{x.timestamp.slice(0, 19).replace("T", " ")}</span> }, { k: "severity", label: t("severity"), render: (x) => <Badge v={x.severity} /> }, { k: "service", label: t("service") }, { k: "host", label: t("host") }, { k: "source", label: t("ds_files"), render: (x) => <span className="dim small">{x.source}:{x.line_no}</span> }, { k: "message", label: t("message"), render: (x) => <span className="mono">{x.message}</span> }]} rows={(r.data?.rows ?? []).map((x: any) => ({ id: x.ref, ...x }))} /></div></Card>;
 }
 
 async function download(path: string, name: string) {

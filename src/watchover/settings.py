@@ -30,7 +30,7 @@ def path() -> Path:
     return home() / "config.json"
 
 
-SECRET_KEYS = ("llm_key", "live_key", "google_client_secret", "oidc_client_secret", "smtp_password", "sms_password", "sms_token", "apple_private_key", "ms_client_secret", "self_agent_token")   # encrypted at rest (vault.py)
+SECRET_KEYS = ("llm_key", "live_key", "google_client_secret", "oidc_client_secret", "smtp_password", "sms_password", "sms_token", "apple_private_key", "ms_client_secret", "self_agent_token", "x_itsm_pass", "x_itsm_token")   # encrypted at rest (vault.py)
 
 
 def load() -> dict:

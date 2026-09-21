@@ -3,12 +3,14 @@ from __future__ import annotations
 
 import io
 import os
+import re
 import zipfile
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import PlainTextResponse
 
+from ... import compare as wo_compare
 from ...analysis import incident_dict, postmortem_md, signal_dict
 from ...enrich import enrich, summary, to_csv, to_jsonl
 from ...i18n import narrative_text, reason_text
@@ -43,6 +45,13 @@ async def upload(files: list[UploadFile] = File(...), combine: bool = Query(True
 @router.post("/demo")
 def load_demo(user=Depends(require("page.data")), svc=Depends(services)):
     return svc.datasets.load_path(str(ROOT / "samples" / "demo_mixed.zip"))
+
+
+@router.get("/compare")
+def compare(a: str, b: str, user=Depends(require("page.data")), svc=Depends(services)):
+    """Two datasets side by side: the same KPIs and what changed (same engine, so a difference is a difference in the data)."""
+    da, db = svc.datasets.get(a), svc.datasets.get(b)
+    return wo_compare.compare(da["analysis"], da["profile"], db["analysis"], db["profile"])
 
 
 @router.get("/jobs")
@@ -134,3 +143,50 @@ def export(key: str, fmt: str = Query("csv", pattern="^(csv|jsonl|summary)$"), u
         return summary(a, rows)
     text = to_csv(rows) if fmt == "csv" else to_jsonl(rows)
     return PlainTextResponse(text, media_type="text/csv" if fmt == "csv" else "application/x-ndjson")
+
+
+SRCH_TOK = re.compile(r'(-)?(?:(\w+):)?(?:"([^"]*)"|(\S+))')
+SRCH_FIELDS = {"service": "service", "servis": "service", "host": "host", "sunucu": "host", "severity": "severity", "önem": "severity", "sev": "severity", "env": "environment", "ortam": "environment", "file": "source", "dosya": "source"}
+
+
+def _parse_query(q: str) -> list[tuple[bool, str | None, str]]:
+    """'timeout db-01 service:payment-api -debug "exact phrase"' -> [(neg, field|None, term)]"""
+    out = []
+    for m in SRCH_TOK.finditer(q or ""):
+        term = m[3] if m[3] is not None else m[4]
+        if term:
+            out.append((m[1] == "-", SRCH_FIELDS.get((m[2] or "").lower()), term.lower()))
+    return out
+
+
+@router.get("/{key}/search")
+def search(key: str, q: str = "", regex: bool = False, severity: str | None = None, limit: int = Query(200, le=2000), user=Depends(require("page.data")), svc=Depends(services)):
+    """Log search over the dataset: AND of terms, field:term narrows one field, -term excludes, quotes keep phrases; optional regex."""
+    a = svc.datasets.get(key)["analysis"]
+    terms = _parse_query(q)
+    sev = {x.strip().upper() for x in (severity or "").split(",") if x.strip()}
+    out, total = [], 0
+    for o in a.observations:
+        if sev and o.severity not in sev:
+            continue
+        hay = None
+        ok = True
+        for neg, field, term in terms:
+            if field:
+                val = str(getattr(o, field, "") or "").lower()
+                hit = bool(re.search(term, val)) if regex else term in val
+            else:
+                hay = hay if hay is not None else f"{o.message} {o.service} {o.host} {o.severity} {o.source} {o.environment}".lower()
+                try:
+                    hit = bool(re.search(term, hay)) if regex else term in hay
+                except re.error:
+                    hit = term in hay
+            if hit == neg:
+                ok = False; break
+        if not ok:
+            continue
+        total += 1
+        if len(out) < limit:
+            out.append({"ref": o.ref, "timestamp": o.timestamp.isoformat(), "severity": o.severity, "service": o.service, "host": o.host, "environment": o.environment,
+                        "source": o.source, "line_no": o.line_no, "message": o.message[:400]})
+    return {"total": total, "rows": out}

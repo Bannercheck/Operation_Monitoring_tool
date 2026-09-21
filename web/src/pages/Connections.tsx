@@ -5,13 +5,13 @@ import { useAuth } from "../auth";
 import { useT } from "../i18n";
 import { Badge, Btn, Card, Confirm, Empty, Err, Field, Modal, Table, Tabs, fmtTs } from "../components/ui";
 
-type Tab = "agents" | "sources" | "inventory";
+type Tab = "agents" | "sources" | "inventory" | "discovered";
 
 export default function Connections() {
   const { t } = useT(); const [tab, setTab] = useState<Tab>("agents");
   return <div className="stack"><h2>🔌 {t("nav_conn")}</h2>
-    <Tabs value={tab} onChange={setTab} tabs={[{ k: "agents", label: t("conn_agents") }, { k: "sources", label: t("conn_sources") }, { k: "inventory", label: t("conn_inv") }]} />
-    {tab === "agents" && <Agents />}{tab === "sources" && <Sources />}{tab === "inventory" && <Inventory />}</div>;
+    <Tabs value={tab} onChange={setTab} tabs={[{ k: "agents", label: t("conn_agents") }, { k: "sources", label: t("conn_sources") }, { k: "inventory", label: t("conn_inv") }, { k: "discovered", label: t("conn_discovered") }]} />
+    {tab === "agents" && <Agents />}{tab === "sources" && <Sources />}{tab === "inventory" && <Inventory />}{tab === "discovered" && <Discovered />}</div>;
 }
 
 function Agents() {
@@ -91,4 +91,14 @@ function Inventory() {
     <Card><Table cols={[{ k: "hostname", label: t("inv_hostname"), render: (r) => <b>{r.hostname}</b> }, { k: "ip", label: "IP" }, { k: "env", label: t("env") }, { k: "dc", label: t("inv_dc") }, { k: "application", label: "app" }, { k: "owner", label: t("owner") }, { k: "criticality", label: t("inv_crit"), render: (r) => <Badge v={r.criticality} /> },
       { k: "x", label: "", render: (r) => editable ? <Confirm onConfirm={() => rm.mutate(r.hostname)}>{t("delete")}</Confirm> : null }]} rows={list.data ?? []} /></Card>
   </div>;
+}
+
+
+function Discovered() {
+  const { t } = useT(); const { can } = useAuth(); const qc = useQueryClient();
+  const q = useQuery({ queryKey: ["discovered"], queryFn: () => get("/inventory/discovered"), refetchInterval: 15000 });
+  const add = useMutation({ mutationFn: (r: any) => put("/inventory", { hostname: r.hostname, env: r.env ?? "", ip: r.ip ?? "", dc: r.dc ?? "" }), onSuccess: () => { qc.invalidateQueries({ queryKey: ["discovered"] }); qc.invalidateQueries({ queryKey: ["inventory"] }); } });
+  const rows = (q.data ?? []).map((r: any, i: number) => ({ id: i, ...r }));
+  return <Card><Table cols={[{ k: "hostname", label: t("host"), render: (r) => <b>{r.hostname}</b> }, { k: "env", label: t("env") }, { k: "ip", label: "IP" }, { k: "dc", label: t("inv_dc") }, { k: "source", label: "" },
+    { k: "x", label: "", render: (r) => can("act.inventory") ? <Btn sm onClick={() => add.mutate(r)}>{t("inv_add_from")}</Btn> : null }]} rows={rows} /><Err e={add.error} /></Card>;
 }

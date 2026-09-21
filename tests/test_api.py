@@ -224,3 +224,54 @@ def test_spa_is_served_when_built(client):
         r = client.get(path)
         assert r.status_code == 200 and 'id="root"' in r.text
     assert client.get("/api/nope").status_code == 404
+
+
+def test_phase3_map_assist_llm_itsm_search_settings(client, monkeypatch):
+    """The endpoints that replaced the last Streamlit pages: failure map, ask, LLM settings, ITSM tickets, log search, compare, report, settings / channels, update info."""
+    h = token(client)
+    key = client.get("/api/datasets", headers=h).json()[0]["id"]
+    m = client.get(f"/api/map?dataset={key}&lang=tr", headers=h).json()
+    assert not m["empty"] and m["nodes"] >= 3 and m["root"] and "<svg" in m["html"] and m["incidents"]
+    assert client.get("/api/map?dataset=live", headers=h).json()["empty"] is True
+    # ask: deterministic fallback without an LLM, with sources from the dataset and the knowledge base
+    r = client.post("/api/assist/ask", json={"question": "kök neden ne?", "dataset": key, "lang": "tr"}, headers=h).json()
+    assert r["text"] and r["used_llm"] is False and isinstance(r["sources"], list) and r["model"] == ""
+    assert client.post("/api/assist/save", json={"question": "q", "answer": r["text"][:200]}, headers=h).status_code == 201
+    assert client.post("/api/assist/rate", json={"question": "q", "answer": "a", "verdict": "up"}, headers=h).json()["ok"]
+    # llm settings: masked key, providers, stats; test fails cleanly without a server
+    cfg = client.put("/api/llm", json={"llm_provider": "ollama", "llm_base": "http://127.0.0.1:1", "llm_model": "qwen2.5:7b-instruct", "llm_key": "k"}, headers=h).json()
+    assert cfg["llm_key"] == "•••" and cfg["kind"] == "ollama" and cfg["enabled"] and "ollama" in cfg["providers"]
+    assert client.get("/api/llm", headers=h).json()["llm_model"] == "qwen2.5:7b-instruct"
+    assert client.post("/api/llm/test", headers=h).json()["ok"] is False
+    assert client.get("/api/llm/quality", headers=h).json()["stats"]["calls"] >= 0
+    client.put("/api/llm", json={"llm_base": "", "llm_model": "", "llm_key": ""}, headers=h)
+    # itsm demo tickets correlated with the dataset's incidents
+    assert client.get("/api/itsm/config", headers=h).json()["system"] == "demo"
+    client.put("/api/itsm/config", json={"system": "demo", "token": "tok"}, headers=h)
+    assert client.get("/api/itsm/config", headers=h).json()["token"] == "•••"
+    tk = client.get(f"/api/itsm/tickets?dataset={key}", headers=h).json()
+    assert tk["system"] == "demo" and tk["tickets"] and "relevance" in tk["tickets"][0]
+    # log search with field terms and exclusion; compare a dataset with itself
+    s = client.get(f"/api/datasets/{key}/search", params={"q": "timeout service:payment-api -debug", "limit": 5}, headers=h).json()
+    assert s["total"] >= 1 and len(s["rows"]) <= 5 and all("timeout" in x["message"].lower() for x in s["rows"])
+    assert client.get(f"/api/datasets/{key}/search", params={"q": "zzz-nothing"}, headers=h).json()["total"] == 0
+    cmp = client.get(f"/api/datasets/compare?a={key}&b={key}", headers=h).json()
+    assert cmp["kpis"] and all(r["delta"] in (0, 0.0, None) for r in cmp["kpis"]) and cmp["shared"] and not cmp["only_a"]
+    rep = client.get(f"/api/live/report?window=60&dataset={key}", headers=h)
+    assert rep.status_code == 200 and "<html" in rep.text.lower() and "attachment" in rep.headers["content-disposition"]
+    # settings and channels, masked secrets kept, update info, self-registration options
+    st = client.put("/api/system/settings", json={"learn_min": 20, "workspace": "Ops", "live_key": "secret-key"}, headers=h).json()
+    assert "learn_min" in st["changed"] and client.get("/api/system/settings", headers=h).json()["live_key"] == "•••"
+    client.put("/api/system/settings", json={"live_key": "•••"}, headers=h)
+    from watchover import settings as wo_settings
+    assert wo_settings.load()["live_key"] == "secret-key" and wo_settings.load()["workspace"] == "Ops"
+    ch = client.put("/api/system/channels", json={"smtp_host": "mail.example.com", "smtp_password": "pw"}, headers=h).json()
+    assert "smtp_password" in ch["changed"] and client.get("/api/system/channels", headers=h).json()["smtp_password"] == "•••"
+    assert client.get("/api/system/update", headers=h).json()["releases"]
+    client.put("/api/system/auth", json={"auth_self_register": True}, headers=h)
+    assert client.get("/api/auth/options").json()["register"] is True                      # self-registration on and an SMTP host set
+    r = client.post("/api/auth/register", json={"email": "new.user@example.com", "password": "Sifre-123456", "name": "New"})
+    assert r.status_code == 502                                        # SMTP host set but unreachable: the code cannot be sent
+    client.put("/api/system/channels", json={"smtp_host": ""}, headers=h)
+    assert client.get("/api/auth/options").json()["register"] is False and client.post("/api/auth/register", json={"email": "new2@example.com", "password": "Sifre-123456"}).status_code == 400
+    assert client.get("/api/live/lines?agent=x&source=y", headers=h).json() == []

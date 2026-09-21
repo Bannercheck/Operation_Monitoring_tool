@@ -24,7 +24,7 @@ from .. import __version__
 
 def create_app(services=None) -> FastAPI:
     from .services import Services
-    from .routers import actions, agents, anomalies, auth, datasets, inventory, knowledge, live, notify, playbook, sources, system, users
+    from .routers import actions, agents, anomalies, assist, auth, datasets, inventory, itsm, knowledge, live, llm, map as map_, notify, playbook, sources, system, users
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -37,7 +37,7 @@ def create_app(services=None) -> FastAPI:
     origins = [o.strip() for o in os.environ.get("WATCHOVER_CORS", "").split(",") if o.strip()]
     if origins:
         app.add_middleware(CORSMiddleware, allow_origins=origins, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
-    for r in (auth, datasets, live, actions, anomalies, playbook, agents, sources, inventory, knowledge, notify, users, system):
+    for r in (auth, datasets, live, actions, anomalies, playbook, agents, sources, inventory, knowledge, notify, users, system, map_, assist, llm, itsm):
         app.include_router(r.router, prefix="/api")
 
     @app.exception_handler(KeyError)

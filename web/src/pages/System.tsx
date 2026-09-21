@@ -14,6 +14,9 @@ export default function System() {
   const snap = useMutation({ mutationFn: () => post("/system/snapshots", { reason: "manual", code: true, db: true }), onSuccess: inv });
   const rmSnap = useMutation({ mutationFn: (id: string) => del(`/system/snapshots/${id}`), onSuccess: inv });
   const vacuum = useMutation({ mutationFn: () => post("/system/vacuum"), onSuccess: inv });
+  const rollback = useMutation({ mutationFn: (id: string) => post(`/system/snapshots/${id}/rollback`), onSuccess: inv });
+  const restart = useMutation({ mutationFn: () => post("/system/restart") });
+  const upd = useQuery({ queryKey: ["sys-update"], queryFn: () => get("/system/update") });
   const s = st.data; const v = s?.version ?? {}; const db = s?.database ?? {};
   return <div className="stack">
     <div className="row between"><h2>🛠 {t("sys_title")}</h2><span className="chip">Watchover v{v.version} · {v.git} · {v.docker ? "🐳" : v.platform}</span></div>
@@ -32,7 +35,11 @@ export default function System() {
     </div>
     <Card title={t("sys_snapshots")} right={<Btn sm kind="primary" onClick={() => snap.mutate()} disabled={snap.isPending}>📸 {t("sys_snap_new")}</Btn>}>
       <Table cols={[{ k: "id", label: "ID", render: (r) => <b className="mono">{r.id}</b> }, { k: "version", label: t("sys_version"), render: (r) => `v${r.version} · ${r.git}` }, { k: "ts", label: t("time"), render: (r) => fmtTs(r.ts) }, { k: "reason", label: t("note") }, { k: "size", label: "MB", num: true, render: (r) => (r.size / 1e6).toFixed(1) }, { k: "dbs", label: t("sys_db"), render: (r) => (r.dbs ?? []).join(", ") },
-        { k: "x", label: "", render: (r) => <Confirm onConfirm={() => rmSnap.mutate(r.id)}>{t("delete")}</Confirm> }]} rows={snaps.data ?? []} /><Err e={snap.error} /></Card>
+        { k: "x", label: "", render: (r) => <div className="row"><Confirm kind="" onConfirm={() => rollback.mutate(r.id)}>↩ {t("sys_rollback")}</Confirm><Confirm onConfirm={() => rmSnap.mutate(r.id)}>{t("delete")}</Confirm></div> }]} rows={snaps.data ?? []} /><Err e={snap.error || rollback.error} />{rollback.isSuccess && <div className="ok">{t("sys_restarting")}</div>}</Card>
+    <div className="grid k2">
+      <Card title={`⬆ ${t("sys_update")}`} right={<Confirm kind="" onConfirm={() => restart.mutate()}>{t("sys_restart")}</Confirm>}><p className="muted small" style={{ marginTop: 0 }}>{upd.data?.docker ? t("sys_update_docker") : ""}</p><pre className="code">{(upd.data?.commands ?? []).join("\n")}</pre>{restart.isSuccess && <div className="ok">{t("sys_restarting")}</div>}</Card>
+      {can("sys.maint") && <Settings />}
+    </div>
     {can("sys.auth") && <SignInProviders />}
     {!!rel.data?.length && <Card title={t("sys_releases")}><div className="stack small">{rel.data.slice(0, 6).map((r: any) => <div key={r.version}><b>v{r.version}</b> <span className="muted">{r.date} · {r.kind}</span><ul style={{ margin: "2px 0 0", paddingLeft: 18 }}>{(r.lines ?? []).map((n: string, i: number) => <li key={i}>{n}</li>)}</ul></div>)}</div></Card>}
   </div>;
@@ -70,4 +77,21 @@ function SignInProviders() {
     <label className="check"><input type="checkbox" checked={!!f.mfa_email} onChange={set("mfa_email")} /> {t("sso_mfa")}</label>
     {saved && <div className="ok">{t("saved")}</div>}<Err e={save.error} />
   </Card>;
+}
+
+function Settings() {
+  const { t } = useT(); const qc = useQueryClient();
+  const q = useQuery({ queryKey: ["sys-settings"], queryFn: () => get("/system/settings") });
+  const [f, setF] = useState<any>(null); const [saved, setSaved] = useState(false);
+  useEffect(() => { if (q.data && !f) setF(q.data); }, [q.data, f]);
+  const save = useMutation({ mutationFn: () => put("/system/settings", { ...f, learn_min: Number(f.learn_min), live_port: Number(f.live_port) }), onSuccess: () => { setSaved(true); qc.invalidateQueries({ queryKey: ["sys-settings"] }); qc.invalidateQueries({ queryKey: ["sys-status"] }); setTimeout(() => setSaved(false), 2500); } });
+  if (!f) return null;
+  const set = (k: string) => (e: any) => setF({ ...f, [k]: e.target.type === "checkbox" ? e.target.checked : e.target.value });
+  return <Card title={`⚙ ${t("sys_settings")}`} right={<Btn sm kind="primary" onClick={() => save.mutate()}>{t("save")}</Btn>}><div className="stack">
+    <label className="check"><input type="checkbox" checked={!!f.self_monitor} onChange={set("self_monitor")} /> {t("set_self_monitor")}</label>
+    <label className="check"><input type="checkbox" checked={!!f.alerts_on} onChange={set("alerts_on")} /> {t("set_alerts_on")}</label>
+    <div className="grid k2"><Field label={t("set_learn_min")}><input className="input" type="number" value={f.learn_min} onChange={set("learn_min")} /></Field><Field label={t("set_live_port")}><input className="input" type="number" value={f.live_port} onChange={set("live_port")} /></Field>
+      <Field label={t("set_live_key")}><input className="input" type="password" value={f.live_key ?? ""} onChange={set("live_key")} autoComplete="off" /></Field><Field label={t("set_public_host")}><input className="input" value={f.public_host ?? ""} onChange={set("public_host")} /></Field>
+      <Field label={t("set_workspace")}><input className="input" value={f.workspace ?? ""} onChange={set("workspace")} /></Field><Field label={t("set_lang")}><select className="input" value={f.lang} onChange={set("lang")}><option value="tr">Türkçe</option><option value="en">English</option></select></Field></div>
+    {saved && <div className="ok">{t("saved")}</div>}<Err e={save.error} /></div></Card>;
 }

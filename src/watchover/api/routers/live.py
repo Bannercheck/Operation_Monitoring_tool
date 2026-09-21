@@ -4,8 +4,10 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
+from ... import report as wo_report
 from ..security import require, services
 
 router = APIRouter(prefix="/live", tags=["live"])
@@ -91,3 +93,32 @@ def analyze(user=Depends(require("page.data")), svc=Depends(services)):
 def clear(user=Depends(require("act.sim")), svc=Depends(services)):
     svc.live.clear()
     return {"ok": True}
+
+
+@router.get("/lines")
+def lines(agent: str, source: str, n: int = Query(400, le=5000), errors: bool = False, host: str | None = None, user=Depends(require("page.ops")), svc=Depends(services)):
+    """Tail of one discovered log file as the agent sent it."""
+    return [{"timestamp": o.timestamp.isoformat(), "severity": o.severity, "service": o.service, "host": o.host, "message": o.message, "line_no": o.line_no}
+            for o in svc.live.file_lines(agent, source, n, errors, host or None)]
+
+
+@router.get("/report", response_class=HTMLResponse)
+def slo_report(window: int = 60, env: str | None = None, host: str | None = None, lang: str = "tr", dataset: str | None = None,
+               user=Depends(require("act.report")), svc=Depends(services)):
+    """The SLO report (availability, error budget, p95, worst services) as a self-contained HTML page; windows above a day come from the rollups."""
+    from pathlib import Path
+    if window <= 1440:
+        fig = wo_report.figures_live(svc.live, env or None, host or None, int(window))
+    else:
+        now = datetime.now(UTC)
+        fig = svc.history.figures(now - timedelta(minutes=int(window)), now, env or None, host or None, "day" if window > 7 * 1440 else "hour")
+    a = svc.datasets.get(dataset)["analysis"] if dataset else None
+    scope = " · ".join(x for x in (env, host) if x) or ("all" if lang == "en" else "tümü")
+    logo = Path(__file__).resolve().parents[4] / "assets" / "logo.svg"
+    html = wo_report.slo_report(fig, a, scope, "", lang, wo_settings_workspace(), logo.read_text(encoding="utf-8") if logo.exists() else "")
+    return HTMLResponse(html, headers={"Content-Disposition": f'attachment; filename="watchover-slo-{datetime.now(UTC).strftime("%Y%m%d-%H%M")}.html"'})
+
+
+def wo_settings_workspace() -> str:
+    from ... import settings as wo_settings
+    return wo_settings.load().get("workspace", "") or ""

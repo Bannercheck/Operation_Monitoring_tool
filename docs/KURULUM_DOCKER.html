@@ -12,8 +12,8 @@ table{border-collapse:collapse;width:100%;margin:6px 0;font-size:10.5pt}
 td,th{border:1px solid #cbd5e1;padding:6px 8px;text-align:left;vertical-align:top}
 th{background:#f8fafc}
 .foot{margin-top:26px;font-size:9pt;color:#64748b;border-top:1px solid #e2e8f0;padding-top:6px}
-</style></head><body><h1>Watchover</h1><div class="sub">KURUMSAL DOCKER KURULUM REHBERİ · v1.9.1 · tek sunucu, kaynak koddan derleme</div>
-<p>Watchover şirket içindeki <strong>tek bir sunucuda, tamamen Docker'da</strong> çalışır. Kurulum paketi bu klasördür (<code>watchover.zip</code>): imaj sunucuda kaynak koddan derlenir; GitHub, imaj kaydı ya da sunucuda Python gerekmez. Üç konteyner vardır: <strong>dashboard</strong> (arayüz 8501, canlı alıcı 8600, konteynerin kendini izleyen ajanı), <strong>postgres</strong> (ürün veritabanı, PostgreSQL 16) ve isteğe bağlı <strong>mcp</strong> (kendi MCP sunucumuz, 8765). Kod imajın içindedir; ayarlar, sırlar, anlık görüntüler ve loglar <code>watchover-data</code> biriminde, veritabanı <code>watchover-pg</code> biriminde durur. Güncelleme, yeni paketi klasörün üstüne açıp <code>./watchover.sh update</code> demektir; birimlere dokunulmaz.</p>
+</style></head><body><h1>Watchover</h1><div class="sub">KURUMSAL DOCKER KURULUM REHBERİ · v1.10 · tek sunucu, kaynak koddan derleme</div>
+<p>Watchover şirket içindeki <strong>tek bir sunucuda, tamamen Docker'da</strong> çalışır. Kurulum paketi bu klasördür (<code>watchover.zip</code>): imaj sunucuda kaynak koddan derlenir (Node aşaması React arayüzünü, Python aşaması motoru kurar); GitHub, imaj kaydı ya da sunucuda Python gerekmez. Üç konteyner vardır: <strong>dashboard</strong> (React arayüzü + HTTP API 8501, canlı alıcı 8600, konteynerin kendini izleyen ajanı), <strong>postgres</strong> (ürün veritabanı, PostgreSQL 16) ve isteğe bağlı <strong>mcp</strong> (kendi MCP sunucumuz, 8765). Eski Streamlit arayüzü <code>legacy</code> profiliyle 8502'de bir süre daha açılabilir. Kod imajın içindedir; ayarlar, sırlar, anlık görüntüler ve loglar <code>watchover-data</code> biriminde, veritabanı <code>watchover-pg</code> biriminde durur. Güncelleme, yeni paketi klasörün üstüne açıp <code>./watchover.sh update</code> demektir; birimlere dokunulmaz.</p>
 <h2>1. Sunucu gereksinimleri</h2>
 <p>Sunucuya kurulacak <strong>tek bağımlılık Docker'dır</strong> (Engine 24+ ve Compose v2). Python, pip, PostgreSQL ana makineye kurulmaz; hepsi imajların içindedir.</p>
 <table>
@@ -103,8 +103,8 @@ unzip -q watchover.zip &amp;&amp; mv hackathon watchover &amp;&amp; cd watchover
 <td>Kendi MCP sunucumuzu açar / kapatır (bölüm 7)</td>
 </tr>
 <tr>
-<td><code>./watchover.sh api on\|off</code></td>
-<td>HTTP API konteynerini açar / kapatır (bölüm 7b)</td>
+<td><code>./watchover.sh legacy on\|off</code></td>
+<td>Eski Streamlit arayüzünü ek konteyner olarak açar / kapatır (8502)</td>
 </tr>
 <tr>
 <td><code>./watchover.sh migrate</code></td>
@@ -210,9 +210,9 @@ cp uretim-log.zip datasets/        # istemcilerin analiz edeceği dosyalar
 <pre><code class="language-json">{&quot;mcpServers&quot;: {&quot;watchover&quot;: {&quot;url&quot;: &quot;http://&lt;sunucu&gt;:8765/mcp&quot;, &quot;headers&quot;: {&quot;Authorization&quot;: &quot;Bearer &lt;MCP_API_KEY&gt;&quot;}}}}
 </code></pre>
 <p>Sonra istemciden <code>analyze_dataset("uretim-log.zip")</code> demek yeter. Anahtarsız istekler 401 alır.</p>
-<h2>7b. Yeni arayüz (React) ve HTTP API</h2>
-<p>Streamlit arayüzünün yerini alacak yeni arayüz aynı imajda, <code>api</code> konteynerinde yayınlanır: <code>http://&lt;sunucu&gt;:8000</code>. Giriş, Operasyon, Anomaliler, Veri setleri (yükleme, incident, sinyal, gürültü, postmortem), Aksiyonlar, Playbook, Bilgi tabanı, Bağlantılar (ajanlar, kaynaklar, envanter), Bildirimler, Kullanıcılar ve roller, Sistem sayfaları hazırdır; telefon ve tablette de çalışır. Motorun bütün işlevleri JSON uçları olarak da açılır; entegrasyonlar bunu kullanır. Dashboard'la aynı PostgreSQL'i ve aynı hesapları kullanır.</p>
-<pre><code class="language-bash">./watchover.sh api on                     # http://&lt;sunucu&gt;:8000  (yeni arayüz)  ·  /api/docs (OpenAPI)
+<h2>7b. Arayüz ve HTTP API</h2>
+<p>Ürün arayüzü React'tir ve <code>dashboard</code> konteynerinde HTTP API ile birlikte <code>http://&lt;sunucu&gt;:8501</code> altında yayınlanır: Operasyon (canlı, log dosyaları, SLO raporu), Anomaliler, Veri setleri (yükleme, incident, sinyal, gürültü, arama, karşılaştırma, postmortem), Hata haritası, Aksiyonlar, Playbook, Watchover'a sor, Bilgi tabanı, ITSM, Bağlantılar (ajanlar, kaynaklar, envanter, keşfedilen sunucular), LLM, Bildirimler (kurallar, alıcılar, SMTP / SMS kanalları), Kullanıcılar ve roller, Sistem (durum, ayarlar, anlık görüntü ve geri dönüş, güncelleme, giriş sağlayıcıları). Telefon ve tablette de çalışır. Motorun bütün işlevleri JSON uçları olarak da açılır; entegrasyonlar bunu kullanır.</p>
+<pre><code class="language-bash">./watchover.sh status                     # http://&lt;sunucu&gt;:8501  (arayüz)  ·  /api/docs (OpenAPI)
 curl -s -X POST http://&lt;sunucu&gt;:8000/api/auth/login -H 'Content-Type: application/json' \
      -d '{&quot;email&quot;:&quot;admin@watchover.local&quot;,&quot;password&quot;:&quot;…&quot;}'          # -&gt; {&quot;token&quot;: &quot;…&quot;}
 curl -s http://&lt;sunucu&gt;:8000/api/anomalies -H &quot;Authorization: Bearer &lt;token&gt;&quot;
@@ -249,7 +249,7 @@ curl -s http://&lt;sunucu&gt;:8000/api/anomalies -H &quot;Authorization: Bearer 
 </tr>
 </tbody>
 </table>
-<p>Akış standart OpenID Connect yetkilendirme kodu (PKCE; Apple'da form_post) ile API üzerinden yürür, Streamlit'teki ayarlarla aynı <code>config.json</code> anahtarlarını kullanır; sırlar şifreli tutulur. Yetkiler dashboard'daki rollerle aynıdır. Uç aileleri: <code>datasets</code> (yükleme arka planda, <code>jobs</code> ile ilerleme; incident, sinyal, kanıt, postmortem, dışa aktarma), <code>live</code>, <code>actions</code>, <code>anomalies</code>, <code>playbook</code>, <code>agents</code>, <code>sources</code>, <code>inventory</code>, <code>knowledge</code>, <code>notify</code>, <code>users</code> / <code>roles</code>, <code>system</code>. Canlı akış bu fazda dashboard konteynerinde toplanır; API kendi alıcısını <code>WATCHOVER_API_RECEIVER=1</code> ile açabilir (o zaman 8600 portu API'ye taşınır). Tarayıcıdan çağrılacaksa <code>WATCHOVER_CORS</code> ile izinli adresler yazılır.</p>
+<p>Akış standart OpenID Connect yetkilendirme kodu (PKCE; Apple'da form_post) ile API üzerinden yürür, Streamlit'teki ayarlarla aynı <code>config.json</code> anahtarlarını kullanır; sırlar şifreli tutulur. Yetkiler dashboard'daki rollerle aynıdır. Uç aileleri: <code>datasets</code> (yükleme arka planda, <code>jobs</code> ile ilerleme; incident, sinyal, kanıt, postmortem, dışa aktarma), <code>live</code>, <code>actions</code>, <code>anomalies</code>, <code>playbook</code>, <code>agents</code>, <code>sources</code>, <code>inventory</code>, <code>knowledge</code>, <code>notify</code>, <code>users</code> / <code>roles</code>, <code>system</code>. Canlı alıcı (8600) aynı konteynerdedir; ajanlar ve kaynaklar doğrudan arayüzde görünür. Başka bir alan adından çağrılacaksa <code>WATCHOVER_CORS</code> ile izinli adresler yazılır. Eski Streamlit arayüzü <code>./watchover.sh legacy on</code> ile 8502'de açılır, aynı veritabanını kullanır ve bir sonraki büyük sürümde kaldırılacaktır.</p>
 <h2>8. TLS ve şirket ağı</h2>
 <p>8501'i doğrudan açmak yerine bir ters vekil arkasına koyup TLS ekleyin. Caddy ile tek satır (<code>/etc/caddy/Caddyfile</code>):</p>
 <pre><code>watchover.sirket.local {

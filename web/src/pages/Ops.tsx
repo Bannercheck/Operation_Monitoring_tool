@@ -2,10 +2,11 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Activity, AlertTriangle, Gauge, Server, Timer } from "lucide-react";
-import { get, post } from "../api";
+import { api, get, post } from "../api";
+import { useState } from "react";
 import { useAuth } from "../auth";
 import { useT } from "../i18n";
-import { Badge, Btn, Card, Empty, Kpi, Table, hhmm } from "../components/ui";
+import { Badge, Btn, Card, Empty, Kpi, Modal, Table, hhmm } from "../components/ui";
 
 const SEV = ["CRITICAL", "ERROR", "WARN", "INFO", "DEBUG"] as const;
 /** services come as {name: n} or as [[name, n], …] depending on the endpoint */
@@ -16,7 +17,7 @@ function topServices(v: any): [string, number][] {
 const SEV_COLOR: Record<string, string> = { CRITICAL: "#f87171", ERROR: "#fb923c", WARN: "#fbbf24", INFO: "#60a5fa", DEBUG: "#64748b" };
 
 export default function Ops() {
-  const { t } = useT(); const { can } = useAuth(); const qc = useQueryClient();
+  const { t, lang } = useT(); const { can } = useAuth(); const qc = useQueryClient();
   const stats = useQuery({ queryKey: ["live-stats"], queryFn: () => get("/live/stats?window=15"), refetchInterval: 5000 });
   const slo = useQuery({ queryKey: ["live-slo"], queryFn: () => get("/live/slo?window=15"), refetchInterval: 5000 });
   const metrics = useQuery({ queryKey: ["live-metrics"], queryFn: () => get("/live/metrics?window=15"), refetchInterval: 10000 });
@@ -24,6 +25,9 @@ export default function Ops() {
   const events = useQuery({ queryKey: ["live-events"], queryFn: () => get("/live/events?n=25"), refetchInterval: 5000 });
   const an = useQuery({ queryKey: ["an-stats"], queryFn: () => get("/anomalies/stats"), refetchInterval: 15000 });
   const sys = useQuery({ queryKey: ["sys-status-lite"], queryFn: () => get("/system/status"), enabled: can("sys.status"), refetchInterval: 15000 });
+  const files = useQuery({ queryKey: ["live-files"], queryFn: () => get("/live/files?window=60"), refetchInterval: 15000 });
+  const [tail, setTail] = useState<any>(null); const [win, setWin] = useState(60);
+  const report = async () => { const html = await api<string>(`/live/report?window=${win}&lang=${lang}`, { text: true }); const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([html], { type: "text/html" })); a.download = `watchover-slo-${win}m.html`; a.click(); };
   const s = stats.data, sl = slo.data, m = metrics.data;
   const simOn = !!sys.data?.live?.simulator;
   const perMin: Record<string, any> = {};
@@ -34,7 +38,8 @@ export default function Ops() {
   return (
     <div className="stack">
       <div className="row between"><div><h2>{t("ops_title")}</h2><span className="muted small">{(hosts.data?.agents ?? []).join(", ") || "-"}</span></div>
-        <div className="row">{can("act.sim") && <Btn kind={simOn ? "primary" : ""} onClick={toggleSim} title={t("ops_sim_help")}>🧪 {t("ops_sim")} {simOn ? "ON" : "OFF"}</Btn>}
+        <div className="row">{can("act.report") && <><select className="input" style={{ width: 120 }} value={win} onChange={(e) => setWin(Number(e.target.value))}>{[15, 60, 240, 1440, 10080, 43200].map((w) => <option key={w} value={w}>{w < 60 ? `${w} min` : w < 1440 ? `${w / 60} h` : `${w / 1440} d`}</option>)}</select><Btn onClick={report}>📄 {t("ops_report")}</Btn></>}
+          {can("act.sim") && <Btn kind={simOn ? "primary" : ""} onClick={toggleSim} title={t("ops_sim_help")}>🧪 {t("ops_sim")} {simOn ? "ON" : "OFF"}</Btn>}
           {can("page.data") && <Btn onClick={async () => { await post("/live/analyze"); }} disabled={empty}>{t("ops_analyze")}</Btn>}</div></div>
       <div className="grid k4">
         <Kpi value={(s?.total ?? 0).toLocaleString()} label={t("ops_events15")} sub={`${s?.recent ?? 0} / min`} icon={<Activity size={18} color="#2dd4bf" />} />
@@ -61,6 +66,16 @@ export default function Ops() {
               { k: "host", label: t("host") }, { k: "service", label: t("service") }, { k: "message", label: t("message"), render: (r) => <span className="mono">{r.message.slice(0, 90)}</span> }]} rows={(events.data ?? []).slice().reverse().map((e: any, i: number) => ({ id: i, ...e }))} />
           </Card>
         </div>)}
+      {!!files.data?.length && <Card title={t("ops_files")}><Table cols={[{ k: "source", label: t("ds_files"), render: (r) => <a href="#" onClick={(e) => { e.preventDefault(); setTail(r); }}><b>{r.source}</b></a> }, { k: "host", label: t("host") }, { k: "agent", label: t("ops_agents") }, { k: "events", label: t("ds_events"), num: true }, { k: "errors", label: "ERROR+", num: true }, { k: "last", label: t("time"), render: (r) => <span className="muted small">{String(r.last ?? "").slice(11, 19)}</span> }]} rows={files.data.map((f: any, i: number) => ({ id: i, ...f }))} /></Card>}
+      {tail && <TailModal f={tail} onClose={() => setTail(null)} />}
     </div>
   );
+}
+
+function TailModal({ f, onClose }: { f: any; onClose: () => void }) {
+  const { t } = useT(); const [errors, setErrors] = useState(false);
+  const q = useQuery({ queryKey: ["lines", f.agent, f.source, errors], queryFn: () => get(`/live/lines?agent=${encodeURIComponent(f.agent)}&source=${encodeURIComponent(f.source)}&n=400&errors=${errors}`), refetchInterval: 5000 });
+  return <Modal wide title={<span>{f.host} · <span className="mono">{f.source}</span></span>} onClose={onClose}>
+    <label className="check"><input type="checkbox" checked={errors} onChange={(e) => setErrors(e.target.checked)} /> {t("ops_errors_only")} · {q.data?.length ?? 0} {t("ops_lines")}</label>
+    <pre className="code" style={{ maxHeight: 520 }}>{(q.data ?? []).map((l: any) => `${l.timestamp.slice(11, 19)} ${l.severity.padEnd(8)} ${l.message}`).join("\n")}</pre></Modal>;
 }

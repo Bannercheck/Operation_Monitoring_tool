@@ -2,6 +2,12 @@
 
 Numaralandırma: büyük sürüm **v1, v2** (ürün sahibinin kararı), küçük güncelleme **v1.1, v1.2** (her devreye alınan özellik adımı), düzeltme **v1.1.1**. Her sürüm `python -m watchover.release <major|minor|patch> "özet"` ile açılır; Sistem › Güncelleme sayfası bu dosyayı gösterir, anlık görüntüler sürüm numarasını taşır.
 
+## v1.10 · 2026-09-21 · güncelleme
+
+- Faz 3: Hata haritası, Watchover'a sor, LLM ve Ollama, ITSM, log arama ve karşılaştırma, log dosyaları, SLO raporu, SMTP / SMS kanalları, sistem ayarları ve geri dönüş, e-posta doğrulamalı kayıt React'e taşındı
+- Docker: dashboard konteyneri artık React arayüzü + API (8501) ve canlı alıcı (8600); Streamlit legacy profili (8502)
+
+
 ## v1.9.1 · 2026-09-21 · düzeltme
 
 - Giriş sayfasında Google / Microsoft / Apple düğmeleri her zaman; Apple ile giriş; Sistem › Giriş sağlayıcıları kartı; sağlayıcıdan gelen hesaplar otomatik açılır

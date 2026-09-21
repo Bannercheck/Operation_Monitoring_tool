@@ -3,11 +3,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api, del, get, post } from "../api";
 import { useT } from "../i18n";
-import { Btn, Card, Confirm, Empty, Err, Table, fmtTs } from "../components/ui";
+import { Badge, Btn, Card, Confirm, Empty, Err, Modal, Table, fmtTs } from "../components/ui";
 
 export default function Datasets() {
   const { t } = useT(); const qc = useQueryClient();
-  const [drag, setDrag] = useState(false); const [combine, setCombine] = useState(true); const [err, setErr] = useState<any>(null);
+  const [drag, setDrag] = useState(false); const [combine, setCombine] = useState(true); const [err, setErr] = useState<any>(null); const [cmp, setCmp] = useState<string[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
   const list = useQuery({ queryKey: ["datasets"], queryFn: () => get("/datasets") });
   const jobs = useQuery({ queryKey: ["jobs"], queryFn: () => get("/datasets/jobs"), refetchInterval: (q) => ((q.state.data as any[])?.some((j) => j.state === "running") ? 1000 : 5000) });
@@ -22,7 +22,7 @@ export default function Datasets() {
   const remove = useMutation({ mutationFn: (k: string) => del(`/datasets/${k}`), onSuccess: () => qc.invalidateQueries({ queryKey: ["datasets"] }) });
   return (
     <div className="stack">
-      <div className="row between"><h2>{t("ds_title")}</h2><Btn onClick={() => demo.mutate()} disabled={demo.isPending}>{t("ds_demo")}</Btn></div>
+      <div className="row between"><h2>{t("ds_title")}</h2><div className="row">{(list.data?.length ?? 0) >= 2 && <Btn onClick={() => setCmp([list.data[0].id, list.data[1].id])}>{t("ds_compare")}</Btn>}<Btn onClick={() => demo.mutate()} disabled={demo.isPending}>{t("ds_demo")}</Btn></div></div>
       <Card title={t("ds_upload")}>
         <div className={`drop ${drag ? "on" : ""}`} onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)} onDrop={(e) => { e.preventDefault(); setDrag(false); upload(e.dataTransfer.files); }} onClick={() => fileRef.current?.click()}>
           📂 {t("ds_drop")}<input ref={fileRef} type="file" multiple style={{ display: "none" }} onChange={(e) => e.target.files && upload(e.target.files)} /></div>
@@ -40,6 +40,20 @@ export default function Datasets() {
           { k: "elapsed", label: t("time"), num: true, render: (r) => `${r.elapsed}${t("ds_elapsed")}` }, { k: "loaded_at", label: "", render: (r) => <span className="muted small">{fmtTs(r.loaded_at)} · {r.stamp?.result?.slice(0, 10)}</span> },
           { k: "x", label: "", render: (r) => <div className="row"><Link className="btn sm" to={`/datasets/${r.id}`}>{t("ds_open")}</Link><Confirm onConfirm={() => remove.mutate(r.id)}>{t("delete")}</Confirm></div> }]} rows={list.data} />}
       </Card>
+      {cmp.length === 2 && <CompareModal list={list.data ?? []} a={cmp[0]} b={cmp[1]} onPick={setCmp} onClose={() => setCmp([])} />}
     </div>
   );
+}
+
+function CompareModal({ list, a, b, onPick, onClose }: { list: any[]; a: string; b: string; onPick: (x: string[]) => void; onClose: () => void }) {
+  const { t } = useT();
+  const r = useQuery({ queryKey: ["compare", a, b], queryFn: () => get(`/datasets/compare?a=${a}&b=${b}`) });
+  const d = r.data;
+  return <Modal wide title={t("ds_compare")} onClose={onClose}><div className="stack">
+    <div className="row"><select className="input" value={a} onChange={(e) => onPick([e.target.value, b])}>{list.map((x) => <option key={x.id} value={x.id}>A · {x.name}</option>)}</select><select className="input" value={b} onChange={(e) => onPick([a, e.target.value])}>{list.map((x) => <option key={x.id} value={x.id}>B · {x.name}</option>)}</select></div>
+    {d && <><Table cols={[{ k: "metric", label: t("cmp_metric") }, { k: "a", label: "A", num: true }, { k: "b", label: "B", num: true }, { k: "delta", label: "Δ", num: true, render: (x) => <span style={{ color: x.delta > 0 ? "#f87171" : x.delta < 0 ? "#34d399" : undefined }}>{x.delta ?? "-"}{x.delta_pct != null ? ` (${x.delta_pct}%)` : ""}</span> }]} rows={d.kpis.map((x: any) => ({ id: x.metric, ...x }))} />
+      <Card title={t("cmp_shared")}><Table cols={[{ k: "severity", label: t("severity"), render: (x) => <Badge v={x.severity} /> }, { k: "template", label: t("sig_template"), render: (x) => <span className="mono">{x.template.slice(0, 100)}</span> }, { k: "count_a", label: "A", num: true }, { k: "count_b", label: "B", num: true }, { k: "delta", label: "Δ", num: true }]} rows={d.shared.slice(0, 30).map((x: any) => ({ id: x.template, ...x }))} /></Card>
+      <div className="grid k2"><Card title={t("cmp_only_a")}><Table cols={[{ k: "severity", label: "", render: (x) => <Badge v={x.severity} /> }, { k: "template", label: t("sig_template"), render: (x) => <span className="mono">{x.template.slice(0, 80)}</span> }, { k: "count", label: t("count"), num: true }]} rows={d.only_a.slice(0, 20).map((x: any) => ({ id: x.template, ...x }))} /></Card>
+        <Card title={t("cmp_only_b")}><Table cols={[{ k: "severity", label: "", render: (x) => <Badge v={x.severity} /> }, { k: "template", label: t("sig_template"), render: (x) => <span className="mono">{x.template.slice(0, 80)}</span> }, { k: "count", label: t("count"), num: true }]} rows={d.only_b.slice(0, 20).map((x: any) => ({ id: x.template, ...x }))} /></Card></div></>}
+  </div></Modal>;
 }

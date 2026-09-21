@@ -31,8 +31,8 @@ COPY --from=web /web/dist ./web/dist
 RUN chown -R watchover:watchover /app
 USER watchover
 VOLUME ["/data"]
-EXPOSE 8501 8600 8765 8000
-HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 CMD curl -fsS http://127.0.0.1:8501/_stcore/health >/dev/null || exit 1
+EXPOSE 8501 8600 8765 8502
+HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 CMD curl -fsS http://127.0.0.1:8501/api/health >/dev/null || exit 1
 ENTRYPOINT ["tini", "--"]
-# the dashboard; the mcp and api services in docker-compose.yml override the command
-CMD ["streamlit", "run", "app.py", "--server.address", "0.0.0.0", "--server.port", "8501", "--server.headless", "true", "--server.fileWatcherType", "none"]
+# the product: React interface + API on 8501 (the mcp and legacy services in docker-compose.yml override the command)
+CMD ["python", "-m", "watchover.api", "--port", "8501"]

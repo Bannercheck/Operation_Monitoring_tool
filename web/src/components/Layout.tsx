@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
-import { Activity, AlertTriangle, BellRing, BookOpen, Brain, ClipboardList, Database, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Plug, Settings2, Users } from "lucide-react";
+import { Activity, AlertTriangle, BellRing, BookOpen, Bot, Brain, ClipboardList, Database, LogOut, Menu, MessageSquare, Network, PanelLeftClose, PanelLeftOpen, Plug, Settings2, Ticket, Users } from "lucide-react";
 import { useAuth } from "../auth";
 import { useT } from "../i18n";
 import { Btn, Modal, Field, Err } from "./ui";
@@ -9,10 +9,10 @@ import { post } from "../api";
 const NAV = [
   { group: "nav_group_ops", items: [
     { to: "/ops", k: "nav_ops", icon: Activity, perm: "page.ops" }, { to: "/anomalies", k: "nav_anom", icon: AlertTriangle, perm: "page.ops" },
-    { to: "/datasets", k: "nav_data", icon: Database, perm: "page.data" }, { to: "/actions", k: "nav_actions", icon: ClipboardList, perm: "page.data" },
-    { to: "/playbook", k: "nav_pb", icon: BookOpen, perm: "page.pb" }, { to: "/knowledge", k: "nav_kb", icon: Brain, perm: "page.assist" } ] },
+    { to: "/datasets", k: "nav_data", icon: Database, perm: "page.data" }, { to: "/map", k: "nav_map", icon: Network, perm: "page.map" }, { to: "/actions", k: "nav_actions", icon: ClipboardList, perm: "page.data" },
+    { to: "/playbook", k: "nav_pb", icon: BookOpen, perm: "page.pb" }, { to: "/assist", k: "nav_assist", icon: MessageSquare, perm: "page.assist" }, { to: "/knowledge", k: "nav_kb", icon: Brain, perm: "page.assist" }, { to: "/itsm", k: "nav_itsm", icon: Ticket, perm: "page.itsm" } ] },
   { group: "nav_group_admin", items: [
-    { to: "/connections", k: "nav_conn", icon: Plug, perm: "page.conn" }, { to: "/alerts", k: "nav_ntf", icon: BellRing, perm: "sys.notify" },
+    { to: "/connections", k: "nav_conn", icon: Plug, perm: "page.conn" }, { to: "/llm", k: "nav_llm", icon: Bot, perm: "page.llm" }, { to: "/alerts", k: "nav_ntf", icon: BellRing, perm: "sys.notify" },
     { to: "/users", k: "nav_users", icon: Users, perm: "page.users" }, { to: "/system", k: "nav_sys", icon: Settings2, perm: "sys.status" } ] },
 ];
 

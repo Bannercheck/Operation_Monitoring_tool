@@ -1,8 +1,8 @@
 # Watchover on one server, entirely in Docker, built from this source tree:  ./watchover.sh install   (see docs/KURULUM_DOCKER.md)
-#   dashboard http://<host>:8501   receiver :8600   PostgreSQL next to it (volume watchover-pg)   data in volume watchover-data
+#   dashboard (React interface + API, OpenAPI at /api/docs) http://<host>:8501   receiver :8600   PostgreSQL next to it (volume watchover-pg)
 #   update:   copy the new source tree over this folder, then  ./watchover.sh update
 #   mcp:      ./watchover.sh mcp on                          (our MCP server; MCP_API_KEY in .env; datasets in ./datasets)
-#   api:      ./watchover.sh api on                          (HTTP API + the new React interface at :8000, OpenAPI at /api/docs)
+#   legacy:   ./watchover.sh legacy on                       (the former Streamlit interface on :8502, same database; to be removed)
 #   external PostgreSQL: DATABASE_URL in .env and  docker compose up -d --no-deps dashboard
 #   plain compose works too:  docker compose build && docker compose up -d
 name: watchover
@@ -15,9 +15,10 @@ services:
         GIT_REV: ${GIT_REV:--}
         VERSION: ${WATCHOVER_TAG:-local}
     container_name: watchover
+    command: ["python", "-m", "watchover.api", "--port", "8501"]
     restart: unless-stopped
     ports:
-      - "${WATCHOVER_UI_PORT:-8501}:8501"          # dashboard
+      - "${WATCHOVER_UI_PORT:-8501}:8501"          # React interface + API (docs at /api/docs)
       - "${WATCHOVER_LIVE_PORT:-8600}:8600"        # receiver: agents and pull sources
     env_file:
       - path: .env
@@ -27,6 +28,8 @@ services:
       DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-watchover}:${POSTGRES_PASSWORD:-change-me}@postgres:5432/${POSTGRES_DB:-watchover}}
       WATCHOVER_SELFMON: ${WATCHOVER_SELFMON:-1}
       WATCHOVER_PARALLEL: ${WATCHOVER_PARALLEL:-}
+      WATCHOVER_API_RECEIVER: "1"
+      WATCHOVER_CORS: ${WATCHOVER_CORS:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -46,7 +49,7 @@ services:
       driver: json-file
       options: { max-size: "20m", max-file: "5" }
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8501/_stcore/health"]
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8501/api/health"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -81,31 +84,25 @@ services:
       resources:
         limits: { cpus: "1", memory: 1g }
 
-  api:
-    profiles: [api]
+  legacy:
+    profiles: [legacy]
     image: ${WATCHOVER_IMAGE:-watchover}:${WATCHOVER_TAG:-local}
-    container_name: watchover-api
-    command: ["python", "-m", "watchover.api", "--port", "8000"]
+    container_name: watchover-legacy
+    command: ["streamlit", "run", "app.py", "--server.address", "0.0.0.0", "--server.port", "8502", "--server.headless", "true", "--server.fileWatcherType", "none"]
     restart: unless-stopped
-    ports: ["${WATCHOVER_API_PORT:-8000}:8000"]
+    ports: ["${WATCHOVER_LEGACY_PORT:-8502}:8502"]
     env_file:
       - path: .env
         required: false
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-watchover}:${POSTGRES_PASSWORD:-change-me}@postgres:5432/${POSTGRES_DB:-watchover}}
-      WATCHOVER_API_RECEIVER: ${WATCHOVER_API_RECEIVER:-0}   # 1 = the API owns the agent receiver (then move port 8600 here)
-      WATCHOVER_CORS: ${WATCHOVER_CORS:-}
       WATCHOVER_SELFMON: "0"
+      LIVE_PORT: "8601"                            # its own receiver port: the product's receiver is on the dashboard container
     depends_on:
       postgres:
         condition: service_healthy
     volumes:
       - watchover-data:/data
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/api/health"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
     deploy:
       resources:
         limits: { cpus: "2", memory: 2g }
