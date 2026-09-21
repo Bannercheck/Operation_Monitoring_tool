@@ -140,7 +140,16 @@ curl -s -X POST http://<sunucu>:8000/api/auth/login -H 'Content-Type: applicatio
 curl -s http://<sunucu>:8000/api/anomalies -H "Authorization: Bearer <token>"
 ```
 
-Giriş e-posta + parola iledir; yönetici olmayan hesaplara SMTP ayarlıysa e-posta ile tek kullanımlık kod sorulur (`/api/auth/mfa`). SSO: Sistem › Giriş'te Google / Microsoft / OIDC istemci bilgileri girilmişse giriş sayfasında sağlayıcı düğmesi çıkar (`/api/auth/oidc/<sağlayıcı>/start`, PKCE'li yetkilendirme kodu akışı; sağlayıcıda geri dönüş adresi `http(s)://<sunucu>/api/auth/oidc/<sağlayıcı>/callback`). Yetkiler dashboard'daki rollerle aynıdır. Uç aileleri: `datasets` (yükleme arka planda, `jobs` ile ilerleme; incident, sinyal, kanıt, postmortem, dışa aktarma), `live`, `actions`, `anomalies`, `playbook`, `agents`, `sources`, `inventory`, `knowledge`, `notify`, `users` / `roles`, `system`. Canlı akış bu fazda dashboard konteynerinde toplanır; API kendi alıcısını `WATCHOVER_API_RECEIVER=1` ile açabilir (o zaman 8600 portu API'ye taşınır). Tarayıcıdan çağrılacaksa `WATCHOVER_CORS` ile izinli adresler yazılır.
+Giriş e-posta + parola iledir; yönetici olmayan hesaplara SMTP ayarlıysa e-posta ile tek kullanımlık kod sorulur (`/api/auth/mfa`). **Google / Microsoft / Apple ile giriş ve kayıt:** giriş sayfasında üç düğme her zaman durur; yapılandırılana kadar soluk görünür. Yeni arayüzde Sistem › *Giriş sağlayıcıları (SSO)* kartına ilgili sağlayıcının istemci bilgileri girilip *etkin* işaretlenince düğme çalışır: tıklayan kişi sağlayıcıya yönlendirilir, geri dönüşte hesabı yoksa otomatik açılır (*operatör* rolüyle; kart üzerinden kapatılabilir ya da e-posta alanı ile sınırlanabilir). Sağlayıcı tarafında tanımlanacak geri dönüş adresi kartta yazar: `http(s)://<sunucu>:8000/api/auth/oidc/<google|microsoft|apple|oidc>/callback`; dış adres farklıysa (ters vekil, TLS) *Dış adres* alanına yazın.
+
+| Sağlayıcı | Nereden alınır | Girilecek |
+|---|---|---|
+| Google | console.cloud.google.com › APIs & Services › Credentials › OAuth client ID (Web application); Authorized redirect URI = geri dönüş adresi | Client ID, Client secret |
+| Microsoft | portal.azure.com › Microsoft Entra ID › App registrations › New; Redirect URI (Web) = geri dönüş adresi; Certificates & secrets › New client secret | Tenant (`common` ya da kiracı kimliği), Application (client) ID, secret |
+| Apple | developer.apple.com › Identifiers › Services ID (Sign in with Apple, Return URL = geri dönüş adresi, **https zorunlu**); Keys › Sign in with Apple anahtarı (.p8) | Services ID (Client ID), Team ID, Key ID, .p8 içeriği |
+| OIDC (Keycloak, Okta, Authentik…) | Sağlayıcıda yeni istemci, redirect URI = geri dönüş adresi | Issuer URL, Client ID, secret |
+
+Akış standart OpenID Connect yetkilendirme kodu (PKCE; Apple'da form_post) ile API üzerinden yürür, Streamlit'teki ayarlarla aynı `config.json` anahtarlarını kullanır; sırlar şifreli tutulur. Yetkiler dashboard'daki rollerle aynıdır. Uç aileleri: `datasets` (yükleme arka planda, `jobs` ile ilerleme; incident, sinyal, kanıt, postmortem, dışa aktarma), `live`, `actions`, `anomalies`, `playbook`, `agents`, `sources`, `inventory`, `knowledge`, `notify`, `users` / `roles`, `system`. Canlı akış bu fazda dashboard konteynerinde toplanır; API kendi alıcısını `WATCHOVER_API_RECEIVER=1` ile açabilir (o zaman 8600 portu API'ye taşınır). Tarayıcıdan çağrılacaksa `WATCHOVER_CORS` ile izinli adresler yazılır.
 
 ## 8. TLS ve şirket ağı
 

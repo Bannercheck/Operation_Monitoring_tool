@@ -2,6 +2,11 @@
 
 Numaralandırma: büyük sürüm **v1, v2** (ürün sahibinin kararı), küçük güncelleme **v1.1, v1.2** (her devreye alınan özellik adımı), düzeltme **v1.1.1**. Her sürüm `python -m watchover.release <major|minor|patch> "özet"` ile açılır; Sistem › Güncelleme sayfası bu dosyayı gösterir, anlık görüntüler sürüm numarasını taşır.
 
+## v1.9.1 · 2026-09-21 · düzeltme
+
+- Giriş sayfasında Google / Microsoft / Apple düğmeleri her zaman; Apple ile giriş; Sistem › Giriş sağlayıcıları kartı; sağlayıcıdan gelen hesaplar otomatik açılır
+
+
 ## v1.9 · 2026-09-21 · güncelleme
 
 - Yeni React arayüzü (faz 2): giriş + MFA + SSO, Operasyon, Anomaliler, Veri setleri ve incident detayı, Aksiyonlar, Playbook, Bilgi tabanı, Bağlantılar, Bildirimler, Kullanıcılar ve roller, Sistem; telefon ve tablet düzeni; ./watchover.sh api on ile :8000

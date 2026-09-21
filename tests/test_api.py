@@ -168,10 +168,17 @@ def test_oidc_flow_with_stubbed_provider(client, monkeypatch):
     signs the account in and hands the token to the app in the URL fragment."""
     from watchover import settings as wo_settings
     from watchover.api.routers import auth as a
-    assert client.get("/api/auth/providers").json() == []
+    pv = client.get("/api/auth/providers").json()
+    assert [p["name"] for p in pv] == ["google", "microsoft", "apple", "oidc"] and not any(p["configured"] for p in pv) and pv[0]["callback"].endswith("/api/auth/oidc/google/callback")
     assert client.get("/api/auth/oidc/google/start", follow_redirects=False).status_code == 404
-    wo_settings.save({"google_client_id": "cid", "google_client_secret": "csecret", "sso_auto_create": True})
-    assert [p["name"] for p in client.get("/api/auth/providers").json()] == ["google"]
+    h = token(client)
+    r = client.put("/api/system/auth", json={"auth_google": True, "google_client_id": "cid", "google_client_secret": "csecret", "auth_self_register": True}, headers=h)
+    assert r.status_code == 200 and "google_client_secret" in r.json()["changed"]
+    got = client.get("/api/system/auth", headers=h).json()
+    assert got["google_client_secret"] == "•••" and got["google_client_id"] == "cid" and got["callbacks"]["apple"].endswith("/apple/callback")
+    client.put("/api/system/auth", json={"google_client_secret": "•••", "auth_domains": ""}, headers=h)             # the mask keeps the stored secret
+    assert wo_settings.load()["google_client_secret"] == "csecret"
+    assert [p["name"] for p in client.get("/api/auth/providers").json() if p["configured"]] == ["google"]
     monkeypatch.setattr(a, "_discover", lambda issuer: {"authorization_endpoint": "https://idp.example/auth", "token_endpoint": "https://idp.example/token", "userinfo_endpoint": "https://idp.example/userinfo"})
     r = client.get("/api/auth/oidc/google/start?next=/ops", follow_redirects=False)
     assert r.status_code == 302 and r.headers["location"].startswith("https://idp.example/auth?") and "code_challenge_method=S256" in r.headers["location"]
@@ -189,7 +196,23 @@ def test_oidc_flow_with_stubbed_provider(client, monkeypatch):
     me = client.get("/api/auth/me", headers={"Authorization": f"Bearer {tok}"}).json()
     assert me["email"] == "sso.user@example.com" and me["role"] == "operator"
     assert client.get("/api/auth/oidc/google/callback?code=abc&state=bad.state.x", follow_redirects=False).status_code == 401
-    wo_settings.save({"google_client_id": "", "google_client_secret": ""})
+    # Apple: client secret is a signed JWT, the code comes back as a form POST, the identity is read from the id_token
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    pem = ec.generate_private_key(ec.SECP256R1()).private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()).decode()
+    client.put("/api/system/auth", json={"auth_apple": True, "apple_client_id": "com.example.watchover", "apple_team_id": "TEAM1", "apple_key_id": "KEY1", "apple_private_key": pem}, headers=h)
+    r = client.get("/api/auth/oidc/apple/start?next=/ops", follow_redirects=False)
+    assert r.status_code == 302 and "response_mode=form_post" in r.headers["location"] and "code_challenge" not in r.headers["location"]
+    state = dict(x.split("=", 1) for x in r.headers["location"].split("?", 1)[1].split("&"))["state"]
+    import base64, json as _json
+    idt = "h." + base64.urlsafe_b64encode(_json.dumps({"email": "apple.user@example.com"}).encode()).rstrip(b"=").decode() + ".s"
+    seen.clear()
+    monkeypatch.setattr(a.httpx, "post", lambda url, data, timeout: seen.update(data) or R(200, {"access_token": "at", "id_token": idt}))
+    cb = client.post("/api/auth/oidc/apple/callback", data={"code": "xyz", "state": state, "user": _json.dumps({"name": {"firstName": "Ada", "lastName": "Apple"}})}, follow_redirects=False)
+    assert cb.status_code == 302 and cb.headers["location"].startswith("/ops#sso=") and seen["client_secret"].count(".") == 2 and "code_verifier" not in seen
+    me = client.get("/api/auth/me", headers={"Authorization": "Bearer " + cb.headers["location"].split("#sso=", 1)[1]}).json()
+    assert me["email"] == "apple.user@example.com" and me["name"] == "Ada Apple"
+    wo_settings.save({"auth_google": False, "google_client_id": "", "google_client_secret": "", "auth_apple": False, "apple_private_key": ""})
 
 
 def test_spa_is_served_when_built(client):

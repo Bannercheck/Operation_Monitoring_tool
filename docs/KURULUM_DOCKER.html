@@ -12,7 +12,7 @@ table{border-collapse:collapse;width:100%;margin:6px 0;font-size:10.5pt}
 td,th{border:1px solid #cbd5e1;padding:6px 8px;text-align:left;vertical-align:top}
 th{background:#f8fafc}
 .foot{margin-top:26px;font-size:9pt;color:#64748b;border-top:1px solid #e2e8f0;padding-top:6px}
-</style></head><body><h1>Watchover</h1><div class="sub">KURUMSAL DOCKER KURULUM REHBERİ · v1.9 · tek sunucu, kaynak koddan derleme</div>
+</style></head><body><h1>Watchover</h1><div class="sub">KURUMSAL DOCKER KURULUM REHBERİ · v1.9.1 · tek sunucu, kaynak koddan derleme</div>
 <p>Watchover şirket içindeki <strong>tek bir sunucuda, tamamen Docker'da</strong> çalışır. Kurulum paketi bu klasördür (<code>watchover.zip</code>): imaj sunucuda kaynak koddan derlenir; GitHub, imaj kaydı ya da sunucuda Python gerekmez. Üç konteyner vardır: <strong>dashboard</strong> (arayüz 8501, canlı alıcı 8600, konteynerin kendini izleyen ajanı), <strong>postgres</strong> (ürün veritabanı, PostgreSQL 16) ve isteğe bağlı <strong>mcp</strong> (kendi MCP sunucumuz, 8765). Kod imajın içindedir; ayarlar, sırlar, anlık görüntüler ve loglar <code>watchover-data</code> biriminde, veritabanı <code>watchover-pg</code> biriminde durur. Güncelleme, yeni paketi klasörün üstüne açıp <code>./watchover.sh update</code> demektir; birimlere dokunulmaz.</p>
 <h2>1. Sunucu gereksinimleri</h2>
 <p>Sunucuya kurulacak <strong>tek bağımlılık Docker'dır</strong> (Engine 24+ ve Compose v2). Python, pip, PostgreSQL ana makineye kurulmaz; hepsi imajların içindedir.</p>
@@ -217,7 +217,39 @@ curl -s -X POST http://&lt;sunucu&gt;:8000/api/auth/login -H 'Content-Type: appl
      -d '{&quot;email&quot;:&quot;admin@watchover.local&quot;,&quot;password&quot;:&quot;…&quot;}'          # -&gt; {&quot;token&quot;: &quot;…&quot;}
 curl -s http://&lt;sunucu&gt;:8000/api/anomalies -H &quot;Authorization: Bearer &lt;token&gt;&quot;
 </code></pre>
-<p>Giriş e-posta + parola iledir; yönetici olmayan hesaplara SMTP ayarlıysa e-posta ile tek kullanımlık kod sorulur (<code>/api/auth/mfa</code>). SSO: Sistem › Giriş'te Google / Microsoft / OIDC istemci bilgileri girilmişse giriş sayfasında sağlayıcı düğmesi çıkar (<code>/api/auth/oidc/&lt;sağlayıcı&gt;/start</code>, PKCE'li yetkilendirme kodu akışı; sağlayıcıda geri dönüş adresi <code>http(s)://&lt;sunucu&gt;/api/auth/oidc/&lt;sağlayıcı&gt;/callback</code>). Yetkiler dashboard'daki rollerle aynıdır. Uç aileleri: <code>datasets</code> (yükleme arka planda, <code>jobs</code> ile ilerleme; incident, sinyal, kanıt, postmortem, dışa aktarma), <code>live</code>, <code>actions</code>, <code>anomalies</code>, <code>playbook</code>, <code>agents</code>, <code>sources</code>, <code>inventory</code>, <code>knowledge</code>, <code>notify</code>, <code>users</code> / <code>roles</code>, <code>system</code>. Canlı akış bu fazda dashboard konteynerinde toplanır; API kendi alıcısını <code>WATCHOVER_API_RECEIVER=1</code> ile açabilir (o zaman 8600 portu API'ye taşınır). Tarayıcıdan çağrılacaksa <code>WATCHOVER_CORS</code> ile izinli adresler yazılır.</p>
+<p>Giriş e-posta + parola iledir; yönetici olmayan hesaplara SMTP ayarlıysa e-posta ile tek kullanımlık kod sorulur (<code>/api/auth/mfa</code>). <strong>Google / Microsoft / Apple ile giriş ve kayıt:</strong> giriş sayfasında üç düğme her zaman durur; yapılandırılana kadar soluk görünür. Yeni arayüzde Sistem › <em>Giriş sağlayıcıları (SSO)</em> kartına ilgili sağlayıcının istemci bilgileri girilip <em>etkin</em> işaretlenince düğme çalışır: tıklayan kişi sağlayıcıya yönlendirilir, geri dönüşte hesabı yoksa otomatik açılır (<em>operatör</em> rolüyle; kart üzerinden kapatılabilir ya da e-posta alanı ile sınırlanabilir). Sağlayıcı tarafında tanımlanacak geri dönüş adresi kartta yazar: <code>http(s)://&lt;sunucu&gt;:8000/api/auth/oidc/&lt;google|microsoft|apple|oidc&gt;/callback</code>; dış adres farklıysa (ters vekil, TLS) <em>Dış adres</em> alanına yazın.</p>
+<table>
+<thead>
+<tr>
+<th>Sağlayıcı</th>
+<th>Nereden alınır</th>
+<th>Girilecek</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Google</td>
+<td>console.cloud.google.com › APIs &amp; Services › Credentials › OAuth client ID (Web application); Authorized redirect URI = geri dönüş adresi</td>
+<td>Client ID, Client secret</td>
+</tr>
+<tr>
+<td>Microsoft</td>
+<td>portal.azure.com › Microsoft Entra ID › App registrations › New; Redirect URI (Web) = geri dönüş adresi; Certificates &amp; secrets › New client secret</td>
+<td>Tenant (<code>common</code> ya da kiracı kimliği), Application (client) ID, secret</td>
+</tr>
+<tr>
+<td>Apple</td>
+<td>developer.apple.com › Identifiers › Services ID (Sign in with Apple, Return URL = geri dönüş adresi, <strong>https zorunlu</strong>); Keys › Sign in with Apple anahtarı (.p8)</td>
+<td>Services ID (Client ID), Team ID, Key ID, .p8 içeriği</td>
+</tr>
+<tr>
+<td>OIDC (Keycloak, Okta, Authentik…)</td>
+<td>Sağlayıcıda yeni istemci, redirect URI = geri dönüş adresi</td>
+<td>Issuer URL, Client ID, secret</td>
+</tr>
+</tbody>
+</table>
+<p>Akış standart OpenID Connect yetkilendirme kodu (PKCE; Apple'da form_post) ile API üzerinden yürür, Streamlit'teki ayarlarla aynı <code>config.json</code> anahtarlarını kullanır; sırlar şifreli tutulur. Yetkiler dashboard'daki rollerle aynıdır. Uç aileleri: <code>datasets</code> (yükleme arka planda, <code>jobs</code> ile ilerleme; incident, sinyal, kanıt, postmortem, dışa aktarma), <code>live</code>, <code>actions</code>, <code>anomalies</code>, <code>playbook</code>, <code>agents</code>, <code>sources</code>, <code>inventory</code>, <code>knowledge</code>, <code>notify</code>, <code>users</code> / <code>roles</code>, <code>system</code>. Canlı akış bu fazda dashboard konteynerinde toplanır; API kendi alıcısını <code>WATCHOVER_API_RECEIVER=1</code> ile açabilir (o zaman 8600 portu API'ye taşınır). Tarayıcıdan çağrılacaksa <code>WATCHOVER_CORS</code> ile izinli adresler yazılır.</p>
 <h2>8. TLS ve şirket ağı</h2>
 <p>8501'i doğrudan açmak yerine bir ters vekil arkasına koyup TLS ekleyin. Caddy ile tek satır (<code>/etc/caddy/Caddyfile</code>):</p>
 <pre><code>watchover.sirket.local {
