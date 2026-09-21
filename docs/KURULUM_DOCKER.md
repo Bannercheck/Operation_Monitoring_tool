@@ -175,6 +175,8 @@ Sonra:
 5. **Ajanlar ve kaynaklar.** Diğer sunuculardaki ajanlar `https://<adres>/ingest` adresine gönderir: `python3 agent.py --url https://10.0.0.12/ingest --token … --ca watchover-root.crt` (şirket sertifikasında `--ca` gerekmez). Mevcut `http://<adres>:8600/ingest` de çalışmaya devam eder (token'lı düz HTTP, sadece şirket ağı içinde).
 6. **SSO.** Google / Microsoft / OIDC geri dönüş adresleri `https://<adres>/api/auth/oidc/<sağlayıcı>/callback` olur; Sistem › Giriş sağlayıcıları kartı adresi gösterir. Apple yalnızca https ile çalışır ve genel bir alan adı ister.
 
+`curl -vk https://<IP>/api/health` "tlsv1 alert internal error" derse Caddyfile'daki `default_sni` ayarı eksiktir (v1.13.3+ ile gelir; `./watchover.sh update && ./watchover.sh edge on` yeterli): IP ile bağlanan istemciler sunucu adı göndermez, Caddy bu ayarla yine de sertifikayı verir.
+
 Kapatmak: `./watchover.sh edge off` (8501 yeniden yayınlanır; Mac'te başka bir program 8501'i tutuyorsa `.env`'de `WATCHOVER_UI_PORT=8511` gibi bir port verin). `edge on` "address already in use" derse 8501'i tutan programı `lsof -nP -iTCP:8501 -sTCP:LISTEN` ile görebilirsiniz; v1.13.1'den itibaren edge açıkken bu port yayınlanmadığı için hata oluşmaz. Portlar: `.env` içinde `WATCHOVER_EDGE_HTTPS_PORT=8443` gibi.
 
 ### 8.2 Sunucuda
