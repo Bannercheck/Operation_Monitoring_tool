@@ -63,17 +63,23 @@ def _from_iso(s: str) -> datetime | None:
     """datetime.fromisoformat fast path; on 3.9/3.10 it needs 'Z' -> '+00:00' and no more than 6 fraction digits."""
     if s.endswith("Z") or s.endswith("z"):
         s = s[:-1] + "+00:00"
-    m = re.match(r"^(.*?\.\d{6})\d+(.*)$", s)
-    if m:
-        s = m[1] + m[2]
+    if "." in s:
+        m = re.match(r"^(.*?\.\d{6})\d+(.*)$", s)
+        if m:
+            s = m[1] + m[2]
     try:
         return datetime.fromisoformat(s)
     except ValueError:
         return None
 
 
+_ts_cache: dict[str, datetime | None] = {}
+_TS_CACHE_MAX = 200_000
+
+
 def parse_timestamp(value: Any) -> datetime | None:
-    """Parse epoch s/ms, ISO, common log formats, syslog; dateutil only as a last resort. Always tz-aware (naive -> UTC)."""
+    """Parse epoch s/ms, ISO, common log formats, syslog; dateutil only as a last resort. Always tz-aware (naive -> UTC).
+    Results are memoised per distinct string: a log carries the same second thousands of times."""
     if value is None:
         return None
     if isinstance(value, (int, float)):
@@ -82,6 +88,20 @@ def parse_timestamp(value: Any) -> datetime | None:
     s = str(value).strip()
     if not s:
         return None
+    hit = _ts_cache.get(s, _MISS)
+    if hit is not _MISS:
+        return hit
+    if len(_ts_cache) >= _TS_CACHE_MAX:
+        _ts_cache.clear()
+    dt = _parse_timestamp_str(s)
+    _ts_cache[s] = dt
+    return dt
+
+
+_MISS = object()
+
+
+def _parse_timestamp_str(s: str) -> datetime | None:
     if s.isdigit():
         if len(s) == 13:
             return datetime.fromtimestamp(int(s) / 1000, tz=UTC)
@@ -119,14 +139,22 @@ def parse_timestamp(value: Any) -> datetime | None:
     return dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt
 
 
+_sev_cache: dict[tuple, str] = {}
+
+
 def column_severity(value: Any, use_scale: bool = True) -> str:
     """Severity taken from a dataset column: the scenario's own numeric scale wins (S-A1: 1-5), then the generic rules.
-    use_scale=False for parsers whose numbers already have a fixed meaning (syslog PRI)."""
+    use_scale=False for parsers whose numbers already have a fixed meaning (syslog PRI). Memoised per distinct value."""
+    key = (value if isinstance(value, (str, int, float)) else str(value), use_scale)
+    hit = _sev_cache.get(key)
+    if hit is not None:
+        return hit
     from . import scenario
     s = str(value).strip().lower() if value is not None else ""
-    if use_scale and s in scenario.SEVERITY_MAP:
-        return scenario.SEVERITY_MAP[s]
-    return normalize_severity(value)
+    out = scenario.SEVERITY_MAP[s] if use_scale and s in scenario.SEVERITY_MAP else normalize_severity(value)
+    if len(_sev_cache) < 50_000:
+        _sev_cache[key] = out
+    return out
 
 
 def normalize_severity(value: Any) -> str:
@@ -154,14 +182,30 @@ def normalize_environment(value: Any) -> str:
     return ENV_MAP[m[1].lower()] if m else v[:20]
 
 
+_env_cache: dict[tuple, str] = {}
+
+
 def infer_environment(*texts: str) -> str:
-    """Guess the environment from host / service names or the message ('prd-api-01' -> prod, 'dev-worker' -> dev)."""
-    for txt in texts:
-        if not txt:
-            continue
-        m = ENV_TOKEN_RE.search(txt)
-        if m:
-            return ENV_MAP[m[1].lower()]
+    """Guess the environment from host / service names or the message ('prd-api-01' -> prod, 'dev-worker' -> dev).
+    The leading (host, service, source) part is memoised; the message is only searched when they give nothing."""
+    head = texts[:3]
+    hit = _env_cache.get(head)
+    if hit is None:
+        hit = ""
+        for txt in head:
+            if txt:
+                m = ENV_TOKEN_RE.search(txt)
+                if m:
+                    hit = ENV_MAP[m[1].lower()]; break
+        if len(_env_cache) < 50_000:
+            _env_cache[head] = hit
+    if hit:
+        return hit
+    for txt in texts[3:]:
+        if txt:
+            m = ENV_TOKEN_RE.search(txt)
+            if m:
+                return ENV_MAP[m[1].lower()]
     return ""
 
 

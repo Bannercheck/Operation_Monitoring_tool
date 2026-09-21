@@ -63,10 +63,20 @@ WEIGHTS = {"burst": 0.35, "severity": 0.25, "blast_radius": 0.25, "duration": 0.
 _WS = re.compile(r"\s+")
 
 
+_template_cache: dict[str, str] = {}
+
+
 def template_of(message: str) -> str:
+    """Mask the variable parts of a message; memoised per distinct message (bounded), identical output either way."""
+    hit = _template_cache.get(message)
+    if hit is not None:
+        return hit
     rx, reps = _mask_re()
-    t = rx.sub(lambda m: _mask_sub(m, reps), message.strip())
-    return _WS.sub(" ", t).lower()[:200]
+    t = _WS.sub(" ", rx.sub(lambda m: _mask_sub(m, reps), message.strip())).lower()[:200]
+    if len(_template_cache) >= 300_000:
+        _template_cache.clear()
+    _template_cache[message] = t
+    return t
 
 
 DEP_PATTERNS = [re.compile(p, re.I) for p in getattr(scenario, "DEP_PATTERNS", [])]
@@ -87,9 +97,14 @@ def entities_of(o: Observation) -> set[str]:
 
 
 def fingerprint(observations: list[Observation]) -> None:
+    fps: dict[tuple, str] = {}                              # (template, severity, service) repeats thousands of times: hash once
     for o in observations:
         o.template = template_of(o.message)
-        o.fingerprint = hashlib.sha1(f"{o.template}|{o.severity}|{o.service.lower()}".encode()).hexdigest()[:12]
+        key = (o.template, o.severity, o.service.lower())
+        fp = fps.get(key)
+        if fp is None:
+            fp = fps[key] = hashlib.sha1(f"{key[0]}|{key[1]}|{key[2]}".encode()).hexdigest()[:12]
+        o.fingerprint = fp
 
 
 # ---------------------------------------------------------------- signals + burst

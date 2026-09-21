@@ -3398,7 +3398,7 @@ def datasets_controls() -> None:
             if combine and len(todo) > 1:
                 import io as _io, zipfile as _zf
                 buf = _io.BytesIO()
-                with _zf.ZipFile(buf, "w", _zf.ZIP_DEFLATED) as z:
+                with _zf.ZipFile(buf, "w", _zf.ZIP_STORED) as z:           # no compression: the bytes are parsed a moment later
                     for u in todo:
                         z.writestr(u.name, u.getvalue())
                 start_load_job(f"{todo[0].name} +{len(todo) - 1}.zip", buf.getvalue())

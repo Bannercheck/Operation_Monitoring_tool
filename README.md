@@ -388,6 +388,10 @@ Ajan (`agent.py`, yalnız standart kütüphane, `--metrics` + tekrarlanabilir `-
 - **Kalite sekmesi**: başarı oranı (hatasız çağrı), gecikme p50 / p95, **kaynak doğruluğu** (cevaptaki `[INC-3]` / `[L12]` / `[dosya:satır]` atıflarının modele gönderilen bağlamda var olma payı; geçersiz atıf sayısı halüsinasyon ölçerine en yakın şey), atıf oranı, **kök neden testi** (yüklü veri setinin her incident'ı için kanıt + karıştırılmış aday sinyaller; modelin seçimi deterministik motorla karşılaştırılır, uyum oranı raporlanır; `llm_eval.py`), cevap onayı (sohbette 👍/👎), kural kabulü (modelin önerdiği kurallardan onaylananlar), tür bazında çağrı sayıları, model bazında tablo, son çağrıların gecikme grafiği.
 - **Operasyon kartları canlı**: her kart artık son 15 dakikanın satır içi grafiğini (SVG sparkline, eşik / hedef çizgisi, nabız noktası) taşır ve 2 saniyede bir yenilenir; ayrıntı yine modal pencerede.
 
+### Performans: büyük dosyalar
+
+- Ayrıştırma ve analiz sonucu değiştirmeyen önbelleklerle hızlandırıldı: aynı zaman damgası dizesi, aynı önem derecesi değeri, aynı host / servis çifti ve aynı mesaj bir kez çözülür, parmak izi (şablon, önem, servis) anahtarı başına bir kez hashlenir. 700 bin satırlık 46 MB log: ayrıştırma 4,8 s, analiz 3,1 s, profil 2,2 s (önce toplam 22 s). Sonuç kimlikleri (`sonuç …` damgası) değişmez; testler bunu üç örnek veri setiyle doğrular. Tarayıcıdan aktarım hızı ağa bağlıdır; yükleme arka planda sürdüğü için beklemek gerekmez.
+
 ### Tekrarlanabilirlik: iki makine farklı sonuç gösteriyorsa
 
 Motor deterministiktir: saat, yerel saat dilimi, hash sırası, dosya sırası, `\` / `/` yol ayracı, CRLF ve BOM sonucu değiştirmez (`tests/test_determinism.py` bunları üç ayrı süreçte ve farklı `PYTHONHASHSEED` ile doğrular). Aynı **girdi** kimliği + aynı **motor** kimliği her makinede aynı **sonuç** kimliğini vermek zorundadır. İki makine farklı incident sayısı gösteriyorsa sırayla:
