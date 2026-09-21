@@ -161,3 +161,43 @@ def test_live_inventory_sources_notify_agents_system(client):
     snap = client.post("/api/system/snapshots", json={"reason": "test", "code": False}, headers=h).json()
     assert snap["dbs"] and client.get("/api/system/snapshots", headers=h).json()[0]["id"] == snap["id"]
     assert client.delete(f"/api/system/snapshots/{snap['id']}", headers=h).json()["ok"]
+
+
+def test_oidc_flow_with_stubbed_provider(client, monkeypatch):
+    """SSO: no provider until configured; then the start URL carries PKCE + signed state, and the callback (provider stubbed)
+    signs the account in and hands the token to the app in the URL fragment."""
+    from watchover import settings as wo_settings
+    from watchover.api.routers import auth as a
+    assert client.get("/api/auth/providers").json() == []
+    assert client.get("/api/auth/oidc/google/start", follow_redirects=False).status_code == 404
+    wo_settings.save({"google_client_id": "cid", "google_client_secret": "csecret", "sso_auto_create": True})
+    assert [p["name"] for p in client.get("/api/auth/providers").json()] == ["google"]
+    monkeypatch.setattr(a, "_discover", lambda issuer: {"authorization_endpoint": "https://idp.example/auth", "token_endpoint": "https://idp.example/token", "userinfo_endpoint": "https://idp.example/userinfo"})
+    r = client.get("/api/auth/oidc/google/start?next=/ops", follow_redirects=False)
+    assert r.status_code == 302 and r.headers["location"].startswith("https://idp.example/auth?") and "code_challenge_method=S256" in r.headers["location"]
+    state = dict(x.split("=", 1) for x in r.headers["location"].split("?", 1)[1].split("&"))["state"]
+
+    class R:
+        def __init__(self, code, data): self.status_code, self._d = code, data
+        def json(self): return self._d
+    seen = {}
+    monkeypatch.setattr(a.httpx, "post", lambda url, data, timeout: seen.update(data) or R(200, {"access_token": "at", "id_token": ""}))
+    monkeypatch.setattr(a.httpx, "get", lambda url, headers, timeout: R(200, {"email": "sso.user@example.com", "name": "SSO User"}))
+    cb = client.get(f"/api/auth/oidc/google/callback?code=abc&state={state}", follow_redirects=False)
+    assert cb.status_code == 302 and cb.headers["location"].startswith("/ops#sso=") and seen["code"] == "abc" and seen["code_verifier"]
+    tok = cb.headers["location"].split("#sso=", 1)[1]
+    me = client.get("/api/auth/me", headers={"Authorization": f"Bearer {tok}"}).json()
+    assert me["email"] == "sso.user@example.com" and me["role"] == "operator"
+    assert client.get("/api/auth/oidc/google/callback?code=abc&state=bad.state.x", follow_redirects=False).status_code == 401
+    wo_settings.save({"google_client_id": "", "google_client_secret": ""})
+
+
+def test_spa_is_served_when_built(client):
+    """With web/dist present the API serves the React app: / and any client route return index.html, unknown /api paths stay 404."""
+    from watchover.api import WEB_DIST
+    if not (WEB_DIST / "index.html").exists():
+        pytest.skip("web/dist not built")
+    for path in ("/", "/anomalies", "/datasets/abc"):
+        r = client.get(path)
+        assert r.status_code == 200 and 'id="root"' in r.text
+    assert client.get("/api/nope").status_code == 404

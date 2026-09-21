@@ -2,7 +2,7 @@
 #   dashboard http://<host>:8501   receiver :8600   PostgreSQL next to it (volume watchover-pg)   data in volume watchover-data
 #   update:   copy the new source tree over this folder, then  ./watchover.sh update
 #   mcp:      ./watchover.sh mcp on                          (our MCP server; MCP_API_KEY in .env; datasets in ./datasets)
-#   api:      ./watchover.sh api on                          (HTTP API + OpenAPI docs at :8000/api/docs; phase 1 of the React move)
+#   api:      ./watchover.sh api on                          (HTTP API + the new React interface at :8000, OpenAPI at /api/docs)
 #   external PostgreSQL: DATABASE_URL in .env and  docker compose up -d --no-deps dashboard
 #   plain compose works too:  docker compose build && docker compose up -d
 name: watchover

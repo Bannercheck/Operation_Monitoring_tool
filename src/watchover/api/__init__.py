@@ -9,12 +9,15 @@ Sign in with POST /api/auth/login (e-mail + password, optional e-mail MFA step) 
 from __future__ import annotations
 
 import os
-
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+
+WEB_DIST = Path(__file__).resolve().parents[3] / "web" / "dist"
 
 from .. import __version__
 
@@ -50,17 +53,27 @@ def create_app(services=None) -> FastAPI:
         svc = app.state.services
         return {"ok": True, "version": __version__, "database": svc.kb.backend, "live_events": svc.live.received}
 
+    dist = Path(os.environ.get("WATCHOVER_WEB_DIST") or WEB_DIST)
+    if (dist / "index.html").exists():                      # the React build: assets from /assets, every other path -> index.html (client routing)
+        app.mount("/assets", StaticFiles(directory=str(dist / "assets")), name="assets")
+
+        @app.get("/{path:path}", include_in_schema=False)
+        def spa(path: str):
+            if path.startswith("api/"):
+                return JSONResponse({"detail": "not found"}, status_code=404)
+            f = dist / path
+            return FileResponse(str(f)) if path and f.is_file() else FileResponse(str(dist / "index.html"))
     return app
 
 
-app = None
+_app = None
 
 
 def __getattr__(name):
     """`uvicorn watchover.api:app` builds the application lazily so importing the package stays cheap."""
-    global app
+    global _app
     if name == "app":
-        if app is None:
-            app = create_app()
-        return app
+        if _app is None:
+            _app = create_app()
+        return _app
     raise AttributeError(name)

@@ -5,7 +5,7 @@
 #   ./watchover.sh update           new source tree copied over this folder: rebuild the image, recreate the containers, keep the data
 #   ./watchover.sh start|stop|restart|status|logs [service]
 #   ./watchover.sh mcp on|off       our MCP server as a third container (MCP_API_KEY from .env)
-#   ./watchover.sh api on|off       the HTTP API container (:8000, OpenAPI docs at /api/docs)
+#   ./watchover.sh api on|off       the HTTP API + new React interface (:8000, OpenAPI docs at /api/docs)
 #   ./watchover.sh backup           PostgreSQL dump + data volume -> ./backups/watchover-YYYYMMDD-HHMM.tgz
 #   ./watchover.sh restore FILE     bring a backup back (containers are stopped meanwhile)
 #   ./watchover.sh user ...         account management, e.g.  user list | user add ops@firma.com --admin | user password EMAIL | user unlock EMAIL
@@ -61,7 +61,7 @@ banner() {
     Dashboard      http://$ip:$(env_get WATCHOVER_UI_PORT || echo 8501)     (same machine: http://localhost:$(env_get WATCHOVER_UI_PORT || echo 8501))
     Agents post to http://$ip:$(env_get WATCHOVER_LIVE_PORT || echo 8600)/ingest
 $( [ "$(env_get WATCHOVER_MCP)" = "1" ] && printf '    MCP server     http://%s:%s/mcp   (Authorization: Bearer <MCP_API_KEY in .env>)\n' "$ip" "$(env_get WATCHOVER_MCP_PORT || echo 8765)" )
-$( [ "$(env_get WATCHOVER_API)" = "1" ] && printf '    HTTP API       http://%s:%s/api/docs\n' "$ip" "$(env_get WATCHOVER_API_PORT || echo 8000)" )
+$( [ "$(env_get WATCHOVER_API)" = "1" ] && printf '    New interface  http://%s:%s   (API docs: /api/docs)\n' "$ip" "$(env_get WATCHOVER_API_PORT || echo 8000)" )
     First sign-in: admin@watchover.local with the initial password you were given; a new password is required at once.
     Open the firewall for $(env_get WATCHOVER_UI_PORT || echo 8501) and $(env_get WATCHOVER_LIVE_PORT || echo 8600) if the server has one (ufw allow 8501,8600/tcp).
     Status: ./watchover.sh status     Logs: ./watchover.sh logs     Backup: ./watchover.sh backup
@@ -91,7 +91,7 @@ case "${1:-}" in
       *) die "usage: ./watchover.sh mcp on|off" ;; esac ;;
   api)
     need_docker; case "${2:-}" in
-      on)  env_set WATCHOVER_API 1; up; say "HTTP API on: http://$(host_ip):$(env_get WATCHOVER_API_PORT || echo 8000)/api/docs" ;;
+      on)  env_set WATCHOVER_API 1; up; say "new interface + API on: http://$(host_ip):$(env_get WATCHOVER_API_PORT || echo 8000)  (docs: /api/docs)" ;;
       off) $COMPOSE --profile api stop api; $COMPOSE --profile api rm -f api; env_set WATCHOVER_API 0; say "HTTP API off" ;;
       *) die "usage: ./watchover.sh api on|off" ;; esac ;;
   backup)

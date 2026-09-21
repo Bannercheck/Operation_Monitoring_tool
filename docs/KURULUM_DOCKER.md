@@ -129,18 +129,18 @@ cp uretim-log.zip datasets/        # istemcilerin analiz edeceği dosyalar
 
 Sonra istemciden `analyze_dataset("uretim-log.zip")` demek yeter. Anahtarsız istekler 401 alır.
 
-## 7b. HTTP API (FastAPI)
+## 7b. Yeni arayüz (React) ve HTTP API
 
-Motorun bütün işlevleri JSON uçları olarak da açılır; yeni arayüz (React) ve entegrasyonlar bunu kullanır. Dashboard'la aynı PostgreSQL'i ve aynı hesapları kullanır.
+Streamlit arayüzünün yerini alacak yeni arayüz aynı imajda, `api` konteynerinde yayınlanır: `http://<sunucu>:8000`. Giriş, Operasyon, Anomaliler, Veri setleri (yükleme, incident, sinyal, gürültü, postmortem), Aksiyonlar, Playbook, Bilgi tabanı, Bağlantılar (ajanlar, kaynaklar, envanter), Bildirimler, Kullanıcılar ve roller, Sistem sayfaları hazırdır; telefon ve tablette de çalışır. Motorun bütün işlevleri JSON uçları olarak da açılır; entegrasyonlar bunu kullanır. Dashboard'la aynı PostgreSQL'i ve aynı hesapları kullanır.
 
 ```bash
-./watchover.sh api on                     # http://<sunucu>:8000/api/docs  (OpenAPI, tarayıcıdan denenebilir)
+./watchover.sh api on                     # http://<sunucu>:8000  (yeni arayüz)  ·  /api/docs (OpenAPI)
 curl -s -X POST http://<sunucu>:8000/api/auth/login -H 'Content-Type: application/json' \
      -d '{"email":"admin@watchover.local","password":"…"}'          # -> {"token": "…"}
 curl -s http://<sunucu>:8000/api/anomalies -H "Authorization: Bearer <token>"
 ```
 
-Giriş e-posta + parola iledir; yönetici olmayan hesaplara SMTP ayarlıysa e-posta ile tek kullanımlık kod sorulur (`/api/auth/mfa`). Yetkiler dashboard'daki rollerle aynıdır. Uç aileleri: `datasets` (yükleme arka planda, `jobs` ile ilerleme; incident, sinyal, kanıt, postmortem, dışa aktarma), `live`, `actions`, `anomalies`, `playbook`, `agents`, `sources`, `inventory`, `knowledge`, `notify`, `users` / `roles`, `system`. Canlı akış bu fazda dashboard konteynerinde toplanır; API kendi alıcısını `WATCHOVER_API_RECEIVER=1` ile açabilir (o zaman 8600 portu API'ye taşınır). Tarayıcıdan çağrılacaksa `WATCHOVER_CORS` ile izinli adresler yazılır.
+Giriş e-posta + parola iledir; yönetici olmayan hesaplara SMTP ayarlıysa e-posta ile tek kullanımlık kod sorulur (`/api/auth/mfa`). SSO: Sistem › Giriş'te Google / Microsoft / OIDC istemci bilgileri girilmişse giriş sayfasında sağlayıcı düğmesi çıkar (`/api/auth/oidc/<sağlayıcı>/start`, PKCE'li yetkilendirme kodu akışı; sağlayıcıda geri dönüş adresi `http(s)://<sunucu>/api/auth/oidc/<sağlayıcı>/callback`). Yetkiler dashboard'daki rollerle aynıdır. Uç aileleri: `datasets` (yükleme arka planda, `jobs` ile ilerleme; incident, sinyal, kanıt, postmortem, dışa aktarma), `live`, `actions`, `anomalies`, `playbook`, `agents`, `sources`, `inventory`, `knowledge`, `notify`, `users` / `roles`, `system`. Canlı akış bu fazda dashboard konteynerinde toplanır; API kendi alıcısını `WATCHOVER_API_RECEIVER=1` ile açabilir (o zaman 8600 portu API'ye taşınır). Tarayıcıdan çağrılacaksa `WATCHOVER_CORS` ile izinli adresler yazılır.
 
 ## 8. TLS ve şirket ağı
 

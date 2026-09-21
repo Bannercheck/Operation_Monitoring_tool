@@ -1,6 +1,14 @@
 # Watchover — dashboard, live receiver and built-in host agent in one image.
 #   ./watchover.sh install                    (builds this image on the server from the source tree; see docs/KURULUM_DOCKER.md)
 #   docker build -t watchover:local .         (plain build)
+# stage 1: the React interface (web/) -> web/dist, served by the API container
+FROM node:20-alpine AS web
+WORKDIR /web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY web ./
+RUN npm run build
+
 FROM python:3.11-slim AS base
 ARG GIT_REV=-
 ARG VERSION=dev
@@ -19,6 +27,7 @@ COPY assets ./assets
 COPY samples ./samples
 COPY scripts ./scripts
 COPY .streamlit ./.streamlit
+COPY --from=web /web/dist ./web/dist
 RUN chown -R watchover:watchover /app
 USER watchover
 VOLUME ["/data"]
