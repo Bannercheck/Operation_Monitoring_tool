@@ -2,6 +2,12 @@
 
 Numaralandırma: büyük sürüm **v1, v2** (ürün sahibinin kararı), küçük güncelleme **v1.1, v1.2** (her devreye alınan özellik adımı), düzeltme **v1.1.1**. Her sürüm `python -m watchover.release <major|minor|patch> "özet"` ile açılır; Sistem › Güncelleme sayfası bu dosyayı gösterir, anlık görüntüler sürüm numarasını taşır.
 
+## v1.8 · 2026-09-21 · güncelleme
+
+- HTTP API (FastAPI): motorun tamamı JSON uçları olarak, giriş + e-posta MFA, RBAC, arka planda veri seti yükleme, OpenAPI /api/docs; Streamlit'ten React'e geçişin 1. fazı
+- Docker: api profili (./watchover.sh api on, :8000); pip install -e .[api] ile yerel çalıştırma
+
+
 ## v1.7.1 · 2026-09-21 · düzeltme
 
 - watchover.sh macOS'ta (Docker Desktop) sunucu adresini doğru basar

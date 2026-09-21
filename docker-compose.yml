@@ -2,6 +2,7 @@
 #   dashboard http://<host>:8501   receiver :8600   PostgreSQL next to it (volume watchover-pg)   data in volume watchover-data
 #   update:   copy the new source tree over this folder, then  ./watchover.sh update
 #   mcp:      ./watchover.sh mcp on                          (our MCP server; MCP_API_KEY in .env; datasets in ./datasets)
+#   api:      ./watchover.sh api on                          (HTTP API + OpenAPI docs at :8000/api/docs; phase 1 of the React move)
 #   external PostgreSQL: DATABASE_URL in .env and  docker compose up -d --no-deps dashboard
 #   plain compose works too:  docker compose build && docker compose up -d
 name: watchover
@@ -79,6 +80,35 @@ services:
     deploy:
       resources:
         limits: { cpus: "1", memory: 1g }
+
+  api:
+    profiles: [api]
+    image: ${WATCHOVER_IMAGE:-watchover}:${WATCHOVER_TAG:-local}
+    container_name: watchover-api
+    command: ["python", "-m", "watchover.api", "--port", "8000"]
+    restart: unless-stopped
+    ports: ["${WATCHOVER_API_PORT:-8000}:8000"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-watchover}:${POSTGRES_PASSWORD:-change-me}@postgres:5432/${POSTGRES_DB:-watchover}}
+      WATCHOVER_API_RECEIVER: ${WATCHOVER_API_RECEIVER:-0}   # 1 = the API owns the agent receiver (then move port 8600 here)
+      WATCHOVER_CORS: ${WATCHOVER_CORS:-}
+      WATCHOVER_SELFMON: "0"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - watchover-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits: { cpus: "2", memory: 2g }
 
   postgres:
     image: postgres:16-alpine

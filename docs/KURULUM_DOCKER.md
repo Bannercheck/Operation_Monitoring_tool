@@ -61,6 +61,7 @@ unzip -q watchover.zip && mv hackathon watchover && cd watchover
 | `./watchover.sh restore DOSYA` | Yedeği geri yükler (veritabanı ve veri birimi; konteynerler bu sırada durur) |
 | `./watchover.sh user …` | `list`, `add EMAIL [--admin]`, `promote`, `password EMAIL`, `unlock`, `enable`, `disable`, `delete` |
 | `./watchover.sh mcp on\|off` | Kendi MCP sunucumuzu açar / kapatır (bölüm 7) |
+| `./watchover.sh api on\|off` | HTTP API konteynerini açar / kapatır (bölüm 7b) |
 | `./watchover.sh migrate` | Eski SQLite kurulumunun `.db` dosyalarını PostgreSQL'e kopyalar (bölüm 6) |
 | `./watchover.sh save` / `load DOSYA` | İmajları `.tgz` olarak dışa / içe aktarır (kapalı ağ, bölüm 9) |
 | `./watchover.sh shell` | Dashboard konteynerinde kabuk |
@@ -127,6 +128,19 @@ cp uretim-log.zip datasets/        # istemcilerin analiz edeceği dosyalar
 ```
 
 Sonra istemciden `analyze_dataset("uretim-log.zip")` demek yeter. Anahtarsız istekler 401 alır.
+
+## 7b. HTTP API (FastAPI)
+
+Motorun bütün işlevleri JSON uçları olarak da açılır; yeni arayüz (React) ve entegrasyonlar bunu kullanır. Dashboard'la aynı PostgreSQL'i ve aynı hesapları kullanır.
+
+```bash
+./watchover.sh api on                     # http://<sunucu>:8000/api/docs  (OpenAPI, tarayıcıdan denenebilir)
+curl -s -X POST http://<sunucu>:8000/api/auth/login -H 'Content-Type: application/json' \
+     -d '{"email":"admin@watchover.local","password":"…"}'          # -> {"token": "…"}
+curl -s http://<sunucu>:8000/api/anomalies -H "Authorization: Bearer <token>"
+```
+
+Giriş e-posta + parola iledir; yönetici olmayan hesaplara SMTP ayarlıysa e-posta ile tek kullanımlık kod sorulur (`/api/auth/mfa`). Yetkiler dashboard'daki rollerle aynıdır. Uç aileleri: `datasets` (yükleme arka planda, `jobs` ile ilerleme; incident, sinyal, kanıt, postmortem, dışa aktarma), `live`, `actions`, `anomalies`, `playbook`, `agents`, `sources`, `inventory`, `knowledge`, `notify`, `users` / `roles`, `system`. Canlı akış bu fazda dashboard konteynerinde toplanır; API kendi alıcısını `WATCHOVER_API_RECEIVER=1` ile açabilir (o zaman 8600 portu API'ye taşınır). Tarayıcıdan çağrılacaksa `WATCHOVER_CORS` ile izinli adresler yazılır.
 
 ## 8. TLS ve şirket ağı
 

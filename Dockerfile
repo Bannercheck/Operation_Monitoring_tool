@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl tini && rm
 WORKDIR /app
 COPY pyproject.toml README.md CHANGELOG.md requirements.txt ./
 COPY src ./src
-RUN pip install --no-cache-dir -e ".[mcp,postgres]"
+RUN pip install --no-cache-dir -e ".[mcp,postgres,api]"
 COPY app.py agent.py mcp_server.py ./
 COPY assets ./assets
 COPY samples ./samples
@@ -22,8 +22,8 @@ COPY .streamlit ./.streamlit
 RUN chown -R watchover:watchover /app
 USER watchover
 VOLUME ["/data"]
-EXPOSE 8501 8600 8765
+EXPOSE 8501 8600 8765 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 CMD curl -fsS http://127.0.0.1:8501/_stcore/health >/dev/null || exit 1
 ENTRYPOINT ["tini", "--"]
-# the dashboard; the mcp service in docker-compose.yml overrides the command
+# the dashboard; the mcp and api services in docker-compose.yml override the command
 CMD ["streamlit", "run", "app.py", "--server.address", "0.0.0.0", "--server.port", "8501", "--server.headless", "true", "--server.fileWatcherType", "none"]
