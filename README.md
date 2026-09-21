@@ -391,6 +391,7 @@ Ajan (`agent.py`, yalnız standart kütüphane, `--metrics` + tekrarlanabilir `-
 ### Performans: büyük dosyalar
 
 - Ayrıştırma ve analiz sonucu değiştirmeyen önbelleklerle hızlandırıldı: aynı zaman damgası dizesi, aynı önem derecesi değeri, aynı host / servis çifti ve aynı mesaj bir kez çözülür, parmak izi (şablon, önem, servis) anahtarı başına bir kez hashlenir. 700 bin satırlık 46 MB log: ayrıştırma 4,8 s, analiz 3,1 s, profil 2,2 s (önce toplam 22 s). Sonuç kimlikleri (`sonuç …` damgası) değişmez; testler bunu üç örnek veri setiyle doğrular. Tarayıcıdan aktarım hızı ağa bağlıdır; yükleme arka planda sürdüğü için beklemek gerekmez.
+- **SAP izleri:** NetWeaver Java (ListFormatter) kayıtlarında satırın ilk karakterine göre dağıtım ve yığın izi devam satırları için regex'siz hızlı yol; 300 bin kayıtlık 87 MB `defaultTrace` 33,8 s → 8,3 s. Biçim algılama ve satır sondajı dosyanın yalnız ilk 400 KB'ını okur.
 - **Paralel ayrıştırma:** ZIP / TAR / çoklu yüklemedeki dosyalar 8 ve üzeri çekirdekli makinelerde (3+ dosya, 32 MB üstü) ayrı süreçlerde ayrıştırılır; sonuç sırası ve kimlikleri değişmez. Ayrıştırılmış olayların işçi süreçten geri aktarımı ayrıştırmanın kendisi kadar sürdüğünden az çekirdekte kazanç yoktur ve kapalı kalır; `WATCHOVER_PARALLEL=1` zorlar, `=0` kapatır.
 - **Canlı ekran maliyeti:** Operasyon paneli her 2 saniyede canlı tamponu sorgular; sorgular yalnız pencere içindeki yeni ucu tarar (50 bin olayın tamamını değil) ve aynı tik içinde bir kez hesaplanır (`LiveStore.cached`). Sürüm damgaları ve git bilgisi önbellektedir.
 

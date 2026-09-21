@@ -28,7 +28,7 @@ def detect_delimiter(lines: list[str]) -> str | None:
 
 def detect_format(text: str) -> tuple[str, float]:
     """Return (format, confidence in 0..1)."""
-    lines = [ln for ln in text.splitlines()[:SAMPLE_LINES] if ln.strip()]
+    lines = [ln for ln in text[:400_000].splitlines()[:SAMPLE_LINES] if ln.strip()]      # a prefix is enough; never split a 300 MB file here
     if not lines:
         return "text", 0.0
     first = lines[0].lstrip()

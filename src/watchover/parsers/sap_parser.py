@@ -9,6 +9,7 @@ forward (dev traces put the timestamp on its own line and the following lines in
 """
 from __future__ import annotations
 
+from functools import lru_cache
 import re
 from datetime import datetime
 from typing import Iterator
@@ -68,6 +69,10 @@ SM21_TYPE_LEVEL = {"0": "INFO", "1": "INFO", "2": "INFO", "3": "WARN", "4": "WAR
 ERR_WORDS = re.compile(r"\b(error|failed|failure|abort|dump|exception|rc\s*=\s*(?:8|12|16)|exit code\s*:\s*\"?(?:8|12|16)|cannot|unable|not found|denied|timeout|shortdump)\b", re.I)
 WARN_WORDS = re.compile(r"\b(warning|retry|deprecated|slow|rc\s*=\s*4|exit code\s*:\s*\"?4)\b", re.I)
 
+TZ_RE = re.compile(r"[+\-]\d{4}")
+NWJ_CATEGORY_RE = re.compile(r"[A-Z]{2,3}(?:-[A-Z0-9]+)+")
+NWJ_MSGID_RE = re.compile(r"com\.sap\.[\w.]+\.\d{4,}")
+NWJ_USER_RE = re.compile(r"[A-Za-z][\w.\-]*")
 FAMILY_MARKERS = [DEV_TS_RE, TRC_HEAD_RE, HANA_RE, NWJ_START_RE, JUL_HEAD_RE, GC_UNIFIED_RE, GC_CLASSIC_RE, TP_RE, ALOG_RE, SM21_RE, AVAIL_RE, CLASS_LINE_RE]
 STRONG_MARKERS = [TRC_HEAD_RE, LOGHEADER_RE, JVMPROP_HEAD_RE]                    # one such line settles the family
 
@@ -118,8 +123,29 @@ class SapParser(Parser):
                     yield nwj[0], self._finish_nwj(nwj[1])
                     nwj = None
                 continue
+            c0 = s[0]
+            if nwj and c0 != "#":                                # NetWeaver Java continuation (stack trace lines): no regex cascade
+                nwj[1]["_body"].append(s)
+                continue
+            if c0 == "#":                                        # NetWeaver Java record start is by far the most common "#" line
+                if m := NWJ_START_RE.match(s):
+                    if nwj:
+                        yield nwj[0], self._finish_nwj(nwj[1])
+                    ts = _iso(m[2], m[3], m[4], m[5], m[6], m[7], m[8])
+                    tz = m[9] if TZ_RE.fullmatch(m[9] or "") else ""
+                    rec = {"timestamp": ts + (f"{tz[:3]}:{tz[3:]}" if tz else ""), "severity": NWJ_LEVEL.get((m[10] or "").strip().lower(), "INFO"),
+                           "origin": (m[11] or "").strip(), "sap.format": "nw-java", "_body": [s[m.end():]]}
+                    rec.update({k: v for k, v in meta.items() if k != "host"})
+                    if s.endswith("#") and s.count("#") >= 8:       # single-line record
+                        yield i, self._finish_nwj(rec)
+                    else:
+                        nwj = (i, rec)
+                    continue
+                if nwj:
+                    nwj[1]["_body"].append(s)
+                    continue
             # ---- file headers that are not events ----
-            if m := LOGHEADER_RE.match(s):
+            if c0 == "<" and (m := LOGHEADER_RE.match(s)):
                 if m[1] == "NAME":
                     meta["sap.log_name"] = m[2]
                     if ms_ := SID_PATH_RE.search(m[2]):
@@ -127,40 +153,23 @@ class SapParser(Parser):
                 elif m[1] in ("FORMATTER", "ENGINEVERSION"):
                     meta["sap." + m[1].lower()] = m[2]
                 continue
-            if m := JVMPROP_HEAD_RE.match(s):
+            if c0 == "#" and "created at" in s and (m := JVMPROP_HEAD_RE.match(s)):
                 jvmprop = {"timestamp": _iso(m[6], MONTHS[m[1]], m[2], m[3], m[4], m[5]), "severity": "INFO", "sap.format": "jvm-properties", "_props": {}}
                 continue
             if jvmprop is not None and (m := JVMPROP_KV_RE.match(s)):
                 jvmprop["_props"][m[1]] = m[2].strip()
                 continue
-            if CLASS_LINE_RE.match(s):
+            if s.endswith(".class") and CLASS_LINE_RE.match(s):
                 classes.append(s.strip())
                 continue
             # ---- availability log ----
-            if m := AVAIL_RE.match(s):
+            if c0 in "AU" and (m := AVAIL_RE.match(s)):
                 start = _iso(m[4], m[3], m[2], m[5], m[6], m[7])
                 end = _iso(m[10], m[9], m[8], m[11], m[12], m[13])
                 mins = round((datetime.fromisoformat(end) - datetime.fromisoformat(start)).total_seconds() / 60)
                 yield i, {"timestamp": start, "severity": "ERROR" if m[1] == "Unavailable" else "INFO", "service": "sap-availability",
                           "message": f"{m[1]} for {mins} min ({m[5]}:{m[6]}:{m[7]} - {m[8]}.{m[9]}.{m[10]} {m[11]}:{m[12]}:{m[13]})",
                           "avail.state": m[1].lower(), "avail.end": end, "avail.duration_min": mins, "sap.format": "availability"}
-                continue
-            # ---- NetWeaver Java list format (multi-line records) ----
-            if m := NWJ_START_RE.match(s):
-                if nwj:
-                    yield nwj[0], self._finish_nwj(nwj[1])
-                ts = _iso(m[2], m[3], m[4], m[5], m[6], m[7], m[8])
-                tz = m[9] if re.fullmatch(r"[+\-]\d{4}", m[9] or "") else ""
-                rec = {"timestamp": ts + (f"{tz[:3]}:{tz[3:]}" if tz else ""), "severity": NWJ_LEVEL.get((m[10] or "").strip().lower(), "INFO"),
-                       "origin": (m[11] or "").strip(), "sap.format": "nw-java", "_body": [s[m.end():]]}
-                rec.update({k: v for k, v in meta.items() if k != "host"})
-                if s.endswith("#") and s.count("#") >= 8:       # single-line record
-                    yield i, self._finish_nwj(rec)
-                else:
-                    nwj = (i, rec)
-                continue
-            if nwj:                                              # continuation: ends at a blank line, the next record or EOF
-                nwj[1]["_body"].append(s)
                 continue
             # ---- HANA trace ----
             if m := HANA_RE.match(s):
@@ -309,9 +318,9 @@ class SapParser(Parser):
         rec["message"] = non_empty[-1] if non_empty else body.strip()
         lead = [f for f in fields[:12] if f]
         for f in lead:
-            if re.fullmatch(r"[A-Z]{2,3}(?:-[A-Z0-9]+)+", f):                          # "BC-JAS-DPL" component category
+            if NWJ_CATEGORY_RE.fullmatch(f):                                            # "BC-JAS-DPL" component category
                 rec.setdefault("sap.category", f)
-            elif re.fullmatch(r"com\.sap\.[\w.]+\.\d{4,}", f):                       # "com.sap.ASJ.dpl_dc.001028" message id
+            elif NWJ_MSGID_RE.fullmatch(f):                                             # "com.sap.ASJ.dpl_dc.001028" message id
                 rec.setdefault("sap.msg_id", f)
             elif "~" in f:                                                              # "tc~bl~deploy_controller" application
                 rec.setdefault("sap.application", f)
@@ -319,7 +328,7 @@ class SapParser(Parser):
                 rec["sap.logger"] = f
         for idx, f in enumerate(fields[1:12], 1):                                       # user follows the logger field
             if f.startswith("com.sap.") and f == rec.get("sap.logger") and idx + 1 < len(fields):
-                if re.fullmatch(r"[A-Za-z][\w.\-]*", fields[idx + 1]):
+                if NWJ_USER_RE.fullmatch(fields[idx + 1]):
                     rec["sap.user"] = fields[idx + 1]
                 break
         loc = rec.get("origin", "")
@@ -330,8 +339,9 @@ class SapParser(Parser):
         return rec
 
 
+@lru_cache(maxsize=4096)
 def _svc_from_logger(logger: str) -> str:
-    """com.sap.engine.services.deploy.X -> sap-deploy ; com.acme.Foo -> acme"""
+    """com.sap.engine.services.deploy.X -> sap-deploy ; com.acme.Foo -> acme (memoised: a trace has a few hundred distinct loggers)"""
     parts = [p for p in logger.split(".") if p]
     if len(parts) >= 3 and parts[:2] == ["com", "sap"]:
         rest = [p for p in parts[2:] if p.lower() not in ("engine", "services", "service", "core", "impl", "server", "interfaces", "jee", "tc")]

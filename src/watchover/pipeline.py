@@ -31,7 +31,8 @@ def _parse_one(fname: str, text: str, mapping: dict | None, progress=None, base:
                     "keys": list(rows[0].keys()) if rows else [], "roles": {}, "table": rows, "sha": stamp.file_id(fname, text)}
     fmt, conf = detect_format(text)
     parser = PARSERS[fmt]
-    head = [r for _, r in itertools.islice(parser.records(text), 50)]
+    probe = text[:400_000] if getattr(parser, "line_oriented", False) else text    # line formats: probe a prefix, never split a 300 MB file twice
+    head = [r for _, r in itertools.islice(parser.records(probe), 50)]
     keys: list[str] = []
     for r in head:
         keys.extend(k for k in r if k not in keys)
@@ -41,6 +42,7 @@ def _parse_one(fname: str, text: str, mapping: dict | None, progress=None, base:
     else:                                                    # report every 5000 rows: share of this file's lines done
         rows = []
         n_lines = max(text.count("\n"), 1)
+        progress(base, fname)
         for o in parser.parse(text, fname, mapping, conf):
             rows.append(o)
             if len(rows) % 5000 == 0:
