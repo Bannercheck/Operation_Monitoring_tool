@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useT } from "../i18n";
+import { useTheme, type Theme } from "../theme";
 
 export const Card = ({ children, className = "", title, right }: { children: ReactNode; className?: string; title?: ReactNode; right?: ReactNode }) => (
   <div className={`card ${className}`}>{(title || right) && <div className="row between" style={{ marginBottom: 8 }}><h3>{title}</h3><div className="row">{right}</div></div>}{children}</div>
@@ -61,3 +62,14 @@ export function Spark({ data, color = "var(--accent)" }: { data: number[]; color
 
 export const fmtTs = (s?: string) => (s ? s.replace("T", " ").slice(0, 16) : "-");
 export const hhmm = (s?: string) => (s ? s.slice(11, 16) : "-");
+
+
+export function LangTheme() {
+  const { lang, setLang } = useT(); const { theme, setTheme } = useTheme();
+  const icons: Record<Theme, string> = { dark: "🌙", system: "🖥", light: "☀️" };
+  const titles: Record<Theme, string> = lang === "tr" ? { dark: "Koyu", system: "Sistem", light: "Açık" } : { dark: "Dark", system: "System", light: "Light" };
+  return <div className="row" style={{ gap: 8 }}>
+    <div className="langs"><button className={lang === "tr" ? "on" : ""} onClick={() => setLang("tr")}>TR</button><button className={lang === "en" ? "on" : ""} onClick={() => setLang("en")}>EN</button></div>
+    <div className="langs">{(["dark", "system", "light"] as Theme[]).map((k) => <button key={k} className={theme === k ? "on" : ""} onClick={() => setTheme(k)} title={titles[k]}>{icons[k]}</button>)}</div>
+  </div>;
+}

@@ -18,6 +18,7 @@ import MapPage from "./pages/Map";
 import Assist from "./pages/Assist";
 import Llm from "./pages/Llm";
 import Itsm from "./pages/Itsm";
+import Readme from "./pages/Readme";
 
 export default function App() {
   const { user, ready, acceptToken } = useAuth();
@@ -48,6 +49,7 @@ export default function App() {
         <Route path="/assist" element={<Assist />} />
         <Route path="/llm" element={<Llm />} />
         <Route path="/itsm" element={<Itsm />} />
+        <Route path="/readme" element={<Readme />} />
         <Route path="/login" element={<Navigate to="/ops" replace />} />
         <Route path="*" element={<Navigate to="/ops" replace />} />
       </Route>

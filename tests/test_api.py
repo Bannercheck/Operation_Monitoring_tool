@@ -275,3 +275,40 @@ def test_phase3_map_assist_llm_itsm_search_settings(client, monkeypatch):
     client.put("/api/system/channels", json={"smtp_host": ""}, headers=h)
     assert client.get("/api/auth/options").json()["register"] is False and client.post("/api/auth/register", json={"email": "new2@example.com", "password": "Sifre-123456"}).status_code == 400
     assert client.get("/api/live/lines?agent=x&source=y", headers=h).json() == []
+
+
+def test_restored_features_api(client):
+    """Endpoints behind the features restored from Streamlit: samples, mapping upload, incident feedback / related / prompt, noise audit shape,
+    dataset actions, discoveries, prune, readme, doc upload."""
+    h = token(client)
+    key = client.get("/api/datasets", headers=h).json()[0]["id"]
+    assert [s["name"] for s in client.get("/api/datasets/samples", headers=h).json()] == ["alarm_storm.zip", "demo_mixed.zip", "sap_logs.zip"]
+    r = client.post("/api/datasets/samples/alarm_storm.zip", headers=h)
+    assert r.status_code == 202
+    jid = r.json()["id"]
+    for _ in range(600):
+        j = client.get(f"/api/datasets/jobs/{jid}", headers=h).json()
+        if j["state"] != "running":
+            break
+        time.sleep(0.2)
+    assert j["state"] == "done", j
+    storm = j["dataset"]
+    na = client.get(f"/api/datasets/{storm}/noise", headers=h).json()
+    assert na["heat"] and na["heat"]["services"] and na["heat"]["cells"] and "rows" in na and "demoted" in na
+    inc = client.get(f"/api/datasets/{key}/incidents", headers=h).json()[0]["id"]
+    fb = client.post(f"/api/datasets/{key}/incidents/{inc}/feedback", json={"verdict": "down", "correct": "__noise__", "comment": "test"}, headers=h).json()
+    assert fb["ok"] and fb["proposals"] >= 1 and client.get("/api/knowledge/rules?status=proposed", headers=h).json()
+    assert isinstance(client.get(f"/api/datasets/{key}/incidents/{inc}/related", headers=h).json(), list)
+    assert "root cause" in client.get(f"/api/datasets/{key}/incidents/{inc}/prompt", headers=h).text.lower()
+    assert client.post(f"/api/datasets/{key}/incidents/{inc}/explain", headers=h).status_code == 400          # no LLM configured
+    acts = client.get(f"/api/datasets/{key}/actions", headers=h).json()
+    assert acts and all(a["incident_id"].startswith("INC") for a in acts)
+    files = [("files", ("demo.zip", (ROOT / "samples" / "demo_mixed.zip").read_bytes(), "application/zip"))]
+    assert client.post("/api/datasets", files=files, data={"mapping": "{not json"}, headers=h).status_code == 400
+    assert client.post("/api/datasets", files=files, data={"mapping": '{"message": "msg"}'}, headers=h).status_code == 202
+    assert client.get("/api/live/discoveries", headers=h).json() == {}
+    assert client.post("/api/system/snapshots/prune?keep=10", headers=h).json()["removed"] == 0
+    assert "Watchover" in client.get("/api/system/readme", headers=h).text
+    up = client.post("/api/knowledge/docs/upload", files=[("file", ("runbook.md", b"# Pool\n\nRestart the pool when 90% used.", "text/markdown"))], headers=h)
+    assert up.status_code == 201 and up.json()["ids"]
+    assert client.post("/api/datasets/fetch", json={"kind": "http", "url": "http://127.0.0.1:1/x"}, headers=h).status_code == 400

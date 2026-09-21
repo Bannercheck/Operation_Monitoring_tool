@@ -3,11 +3,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api, del, get, post } from "../api";
 import { useT } from "../i18n";
-import { Badge, Btn, Card, Confirm, Empty, Err, Modal, Table, fmtTs } from "../components/ui";
+import { Badge, Btn, Card, Confirm, Empty, Err, Field, Modal, Table, fmtTs } from "../components/ui";
 
 export default function Datasets() {
   const { t } = useT(); const qc = useQueryClient();
-  const [drag, setDrag] = useState(false); const [combine, setCombine] = useState(true); const [err, setErr] = useState<any>(null); const [cmp, setCmp] = useState<string[]>([]);
+  const [drag, setDrag] = useState(false); const [combine, setCombine] = useState(true); const [err, setErr] = useState<any>(null); const [cmp, setCmp] = useState<string[]>([]); const [fetchOpen, setFetchOpen] = useState(false); const [mapping, setMapping] = useState("");
+  const samples = useQuery({ queryKey: ["samples"], queryFn: () => get("/datasets/samples") });
+  const loadSample = useMutation({ mutationFn: (name: string) => post(`/datasets/samples/${encodeURIComponent(name)}`), onSuccess: () => qc.invalidateQueries({ queryKey: ["jobs"] }) });
   const fileRef = useRef<HTMLInputElement>(null);
   const list = useQuery({ queryKey: ["datasets"], queryFn: () => get("/datasets") });
   const jobs = useQuery({ queryKey: ["jobs"], queryFn: () => get("/datasets/jobs"), refetchInterval: (q) => ((q.state.data as any[])?.some((j) => j.state === "running") ? 1000 : 5000) });
@@ -16,6 +18,7 @@ export default function Datasets() {
   const upload = async (files: FileList | File[]) => {
     const fd = new FormData(); Array.from(files).forEach((f) => fd.append("files", f));
     setErr(null);
+    if (mapping.trim()) fd.append("mapping", mapping);
     try { await api(`/datasets?combine=${combine}`, { method: "POST", form: fd }); qc.invalidateQueries({ queryKey: ["jobs"] }); } catch (e) { setErr(e); }
   };
   const demo = useMutation({ mutationFn: () => post("/datasets/demo"), onSuccess: () => qc.invalidateQueries({ queryKey: ["datasets"] }) });
@@ -27,6 +30,8 @@ export default function Datasets() {
         <div className={`drop ${drag ? "on" : ""}`} onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)} onDrop={(e) => { e.preventDefault(); setDrag(false); upload(e.dataTransfer.files); }} onClick={() => fileRef.current?.click()}>
           📂 {t("ds_drop")}<input ref={fileRef} type="file" multiple style={{ display: "none" }} onChange={(e) => e.target.files && upload(e.target.files)} /></div>
         <label className="check" style={{ marginTop: 8 }}><input type="checkbox" checked={combine} onChange={(e) => setCombine(e.target.checked)} /> {t("ds_combine")}</label>
+        <details><summary className="muted small">{t("ds_mapping")}</summary><textarea className="input mono" style={{ minHeight: 60 }} placeholder='{"timestamp": "ts", "message": "msg", "severity": "level"}' value={mapping} onChange={(e) => setMapping(e.target.value)} /></details>
+        <div className="row" style={{ marginTop: 8 }}><Btn sm onClick={() => setFetchOpen(true)}>🌐 {t("ds_fetch")}</Btn>{(samples.data ?? []).map((x: any) => <Btn key={x.name} sm onClick={() => loadSample.mutate(x.name)}>{t("ds_samples")}: {x.name} <span className="dim">({(x.size / 1e6).toFixed(1)} MB)</span></Btn>)}</div>
         <Err e={err || demo.error} />
       </Card>
       {!!jobs.data?.length && <Card title={t("ds_jobs")}>
@@ -41,6 +46,7 @@ export default function Datasets() {
           { k: "x", label: "", render: (r) => <div className="row"><Link className="btn sm" to={`/datasets/${r.id}`}>{t("ds_open")}</Link><Confirm onConfirm={() => remove.mutate(r.id)}>{t("delete")}</Confirm></div> }]} rows={list.data} />}
       </Card>
       {cmp.length === 2 && <CompareModal list={list.data ?? []} a={cmp[0]} b={cmp[1]} onPick={setCmp} onClose={() => setCmp([])} />}
+      {fetchOpen && <FetchModal onClose={() => { setFetchOpen(false); qc.invalidateQueries({ queryKey: ["jobs"] }); }} />}
     </div>
   );
 }
@@ -56,4 +62,18 @@ function CompareModal({ list, a, b, onPick, onClose }: { list: any[]; a: string;
       <div className="grid k2"><Card title={t("cmp_only_a")}><Table cols={[{ k: "severity", label: "", render: (x) => <Badge v={x.severity} /> }, { k: "template", label: t("sig_template"), render: (x) => <span className="mono">{x.template.slice(0, 80)}</span> }, { k: "count", label: t("count"), num: true }]} rows={d.only_a.slice(0, 20).map((x: any) => ({ id: x.template, ...x }))} /></Card>
         <Card title={t("cmp_only_b")}><Table cols={[{ k: "severity", label: "", render: (x) => <Badge v={x.severity} /> }, { k: "template", label: t("sig_template"), render: (x) => <span className="mono">{x.template.slice(0, 80)}</span> }, { k: "count", label: t("count"), num: true }]} rows={d.only_b.slice(0, 20).map((x: any) => ({ id: x.template, ...x }))} /></Card></div></>}
   </div></Modal>;
+}
+
+
+function FetchModal({ onClose }: { onClose: () => void }) {
+  const { t } = useT(); const [f, setF] = useState({ kind: "http", url: "", headers: "", method: "GET", body: "", path: "", tool: "", arguments: "{}" }); const [tools, setTools] = useState<string[]>([]); const [err, setErr] = useState<any>(null);
+  const set = (k: string) => (e: any) => setF({ ...f, [k]: e.target.value });
+  const go = async () => { setErr(null); try { await post("/datasets/fetch", { ...f, arguments: JSON.parse(f.arguments || "{}") }); onClose(); } catch (x) { setErr(x); } };
+  const listTools = async () => { setErr(null); try { setTools(await post("/datasets/mcp-tools", { ...f, arguments: {} })); } catch (x) { setErr(x); } };
+  return <Modal title={t("ds_fetch")} onClose={onClose}><div className="stack">
+    <div className="grid k2"><Field label={t("ds_fetch_kind")}><select className="input" value={f.kind} onChange={set("kind")}><option value="http">HTTP / JSON</option><option value="mcp">MCP</option></select></Field><Field label={t("ds_fetch_url")}><input className="input" value={f.url} onChange={set("url")} placeholder={f.kind === "http" ? "https://api.example.com/alerts" : "http://localhost:8765/mcp"} /></Field></div>
+    <Field label={t("ds_fetch_headers")}><textarea className="input" style={{ minHeight: 56 }} value={f.headers} onChange={set("headers")} placeholder="Authorization: Bearer …" /></Field>
+    {f.kind === "http" ? <div className="grid k2"><Field label="Method"><select className="input" value={f.method} onChange={set("method")}><option>GET</option><option>POST</option></select></Field><Field label={t("ds_fetch_path")}><input className="input" value={f.path} onChange={set("path")} placeholder="data.events" /></Field>{f.method === "POST" && <Field label="Body"><textarea className="input" value={f.body} onChange={set("body")} /></Field>}</div>
+      : <div className="grid k2"><Field label={t("ds_fetch_tool")}><div className="row"><input className="input grow" value={f.tool} onChange={set("tool")} list="mcp-tools" /><datalist id="mcp-tools">{tools.map((x) => <option key={x} value={x} />)}</datalist><Btn sm onClick={listTools}>{t("ds_fetch_tools")}</Btn></div></Field><Field label="Arguments (JSON)"><input className="input mono" value={f.arguments} onChange={set("arguments")} /></Field></div>}
+    <Err e={err} /><div className="row"><Btn kind="primary" onClick={go} disabled={!f.url}>{t("ds_fetch_go")}</Btn></div></div></Modal>;
 }

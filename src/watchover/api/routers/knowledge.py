@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, File, UploadFile
 from pydantic import BaseModel
 
 from ..security import require, services
@@ -50,6 +50,13 @@ def add_note(body: NoteIn, user=Depends(require("page.assist")), svc=Depends(ser
 @router.post("/docs", status_code=201)
 def add_doc(body: DocIn, user=Depends(require("page.assist")), svc=Depends(services)):
     return {"ids": svc.kb.add_doc(body.name, body.text, body.tags)}
+
+
+@router.post("/docs/upload", status_code=201)
+async def upload_doc(file: UploadFile = File(...), user=Depends(require("page.assist")), svc=Depends(services)):
+    """A runbook / postmortem / wiki page as text or markdown: chunked and searchable."""
+    text = (await file.read()).decode("utf-8", "replace")
+    return {"ids": svc.kb.add_doc(file.filename or "doc", text, ["doc"])}
 
 
 @router.delete("/lessons/{lid}")

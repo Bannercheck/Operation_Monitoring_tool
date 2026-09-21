@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 import { get } from "../api";
 import { useT } from "../i18n";
 import { Empty, Kpi } from "../components/ui";
@@ -7,7 +8,8 @@ import { Empty, Kpi } from "../components/ui";
 export default function MapPage() {
   const { t, lang } = useT();
   const ds = useQuery({ queryKey: ["datasets"], queryFn: () => get("/datasets") });
-  const [src, setSrc] = useState<string>(""); const [inc, setInc] = useState(""); const [env, setEnv] = useState(""); const [host, setHost] = useState(""); const [hosts, setHosts] = useState(true);
+  const [sp] = useSearchParams();
+  const [src, setSrc] = useState<string>(sp.get("dataset") ?? ""); const [inc, setInc] = useState(sp.get("incident") ?? ""); const [env, setEnv] = useState(""); const [host, setHost] = useState(""); const [hosts, setHosts] = useState(true);
   const source = src || ds.data?.[0]?.id || "live";
   const q = new URLSearchParams({ dataset: source, lang, hosts: String(hosts) }); if (inc) q.set("incident", inc); if (env) q.set("env", env); if (host) q.set("host", host);
   const m = useQuery({ queryKey: ["map", q.toString()], queryFn: () => get(`/map?${q}`), refetchInterval: source === "live" ? 10000 : false });

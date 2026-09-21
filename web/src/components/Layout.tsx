@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
-import { Activity, AlertTriangle, BellRing, BookOpen, Bot, Brain, ClipboardList, Database, LogOut, Menu, MessageSquare, Network, PanelLeftClose, PanelLeftOpen, Plug, Settings2, Ticket, Users } from "lucide-react";
+import { Activity, AlertTriangle, BellRing, BookOpen, Bot, Brain, ClipboardList, Database, FileText, LogOut, Menu, MessageSquare, Network, PanelLeftClose, PanelLeftOpen, Plug, Settings2, Ticket, Users } from "lucide-react";
 import { useAuth } from "../auth";
 import { useT } from "../i18n";
-import { Btn, Modal, Field, Err } from "./ui";
+import { Btn, Modal, Field, Err, LangTheme } from "./ui";
 import { post } from "../api";
 
 const NAV = [
@@ -13,12 +13,12 @@ const NAV = [
     { to: "/playbook", k: "nav_pb", icon: BookOpen, perm: "page.pb" }, { to: "/assist", k: "nav_assist", icon: MessageSquare, perm: "page.assist" }, { to: "/knowledge", k: "nav_kb", icon: Brain, perm: "page.assist" }, { to: "/itsm", k: "nav_itsm", icon: Ticket, perm: "page.itsm" } ] },
   { group: "nav_group_admin", items: [
     { to: "/connections", k: "nav_conn", icon: Plug, perm: "page.conn" }, { to: "/llm", k: "nav_llm", icon: Bot, perm: "page.llm" }, { to: "/alerts", k: "nav_ntf", icon: BellRing, perm: "sys.notify" },
-    { to: "/users", k: "nav_users", icon: Users, perm: "page.users" }, { to: "/system", k: "nav_sys", icon: Settings2, perm: "sys.status" } ] },
+    { to: "/users", k: "nav_users", icon: Users, perm: "page.users" }, { to: "/system", k: "nav_sys", icon: Settings2, perm: "sys.status" }, { to: "/readme", k: "nav_readme", icon: FileText, perm: "page.readme" } ] },
 ];
 
 export default function Layout() {
   const { user, logout, can, reload } = useAuth();
-  const { t, lang, setLang } = useT();
+  const { t } = useT();
   const [collapsed, setCollapsed] = useState(() => { try { return localStorage.getItem("wo_side") === "1"; } catch { return false; } });
   const [open, setOpen] = useState(false);
   const [pw, setPw] = useState(!!user?.must_change);
@@ -41,7 +41,7 @@ export default function Layout() {
         <div className="topbar">
           <Btn kind="ghost menu-btn" sm onClick={() => setOpen((o) => !o)}><Menu size={18} /></Btn>
           <div className="grow" />
-          <div className="langs"><button className={lang === "tr" ? "on" : ""} onClick={() => setLang("tr")}>TR</button><button className={lang === "en" ? "on" : ""} onClick={() => setLang("en")}>EN</button></div>
+          <LangTheme />
         </div>
         <Outlet />
       </main>

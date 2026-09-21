@@ -7,11 +7,13 @@ import re
 import zipfile
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import PlainTextResponse
+from pydantic import BaseModel
 
 from ... import compare as wo_compare
-from ...analysis import incident_dict, postmortem_md, signal_dict
+from ... import connectors as wo_conn
+from ...analysis import incident_dict, llm_prompt, postmortem_md, signal_dict, suggested_owner
 from ...enrich import enrich, summary, to_csv, to_jsonl
 from ...i18n import narrative_text, reason_text
 from ..security import require, services
@@ -27,8 +29,14 @@ def list_datasets(user=Depends(require("page.data")), svc=Depends(services)):
 
 @router.post("", status_code=202)
 async def upload(files: list[UploadFile] = File(...), combine: bool = Query(True, description="several files -> one dataset (ZIP in memory)"),
-                 user=Depends(require("page.data")), svc=Depends(services)):
-    """Starts a background load per dataset; poll GET /datasets/jobs/{id} for pct / stage, then GET /datasets/{dataset}."""
+                 mapping: str = Form(""), user=Depends(require("page.data")), svc=Depends(services)):
+    """Starts a background load per dataset; poll GET /datasets/jobs/{id} for pct / stage, then GET /datasets/{dataset}.
+    `mapping` (JSON, optional) pins column roles for tabular files: {"timestamp": "ts", "message": "msg", "severity": "level", ...}."""
+    import json
+    try:
+        mp = json.loads(mapping) if mapping.strip() else None
+    except ValueError:
+        raise HTTPException(400, "mapping must be JSON")
     blobs = [(f.filename or "upload", await f.read()) for f in files]
     blobs = [(n, d) for n, d in blobs if d]
     if not blobs:
@@ -39,12 +47,59 @@ async def upload(files: list[UploadFile] = File(...), combine: bool = Query(True
             for n, d in blobs:
                 zf.writestr(os.path.basename(n), d)
         blobs = [(f"{len(blobs)} files.zip", buf.getvalue())]
-    return {"jobs": [svc.datasets.submit(n, d) for n, d in blobs]}
+    return {"jobs": [svc.datasets.submit(n, d, mp) for n, d in blobs]}
 
 
 @router.post("/demo")
 def load_demo(user=Depends(require("page.data")), svc=Depends(services)):
     return svc.datasets.load_path(str(ROOT / "samples" / "demo_mixed.zip"))
+
+
+@router.get("/samples")
+def samples(user=Depends(require("page.data"))):
+    """The sample sets shipped with the product (samples/*.zip)."""
+    return [{"name": p.name, "size": p.stat().st_size} for p in sorted((ROOT / "samples").glob("*.zip"))]
+
+
+@router.post("/samples/{name}", status_code=202)
+def load_sample(name: str, user=Depends(require("page.data")), svc=Depends(services)):
+    p = ROOT / "samples" / os.path.basename(name)
+    if not p.is_file() or p.suffix != ".zip":
+        raise KeyError(name)
+    return svc.datasets.submit(p.name, p.read_bytes())
+
+
+class FetchIn(BaseModel):
+    kind: str = "http"            # http | mcp
+    url: str
+    headers: str = ""             # "Key: Value" lines
+    method: str = "GET"
+    body: str = ""
+    path: str = ""                # JSON path to the record list (http)
+    tool: str = ""                # MCP tool name
+    arguments: dict = {}
+
+
+@router.post("/fetch", status_code=202)
+def fetch_remote(body: FetchIn, user=Depends(require("page.data")), svc=Depends(services)):
+    """Pull a dataset from an HTTP endpoint (JSON / text) or an MCP tool and load it as a background job."""
+    headers = wo_conn.parse_headers(body.headers)
+    try:
+        if body.kind == "mcp":
+            name, data = wo_conn.fetch_mcp(body.url, body.tool, body.arguments, headers)
+        else:
+            name, data = wo_conn.fetch_http(body.url, body.method, headers, body.body or None, body.path)
+    except Exception as e:  # noqa: BLE001 - a remote that cannot be reached is the caller's problem, not a server error
+        raise ValueError(f"fetch failed: {type(e).__name__}: {str(e)[:200]}")
+    return svc.datasets.submit(name, data)
+
+
+@router.post("/mcp-tools")
+def list_mcp_tools(body: FetchIn, user=Depends(require("page.data"))):
+    try:
+        return [x["name"] for x in wo_conn.mcp_tools(body.url, wo_conn.parse_headers(body.headers))]
+    except Exception as e:  # noqa: BLE001
+        raise ValueError(f"mcp failed: {type(e).__name__}: {str(e)[:200]}")
 
 
 @router.get("/compare")
@@ -105,6 +160,71 @@ def incident(key: str, iid: str, user=Depends(require("page.data")), svc=Depends
     return d
 
 
+@router.get("/{key}/actions")
+def dataset_actions(key: str, user=Depends(require("page.data")), svc=Depends(services)):
+    ids = {i.id for i in svc.datasets.get(key)["analysis"].incidents}
+    return [a for a in svc.actions.list() if a["incident_id"] in ids]
+
+
+class FeedbackIn(BaseModel):
+    verdict: str                  # up | down
+    correct: str = "__keep__"     # __keep__ | __noise__ | __other__ | alt<i>
+    comment: str = ""
+
+
+@router.post("/{key}/incidents/{iid}/feedback")
+def feedback(key: str, iid: str, body: FeedbackIn, user=Depends(require("page.data")), svc=Depends(services)):
+    """Thumbs up / down on the card with an optional corrected root cause; wrong verdicts become rule proposals."""
+    d = svc.datasets.get(key); a = d["analysis"]
+    inc = a.incident_by_id.get(iid)
+    if not inc:
+        raise KeyError(iid)
+    root = a.signal_by_id[inc.root_cause_signal]
+    root_type = str(root.observations[0].attributes.get("alarm_type", "")).lower() if root.observations else ""
+    alt_type, correct_txt = "", ""
+    if body.correct.startswith("alt"):
+        x = inc.root_cause_alternatives[int(body.correct[3:])]
+        sig = a.signal_by_id.get(x.get("signal", "")) if isinstance(x, dict) else None
+        alt_type = str(sig.observations[0].attributes.get("alarm_type", "")).lower() if sig and sig.observations else ""
+        correct_txt = f"{x.get('template', '')[:80]} ({', '.join(x.get('services', [])[:2])})"
+    else:
+        correct_txt = {"__keep__": "", "__noise__": "noise", "__other__": body.comment}.get(body.correct, body.comment)
+    out = svc.kb.add_feedback(d["name"], inc, root, body.verdict, correct=correct_txt, comment=body.comment, alt_type=alt_type, root_type=root_type, mark_noise=(body.correct == "__noise__"))
+    return {"ok": True, "proposals": len(out.get("proposals", []))}
+
+
+@router.get("/{key}/incidents/{iid}/related")
+def related(key: str, iid: str, user=Depends(require("page.data")), svc=Depends(services)):
+    a = svc.datasets.get(key)["analysis"]
+    inc = a.incident_by_id.get(iid)
+    if not inc:
+        raise KeyError(iid)
+    return svc.kb.related(inc, a.signal_by_id[inc.root_cause_signal])
+
+
+@router.get("/{key}/incidents/{iid}/prompt", response_class=PlainTextResponse)
+def prompt(key: str, iid: str, user=Depends(require("page.data")), svc=Depends(services)):
+    a = svc.datasets.get(key)["analysis"]
+    inc = a.incident_by_id.get(iid)
+    if not inc:
+        raise KeyError(iid)
+    return llm_prompt(inc, a.signal_by_id)
+
+
+@router.post("/{key}/incidents/{iid}/explain")
+def explain(key: str, iid: str, user=Depends(require("page.data")), svc=Depends(services)):
+    """Ask the configured LLM for a narrative of the card (the deterministic verdict is never changed by it)."""
+    from ...llm import chat
+    a = svc.datasets.get(key)["analysis"]
+    inc = a.incident_by_id.get(iid)
+    if not inc:
+        raise KeyError(iid)
+    cfg = svc.llm_cfg()
+    if not cfg.enabled:
+        raise ValueError("no LLM configured")
+    return {"text": chat(cfg, llm_prompt(inc, a.signal_by_id)), "model": cfg.model}
+
+
 @router.get("/{key}/incidents/{iid}/postmortem", response_class=PlainTextResponse)
 def postmortem(key: str, iid: str, user=Depends(require("page.data")), svc=Depends(services)):
     a = svc.datasets.get(key)["analysis"]
@@ -122,7 +242,29 @@ def signals(key: str, limit: int = 100, user=Depends(require("page.data")), svc=
 
 @router.get("/{key}/noise")
 def noise(key: str, user=Depends(require("page.data")), svc=Depends(services)):
-    return svc.datasets.get(key)["analysis"].noise_audit()
+    """Noise audit: eliminated signals with reasons, demoted groups, and for alarm storms the service x time heat map."""
+    from collections import Counter
+    from datetime import timedelta
+    a = svc.datasets.get(key)["analysis"]
+    na = a.noise_audit()
+    for r in na["rows"]:
+        for k in ("first", "last"):
+            if hasattr(r.get(k), "isoformat"):
+                r[k] = r[k].isoformat()
+    na["demoted"] = [{"id": i.id, "severity": i.severity, "count": sum(a.signal_by_id[x].count for x in i.signal_ids), "services": ", ".join(i.affected_services[:4]),
+                      "first": i.started_at.isoformat(), "last": i.ended_at.isoformat(), "title": i.title[:80]} for i in getattr(a, "demoted", [])]
+    na["heat"] = None
+    if getattr(a, "mode", "") == "density" and a.storm.get("cells") is not None and a.storm.get("t0"):
+        t0, bm, hot = a.storm["t0"], a.storm["bucket_min"], a.storm["cells"]
+        counts = Counter((o.service or "-", int((o.timestamp - t0).total_seconds() // (bm * 60))) for o in a.observations)
+        svc_tot = Counter()
+        for (svc_, b), n in counts.items():
+            svc_tot[svc_] += n
+        buckets = sorted({b for _, b in counts})
+        na["heat"] = {"services": [x for x, _ in svc_tot.most_common()], "buckets": [(t0 + timedelta(minutes=b * bm)).strftime("%H:%M") for b in buckets],
+                      "cells": [{"service": svc_, "bucket": (t0 + timedelta(minutes=b * bm)).strftime("%H:%M"), "n": n, "hot": (svc_, b) in hot} for (svc_, b), n in counts.items()],
+                      "bucket_min": bm}
+    return na
 
 
 @router.get("/{key}/evidence")

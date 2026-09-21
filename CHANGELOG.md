@@ -2,6 +2,11 @@
 
 Numaralandırma: büyük sürüm **v1, v2** (ürün sahibinin kararı), küçük güncelleme **v1.1, v1.2** (her devreye alınan özellik adımı), düzeltme **v1.1.1**. Her sürüm `python -m watchover.release <major|minor|patch> "özet"` ile açılır; Sistem › Güncelleme sayfası bu dosyayı gösterir, anlık görüntüler sürüm numarasını taşır.
 
+## v1.11 · 2026-09-21 · güncelleme
+
+- Operasyon ayrıntı panelleri, geri getirilen Streamlit özellikleri (incident kartı, örnek setler, uzak çekme, ısı haritası, belge yükleme, bakım, README), koyu / sistem / açık tema
+
+
 ## v1.10.1 · 2026-09-21 · düzeltme
 
 - Ollama: kurulu modeller (:latest) öneri listesinde 'kurulu' görünür, biten indirme çubukları kalkar

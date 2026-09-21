@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import os
 
-from fastapi import APIRouter, Depends
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, File, UploadFile
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
@@ -150,3 +152,39 @@ def rollback(sid: str, code: bool = True, db: bool = True, user=Depends(require(
 @router.post("/restart")
 def restart(user=Depends(require("sys.update"))):
     return {"restart": wo_admin.restart_app(delay=1.0, hard=True)}
+
+
+@router.post("/snapshots/prune")
+def prune(keep: int = 10, user=Depends(require("sys.update"))):
+    return {"removed": wo_admin.prune_versions(keep)}
+
+
+@router.post("/deploy")
+async def deploy(file: UploadFile = File(...), user=Depends(require("sys.update")), svc=Depends(services)):
+    """Classic installs: unpack a release zip over the code folder (a snapshot is taken first), then restart. Docker updates the image instead."""
+    if wo_admin.in_docker():
+        raise ValueError("in Docker the update is the image: ./watchover.sh update")
+    wo_admin.snapshot("before zip deploy", kb=svc.kb); wo_admin.prune_versions(12)
+    ok, msg = wo_admin.apply_zip(await file.read())
+    if not ok:
+        raise ValueError(msg)
+    out = wo_admin.deploy_finish("zip")
+    return {"ok": True, "message": msg, "restart": out.get("restart")}
+
+
+@router.post("/git-update")
+def git_update(branch: str = "", user=Depends(require("sys.update")), svc=Depends(services)):
+    if wo_admin.in_docker():
+        raise ValueError("in Docker the update is the image: ./watchover.sh update")
+    wo_admin.snapshot("before git update", kb=svc.kb); wo_admin.prune_versions(12)
+    ok, msg = wo_admin.git_update(branch=branch)
+    if not ok:
+        raise ValueError(msg)
+    out = wo_admin.deploy_finish("git")
+    return {"ok": True, "message": msg, "restart": out.get("restart")}
+
+
+@router.get("/readme", response_class=PlainTextResponse)
+def readme(user=Depends(require("page.readme"))):
+    p = Path(__file__).resolve().parents[4] / "README.md"
+    return p.read_text(encoding="utf-8") if p.exists() else ""
