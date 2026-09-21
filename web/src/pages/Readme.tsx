@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";
 import { useT } from "../i18n";
+import { Wordmark } from "../components/Logo";
 
 /** Small Markdown renderer for the README: headings, lists, tables, code, bold, links. Enough for docs, not a full parser. */
 function render(md: string): string {
@@ -24,5 +25,5 @@ function render(md: string): string {
 export default function Readme() {
   const { t } = useT();
   const q = useQuery({ queryKey: ["readme"], queryFn: () => api<string>("/system/readme", { text: true }) });
-  return <div className="stack"><h2>📖 {t("nav_readme")}</h2><div className="card readme" dangerouslySetInnerHTML={{ __html: render(q.data ?? "") }} /></div>;
+  return <div className="stack"><div className="row between"><h2>📖 {t("nav_readme")}</h2><Wordmark size={44} /></div><div className="card readme" dangerouslySetInnerHTML={{ __html: render(q.data ?? "") }} /></div>;
 }

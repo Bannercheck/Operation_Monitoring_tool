@@ -4,6 +4,7 @@ import { Activity, AlertTriangle, BellRing, BookOpen, Bot, Brain, ClipboardList,
 import { useAuth } from "../auth";
 import { useT } from "../i18n";
 import { Btn, Modal, Field, Err, LangTheme } from "./ui";
+import { Wordmark } from "./Logo";
 import { post } from "../api";
 
 const NAV = [
@@ -27,7 +28,7 @@ export default function Layout() {
     <div className="shell">
       <aside className={`side ${collapsed ? "collapsed" : ""} ${open ? "open" : ""}`}>
         <button className="collapse" onClick={toggle} title={collapsed ? t("expand") : t("collapse")}>{collapsed ? <PanelLeftOpen size={14} /> : <PanelLeftClose size={14} />}</button>
-        <div className="brand"><div className="logo">W</div><div><b>Watchover</b><div className="tag">{t("brand_tag")}</div></div></div>
+        <div className="brand"><Wordmark size={40} /></div>
         {NAV.map((g) => (
           <div key={g.group}><div className="group">{t(g.group)}</div>
             <div className="stack" style={{ gap: 6 }}>{g.items.filter((i) => can(i.perm)).map((i) => (

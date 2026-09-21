@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../auth";
 import { useT } from "../i18n";
 import { Btn, Err, Field, LangTheme } from "../components/ui";
+import { Logo } from "../components/Logo";
 import { api, get } from "../api";
 
 export default function Login() {
@@ -26,7 +27,8 @@ export default function Login() {
   };
   return (
     <div className="login-bg"><div className="login">
-      <div className="row between"><span className="pill"><span className="chip"><span className="d" /> Watchover</span> {t("login_lead")}</span>
+      <div className="row between" style={{ alignItems: "flex-start" }}>
+        <div className="login-brand"><div className="glow"><Logo size={64} /></div><div><div className="wm-name big">Watchover</div><div className="wm-tag">{t("brand_tag")}</div></div></div>
         <LangTheme /></div>
       <h1>{challenge || mode === "verify" ? t("mfa_title") : mode === "register" ? t("reg_title") : t("login_title")}</h1>
       <form className="stack" onSubmit={submit} style={{ marginTop: 14 }}>
