@@ -1,164 +1,174 @@
-# Watchover · Docker kurulum rehberi
+# Watchover · Kurumsal Docker kurulum rehberi
 
-Watchover Docker'da iki konteyner olarak çalışır: **dashboard** (arayüz 8501, canlı alıcı 8600 ve konteynerin kendini izleyen ajanı) ve **postgres** (ürün veritabanı, PostgreSQL 16). Kod imajın içindedir; ayarlar, token'lar, canlı tampon, sürüm anlık görüntüleri ve loglar `watchover-data` biriminde, veritabanı `watchover-pg` biriminde durur. Güncelleme demek yeni imajı çekip konteyneri yeniden oluşturmak demektir; iki birime de dokunulmaz.
+Watchover şirket içindeki **tek bir sunucuda, tamamen Docker'da** çalışır. Kurulum paketi bu klasördür (`watchover.zip`): imaj sunucuda kaynak koddan derlenir; GitHub, imaj kaydı ya da sunucuda Python gerekmez. Üç konteyner vardır: **dashboard** (arayüz 8501, canlı alıcı 8600, konteynerin kendini izleyen ajanı), **postgres** (ürün veritabanı, PostgreSQL 16) ve isteğe bağlı **mcp** (kendi MCP sunucumuz, 8765). Kod imajın içindedir; ayarlar, sırlar, anlık görüntüler ve loglar `watchover-data` biriminde, veritabanı `watchover-pg` biriminde durur. Güncelleme, yeni paketi klasörün üstüne açıp `./watchover.sh update` demektir; birimlere dokunulmaz.
 
-## 1. Ön koşullar ve bağımlılıklar
+## 1. Sunucu gereksinimleri
 
-Sunucuya kurulması gereken **tek şey Docker'dır**. Python, pip, PostgreSQL ya da başka bir paket ana makineye kurulmaz; hepsi imajların içindedir.
+Sunucuya kurulacak **tek bağımlılık Docker'dır** (Engine 24+ ve Compose v2). Python, pip, PostgreSQL ana makineye kurulmaz; hepsi imajların içindedir.
 
-| Platform | Kurulum |
+| | |
 |---|---|
-| Linux sunucu (Ubuntu / Debian / RHEL) | `curl -fsSL https://get.docker.com \| sudo sh` ve ardından `sudo usermod -aG docker $USER` (yeniden oturum açın). Compose v2 bu paketle gelir: `docker compose version` |
-| macOS | Docker Desktop (docker.com/products/docker-desktop); Apple Silicon için arm64 imajı yayınlanır |
-| Windows | Docker Desktop + WSL 2; komutlar PowerShell'de aynıdır |
+| İşletim sistemi | Ubuntu 22.04 / 24.04, Debian 12, RHEL / Rocky 9 (Linux sunucu). Deneme için macOS / Windows'ta Docker Desktop da çalışır |
+| Kaynak | En az 2 CPU / 4 GB RAM / 20 GB disk. Günlük GB'larca log ve büyük SAP arşivleri için 4 CPU / 8 GB |
+| Ağ | Kullanıcılar için 8501, izlenen sunuculardan gelen ajanlar için 8600 (MCP açılırsa 8765). İmaj derlenirken bir kez PyPI ve Docker Hub'a çıkış gerekir; kapalı ağ için bölüm 9 |
 
-- Kaynak: en az 2 CPU / 4 GB RAM / 10 GB disk. Büyük SAP arşivleri için 4 CPU / 8 GB (bölüm 4).
-- Ağ: sunucuda 8501 (arayüz) ve 8600 (ajanlar) portları açık olmalı. İmaj `ghcr.io`'dan çekilir; internet çıkışı olmayan sunucu için bölüm 10.
-- İmaj kaydı: `ghcr.io/bannercheck/watchover`. Her `main` gönderimi `:latest` ve `:main`, her `vX.Y` etiketi `:X.Y` ve `:latest` olarak GitHub Actions tarafından yayınlanır (önce testler PostgreSQL ile koşar). Paket özelse çekmek için bir kez `docker login ghcr.io` gerekir (kullanıcı adı: GitHub hesabınız, parola: `read:packages` yetkili bir kişisel erişim belirteci).
-
-## 2. İlk kurulum (beş dakika)
+Docker kurulumu (Linux):
 
 ```bash
-mkdir -p ~/watchover && cd ~/watchover
-curl -fsSLO https://raw.githubusercontent.com/Bannercheck/Operation_Monitoring_tool/main/docker-compose.yml
-curl -fsSL  https://raw.githubusercontent.com/Bannercheck/Operation_Monitoring_tool/main/.env.docker.example -o .env
-nano .env                               # POSTGRES_PASSWORD satırına güçlü bir parola yazın (ilk açılışta veritabanına işlenir)
-docker compose up -d                    # imajları çeker, postgres'i başlatır, sağlıklı olunca dashboard'u açar
-docker compose ps                       # iki satır da "healthy" olmalı (ilk açılış 30-60 sn)
+curl -fsSL https://get.docker.com | sudo sh
+sudo usermod -aG docker $USER      # sonra oturumu kapatıp açın
+docker compose version             # v2.x görünmeli
 ```
 
-**Arayüze erişim:** tarayıcıda `http://<sunucu-ip>:8501` (aynı makinede `http://localhost:8501`). Sunucunun IP'sini `hostname -I` verir. Uzak bir sunucuda güvenlik duvarı varsa 8501 ve 8600'ü açın (`sudo ufw allow 8501,8600/tcp`). İnternete açık bir sunucuda 8501'i doğrudan açmak yerine bir ters vekil (Nginx / Caddy) arkasına koyup TLS ekleyin; Caddy için tek satır: `watchover.sirket.com { reverse_proxy 127.0.0.1:8501 }`.
+## 2. Kurulum (on dakika)
 
-**İlk giriş:** yerleşik yönetici hesabı `admin@watchover.local`; başlangıç parolası ayrıca iletilir ve ilk girişte yeni parola istenir. Diğer hesaplar Users sayfasından ya da terminalden açılır:
+Paketi sunucuya kopyalayın (scp / WinSCP), açın ve tek komutu çalıştırın:
 
 ```bash
-docker compose exec dashboard python -m watchover.useradmin add ops@sirket.com --admin
+scp watchover.zip kullanici@sunucu:~/
+ssh kullanici@sunucu
+unzip -q watchover.zip && mv hackathon watchover && cd watchover
+./watchover.sh install
 ```
 
-Depoyu klonladıysanız aynı dizinde `docker compose up -d` yeterlidir; `make docker-up`, `make docker-update`, `make docker-logs`, `make docker-backup`, `make docker-down` kısayolları vardır. Yerel imaj derlemek için `make docker-build` (bunun için de yalnızca Docker gerekir; pip kurulumu imaj içinde yapılır).
+`install` şunları yapar: `.env` dosyasını `.env.docker.example`'dan üretir ve **rastgele veritabanı parolası ile MCP anahtarını** yazar (`.env` 600 izinli, kimseyle paylaşılmaz); imajı derler (ilk seferde 3-5 dakika); PostgreSQL'i başlatır, sağlıklı olunca dashboard'u açar; sonunda adresleri basar:
 
-## 3. Yapılandırma (.env)
+```
+  Watchover v1.6 is running.
+    Dashboard      http://10.0.0.12:8501     (same machine: http://localhost:8501)
+    Agents post to http://10.0.0.12:8600/ingest
+    First sign-in: admin@watchover.local ...
+```
+
+**Arayüze erişim:** tarayıcıda `http://<sunucu-ip>:8501`. Güvenlik duvarı varsa `sudo ufw allow 8501,8600/tcp`. Şirket ağında TLS için bölüm 8.
+
+**İlk giriş:** yerleşik yönetici `admin@watchover.local`, başlangıç parolası ayrıca iletilir; ilk girişte yeni parola istenir. Ekip hesapları Users sayfasından ya da terminalden:
+
+```bash
+./watchover.sh user add ops@sirket.com --admin
+./watchover.sh user list
+```
+
+## 3. Günlük işletim: watchover.sh
+
+| Komut | Ne yapar |
+|---|---|
+| `./watchover.sh status` | Konteynerler, sağlık durumu, anlık CPU / bellek |
+| `./watchover.sh logs [dashboard\|postgres\|mcp]` | Canlı log |
+| `./watchover.sh stop` / `start` / `restart` | Durdur / başlat / yeniden başlat (veri kalır) |
+| `./watchover.sh update` | Yeni paket klasörün üstüne açıldıktan sonra: imajı yeniden derler, konteynerleri yeniler, eski imajı temizler |
+| `./watchover.sh backup` | PostgreSQL dökümü + veri birimi + `.env` → `backups/watchover-YYYYMMDD-HHMM.tgz` |
+| `./watchover.sh restore DOSYA` | Yedeği geri yükler (veritabanı ve veri birimi; konteynerler bu sırada durur) |
+| `./watchover.sh user …` | `list`, `add EMAIL [--admin]`, `promote`, `password EMAIL`, `unlock`, `enable`, `disable`, `delete` |
+| `./watchover.sh mcp on\|off` | Kendi MCP sunucumuzu açar / kapatır (bölüm 7) |
+| `./watchover.sh migrate` | Eski SQLite kurulumunun `.db` dosyalarını PostgreSQL'e kopyalar (bölüm 6) |
+| `./watchover.sh save` / `load DOSYA` | İmajları `.tgz` olarak dışa / içe aktarır (kapalı ağ, bölüm 9) |
+| `./watchover.sh shell` | Dashboard konteynerinde kabuk |
+
+Bütün bunlar düz `docker compose` komutlarıdır; alışkın olanlar `docker compose ps`, `docker compose logs -f dashboard` ile aynı işleri yapabilir.
+
+## 4. Yapılandırma (.env)
+
+`install` gerekli her şeyi yazar; değiştirmek isteyenler için:
 
 | Değişken | Varsayılan | Anlamı |
 |---|---|---|
-| `POSTGRES_PASSWORD` | `change-me` | Veritabanı parolası; **ilk açılıştan önce** değiştirin (birim oluşturulurken işlenir) |
-| `POSTGRES_USER` / `POSTGRES_DB` | `watchover` / `watchover` | Veritabanı kullanıcısı ve adı |
-| `DATABASE_URL` | boş (paketteki postgres) | Kurumun mevcut PostgreSQL sunucusu kullanılacaksa tam bağlantı (bölüm 6) |
-| `WATCHOVER_TAG` | `latest` | Çalıştırılacak sürüm; `1.5` gibi bir etiket sürümü sabitler |
-| `WATCHOVER_UI_PORT` / `WATCHOVER_LIVE_PORT` | `8501` / `8600` | Ana makinede açılan portlar |
-| `WATCHOVER_PG_PORT` | `127.0.0.1:5433` | PostgreSQL'in ana makineden erişimi (psql / yedek); yalnız localhost |
-| `WATCHOVER_CPUS` / `WATCHOVER_MEMORY` | `4` / `4g` | Dashboard konteynerinin kaynak sınırı |
-| `WATCHOVER_PG_CPUS` / `WATCHOVER_PG_MEMORY` | `2` / `2g` | PostgreSQL konteynerinin kaynak sınırı |
+| `POSTGRES_PASSWORD` | rastgele | Veritabanı parolası; birim ilk oluşturulurken işlenir (sonradan değiştirmek: bölüm 6) |
+| `MCP_API_KEY` | rastgele | MCP istemcilerinin göndereceği anahtar |
+| `WATCHOVER_UI_PORT` / `WATCHOVER_LIVE_PORT` / `WATCHOVER_MCP_PORT` | `8501` / `8600` / `8765` | Sunucuda açılan portlar; `127.0.0.1:8765` gibi yazılırsa yalnız localhost |
+| `WATCHOVER_CPUS` / `WATCHOVER_MEMORY` | `4` / `4g` | Dashboard konteynerinin sınırı |
+| `WATCHOVER_PG_CPUS` / `WATCHOVER_PG_MEMORY` | `2` / `2g` | PostgreSQL konteynerinin sınırı |
 | `WATCHOVER_SELFMON` | `1` | Konteynerin kendini izlemesi; ana makinede ayrı ajan varsa `0` |
 | `WATCHOVER_PARALLEL` | boş | Çoklu dosya ayrıştırmada paralellik: boş otomatik (8+ çekirdek), `1` zorla, `0` kapalı |
 | `TZ` | `Europe/Istanbul` | Konteyner saat dilimi |
+| `DATABASE_URL` | boş | Kurumun mevcut PostgreSQL sunucusu kullanılacaksa (bölüm 6) |
 
-Değişiklikten sonra `docker compose up -d` yeni ayarları uygular. `POSTGRES_PASSWORD` sonradan değiştirilecekse önce veritabanında değiştirilir: `docker compose exec postgres psql -U watchover -c "ALTER USER watchover PASSWORD 'yeni'"`, sonra `.env` ve `docker compose up -d`.
+Değişiklikten sonra `./watchover.sh start` yeni ayarları uygular. Kaynak kullanımı: `docker stats`. Loglar json-file sürücüsüyle döner (dashboard 20 MB × 5, postgres 10 MB × 3). Sağlık denetimleri: dashboard 30 sn'de bir, postgres 10 sn'de bir; çöken konteyneri `restart: unless-stopped` geri açar, Sistem › Güncelleme'deki **Uygulamayı yeniden başlat** aynı mekanizmayı kullanır.
 
-## 4. Kaynak yönetimi
+## 5. Sunucuları izlemek ve log çekmek
 
-- Sınırlar `.env` içindeki `WATCHOVER_CPUS` / `WATCHOVER_MEMORY` (dashboard) ve `WATCHOVER_PG_CPUS` / `WATCHOVER_PG_MEMORY` (veritabanı) ile verilir; `docker stats` anlık kullanımı gösterir.
-- Büyük SAP arşivleri için önerilen: dashboard 4 CPU / 4 GB, 1 GB'lık arşivlerde 8 GB. PostgreSQL için 2 CPU / 2 GB yüz binlerce rollup satırına yeter.
-- Loglar json-file sürücüsüyle döner (dashboard 20 MB × 5, postgres 10 MB × 3); `docker compose logs --tail 200 dashboard`.
-- Sağlık denetimi: dashboard 30 saniyede bir `/_stcore/health`, postgres 10 saniyede bir `pg_isready`. `docker compose ps` her ikisini `healthy` göstermelidir. Uygulama çökerse `restart: unless-stopped` konteyneri geri açar; Sistem › Güncelleme'deki **Uygulamayı yeniden başlat** aynı mekanizmayı kullanır. Dashboard, postgres sağlıklı olmadan başlatılmaz (`depends_on: service_healthy`).
+Kurulum bittikten sonra izleme üç yoldan başlar; hepsi dashboard'dan yönetilir:
 
-## 5. Güncelleme ve sürüm geçmişi
+1. **Ajan (push):** izlenecek her sunucuda tek satır; ajan CPU / bellek / disk / servis durumunu ve seçilen log dosyalarını 8600'e gönderir. Komut Bağlantı ayarları › Ajanlar sekmesinde hazır çıkar (kayıt anahtarıyla):
+   ```bash
+   curl -fsSL http://<watchover-sunucusu>:8600/agent/install.sh | sudo bash -s -- --url http://<watchover-sunucusu>:8600/ingest --enroll-key wk_… --env prod
+   ```
+   Windows sunucular için Görev Zamanlayıcı ile aynı ajan (`docs/KURULUM_WINDOWS.md`).
+2. **Kaynaklar (pull):** Elasticsearch / OpenSearch, Grafana Loki, Splunk, Graylog ve HTTP/JSON uçlarından belirli aralıklarla çekim; Bağlantı ayarları › Kaynaklar sekmesinden adres, kimlik ve sorgu girilir, sırlar veritabanında şifreli tutulur.
+3. **Dosya yükleme:** Datasets sayfasından ZIP / log / CSV / SAP arşivleri (çoklu dosya, arka planda, ilerleme yüzdesiyle).
 
-```bash
-cd ~/watchover
-docker compose pull && docker compose up -d      # ya da: make docker-update
-docker image prune -f                             # eski imaj katmanlarını temizler
-```
-
-- Belirli bir sürüme geçmek ya da geri dönmek: `.env` içinde `WATCHOVER_TAG=1.4` yazıp aynı komutu çalıştırın.
-- Sistem › Güncelleme sekmesi Docker'da zip / git düğmelerini göstermez, bu komutları gösterir; sürüm notları ve anlık görüntüler (Sistem › Güncelleme › Sürüm geçmişi) yine oradadır ve `/data/versions` altında durur. PostgreSQL'de anlık görüntü bütün tabloların JSON dökümüdür (`db.json.gz`); geri dönüş tabloları o dökümle doldurur.
-- Sistem başlığındaki çip `Watchover v1.5 · 🐳 1.5` biçiminde imaj etiketini gösterir; Sistem › Durum'daki veritabanı kartı `postgresql` ve bağlantıyı (parolasız) gösterir.
+Konteynerin kendi ajanı Watchover sunucusunun konteynerini raporlar; ana makinenin kendisini izlemek için ona da normal bir ajan kurun ve `WATCHOVER_SELFMON=0` yapın. Uyarılar (e-posta / SMS) Sistem › Bildirimler'den, roller Users sayfasından ayarlanır.
 
 ## 6. PostgreSQL: ürün veritabanı
 
-Kullanıcılar, roller, bilgi tabanı, kurallar, aksiyonlar, playbook, ajanlar, kaynaklar, envanter, bildirimler ve SLO rollup'ları **tek bir PostgreSQL veritabanında** tutulur. Compose dosyası `postgres:16-alpine` konteynerini dashboard'un yanında başlatır ve `DATABASE_URL`'i kendisi kurar; ayrıca bir şey yapmak gerekmez.
+Kullanıcılar, roller, bilgi tabanı, kurallar, aksiyonlar, playbook, ajanlar, kaynaklar, envanter, bildirimler ve SLO rollup'ları **tek PostgreSQL veritabanında** tutulur; `postgres` konteyneri dashboard'un yanında çalışır, ayrıca bir şey gerekmez.
 
-**Kurumun mevcut PostgreSQL sunucusu** kullanılacaksa (13+):
+- Bakmak: `docker compose exec postgres psql -U watchover` (ana makineden: `psql -h 127.0.0.1 -p 5433 -U watchover`).
+- Parola değiştirmek: `docker compose exec postgres psql -U watchover -c "ALTER USER watchover PASSWORD 'yeni'"`, sonra `.env` ve `./watchover.sh start`.
+- **Kurumun mevcut PostgreSQL sunucusu** (13+): `CREATE USER watchover WITH PASSWORD '…'; CREATE DATABASE watchover OWNER watchover;` sonra `.env` içine `DATABASE_URL=postgresql://watchover:…@db.sirket.com:5432/watchover` ve `docker compose up -d --no-deps dashboard`.
+- **Eski kurulumdan (SQLite) geçiş:** eski `knowledge.db`, `actions.db`, `playbook.db` dosyalarını bu klasörde `data/` altına koyup `./watchover.sh migrate` (önce `--dry-run` ile satır sayıları). Dashboard PostgreSQL'e ilk bağlandığında `/data` altında bu dosyaları görürse zaten bir kez kendisi kopyalar (`/data/.migrated-to-postgres`). Herkes taşınmadan sonra yeniden giriş yapar.
+- Sürüm anlık görüntüleri (Sistem › Güncelleme › Sürüm geçmişi) PostgreSQL'de bütün tabloların JSON dökümüdür; geri dönüş tabloları o dökümle doldurur.
 
-```sql
-CREATE USER watchover WITH PASSWORD 'guclu-parola';
-CREATE DATABASE watchover OWNER watchover;
-```
+## 7. Kendi MCP sunucumuz
 
-```bash
-# .env
-DATABASE_URL=postgresql://watchover:guclu-parola@db.sirket.com:5432/watchover
-docker compose up -d --no-deps dashboard          # paketteki postgres başlatılmaz
-```
-
-**Veritabanına bakmak:** `docker compose exec postgres psql -U watchover` (ya da ana makineden `psql -h 127.0.0.1 -p 5433 -U watchover`). Tablolar ilk açılışta uygulama tarafından oluşturulur; şema aracı yoktur.
-
-**Eski kurulumdan (SQLite) geçiş:** dashboard PostgreSQL'e ilk bağlandığında `/data` altında `knowledge.db`, `actions.db`, `playbook.db` görürse bunları **bir kez** kopyalar (hesaplar, roller, bilgi tabanı, aksiyonlar, playbook, ajanlar, kaynaklar, bildirimler, rollup'lar) ve `/data/.migrated-to-postgres` dosyasına raporu yazar. Elle çalıştırmak ya da tekrar etmek için:
+Watchover'ın motoru aynı imajdan üçüncü bir konteynerde MCP sunucusu olarak açılır; Claude Code, Claude Desktop, Cursor ya da kendi ajanlarınız `analyze_dataset`, `list_incidents`, `get_incident`, `list_signals`, `evidence`, `postmortem`, `create_action`, `list_actions` araçlarını çağırır. Aksiyonlar dashboard ile aynı veritabanına yazılır.
 
 ```bash
-docker compose exec dashboard python -m watchover.migrate --source /data --dry-run    # satır sayıları
-docker compose exec dashboard python -m watchover.migrate --source /data              # kopyala (var olan anahtarlar atlanır)
+./watchover.sh mcp on              # http://<sunucu>:8765/mcp ; sağlık: /health ; anahtar .env içindeki MCP_API_KEY
+cp uretim-log.zip datasets/        # istemcilerin analiz edeceği dosyalar
 ```
 
-Docker dışındaki bir kurulumdan (Windows / macOS) geçerken üç `.db` dosyasını `docker cp DOSYA watchover:/data/` ile birime kopyalayıp konteyneri yeniden başlatmak yeter (`docker compose restart dashboard`). Herkes taşınmadan sonra yeniden giriş yapar (hatırlanan oturumlar taşınmaz).
-
-## 7. Kendi MCP sunucumuz (isteğe bağlı)
-
-Watchover'ın motoru aynı imajdan ayrı bir konteynerde MCP sunucusu olarak açılır; Claude Code, Claude Desktop, Cursor ya da kendi ajanlarınız `analyze_dataset`, `list_incidents`, `get_incident`, `list_signals`, `evidence`, `postmortem`, `create_action`, `list_actions` araçlarını JSON-RPC ile çağırır. Aksiyonlar dashboard ile aynı PostgreSQL'e yazılır.
-
-```bash
-# .env
-MCP_API_KEY=uzun-rastgele-anahtar        # openssl rand -hex 24
-mkdir -p datasets                        # istemcilerin analiz edeceği dosyalar (ZIP / log / CSV) buraya kopyalanır
-docker compose --profile mcp up -d       # http://<sunucu>:8765/mcp ; sağlık: /health
-```
-
-İstemci ayarı (Claude Code / Claude Desktop için `mcpServers` bloğu):
+İstemci ayarı (`mcpServers` bloğu):
 
 ```json
-{"mcpServers": {"watchover": {"url": "http://<sunucu>:8765/mcp", "headers": {"Authorization": "Bearer uzun-rastgele-anahtar"}}}}
+{"mcpServers": {"watchover": {"url": "http://<sunucu>:8765/mcp", "headers": {"Authorization": "Bearer <MCP_API_KEY>"}}}}
 ```
 
-Sonra istemciden `analyze_dataset("uretim-log.zip")` demek yeter; göreli ad `./datasets` klasöründe aranır. `MCP_API_KEY` boşsa uç nokta açıktır: o durumda portu yalnız localhost'a bağlayın (`WATCHOVER_MCP_PORT=127.0.0.1:8765`). Dashboard'un Bağlantı ayarları › MCP sekmesi de aynı adrese bağlanabilir.
+Sonra istemciden `analyze_dataset("uretim-log.zip")` demek yeter. Anahtarsız istekler 401 alır.
 
-## 8. Ajanlar ve kaynaklar
+## 8. TLS ve şirket ağı
 
-Sunuculardaki ajanlar aynı şekilde kurulur; alıcı adresi Docker ana makinesidir:
+8501'i doğrudan açmak yerine bir ters vekil arkasına koyup TLS ekleyin. Caddy ile tek satır (`/etc/caddy/Caddyfile`):
+
+```
+watchover.sirket.local {
+    tls internal                    # şirket CA'sı varsa: tls /etc/ssl/watchover.crt /etc/ssl/watchover.key
+    reverse_proxy 127.0.0.1:8501
+}
+```
+
+Bu durumda `.env` içinde `WATCHOVER_UI_PORT=127.0.0.1:8501` yazıp portu dışarıya kapatın. Ajan trafiği (8600) HTTP'dir ve token'lıdır; şirket ağı dışına çıkacaksa aynı vekille `reverse_proxy` ekleyin. SSO (Google / Microsoft / Apple / OIDC) Sistem › Giriş sekmesinden; geri dönüş adresi vekil adresiyle aynı olmalıdır.
+
+## 9. Kapalı ağ (internet çıkışı olmayan sunucu)
+
+İnternetli bir makinede imajı derleyip taşıyın:
 
 ```bash
-curl -fsSL http://<sunucu>:8600/agent/install.sh | sudo bash -s -- --url http://<sunucu>:8600/ingest --enroll-key wk_… --env prod
+./watchover.sh install && ./watchover.sh save          # watchover-images-1.6.tgz
+scp watchover.zip watchover-images-1.6.tgz kullanici@kapali-sunucu:~/
+# kapalı sunucuda:
+unzip -q watchover.zip && mv hackathon watchover && cd watchover
+./watchover.sh load ~/watchover-images-1.6.tgz && ./watchover.sh install
 ```
 
-Konteynerin kendi ajanı konteynerin CPU / bellek / diskini raporlar. Ana makinenin kendisini izlemek için ana makineye normal bir ajan kurun ve `WATCHOVER_SELFMON=0` yapın.
-
-## 9. Yedekleme ve taşıma
+## 10. Yedekleme ve taşıma
 
 ```bash
-make docker-backup                                                     # PostgreSQL: watchover-YYYYMMDD.sql.gz (pg_dump)
-docker compose exec -T postgres pg_dump -U watchover watchover | gzip > watchover-$(date +%Y%m%d).sql.gz    # aynı şey elle
-docker run --rm -v watchover_watchover-data:/data -v "$PWD":/backup alpine tar czf /backup/watchover-data.tgz -C /data .   # ayarlar, sırlar, anlık görüntüler
+./watchover.sh backup                                   # backups/watchover-YYYYMMDD-HHMM.tgz (pg_dump + veri birimi + .env)
+./watchover.sh restore backups/watchover-20260921-0200.tgz
 ```
 
-Geri yükleme (yeni sunucuda `docker compose up -d postgres` sonrası):
+Gecelik yedek: `crontab -e` → `0 2 * * * cd /home/kullanici/watchover && ./watchover.sh backup`. Yedek dosyasını başka bir diske / sunucuya kopyalayın; `data/.vault.key` sırların anahtarıdır, yedek onsuz açılmaz. Başka bir sunucuya taşımak: yeni sunucuda `install`, sonra `restore`.
 
-```bash
-gunzip -c watchover-YYYYMMDD.sql.gz | docker compose exec -T postgres psql -U watchover watchover
-docker run --rm -v watchover_watchover-data:/data -v "$PWD":/backup alpine tar xzf /backup/watchover-data.tgz -C /data
-docker compose up -d
-```
-
-`data/.vault.key` sırların anahtarıdır; yedek onsuz açılmaz. Gecelik yedek için `crontab -e`: `0 2 * * * cd ~/watchover && make docker-backup`.
-
-## 10. Sorun giderme
+## 11. Sorun giderme
 
 | Belirti | Çözüm |
 |---|---|
-| `pull access denied` | `docker login ghcr.io`; depo özelse paket görünürlüğünü kontrol edin |
-| Tarayıcı bağlanamıyor | `docker compose ps` (healthy?), `ss -ltnp \| grep 8501`, güvenlik duvarında 8501; uzak sunucuda `localhost` değil sunucu IP'si |
-| Port çakışması | `.env` içinde `WATCHOVER_UI_PORT` / `WATCHOVER_LIVE_PORT` / `WATCHOVER_PG_PORT` değiştirin |
-| `unhealthy` | `docker compose logs --tail 100 dashboard`; bellek sınırı düşükse `WATCHOVER_MEMORY` artırın |
-| `password authentication failed` | `.env` parolası birim oluşturulduktan sonra değişti: bölüm 3'teki `ALTER USER` ya da (veri yoksa) `docker compose down -v` |
-| dashboard postgres'i bekliyor | `docker compose logs postgres`; disk dolu ya da `watchover-pg` birimi bozuksa yedekten dönün |
-| Giriş yapılamıyor | `docker compose exec dashboard python -m watchover.useradmin list` (ve `password EMAIL`, `unlock EMAIL`) |
-| İnternet çıkışı yok | İnternetli bir makinede `docker pull ghcr.io/bannercheck/watchover:latest postgres:16-alpine`, `docker save … \| gzip > imajlar.tgz`, sunucuda `docker load` |
-| Yerel imaj ile denemek | `make docker-build` sonra `.env` içinde `WATCHOVER_IMAGE=watchover WATCHOVER_TAG=local` |
+| `Docker is not installed / not reachable` | Bölüm 1; `sudo systemctl start docker`; kullanıcı `docker` grubunda mı (`groups`) |
+| Derleme `pip` adımında takılıyor | Sunucunun PyPI'ye çıkışı yok: bölüm 9 (imajı başka makinede derleyip taşıyın) ya da şirket proxy'sini Docker'a tanıtın |
+| Tarayıcı bağlanamıyor | `./watchover.sh status` (healthy?), `ss -ltnp \| grep 8501`, güvenlik duvarı; uzak sunucuda `localhost` değil sunucu IP'si |
+| Port çakışması | `.env` içinde `WATCHOVER_UI_PORT` / `WATCHOVER_LIVE_PORT` / `WATCHOVER_PG_PORT` |
+| `unhealthy` | `./watchover.sh logs dashboard`; bellek sınırı düşükse `WATCHOVER_MEMORY` |
+| `password authentication failed` | `.env` parolası birim oluşturulduktan sonra değişti: bölüm 6'daki `ALTER USER` |
+| Giriş yapılamıyor | `./watchover.sh user list`, `user password EMAIL`, `user unlock EMAIL` |
+| Ajan gönderemiyor | Sunucudan `curl -s http://<watchover>:8600/health`; 8600 açık mı; token / kayıt anahtarı Bağlantı ayarları › Ajanlar'da geçerli mi |

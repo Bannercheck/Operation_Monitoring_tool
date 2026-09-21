@@ -1,6 +1,6 @@
 # Watchover — dashboard, live receiver and built-in host agent in one image.
-#   docker compose up -d                      (see docs/KURULUM_DOCKER.md)
-#   docker build -t watchover:local .         (local build; the published image is ghcr.io/bannercheck/watchover)
+#   ./watchover.sh install                    (builds this image on the server from the source tree; see docs/KURULUM_DOCKER.md)
+#   docker build -t watchover:local .         (plain build)
 FROM python:3.11-slim AS base
 ARG GIT_REV=-
 ARG VERSION=dev

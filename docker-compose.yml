@@ -1,13 +1,13 @@
-# Watchover on Docker.  Copy .env.docker.example to .env (set POSTGRES_PASSWORD), then:  docker compose up -d
-#   dashboard http://<host>:8501   receiver :8600   PostgreSQL is started next to it (volume watchover-pg)
-#   update:   docker compose pull && docker compose up -d        (or: make docker-update)
-#   logs:     docker compose logs -f dashboard
-#   mcp:      docker compose --profile mcp up -d            (MCP_API_KEY in .env; datasets in ./datasets)
+# Watchover on one server, entirely in Docker, built from this source tree:  ./watchover.sh install   (see docs/KURULUM_DOCKER.md)
+#   dashboard http://<host>:8501   receiver :8600   PostgreSQL next to it (volume watchover-pg)   data in volume watchover-data
+#   update:   copy the new source tree over this folder, then  ./watchover.sh update
+#   mcp:      ./watchover.sh mcp on                          (our MCP server; MCP_API_KEY in .env; datasets in ./datasets)
 #   external PostgreSQL: DATABASE_URL in .env and  docker compose up -d --no-deps dashboard
+#   plain compose works too:  docker compose build && docker compose up -d
 name: watchover
 services:
   dashboard:
-    image: ${WATCHOVER_IMAGE:-ghcr.io/bannercheck/watchover}:${WATCHOVER_TAG:-latest}
+    image: ${WATCHOVER_IMAGE:-watchover}:${WATCHOVER_TAG:-local}
     build:
       context: .
       args:
@@ -53,7 +53,8 @@ services:
 
   mcp:
     profiles: [mcp]
-    image: ${WATCHOVER_IMAGE:-ghcr.io/bannercheck/watchover}:${WATCHOVER_TAG:-latest}
+    image: ${WATCHOVER_IMAGE:-watchover}:${WATCHOVER_TAG:-local}
+    container_name: watchover-mcp
     command: ["python", "mcp_server.py", "--http", "--port", "8765"]
     restart: unless-stopped
     ports: ["${WATCHOVER_MCP_PORT:-8765}:8765"]

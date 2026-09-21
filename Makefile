@@ -22,11 +22,11 @@ analyze:        # make analyze DS=path/to/dataset.zip
 docker-build:   # local image tagged watchover:local (GIT_REV baked in)
 	docker build --build-arg GIT_REV=$$(git rev-parse --short HEAD) --build-arg VERSION=local -t watchover:local .
 
-docker-up:      # start (pulls the published image unless WATCHOVER_IMAGE points elsewhere)
-	docker compose up -d
+docker-up:      # start (./watchover.sh install does the same with .env generation)
+	./watchover.sh start
 
-docker-update:  # new version: pull the image and recreate the container; data stays in the volume
-	docker compose pull && docker compose up -d && docker image prune -f
+docker-update:  # new source tree copied over this folder: rebuild the image and recreate the containers; data stays in the volumes
+	./watchover.sh update
 
 docker-logs:
 	docker compose logs -f dashboard
@@ -34,8 +34,8 @@ docker-logs:
 docker-migrate:  # SQLite dosyalarını (data birimindeki) PostgreSQL'e kopyala
 	docker compose exec dashboard python -m watchover.migrate --source /data
 
-docker-backup:   # PostgreSQL yedeği (watchover-YYYYMMDD.sql.gz)
-	docker compose exec -T postgres pg_dump -U $${POSTGRES_USER:-watchover} $${POSTGRES_DB:-watchover} | gzip > watchover-$$(date +%Y%m%d).sql.gz
+docker-backup:   # PostgreSQL + veri birimi -> backups/watchover-YYYYMMDD-HHMM.tgz
+	./watchover.sh backup
 
 docker-down:
 	docker compose down

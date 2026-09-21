@@ -11,3 +11,6 @@ tests/
 node_modules
 .env
 .streamlit/secrets.toml
+backups/
+datasets/
+watchover-images-*.tgz

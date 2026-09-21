@@ -2,6 +2,13 @@
 
 Numaralandırma: büyük sürüm **v1, v2** (ürün sahibinin kararı), küçük güncelleme **v1.1, v1.2** (her devreye alınan özellik adımı), düzeltme **v1.1.1**. Her sürüm `python -m watchover.release <major|minor|patch> "özet"` ile açılır; Sistem › Güncelleme sayfası bu dosyayı gösterir, anlık görüntüler sürüm numarasını taşır.
 
+## v1.6 · 2026-09-21 · güncelleme
+
+- Kurumsal Docker kurulumu tek komutla: ./watchover.sh install (imaj sunucuda kaynak koddan derlenir, GitHub gerekmez, .env rastgele sırlarla üretilir)
+- watchover.sh: update, start / stop / status / logs, mcp on|off, backup / restore, user, migrate, save / load (kapalı ağ), shell
+- Kurulum rehberi baştan yazıldı: sunucu gereksinimleri, arayüze erişim, sunucu izleme ve log çekme, TLS, kapalı ağ, yedek
+
+
 ## v1.5.1 · 2026-09-21 · düzeltme
 
 - MCP sunucusu Docker'da: MCP_API_KEY koruması, /health, ./datasets klasörü, sağlık denetimi; rehber bölüm 7 (istemci ayarı)

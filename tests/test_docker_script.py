@@ -1,0 +1,64 @@
+"""watchover.sh drives Docker Compose; here Docker is a fake on PATH that records the calls, so the script's own logic
+(.env generation, secrets, image tag, command order, banner) is checked without a daemon."""
+import os
+import shutil
+import subprocess
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[1]
+FAKE = r'''#!/usr/bin/env bash
+echo "docker $*" >> "$FAKE_LOG"
+case "$1 $2" in
+  "compose version") echo "Docker Compose version v2.29" ;;
+  "compose ps") [[ "$*" == *--format* ]] && echo "dashboard healthy" || echo "NAME  STATUS"; ;;
+  "compose config") echo '{"volumes":{"watchover-data":{"name":"watchover_watchover-data"}}}' ;;
+esac
+exit 0
+'''
+
+
+@pytest.fixture
+def stage(tmp_path):
+    for f in ("watchover.sh", "docker-compose.yml", ".env.docker.example", "pyproject.toml"):
+        shutil.copy(ROOT / f, tmp_path / f)
+    (tmp_path / "bin").mkdir(); fake = tmp_path / "bin" / "docker"; fake.write_text(FAKE); fake.chmod(0o755)
+    env = dict(os.environ, PATH=f"{tmp_path / 'bin'}:{os.environ['PATH']}", FAKE_LOG=str(tmp_path / "calls.log"))
+    return tmp_path, env
+
+
+def run(stage, *args):
+    d, env = stage
+    return subprocess.run(["bash", str(d / "watchover.sh"), *args], cwd=d, env=env, capture_output=True, text=True, timeout=60)
+
+
+def test_install_writes_env_builds_and_starts(stage):
+    d, _ = stage
+    r = run(stage, "install")
+    assert r.returncode == 0, r.stderr
+    env = (d / ".env").read_text()
+    pw = [l for l in env.splitlines() if l.startswith("POSTGRES_PASSWORD=")][0].split("=", 1)[1]
+    key = [l for l in env.splitlines() if l.startswith("MCP_API_KEY=")][0].split("=", 1)[1]
+    assert len(pw) == 48 and pw != "change-me" and len(key) == 48 and "#MCP_API_KEY" not in env
+    version = [l for l in (ROOT / "pyproject.toml").read_text().splitlines() if l.startswith("version")][0].split('"')[1]
+    assert f"WATCHOVER_TAG={version}" in env and "WATCHOVER_IMAGE=watchover" in env
+    assert oct((d / ".env").stat().st_mode)[-3:] == "600" and (d / "datasets").is_dir() and (d / "backups").is_dir()
+    calls = (d / "calls.log").read_text()
+    assert "compose build" in calls and f"--build-arg VERSION={version}" in calls and "compose up -d --remove-orphans" in calls
+    assert calls.index("compose build") < calls.index("compose up")
+    assert "8501" in r.stdout and "admin@watchover.local" in r.stdout and "Watchover v" in r.stdout
+    # second run keeps the secrets, mcp on adds the profile
+    run(stage, "update")
+    assert f"POSTGRES_PASSWORD={pw}" in (d / ".env").read_text()
+    r = run(stage, "mcp", "on")
+    assert r.returncode == 0 and "WATCHOVER_MCP=1" in (d / ".env").read_text() and "--profile mcp up -d" in (d / "calls.log").read_text()
+
+
+def test_usage_and_missing_docker(stage):
+    d, env = stage
+    r = run(stage, "bogus")
+    assert r.returncode == 1 and "install" in r.stdout
+    env["PATH"] = "/nonexistent"
+    r = subprocess.run([shutil.which("bash"), str(d / "watchover.sh"), "install"], cwd=d, env=env, capture_output=True, text=True)
+    assert r.returncode == 1 and "Docker is not installed" in r.stderr
