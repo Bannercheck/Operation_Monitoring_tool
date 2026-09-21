@@ -101,3 +101,13 @@ def test_upload_processed_once_and_multi_file(tmp_path, monkeypatch):
         z.writestr("stdout0", "")
     obs, _ = ingest_bytes("dev_w0 +1.zip", buf.getvalue())
     assert len(obs) >= 1
+
+
+def test_background_load_job(tmp_path, monkeypatch):
+    """Uploads parse and analyse in a background thread (the page stays usable); the result is registered on a later run."""
+    monkeypatch.setenv("KNOWLEDGE_DB", str(tmp_path / "k.db")); monkeypatch.setenv("PLAYBOOK_DB", str(tmp_path / "pb.db"))
+    monkeypatch.setenv("WATCHOVER_HOME", str(tmp_path / "home")); monkeypatch.setenv("WATCHOVER_SKIP_SETUP", "1"); monkeypatch.setenv("LIVE_PORT", "18634")
+    src = (ROOT / "app.py").read_text(encoding="utf-8")
+    assert "start_load_job(" in src and "collect_load_jobs()" in src and "threading.Thread(target=run" in src
+    i = src.index("def datasets_controls("); body = src[i:src.index("\ndef ", i + 10)]
+    assert "load(u.name" not in body and "start_load_job" in body            # uploads never block the script thread

@@ -663,6 +663,16 @@ def load(name: str, data: bytes | None = None, path: str | None = None, mapping:
         st.write(t("step_profile", s=len(analysis.signals), i=len(analysis.incidents)))
         prof = profile(obs, report)
         status.update(label=t("done", secs=f"{time.perf_counter() - t0:.1f}"), state="complete", expanded=False)
+    _register_dataset(name, analysis, prof, data, path, mapping, time.perf_counter() - t0)
+
+
+@st.cache_resource
+def _load_jobs() -> dict:
+    """Process-wide registry of background dataset loads: id -> job dict (thread-safe enough: one writer per job)."""
+    return {}
+
+
+def _register_dataset(name: str, analysis, prof, data, path, mapping, elapsed) -> str:
     reg = st.session_state.setdefault("datasets", {})
     key = name
     if key in reg and reg[key]["source"] != {"name": name, "data": data, "path": path}:
@@ -671,7 +681,7 @@ def load(name: str, data: bytes | None = None, path: str | None = None, mapping:
             n += 1
         key = f"{name} #{n}"
     reg[key] = {"analysis": analysis, "profile": prof, "source": {"name": name, "data": data, "path": path},
-                "mapping": mapping or {}, "elapsed": time.perf_counter() - t0, "loaded_at": datetime.now(UTC)}
+                "mapping": mapping or {}, "elapsed": elapsed, "loaded_at": datetime.now(UTC)}
     activate_dataset(key)
     record_auto_recoveries(analysis, key)
     record_first_actions(analysis, key)
@@ -680,6 +690,54 @@ def load(name: str, data: bytes | None = None, path: str | None = None, mapping:
     rec = st.session_state.setdefault("recent", [])
     if key not in rec:
         rec.append(key)
+    return key
+
+
+def start_load_job(name: str, data: bytes, mapping: dict | None = None) -> str:
+    """Parse and analyse in a background thread so the page stays usable; the result is registered by collect_load_jobs()
+    on a later run (in the script thread, where session state and cached resources are safe to touch)."""
+    import threading, uuid
+    jid = uuid.uuid4().hex[:10]
+    job = {"id": jid, "name": name, "size": len(data), "state": "running", "stage": t("step_parse"), "started": time.time(), "error": "", "mapping": mapping or {}}
+    inv = inventory().as_engine()
+    lang = current_lang()
+
+    def run():
+        try:
+            obs, report = ingest_bytes(name, data, mapping)
+            job["stage"] = t("step_analyze", lang, n=f"{len(obs):,}")
+            analysis = Analysis(obs, report, inv)
+            job["stage"] = t("step_profile", lang, s=len(analysis.signals), i=len(analysis.incidents))
+            job.update({"analysis": analysis, "profile": profile(obs, report), "data": data, "elapsed": time.time() - job["started"], "state": "done"})
+        except Exception as e:  # noqa: BLE001
+            job.update({"state": "error", "error": f"{type(e).__name__}: {str(e)[:200]}"})
+    _load_jobs()[jid] = job
+    st.session_state.setdefault("my_load_jobs", []).append(jid)
+    threading.Thread(target=run, daemon=True, name=f"load-{jid}").start()
+    return jid
+
+
+def collect_load_jobs() -> bool:
+    """Register finished background loads for this session; True when something changed (caller reruns the app)."""
+    jobs, mine = _load_jobs(), st.session_state.get("my_load_jobs", [])
+    changed = False
+    for jid in list(mine):
+        job = jobs.get(jid)
+        if not job or job["state"] == "running":
+            continue
+        mine.remove(jid); jobs.pop(jid, None)
+        if job["state"] == "done":
+            key = _register_dataset(job["name"], job["analysis"], job["profile"], job["data"], None, job["mapping"], job["elapsed"])
+            st.toast(t("load_done_bg", n=key, s=f"{job['elapsed']:.1f}"), icon="✅")
+        else:
+            st.toast(t("upload_failed", e=job["error"]), icon="❌")
+        changed = True
+    return changed
+
+
+def running_load_jobs() -> list[dict]:
+    jobs = _load_jobs()
+    return [jobs[j] for j in st.session_state.get("my_load_jobs", []) if j in jobs and jobs[j]["state"] == "running"]
 
 
 def activate_dataset(key: str) -> None:
@@ -1428,12 +1486,16 @@ with st.sidebar:
 
     @st.fragment(run_every="5s")
     def _status():
+        if collect_load_jobs():
+            st.rerun(scope="app")
         ls_ = live_store()
         rows = [("#2dd4bf" if ls_.agents else "#64748b", f"{t('live_port')} :{st.session_state.get('live_port', LIVE_PORT)} · {ls_.received:,} {t('events_n')} · {len(ls_.agents)} {t('live_agents')}")]
         if "analysis" in st.session_state:
             rows.append(("#60a5fa", f"{esc(st.session_state['dataset'])} · {st.session_state['analysis'].funnel()['incidents']} {t('incidents')}"))
         if st.session_state.get("tickets"):
             rows.append(("#a78bfa", f"{len(st.session_state['tickets'])} {t('tickets_n')} · {esc(str(st.session_state.get('tickets_src', '-')))}"))
+        for j in running_load_jobs():
+            rows.append(("#fbbf24", f"⏳ {esc(j['name'])} · {time.time() - j['started']:.0f} s"))
         st.markdown('<div class="sb-status">' + "<br>".join(f'<span class="dot" style="background:{c};box-shadow:0 0 0 3px {c}33"></span>{txt}' for c, txt in rows) + "</div>", unsafe_allow_html=True)
 
     _status()
@@ -3333,19 +3395,16 @@ def datasets_controls() -> None:
             if empty:
                 st.toast(t("upload_empty", n=", ".join(empty[:5])), icon="⚠️")     # survives the rerun that follows the load
             todo = [u for u in (ups if combine else fresh) if u.size > 0]
-            try:
-                if combine and len(todo) > 1:
-                    import io as _io, zipfile as _zf
-                    buf = _io.BytesIO()
-                    with _zf.ZipFile(buf, "w", _zf.ZIP_DEFLATED) as z:
-                        for u in todo:
-                            z.writestr(u.name, u.getvalue())
-                    load(f"{todo[0].name} +{len(todo) - 1}.zip", data=buf.getvalue())
-                else:
+            if combine and len(todo) > 1:
+                import io as _io, zipfile as _zf
+                buf = _io.BytesIO()
+                with _zf.ZipFile(buf, "w", _zf.ZIP_DEFLATED) as z:
                     for u in todo:
-                        load(u.name, data=u.getvalue())
-            except Exception as e:  # noqa: BLE001
-                st.error(t("upload_failed", e=f"{type(e).__name__}: {str(e)[:200]}"))
+                        z.writestr(u.name, u.getvalue())
+                start_load_job(f"{todo[0].name} +{len(todo) - 1}.zip", buf.getvalue())
+            else:
+                for u in todo:
+                    start_load_job(u.name, u.getvalue())
             done.update(u.file_id for u in ups)
             st.session_state["uploaded_batch"] = batch_key
             st.rerun()
@@ -3357,6 +3416,14 @@ def datasets_controls() -> None:
             name, data = live_store().to_dataset()
             load(name, data=data)
             st.rerun()
+    if running_load_jobs():
+        @st.fragment(run_every="2s")
+        def _jobs_panel():
+            if collect_load_jobs():
+                st.rerun(scope="app")
+            for j in running_load_jobs():
+                st.info(f"⏳ **{esc(j['name'])}** · {j['size'] / 1e6:.1f} MB · {esc(j['stage'])} · {time.time() - j['started']:.0f} s — {t('load_bg_hint')}")
+        _jobs_panel()
     reg = st.session_state.get("datasets", {})
     if reg:
         keys = list(reg)
