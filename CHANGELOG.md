@@ -2,6 +2,11 @@
 
 Numaralandırma: büyük sürüm **v1, v2** (ürün sahibinin kararı), küçük güncelleme **v1.1, v1.2** (her devreye alınan özellik adımı), düzeltme **v1.1.1**. Her sürüm `python -m watchover.release <major|minor|patch> "özet"` ile açılır; Sistem › Güncelleme sayfası bu dosyayı gösterir, anlık görüntüler sürüm numarasını taşır.
 
+## v1.13.2 · 2026-09-21 · düzeltme
+
+- edge: HTTP/3 kapalı (yalnız TCP 443 yayınlanıyor)
+
+
 ## v1.13.1 · 2026-09-21 · düzeltme
 
 - edge açıkken düz 8501 yayınlanmaz (Mac'te launcher portuyla çakışma)
