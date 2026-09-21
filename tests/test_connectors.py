@@ -112,3 +112,41 @@ def test_mcp_server_tools_direct(tmp_path, monkeypatch):
     assert mcp_server.postmortem(inc["id"]).startswith("# Postmortem")
     a = mcp_server.create_action(inc["id"], "Failover db-01", "P1", "db-team")
     assert mcp_server.list_actions()[0]["id"] == a["id"]
+
+
+def test_mcp_server_http_api_key(tmp_path, monkeypatch):
+    """The HTTP transport refuses calls without MCP_API_KEY and serves them with it; /health stays open; relative dataset paths
+    resolve under WATCHOVER_DATASETS."""
+    import importlib, socket, threading, time, urllib.request, shutil
+    monkeypatch.setenv("ACTIONS_DB", str(tmp_path / "a.db")); monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setenv("WATCHOVER_DATASETS", str(tmp_path)); shutil.copy(ROOT / "samples" / "demo_mixed.zip", tmp_path / "demo.zip")
+    import mcp_server
+    importlib.reload(mcp_server)
+    import uvicorn
+    port = _free_port()
+    cfg = uvicorn.Config(mcp_server.http_app(mcp_server.build_server(), api_key="s3cret"), host="127.0.0.1", port=port, log_level="warning")
+    srv = uvicorn.Server(cfg); th = threading.Thread(target=srv.run, daemon=True); th.start()
+    for _ in range(100):
+        if srv.started: break
+        time.sleep(0.05)
+    base = f"http://127.0.0.1:{port}"
+    try:
+        assert urllib.request.urlopen(base + "/health").read() == b"ok"
+        try:
+            mcp_tools(base + "/mcp", {})
+            assert False, "expected 401"
+        except Exception as e:  # noqa: BLE001
+            assert "401" in str(e)
+        names = [t["name"] for t in mcp_tools(base + "/mcp", {"Authorization": "Bearer s3cret"})]
+        assert "analyze_dataset" in names and "list_actions" in names
+        c = McpClient(base + "/mcp", {"X-API-Key": "s3cret"}); c.initialize()
+        out = c.call_tool("analyze_dataset", {"path": "demo.zip"})
+        assert "raw_events" in out and "916" in out
+    finally:
+        srv.should_exit = True; th.join(timeout=5)
+
+
+def _free_port() -> int:
+    import socket
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0)); return s.getsockname()[1]

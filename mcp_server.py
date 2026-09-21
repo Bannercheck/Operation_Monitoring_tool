@@ -8,7 +8,10 @@ own Connection panel) can drive the engine over standard JSON-RPC.
 
 Desktop client config example:
     {"mcpServers": {"watchover": {"command": "python", "args": ["/abs/path/hackathon/mcp_server.py"]}}}
-Remote/HTTP client config example:  {"url": "http://<host>:8765/mcp"}
+Remote/HTTP client config example:  {"url": "http://<host>:8765/mcp", "headers": {"Authorization": "Bearer <MCP_API_KEY>"}}
+
+Environment: MCP_API_KEY  - when set, HTTP clients must send it (Authorization: Bearer … or X-API-Key); unset = open, keep it on localhost
+             WATCHOVER_DATASETS - folder that relative dataset paths resolve against (Docker: /data/datasets)
 
 Tools: analyze_dataset(path), list_incidents(), get_incident(id), list_signals(limit), evidence(ref),
        postmortem(id), create_action(...), list_actions(). Deterministic engine, no LLM inside.
@@ -19,6 +22,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import secrets
 import sys
 from pathlib import Path
 
@@ -40,8 +44,18 @@ def _need() -> Analysis:
 
 
 # ---- tool implementations (plain functions, also unit-testable without the mcp package)
+def _resolve(path: str) -> str:
+    """Relative paths are looked up in WATCHOVER_DATASETS (the folder mounted into the Docker service)."""
+    base = os.environ.get("WATCHOVER_DATASETS", "")
+    if base and not os.path.isabs(path) and os.path.exists(os.path.join(base, path)):
+        return os.path.join(base, path)
+    return path
+
+
 def analyze_dataset(path: str) -> dict:
-    """Ingest a file / ZIP / directory and run the full pipeline. Returns the funnel and a short profile."""
+    """Ingest a file / ZIP / directory and run the full pipeline. Returns the funnel and a short profile.
+    Relative paths are resolved under WATCHOVER_DATASETS (Docker: the ./datasets folder next to docker-compose.yml)."""
+    path = _resolve(path)
     obs, report = ingest_path(path)
     a = Analysis(obs, report)
     STATE.update(analysis=a, dataset=path)
@@ -120,12 +134,31 @@ def main(argv=None) -> int:
         print("The 'mcp' package is missing: pip install \"mcp>=2\"", file=sys.stderr)
         return 1
     if args.http:
-        from mcp.server.transport_security import TransportSecuritySettings
-        server.run(transport="streamable-http", host="0.0.0.0", port=args.port,
-                   transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False))  # any client / Docker
+        import uvicorn
+        uvicorn.run(http_app(server), host="0.0.0.0", port=args.port, log_level="info")
     else:
         server.run()
     return 0
+
+
+def http_app(server, api_key: str | None = None):
+    """The streamable-HTTP ASGI app, gated by MCP_API_KEY when one is set (Bearer or X-API-Key); /health stays open for Docker."""
+    from mcp.server.transport_security import TransportSecuritySettings
+    from starlette.responses import JSONResponse, PlainTextResponse
+    inner = server.streamable_http_app(transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),   # any client / Docker
+                                       host="0.0.0.0")
+    key = os.environ.get("MCP_API_KEY", "") if api_key is None else api_key
+
+    async def app(scope, receive, send):
+        if scope["type"] == "http" and scope.get("path") == "/health":
+            return await PlainTextResponse("ok")(scope, receive, send)
+        if key and scope["type"] == "http":
+            hdrs = {k.decode().lower(): v.decode() for k, v in scope.get("headers", [])}
+            given = hdrs.get("x-api-key") or hdrs.get("authorization", "").removeprefix("Bearer ").strip()
+            if not secrets.compare_digest(given, key):
+                return await JSONResponse({"error": "unauthorized: send Authorization: Bearer <MCP_API_KEY>"}, status_code=401)(scope, receive, send)
+        return await inner(scope, receive, send)
+    return app
 
 
 if __name__ == "__main__":

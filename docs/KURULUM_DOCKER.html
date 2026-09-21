@@ -12,7 +12,7 @@ table{border-collapse:collapse;width:100%;margin:6px 0;font-size:10.5pt}
 td,th{border:1px solid #cbd5e1;padding:6px 8px;text-align:left;vertical-align:top}
 th{background:#f8fafc}
 .foot{margin-top:26px;font-size:9pt;color:#64748b;border-top:1px solid #e2e8f0;padding-top:6px}
-</style></head><body><h1>Watchover</h1><div class="sub">DOCKER KURULUM REHBERİ · v1.5 · PostgreSQL</div>
+</style></head><body><h1>Watchover</h1><div class="sub">DOCKER KURULUM REHBERİ · v1.5 · PostgreSQL · MCP</div>
 <p>Watchover Docker'da iki konteyner olarak çalışır: <strong>dashboard</strong> (arayüz 8501, canlı alıcı 8600 ve konteynerin kendini izleyen ajanı) ve <strong>postgres</strong> (ürün veritabanı, PostgreSQL 16). Kod imajın içindedir; ayarlar, token'lar, canlı tampon, sürüm anlık görüntüleri ve loglar <code>watchover-data</code> biriminde, veritabanı <code>watchover-pg</code> biriminde durur. Güncelleme demek yeni imajı çekip konteyneri yeniden oluşturmak demektir; iki birime de dokunulmaz.</p>
 <h2>1. Ön koşullar ve bağımlılıklar</h2>
 <p>Sunucuya kurulması gereken <strong>tek şey Docker'dır</strong>. Python, pip, PostgreSQL ya da başka bir paket ana makineye kurulmaz; hepsi imajların içindedir.</p>
@@ -157,9 +157,17 @@ docker compose up -d --no-deps dashboard          # paketteki postgres başlatı
 docker compose exec dashboard python -m watchover.migrate --source /data              # kopyala (var olan anahtarlar atlanır)
 </code></pre>
 <p>Docker dışındaki bir kurulumdan (Windows / macOS) geçerken üç <code>.db</code> dosyasını <code>docker cp DOSYA watchover:/data/</code> ile birime kopyalayıp konteyneri yeniden başlatmak yeter (<code>docker compose restart dashboard</code>). Herkes taşınmadan sonra yeniden giriş yapar (hatırlanan oturumlar taşınmaz).</p>
-<h2>7. MCP sunucusu (isteğe bağlı)</h2>
-<pre><code class="language-bash">docker compose --profile mcp up -d          # http://&lt;sunucu&gt;:8765/mcp  — aynı PostgreSQL'i kullanır
+<h2>7. Kendi MCP sunucumuz (isteğe bağlı)</h2>
+<p>Watchover'ın motoru aynı imajdan ayrı bir konteynerde MCP sunucusu olarak açılır; Claude Code, Claude Desktop, Cursor ya da kendi ajanlarınız <code>analyze_dataset</code>, <code>list_incidents</code>, <code>get_incident</code>, <code>list_signals</code>, <code>evidence</code>, <code>postmortem</code>, <code>create_action</code>, <code>list_actions</code> araçlarını JSON-RPC ile çağırır. Aksiyonlar dashboard ile aynı PostgreSQL'e yazılır.</p>
+<pre><code class="language-bash"># .env
+MCP_API_KEY=uzun-rastgele-anahtar        # openssl rand -hex 24
+mkdir -p datasets                        # istemcilerin analiz edeceği dosyalar (ZIP / log / CSV) buraya kopyalanır
+docker compose --profile mcp up -d       # http://&lt;sunucu&gt;:8765/mcp ; sağlık: /health
 </code></pre>
+<p>İstemci ayarı (Claude Code / Claude Desktop için <code>mcpServers</code> bloğu):</p>
+<pre><code class="language-json">{&quot;mcpServers&quot;: {&quot;watchover&quot;: {&quot;url&quot;: &quot;http://&lt;sunucu&gt;:8765/mcp&quot;, &quot;headers&quot;: {&quot;Authorization&quot;: &quot;Bearer uzun-rastgele-anahtar&quot;}}}}
+</code></pre>
+<p>Sonra istemciden <code>analyze_dataset("uretim-log.zip")</code> demek yeter; göreli ad <code>./datasets</code> klasöründe aranır. <code>MCP_API_KEY</code> boşsa uç nokta açıktır: o durumda portu yalnız localhost'a bağlayın (<code>WATCHOVER_MCP_PORT=127.0.0.1:8765</code>). Dashboard'un Bağlantı ayarları › MCP sekmesi de aynı adrese bağlanabilir.</p>
 <h2>8. Ajanlar ve kaynaklar</h2>
 <p>Sunuculardaki ajanlar aynı şekilde kurulur; alıcı adresi Docker ana makinesidir:</p>
 <pre><code class="language-bash">curl -fsSL http://&lt;sunucu&gt;:8600/agent/install.sh | sudo bash -s -- --url http://&lt;sunucu&gt;:8600/ingest --enroll-key wk_… --env prod

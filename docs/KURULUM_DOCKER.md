@@ -102,11 +102,24 @@ docker compose exec dashboard python -m watchover.migrate --source /data        
 
 Docker dışındaki bir kurulumdan (Windows / macOS) geçerken üç `.db` dosyasını `docker cp DOSYA watchover:/data/` ile birime kopyalayıp konteyneri yeniden başlatmak yeter (`docker compose restart dashboard`). Herkes taşınmadan sonra yeniden giriş yapar (hatırlanan oturumlar taşınmaz).
 
-## 7. MCP sunucusu (isteğe bağlı)
+## 7. Kendi MCP sunucumuz (isteğe bağlı)
+
+Watchover'ın motoru aynı imajdan ayrı bir konteynerde MCP sunucusu olarak açılır; Claude Code, Claude Desktop, Cursor ya da kendi ajanlarınız `analyze_dataset`, `list_incidents`, `get_incident`, `list_signals`, `evidence`, `postmortem`, `create_action`, `list_actions` araçlarını JSON-RPC ile çağırır. Aksiyonlar dashboard ile aynı PostgreSQL'e yazılır.
 
 ```bash
-docker compose --profile mcp up -d          # http://<sunucu>:8765/mcp  — aynı PostgreSQL'i kullanır
+# .env
+MCP_API_KEY=uzun-rastgele-anahtar        # openssl rand -hex 24
+mkdir -p datasets                        # istemcilerin analiz edeceği dosyalar (ZIP / log / CSV) buraya kopyalanır
+docker compose --profile mcp up -d       # http://<sunucu>:8765/mcp ; sağlık: /health
 ```
+
+İstemci ayarı (Claude Code / Claude Desktop için `mcpServers` bloğu):
+
+```json
+{"mcpServers": {"watchover": {"url": "http://<sunucu>:8765/mcp", "headers": {"Authorization": "Bearer uzun-rastgele-anahtar"}}}}
+```
+
+Sonra istemciden `analyze_dataset("uretim-log.zip")` demek yeter; göreli ad `./datasets` klasöründe aranır. `MCP_API_KEY` boşsa uç nokta açıktır: o durumda portu yalnız localhost'a bağlayın (`WATCHOVER_MCP_PORT=127.0.0.1:8765`). Dashboard'un Bağlantı ayarları › MCP sekmesi de aynı adrese bağlanabilir.
 
 ## 8. Ajanlar ve kaynaklar
 

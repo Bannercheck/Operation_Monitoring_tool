@@ -2,7 +2,7 @@
 #   dashboard http://<host>:8501   receiver :8600   PostgreSQL is started next to it (volume watchover-pg)
 #   update:   docker compose pull && docker compose up -d        (or: make docker-update)
 #   logs:     docker compose logs -f dashboard
-#   mcp:      docker compose --profile mcp up -d
+#   mcp:      docker compose --profile mcp up -d            (MCP_API_KEY in .env; datasets in ./datasets)
 #   external PostgreSQL: DATABASE_URL in .env and  docker compose up -d --no-deps dashboard
 name: watchover
 services:
@@ -62,11 +62,19 @@ services:
         required: false
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-watchover}:${POSTGRES_PASSWORD:-change-me}@postgres:5432/${POSTGRES_DB:-watchover}}
+      MCP_API_KEY: ${MCP_API_KEY:-}                 # empty = open endpoint: keep the port on localhost or set a key
+      WATCHOVER_DATASETS: /data/datasets
     depends_on:
       postgres:
         condition: service_healthy
     volumes:
       - watchover-data:/data
+      - ./datasets:/data/datasets:ro                # files that MCP clients analyse by relative name: analyze_dataset("log.zip")
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8765/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
     deploy:
       resources:
         limits: { cpus: "1", memory: 1g }
