@@ -1,0 +1,7 @@
+# Applied automatically while the edge is on (COMPOSE_FILE in .env, set by ./watchover.sh edge on): the dashboard's plain
+# http port is not published at all, Caddy reaches it over the compose network; the receiver (8600) stays published for
+# agents that still post over http. Requires Docker Compose 2.24.4+ (the !override tag).
+services:
+  dashboard:
+    ports: !override
+      - "${WATCHOVER_LIVE_PORT:-8600}:8600"

@@ -100,6 +100,7 @@ case "${1:-}" in
       *) die "usage: ./watchover.sh legacy on|off" ;; esac ;;
   edge)
     need_docker; write_env
+    [ -z "$(env_get WATCHOVER_UI_PORT)" ] || env_set WATCHOVER_UI_PORT "$(env_get WATCHOVER_UI_PORT | sed 's/^127\.0\.0\.1://')"   # undo the v1.13 localhost binding
     case "${2:-}" in
       on)
         host="${3:-$(env_get WATCHOVER_EDGE_HOST)}"; [ -n "$host" ] || host=$(host_ip)
@@ -109,13 +110,14 @@ case "${1:-}" in
         [ -n "$(env_get WATCHOVER_EDGE_HTTP_PORT)" ] || env_set WATCHOVER_EDGE_HTTP_PORT 80
         if [ -f certs/watchover.crt ] && [ -f certs/watchover.key ]; then env_set WATCHOVER_EDGE_TLS "/certs/watchover.crt /certs/watchover.key"; say "company certificate found in ./certs"; fi
         mkdir -p certs
-        env_set WATCHOVER_UI_PORT "127.0.0.1:$(env_get WATCHOVER_UI_PORT | sed 's/.*://')"        # plain http stays on this machine only
-        up
-        say "edge on: $(edge_url)   (http://$(env_get WATCHOVER_EDGE_HOST) redirects)"
+        env_set COMPOSE_FILE "docker-compose.yml:docker-compose.edge.yml"      # plain http port not published while the edge is on (Caddy uses the compose network)
+        $COMPOSE $(profiles) up -d --remove-orphans --force-recreate dashboard edge
+        say "edge on: $(edge_url)   (http://$(env_get WATCHOVER_EDGE_HOST) redirects; plain :8501 is no longer published)"
         if [ "$(env_get WATCHOVER_EDGE_TLS)" = "internal" ]; then say "colleagues install the CA root once: ./watchover.sh edge cert  ->  ./certs/watchover-root.crt"; fi ;;
       off)
         $COMPOSE --profile edge stop edge; $COMPOSE --profile edge rm -f edge; env_set WATCHOVER_EDGE 0
-        env_set WATCHOVER_UI_PORT "$(env_get WATCHOVER_UI_PORT | sed 's/.*://')"; up; say "edge off: http://$(host_ip):$(env_get WATCHOVER_UI_PORT)" ;;
+        sed -i.bak '/^COMPOSE_FILE=/d' "$ENV_FILE"; rm -f "$ENV_FILE.bak"
+        $COMPOSE $(profiles) up -d --remove-orphans --force-recreate dashboard; say "edge off: http://$(host_ip):$(env_get WATCHOVER_UI_PORT || echo 8501)" ;;
       cert)
         mkdir -p certs; docker cp watchover-edge:/data/caddy/pki/authorities/local/root.crt certs/watchover-root.crt
         say "CA root: ./certs/watchover-root.crt  — macOS: Keychain Access › System › import, set to Always Trust; Windows: certutil -addstore -f Root watchover-root.crt; Linux agents: --ca watchover-root.crt" ;;

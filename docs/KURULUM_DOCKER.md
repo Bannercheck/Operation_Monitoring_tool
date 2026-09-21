@@ -155,7 +155,7 @@ Akış standart OpenID Connect yetkilendirme kodu (PKCE; Apple'da form_post) ile
 
 ## 8. TLS ve şirket ağı: uygulamayı dışarı açmak
 
-Uygulama şirket ağına **tek bir https ucu** üzerinden açılır: `edge` profili Caddy'yi dashboard'un önüne koyar, TLS'i kendi sertifika otoritesiyle (ya da şirket sertifikasıyla) yapar, 80'i 443'e yönlendirir, güvenlik başlıklarını ekler ve `/ingest` yolunu alıcıya (8600) aktarır. `edge on` düz http portunu (8501) yalnızca o makineye (`127.0.0.1`) bağlar; dışarıdan sadece https görünür.
+Uygulama şirket ağına **tek bir https ucu** üzerinden açılır: `edge` profili Caddy'yi dashboard'un önüne koyar, TLS'i kendi sertifika otoritesiyle (ya da şirket sertifikasıyla) yapar, 80'i 443'e yönlendirir, güvenlik başlıklarını ekler ve `/ingest` yolunu alıcıya (8600) aktarır. `edge on` açıkken düz http portu (8501) hiç yayınlanmaz (Caddy konteynere Docker ağından ulaşır; `docker-compose.edge.yml` `.env`'deki `COMPOSE_FILE` ile devreye girer), 8600 ajanlar için açık kalır; dışarıdan sadece https görünür. Bu yüzden Mac'te launcher'daki Streamlit 8501'i kullanmaya devam edebilir.
 
 ### 8.1 macOS'ta (Docker Desktop) şirket ağına açmak
 
@@ -175,7 +175,7 @@ Sonra:
 5. **Ajanlar ve kaynaklar.** Diğer sunuculardaki ajanlar `https://<adres>/ingest` adresine gönderir: `python3 agent.py --url https://10.0.0.12/ingest --token … --ca watchover-root.crt` (şirket sertifikasında `--ca` gerekmez). Mevcut `http://<adres>:8600/ingest` de çalışmaya devam eder (token'lı düz HTTP, sadece şirket ağı içinde).
 6. **SSO.** Google / Microsoft / OIDC geri dönüş adresleri `https://<adres>/api/auth/oidc/<sağlayıcı>/callback` olur; Sistem › Giriş sağlayıcıları kartı adresi gösterir. Apple yalnızca https ile çalışır ve genel bir alan adı ister.
 
-Kapatmak: `./watchover.sh edge off` (8501 yeniden makinenin IP'sinde açılır). Portlar: `.env` içinde `WATCHOVER_EDGE_HTTPS_PORT=8443` gibi.
+Kapatmak: `./watchover.sh edge off` (8501 yeniden yayınlanır; Mac'te başka bir program 8501'i tutuyorsa `.env`'de `WATCHOVER_UI_PORT=8511` gibi bir port verin). `edge on` "address already in use" derse 8501'i tutan programı `lsof -nP -iTCP:8501 -sTCP:LISTEN` ile görebilirsiniz; v1.13.1'den itibaren edge açıkken bu port yayınlanmadığı için hata oluşmaz. Portlar: `.env` içinde `WATCHOVER_EDGE_HTTPS_PORT=8443` gibi.
 
 ### 8.2 Sunucuda
 

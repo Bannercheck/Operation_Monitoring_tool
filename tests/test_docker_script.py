@@ -21,7 +21,7 @@ exit 0
 
 @pytest.fixture
 def stage(tmp_path):
-    for f in ("watchover.sh", "docker-compose.yml", ".env.docker.example", "pyproject.toml"):
+    for f in ("watchover.sh", "docker-compose.yml", "docker-compose.edge.yml", ".env.docker.example", "pyproject.toml"):
         shutil.copy(ROOT / f, tmp_path / f)
     (tmp_path / "bin").mkdir(); fake = tmp_path / "bin" / "docker"; fake.write_text(FAKE); fake.chmod(0o755)
     env = dict(os.environ, PATH=f"{tmp_path / 'bin'}:{os.environ['PATH']}", FAKE_LOG=str(tmp_path / "calls.log"))
@@ -72,10 +72,11 @@ def test_edge_on_off(stage):
     assert r.returncode == 0, r.stderr
     env = (d / ".env").read_text()
     assert "WATCHOVER_EDGE=1" in env and "WATCHOVER_EDGE_HOST=watchover.sirket.local" in env and "WATCHOVER_EDGE_TLS=internal" in env
-    assert "WATCHOVER_UI_PORT=127.0.0.1:8501" in env and "https://watchover.sirket.local" in r.stdout and "--profile edge up -d" in (d / "calls.log").read_text()
+    assert "COMPOSE_FILE=docker-compose.yml:docker-compose.edge.yml" in env and "WATCHOVER_UI_PORT=127.0.0.1" not in env
+    assert "https://watchover.sirket.local" in r.stdout and "--profile edge up -d --remove-orphans --force-recreate dashboard edge" in (d / "calls.log").read_text()
     assert (d / "certs").is_dir()
     r = run(stage, "edge", "off")
     env = (d / ".env").read_text()
-    assert r.returncode == 0 and "WATCHOVER_EDGE=0" in env and "WATCHOVER_UI_PORT=8501" in env
+    assert r.returncode == 0 and "WATCHOVER_EDGE=0" in env and "COMPOSE_FILE=" not in env and "WATCHOVER_UI_PORT=8501" in env
     r = run(stage, "edge")
     assert r.returncode == 1 and "usage" in r.stderr
