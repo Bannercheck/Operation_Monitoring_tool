@@ -3,6 +3,7 @@ service manager, database size / vacuum."""
 from __future__ import annotations
 
 import io
+import gzip
 import json
 import shutil
 import os
@@ -143,24 +144,20 @@ def restart_app(delay: float = 1.0, hard: bool = False) -> str:
 
 
 def db_info(kb) -> dict:
-    url = getattr(kb, "url", "") or ""
-    out = {"url": url or "-", "size_mb": None, "tables": {}}
-    if not kb.pg:
-        p = Path(url) if url else None
-        if p and p.exists():
-            out["size_mb"] = round(p.stat().st_size / 1e6, 2)
-        try:
-            for r in kb._exec("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"):
-                out["tables"][r["name"]] = int(kb._exec(f"SELECT COUNT(*) AS n FROM {r['name']}")[0]["n"])
-        except Exception:  # noqa: BLE001
-            pass
+    """What the System page shows about the database: backend, connection without the password, size, rows per table."""
+    out = {"url": kb.label, "backend": kb.backend, "size_mb": None, "tables": {}}
+    try:
+        size = kb.size_bytes()
+        out["size_mb"] = round(size / 1e6, 2) if size else None
+        for name in kb.tables():
+            out["tables"][name] = kb.count(name)
+    except Exception:  # noqa: BLE001
+        pass
     return out
 
 
 def vacuum(kb) -> str:
-    if kb.pg:
-        return "VACUUM is left to the PostgreSQL maintenance window"
-    kb._exec("VACUUM")
+    kb._exec("VACUUM")             # PostgreSQL: a plain VACUUM (no lock) on the connection's database; SQLite: rewrites the file
     return "ok"
 
 
@@ -196,8 +193,9 @@ def _db_paths() -> list[Path]:
     return out
 
 
-def snapshot(reason: str, code: bool = True, db: bool = True, root: Path | None = None) -> dict:
-    """Freeze the running version: code.zip (the code tree without data / .git / venv) plus copies of the SQLite files, with meta.json.
+def snapshot(reason: str, code: bool = True, db: bool = True, root: Path | None = None, kb=None) -> dict:
+    """Freeze the running version: code.zip (the code tree without data / .git / venv) plus the database, with meta.json.
+    On PostgreSQL the database goes into db.json.gz (every table, JSON); on SQLite the files are copied.
     Called before a zip / git update and before database maintenance; the System page also offers it by hand."""
     from . import stamp
     root = root or repo_root()
@@ -217,7 +215,11 @@ def snapshot(reason: str, code: bool = True, db: bool = True, root: Path | None 
                 zf.write(p, f"watchover/{rel.as_posix()}")
                 files += 1
     dbs = []
-    if db:
+    if db and kb is not None and kb.pg:
+        with gzip.open(d / "db.json.gz", "wt", encoding="utf-8") as f:
+            json.dump(kb.dump(), f, ensure_ascii=False)
+        dbs.append("postgresql")
+    elif db:
         for p in _db_paths():
             shutil.copy2(p, d / p.name)
             dbs.append(p.name)
@@ -240,20 +242,26 @@ def versions() -> list[dict]:
     return out
 
 
-def rollback(sid: str, code: bool = True, db: bool = True, root: Path | None = None) -> tuple[bool, str]:
+def rollback(sid: str, code: bool = True, db: bool = True, root: Path | None = None, kb=None) -> tuple[bool, str]:
     """Bring a snapshot back: the current state is snapshotted first (reason 'before rollback'), then code.zip is unpacked over the code
-    folder and the database files are copied back. A restart follows so that open SQLite connections re-open the restored files."""
+    folder and the database is restored (tables refilled on PostgreSQL, files copied back on SQLite). A restart follows."""
     d = versions_dir() / sid
     if not (d / "meta.json").exists():
         return False, "unknown version"
-    snapshot(f"before rollback to {sid}", root=root)
+    snapshot(f"before rollback to {sid}", root=root, kb=kb)
     msgs = []
     if code and (d / "code.zip").exists():
         ok, msg = apply_zip((d / "code.zip").read_bytes(), dest=root)
         if not ok:
             return False, msg
         msgs.append(msg)
-    if db:
+    if db and (d / "db.json.gz").exists():
+        if kb is None or not kb.pg:
+            return False, "this snapshot holds a PostgreSQL dump; the app is not connected to PostgreSQL"
+        with gzip.open(d / "db.json.gz", "rt", encoding="utf-8") as f:
+            done = kb.restore(json.load(f))
+        msgs.append(f"postgresql: {sum(done.values())} rows in {len(done)} tables restored")
+    elif db:
         targets = {p.name: p for p in _db_paths()}
         for f in d.glob("*.db"):
             target = targets.get(f.name) or (Path.cwd() / f.name)

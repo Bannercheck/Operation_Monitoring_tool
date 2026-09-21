@@ -77,7 +77,7 @@ def _verify(password: str, stored: str) -> tuple[bool, bool]:
 class Users:
     def __init__(self, kb):
         self.kb = kb
-        pk = "SERIAL PRIMARY KEY" if kb.pg else "INTEGER PRIMARY KEY AUTOINCREMENT"
+        pk = kb.pk
         kb._exec(f"""CREATE TABLE IF NOT EXISTS users (id {pk}, email TEXT NOT NULL UNIQUE, name TEXT DEFAULT '', pw_hash TEXT DEFAULT '',
             role TEXT DEFAULT 'operator', status TEXT DEFAULT 'active', provider TEXT DEFAULT 'local', created_at TEXT, last_login TEXT DEFAULT '')""")
         try:

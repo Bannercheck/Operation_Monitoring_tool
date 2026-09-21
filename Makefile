@@ -31,5 +31,11 @@ docker-update:  # new version: pull the image and recreate the container; data s
 docker-logs:
 	docker compose logs -f dashboard
 
+docker-migrate:  # SQLite dosyalarını (data birimindeki) PostgreSQL'e kopyala
+	docker compose exec dashboard python -m watchover.migrate --source /data
+
+docker-backup:   # PostgreSQL yedeği (watchover-YYYYMMDD.sql.gz)
+	docker compose exec -T postgres pg_dump -U $${POSTGRES_USER:-watchover} $${POSTGRES_DB:-watchover} | gzip > watchover-$$(date +%Y%m%d).sql.gz
+
 docker-down:
 	docker compose down

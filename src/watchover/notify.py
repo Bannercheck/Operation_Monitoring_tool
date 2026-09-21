@@ -148,7 +148,7 @@ class Notifier:
     def __init__(self, kb, channels_fn=None):
         """channels_fn() -> {"email": cfg, "sms": cfg} from the settings store (secrets stay in config.json, mode 0600)."""
         self.kb, self.channels_fn = kb, channels_fn or (lambda: {})
-        pk = "SERIAL PRIMARY KEY" if kb.pg else "INTEGER PRIMARY KEY AUTOINCREMENT"
+        pk = kb.pk
         kb._exec(f"CREATE TABLE IF NOT EXISTS recipients (id {pk}, name TEXT NOT NULL, email TEXT DEFAULT '', phone TEXT DEFAULT '', groups TEXT DEFAULT '', enabled INTEGER DEFAULT 1, note TEXT DEFAULT '')")
         kb._exec(f"CREATE TABLE IF NOT EXISTS notify_groups (id {pk}, name TEXT NOT NULL UNIQUE, email TEXT DEFAULT '', note TEXT DEFAULT '')")
         kb._exec(f"""CREATE TABLE IF NOT EXISTS notify_rules (id {pk}, name TEXT NOT NULL, condition TEXT NOT NULL, threshold REAL DEFAULT 0, env TEXT DEFAULT '',

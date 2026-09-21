@@ -65,14 +65,14 @@ class History:
         if not pm and not ps:
             return 0
         lat_names = ", ".join(LAT_COLS)
-        lat_upd = ", ".join(f"{c}={c}+excluded.{c}" for c in LAT_COLS)
+        lat_upd = ", ".join(f"{c}=slo_minute.{c}+excluded.{c}" for c in LAT_COLS)
         for (minute, env, host, sender), v in pm.items():
             self.kb._exec(f"INSERT INTO slo_minute (minute, env, host, sender, total, errors, {lat_names}) VALUES ({', '.join('?' * (6 + len(LAT_COLS)))}) "
-                          f"ON CONFLICT(minute, env, host, sender) DO UPDATE SET total=total+excluded.total, errors=errors+excluded.errors, {lat_upd}",
+                          f"ON CONFLICT(minute, env, host, sender) DO UPDATE SET total=slo_minute.total+excluded.total, errors=slo_minute.errors+excluded.errors, {lat_upd}",
                           (minute, env, host, sender, *v))
         for (hour, env, service), v in ps.items():
             self.kb._exec("INSERT INTO slo_hour_service (hour, env, service, total, errors) VALUES (?,?,?,?,?) "
-                          "ON CONFLICT(hour, env, service) DO UPDATE SET total=total+excluded.total, errors=errors+excluded.errors", (hour, env, service, *v))
+                          "ON CONFLICT(hour, env, service) DO UPDATE SET total=slo_hour_service.total+excluded.total, errors=slo_hour_service.errors+excluded.errors", (hour, env, service, *v))
         self.flushed += len(pm)
         self.last_flush = datetime.now(UTC).isoformat(timespec="seconds")
         return len(pm)

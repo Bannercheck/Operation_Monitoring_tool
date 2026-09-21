@@ -303,7 +303,7 @@ class SourceStore:
 
     def __init__(self, kb):
         self.kb = kb
-        pk = "SERIAL PRIMARY KEY" if kb.pg else "INTEGER PRIMARY KEY AUTOINCREMENT"
+        pk = kb.pk
         kb._exec(f"""CREATE TABLE IF NOT EXISTS sources (id {pk}, name TEXT NOT NULL, kind TEXT NOT NULL, url TEXT NOT NULL, selector TEXT DEFAULT '',
             auth TEXT DEFAULT 'none', "user" TEXT DEFAULT '', secret TEXT DEFAULT '', interval INTEGER DEFAULT 30, env TEXT DEFAULT '', site TEXT DEFAULT '',
             enabled INTEGER DEFAULT 1, verify_tls INTEGER DEFAULT 1, headers TEXT DEFAULT '', ts_field TEXT DEFAULT '', lookback_min INTEGER DEFAULT 15,

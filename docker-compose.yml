@@ -1,8 +1,9 @@
-# Watchover on Docker.  Copy .env.docker.example to .env, then:  docker compose up -d
+# Watchover on Docker.  Copy .env.docker.example to .env (set POSTGRES_PASSWORD), then:  docker compose up -d
+#   dashboard http://<host>:8501   receiver :8600   PostgreSQL is started next to it (volume watchover-pg)
 #   update:   docker compose pull && docker compose up -d        (or: make docker-update)
 #   logs:     docker compose logs -f dashboard
-#   postgres: docker compose --profile postgres up -d            (DATABASE_URL in .env)
 #   mcp:      docker compose --profile mcp up -d
+#   external PostgreSQL: DATABASE_URL in .env and  docker compose up -d --no-deps dashboard
 name: watchover
 services:
   dashboard:
@@ -22,9 +23,12 @@ services:
         required: false
     environment:
       TZ: ${TZ:-Europe/Istanbul}
-      DATABASE_URL: ${DATABASE_URL:-}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-watchover}:${POSTGRES_PASSWORD:-change-me}@postgres:5432/${POSTGRES_DB:-watchover}}
       WATCHOVER_SELFMON: ${WATCHOVER_SELFMON:-1}
       WATCHOVER_PARALLEL: ${WATCHOVER_PARALLEL:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
     volumes:
       - watchover-data:/data                        # settings, tokens, databases, live spool, version snapshots, logs
       # OAuth providers (Google / Microsoft / Apple / OIDC) are written by System › Sign-in into /app/.streamlit/secrets.toml;
@@ -56,6 +60,11 @@ services:
     env_file:
       - path: .env
         required: false
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-watchover}:${POSTGRES_PASSWORD:-change-me}@postgres:5432/${POSTGRES_DB:-watchover}}
+    depends_on:
+      postgres:
+        condition: service_healthy
     volumes:
       - watchover-data:/data
     deploy:
@@ -63,23 +72,32 @@ services:
         limits: { cpus: "1", memory: 1g }
 
   postgres:
-    profiles: [postgres]
     image: postgres:16-alpine
+    container_name: watchover-postgres
     restart: unless-stopped
+    ports:
+      - "${WATCHOVER_PG_PORT:-127.0.0.1:5433}:5432"   # host-side access for psql / backups only (not exposed beyond localhost)
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-watchover}
       POSTGRES_USER: ${POSTGRES_USER:-watchover}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}     # set a real one in .env
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}     # set a real one in .env before the first start
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C.UTF-8"
     volumes:
       - watchover-pg:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-watchover}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-watchover} -d ${POSTGRES_DB:-watchover}"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 20s
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
     deploy:
       resources:
-        limits: { cpus: "2", memory: 2g }
+        limits:
+          cpus: "${WATCHOVER_PG_CPUS:-2}"
+          memory: ${WATCHOVER_PG_MEMORY:-2g}
 
 volumes:
   watchover-data:

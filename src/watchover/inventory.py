@@ -44,7 +44,7 @@ def norm_crit(v: str) -> str:
 class Inventory:
     def __init__(self, kb):
         self.kb = kb
-        pk = "SERIAL PRIMARY KEY" if kb.pg else "INTEGER PRIMARY KEY AUTOINCREMENT"
+        pk = kb.pk
         cols = ", ".join(f"{f} TEXT DEFAULT ''" for f in FIELDS if f != "hostname")
         kb._exec(f"CREATE TABLE IF NOT EXISTS inventory (id {pk}, hostname TEXT NOT NULL UNIQUE, {cols}, created_at TEXT, updated_at TEXT)")
         self._index: dict[str, dict] | None = None

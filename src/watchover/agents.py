@@ -29,7 +29,7 @@ def _hash(token: str) -> str:
 class AgentRegistry:
     def __init__(self, kb: Knowledge):
         self.kb = kb
-        pk = "SERIAL PRIMARY KEY" if kb.pg else "INTEGER PRIMARY KEY AUTOINCREMENT"
+        pk = kb.pk
         kb._exec(f"""CREATE TABLE IF NOT EXISTS agents (
             id {pk}, name TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, env TEXT DEFAULT '', site TEXT DEFAULT '', tags TEXT DEFAULT '',
             status TEXT DEFAULT 'active', created_at TEXT, last_seen TEXT DEFAULT '', last_ip TEXT DEFAULT '', events INTEGER DEFAULT 0, note TEXT DEFAULT '')""")

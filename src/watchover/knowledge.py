@@ -8,22 +8,21 @@ Design (kept small on purpose, so the store never bloats):
   * embeddings are optional, stored as float16 bytes next to the lesson (768 dims ~ 1.5 KB) and only for lessons.
   * rules are tiny (kind, key, value) and change the deterministic engine only after a human approves them.
 
-Storage: SQLite by default (KNOWLEDGE_DB, default knowledge.db). Set DATABASE_URL=postgresql://... (psycopg installed)
-to use PostgreSQL; the SQL below is written for both (placeholders are translated).
+Storage: the shared Database (PostgreSQL through DATABASE_URL, else the embedded SQLite file from KNOWLEDGE_DB / knowledge.db).
+Every other store (users, roles, notifications, agents, sources, inventory, rollups, actions, playbook) lives in the same database.
 """
 from __future__ import annotations
 
 import hashlib
 import json
-import os
 import re
-import sqlite3
 import struct
 from collections import Counter
 from datetime import datetime, timezone
 from typing import Callable
 
 from . import scenario
+from .db import Database
 from .playbook import _tokens, similarity
 
 UTC = timezone.utc
@@ -67,45 +66,15 @@ def chunk_text(text: str, size: int = CHUNK) -> list[str]:
     return out
 
 
-class Knowledge:
+class Knowledge(Database):
     def __init__(self, url: str | None = None, embedder: Callable[[list[str]], list[list[float]]] | None = None):
-        url = url or os.environ.get("DATABASE_URL") or os.environ.get("KNOWLEDGE_DB", "knowledge.db")
-        self.pg = url.startswith(("postgres://", "postgresql://"))
-        self.url = url
+        super().__init__(url)
         self.embedder = embedder
-        if self.pg:
-            import psycopg  # type: ignore
-            self.conn = psycopg.connect(url, autocommit=True)
-        else:
-            self.conn = sqlite3.connect(url, check_same_thread=False)
-            self.conn.row_factory = sqlite3.Row
         self._schema()
         self._base: dict | None = None
 
-    # ---------------------------------------------------------------- sql helpers
-    def _q(self, sql: str) -> str:
-        return sql.replace("?", "%s") if self.pg else sql
-
-    def _exec(self, sql: str, params: tuple = ()) -> list[dict]:
-        cur = self.conn.execute(self._q(sql), params)
-        if self.pg:
-            if cur.description:
-                cols = [d[0] for d in cur.description]
-                return [dict(zip(cols, r)) for r in cur.fetchall()]
-            return []
-        rows = [dict(r) for r in cur.fetchall()] if cur.description else []
-        self.conn.commit()
-        return rows
-
-    def _insert(self, sql: str, params: tuple) -> int:
-        if self.pg:
-            return self._exec(sql + " RETURNING id", params)[0]["id"]
-        cur = self.conn.execute(sql, params); self.conn.commit()
-        return int(cur.lastrowid)
-
     def _schema(self) -> None:
-        pk = "SERIAL PRIMARY KEY" if self.pg else "INTEGER PRIMARY KEY AUTOINCREMENT"
-        blob = "BYTEA" if self.pg else "BLOB"
+        pk, blob = self.pk, self.blob
         self._exec(f"""CREATE TABLE IF NOT EXISTS lessons (
             id {pk}, kind TEXT NOT NULL, key TEXT, title TEXT NOT NULL, text TEXT NOT NULL, tokens TEXT DEFAULT '',
             dataset TEXT DEFAULT '', incident_id TEXT DEFAULT '', root_cause TEXT DEFAULT '', services TEXT DEFAULT '[]',
@@ -288,12 +257,7 @@ class Knowledge:
     def stats(self) -> dict:
         rows = self._exec("SELECT kind, COUNT(*) AS n FROM lessons GROUP BY kind")
         rules = self._exec("SELECT status, COUNT(*) AS n FROM rules GROUP BY status")
-        size = 0
-        if not self.pg:
-            try:
-                size = int(self._exec("SELECT page_count * page_size AS b FROM pragma_page_count(), pragma_page_size()")[0]["b"])
-            except Exception:  # noqa: BLE001
-                size = 0
+        size = self.size_bytes()
         return {"lessons": {r["kind"]: int(r["n"]) for r in rows}, "rules": {r["status"]: int(r["n"]) for r in rules}, "bytes": size}
 
     # ---------------------------------------------------------------- rules: proposed by feedback / facts, approved by a human

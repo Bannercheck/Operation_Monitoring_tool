@@ -2,6 +2,14 @@
 
 Numaralandırma: büyük sürüm **v1, v2** (ürün sahibinin kararı), küçük güncelleme **v1.1, v1.2** (her devreye alınan özellik adımı), düzeltme **v1.1.1**. Her sürüm `python -m watchover.release <major|minor|patch> "özet"` ile açılır; Sistem › Güncelleme sayfası bu dosyayı gösterir, anlık görüntüler sürüm numarasını taşır.
 
+## v1.5 · 2026-09-21 · güncelleme
+
+- PostgreSQL ürün veritabanı: kullanıcılar, roller, bilgi tabanı, aksiyonlar, playbook, ajanlar, kaynaklar, bildirimler ve rollup'lar tek veritabanında (ortak db katmanı)
+- SQLite'tan taşıma: python -m watchover.migrate ve PostgreSQL'e ilk bağlanışta otomatik kopyalama
+- Docker: compose PostgreSQL 16'yı zorunlu servis olarak kurar; anlık görüntü / geri dönüş PostgreSQL'de JSON döküm; kurulum rehberi yenilendi
+- Gerçek PostgreSQL ile bulunan lehçe hataları düzeltildi; testler PostgreSQL üzerinde de koşar
+
+
 ## v1.4 · 2026-09-21 · güncelleme
 
 - Docker dağıtımı: tek imaj (dashboard + alıcı + ajan), compose ile kurulum ve güncelleme, kaynak sınırları, isteğe bağlı PostgreSQL ve MCP profilleri

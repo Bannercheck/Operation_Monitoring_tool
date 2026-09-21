@@ -34,6 +34,7 @@ from watchover.playbook import Playbook
 from watchover.knowledge import Knowledge, RULE_KINDS
 from watchover.agents import AgentRegistry
 from watchover import settings as wo_settings
+from watchover import migrate as wo_migrate
 from watchover import assistant as wo_assistant
 from watchover import sources as wo_sources
 from watchover import report as wo_report
@@ -445,14 +446,13 @@ def kpi2(value, label, icon: str, accent: str, sub: str = "", muted: bool = Fals
             f'<span class="v{" s" if len(str(value)) > 6 else ""}">{value}</span><div class="sub{" m" if muted else ""}">{esc(str(sub))}</div></div>')
 
 
-@st.cache_resource
 def store() -> ActionStore:
-    return ActionStore(os.environ.get("ACTIONS_DB", "actions.db"))
+    """Actions live in the shared database (PostgreSQL); the separate SQLite file only remains for installs without DATABASE_URL."""
+    return _singleton("actions", ActionStore, lambda: ActionStore(knowledge() if knowledge().pg else os.environ.get("ACTIONS_DB", "actions.db")))
 
 
-@st.cache_resource
 def playbook() -> Playbook:
-    return Playbook(os.environ.get("PLAYBOOK_DB", "playbook.db"))
+    return _singleton("playbook", Playbook, lambda: Playbook(knowledge() if knowledge().pg else os.environ.get("PLAYBOOK_DB", "playbook.db")))
 
 
 @st.cache_resource
@@ -473,6 +473,7 @@ def _singleton(key: str, cls, make):
 def knowledge() -> Knowledge:
     def make():
         kb = Knowledge(os.environ.get("DATABASE_URL") or os.environ.get("KNOWLEDGE_DB", "knowledge.db"))
+        wo_migrate.auto(kb)                            # first start on PostgreSQL next to old SQLite files: copy them once
         kb.apply_rules()                               # approved rules shape the engine from the first analysis on
         return kb
     return _singleton("kb", Knowledge, make)
@@ -2807,7 +2808,7 @@ def page_system() -> None:
         k = st.columns(4)
         k[0].markdown(kpi2(f"{ls.received:,}", t("events_n"), "📡", "#2dd4bf", f"{len(ls.agents)} {t('live_agents')} · :{ss.get('live_port', LIVE_PORT)}"), unsafe_allow_html=True)
         k[1].markdown(kpi2(f"{h.coverage()['rows_']:,}", t("sys_rollups"), "🗄", "#60a5fa", f"{t('sys_last_flush')} {h.last_flush[11:19] or '-'}"), unsafe_allow_html=True)
-        k[2].markdown(kpi2(f"{di['size_mb'] if di['size_mb'] is not None else '-'} MB", t("sys_db"), "💽", "#a78bfa", f"{len(di['tables'])} {t('sys_table')}"), unsafe_allow_html=True)
+        k[2].markdown(kpi2(f"{di['size_mb'] if di['size_mb'] is not None else '-'} MB", t("sys_db"), "💽", "#a78bfa", f"{len(di['tables'])} {t('sys_table')} · {di['backend']}"), unsafe_allow_html=True)
         k[3].markdown(kpi2(us.count(), t("sys_tab_users"), "👥", "#fbbf24", f"{sum(1 for x in us.list() if x['role'] == 'admin')} {t('role_admin')}"), unsafe_allow_html=True)
         st.markdown(f"#### {t('sys_services')}")
         c = st.columns(3)
@@ -2832,7 +2833,7 @@ def page_system() -> None:
                     ss["self_monitor"] = _on; wo_settings.save({"self_monitor": _on})
                     (_sm.start() if _on else _sm.stop()); st.rerun()
         with st.expander(t("sys_facts")):
-            st.code("\n".join(f"{k_}: {v}" for k_, v in vi.items()), language=None)
+            st.code("\n".join(f"{k_}: {v}" for k_, v in vi.items()) + f"\ndatabase: {di['url']}", language=None)
             if di["tables"]:
                 st.dataframe(pd.DataFrame([{t("sys_table"): k_, t("sys_rows"): v} for k_, v in di["tables"].items()]), hide_index=True, height=260, **wide("dataframe"))
         logp = os.environ.get("WATCHOVER_LOG", "")
@@ -2852,7 +2853,7 @@ def page_system() -> None:
             keep = {k_: ss[k_] for k_ in ("user", "lang", "page", *wo_settings.SESSION_KEYS) if k_ in ss}
             ss.clear(); ss.update(keep); st.toast(t("sys_done"), icon="✅"); st.rerun()
         _action_card(c[2], "m-sess", "♻️", t("sys_cache_session"), t("sys_cache_session_body"), t("sys_run"), _reset)
-        _action_card(c[3], "m-vac", "🧽", t("sys_vacuum"), t("sys_vacuum_body"), t("sys_run"), lambda: (wo_admin.snapshot(t("ver_r_maint"), code=False), st.toast(wo_admin.vacuum(kb), icon="✅")))
+        _action_card(c[3], "m-vac", "🧽", t("sys_vacuum"), t("sys_vacuum_body"), t("sys_run"), lambda: (wo_admin.snapshot(t("ver_r_maint"), code=False, kb=kb), st.toast(wo_admin.vacuum(kb), icon="✅")))
 
     with tab_upd:
         hc1, hc2 = st.columns([8, 0.6])
@@ -2872,7 +2873,7 @@ def page_system() -> None:
               st.markdown(f'<div class="card act2"><div class="act2-t">📦 {t("sys_upd_zip")}</div><div class="act2-b">{t("sys_upd_zip_body")}</div></div>', unsafe_allow_html=True)
               up = st.file_uploader("zip", type=["zip"], key="sys_zip", label_visibility="collapsed")
               if up is not None and st.button(t("sys_upd_apply"), key="sys-apply", type="primary", **wide("button")):
-                  wo_admin.snapshot(t("ver_r_update")); wo_admin.prune_versions(12)
+                  wo_admin.snapshot(t("ver_r_update"), kb=kb); wo_admin.prune_versions(12)
                   ok, msg = wo_admin.apply_zip(up.getvalue())
                   (st.success if ok else st.error)(msg)
                   if ok:
@@ -2880,7 +2881,7 @@ def page_system() -> None:
           with c2:
               st.markdown(f'<div class="card act2"><div class="act2-t">🔄 {t("sys_upd_git")}</div><div class="act2-b">{t("sys_upd_git_body")}</div></div>', unsafe_allow_html=True)
               if st.button(t("sys_upd_pull"), key="sys-pull", **wide("button")):
-                  wo_admin.snapshot(t("ver_r_update")); wo_admin.prune_versions(12)
+                  wo_admin.snapshot(t("ver_r_update"), kb=kb); wo_admin.prune_versions(12)
                   ok, msg = wo_admin.git_update()
                   (st.success if ok else st.error)(msg or "-")
                   if ok and "Already up to date" not in msg:
@@ -2895,7 +2896,7 @@ def page_system() -> None:
         vh1, vh2, vh3 = st.columns([6, 1.6, 0.5])
         vh1.markdown(f"#### {t('ver_title')}")
         if vh2.button(f"📸 {t('ver_snapshot_btn')}", key="ver-snap", **wide("button")):
-            m = wo_admin.snapshot(t("ver_r_manual")); st.toast(t("ver_snap_done", id=m["id"]), icon="✅"); st.rerun()
+            m = wo_admin.snapshot(t("ver_r_manual"), kb=kb); st.toast(t("ver_snap_done", id=m["id"]), icon="✅"); st.rerun()
         with vh3:
             info_btn("ver_info")
         vers = wo_admin.versions()
@@ -2914,7 +2915,7 @@ def page_system() -> None:
                 st.warning(t("ver_confirm", id=m["id"]))
                 k1, k2 = st.columns(2)
                 if k1.button(f"↩ {t('ver_restore_go')}", key=f"ver-go-{m['id']}", type="primary", **wide("button")):
-                    ok, msg = wo_admin.rollback(m["id"])
+                    ok, msg = wo_admin.rollback(m["id"], kb=kb)
                     (st.success if ok else st.error)(msg)
                     ss.pop("ver_confirm", None)
                     if ok:

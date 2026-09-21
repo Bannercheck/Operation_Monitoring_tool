@@ -19,8 +19,7 @@ class LiveLearner:
         self.stop = threading.Event()
         self.last: dict = {}
         self.runs = 0
-        kb._exec("CREATE TABLE IF NOT EXISTS learn_runs (id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT, events INTEGER, incidents INTEGER, lessons INTEGER, note TEXT DEFAULT '')"
-                 if not kb.pg else "CREATE TABLE IF NOT EXISTS learn_runs (id SERIAL PRIMARY KEY, ts TEXT, events INTEGER, incidents INTEGER, lessons INTEGER, note TEXT DEFAULT '')")
+        kb._exec(f"CREATE TABLE IF NOT EXISTS learn_runs (id {kb.pk}, ts TEXT, events INTEGER, incidents INTEGER, lessons INTEGER, note TEXT DEFAULT '')")
 
     def learn_once(self, env: str | None = None) -> dict:
         """Analyse the last window of live events and record patterns; returns what happened."""
@@ -77,7 +76,7 @@ def training_export(kb, lang: str = "tr") -> bytes:
     for r in kb._exec("SELECT kind, key, value, reason FROM rules WHERE status='approved' ORDER BY id"):
         a = f"{r['kind']}: {r['key']} → {r['value']}" + (f" ({r['reason']})" if r["reason"] else "")
         lines.append({"messages": [{"role": "system", "content": system}, {"role": "user", "content": q_rule.format(k=r["key"])}, {"role": "assistant", "content": a}]})
-    cols = [c["name"] for c in kb._exec("PRAGMA table_info(answer_feedback)")] if not kb.pg else ["answer"]
+    cols = kb.columns("answer_feedback")
     if "answer" in cols:
         for r in kb._exec("SELECT question, answer FROM answer_feedback WHERE verdict='up' AND answer <> '' ORDER BY id"):
             lines.append({"messages": [{"role": "system", "content": system}, {"role": "user", "content": r["question"]}, {"role": "assistant", "content": r["answer"]}]})

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -29,7 +30,7 @@ from watchover.pipeline import ingest_path          # noqa: E402
 from watchover.profiler import profile              # noqa: E402
 
 STATE: dict = {"analysis": None, "dataset": None}
-STORE = ActionStore("actions.db")
+STORE = ActionStore(os.environ["DATABASE_URL"] if os.environ.get("DATABASE_URL") else os.environ.get("ACTIONS_DB", "actions.db"))   # same database as the dashboard
 
 
 def _need() -> Analysis:

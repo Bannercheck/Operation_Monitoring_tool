@@ -1,7 +1,8 @@
 """Playbook / error library: every error pattern seen across datasets, where and when it happened, how it resolved,
-and the team's runbook notes. Persisted in SQLite so knowledge survives across sessions and datasets.
+and the team's runbook notes. Persisted in the shared database (PostgreSQL, or SQLite on a laptop) so knowledge survives across
+sessions and datasets.
 
-    pb = Playbook("playbook.db")
+    pb = Playbook(db)                     # a shared Database, or a SQLite path for a standalone file
     pb.record(analysis, dataset)          # called after every analysis: upserts root-cause and ERROR+ templates
     pb.lookup(template)                   # exact or fuzzy (token overlap) match -> entry dict or None
     pb.set_notes(key, resolution, runbook)
@@ -11,9 +12,9 @@ from __future__ import annotations
 
 import json
 import re
-import sqlite3
 from datetime import datetime, timezone
 
+from .db import Database
 from .models import SEV_RANK
 from . import scenario
 
@@ -31,16 +32,14 @@ def similarity(a: str, b: str) -> float:
 
 
 class Playbook:
-    def __init__(self, path: str = "playbook.db"):
-        self.conn = sqlite3.connect(path, check_same_thread=False)
-        self.conn.row_factory = sqlite3.Row
-        self.conn.execute("""CREATE TABLE IF NOT EXISTS playbook (
+    def __init__(self, db: "Database | str" = "playbook.db"):
+        self.db = db if isinstance(db, Database) else Database(db)
+        self.db._exec("""CREATE TABLE IF NOT EXISTS playbook (
             key TEXT PRIMARY KEY, template TEXT, severity TEXT, title TEXT,
             first_seen TEXT, last_seen TEXT, occurrences INTEGER DEFAULT 0, events INTEGER DEFAULT 0,
             datasets TEXT DEFAULT '[]', services TEXT DEFAULT '[]', hosts TEXT DEFAULT '[]',
             recoveries TEXT DEFAULT '{}', root_cause_count INTEGER DEFAULT 0,
             resolution TEXT DEFAULT '', runbook TEXT DEFAULT '', updated_at TEXT)""")
-        self.conn.commit()
 
     # ---- write
     def record(self, analysis, dataset: str) -> int:
@@ -57,13 +56,14 @@ class Playbook:
         return n
 
     def _upsert(self, s, dataset: str, recovery: str | None) -> None:
-        row = self.conn.execute("SELECT * FROM playbook WHERE key=?", (s.template,)).fetchone()
+        rows = self.db._exec("SELECT * FROM playbook WHERE key=?", (s.template,))
+        row = rows[0] if rows else None
         now = datetime.now(UTC).isoformat(timespec="seconds")
         first, last = s.first_seen.isoformat(), s.last_seen.isoformat()
         if row is None:
             recs = {recovery: 1} if recovery else {}
             runbook = "\n".join(f"- {r}" for k, lst in scenario.RECOMMENDATIONS.items() if k in s.template for r in lst)
-            self.conn.execute("INSERT INTO playbook VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            self.db._exec("INSERT INTO playbook VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                               (s.template, s.template, s.severity, s.template[:80], first, last, 1, s.count, json.dumps([dataset]),
                                json.dumps(s.services), json.dumps(s.hosts), json.dumps(recs), 1 if recovery else 0, "", runbook, now))
         else:
@@ -76,23 +76,20 @@ class Playbook:
                 recs[recovery] = recs.get(recovery, 0) + 1
             services = sorted(set(json.loads(row["services"])) | set(s.services))
             hosts = sorted(set(json.loads(row["hosts"])) | set(s.hosts))
-            self.conn.execute("""UPDATE playbook SET last_seen=MAX(last_seen, ?), first_seen=MIN(first_seen, ?),
+            self.db._exec("""UPDATE playbook SET last_seen=?, first_seen=?,
                                  occurrences=occurrences + ?, events=events + ?, datasets=?, services=?, hosts=?, recoveries=?,
                                  root_cause_count=root_cause_count + ?, updated_at=? WHERE key=?""",
-                              (last, first, 0 if already else 1, 0 if already else s.count, json.dumps(datasets), json.dumps(services),
+                              (max(row["last_seen"] or "", last), min(row["first_seen"] or first, first), 0 if already else 1, 0 if already else s.count, json.dumps(datasets), json.dumps(services),
                                json.dumps(hosts), json.dumps(recs), 1 if (recovery and not already) else 0, now, s.template))
-        self.conn.commit()
 
     def set_notes(self, key: str, resolution: str | None = None, runbook: str | None = None) -> dict:
         fields = {k: v for k, v in (("resolution", resolution), ("runbook", runbook)) if v is not None}
         fields["updated_at"] = datetime.now(UTC).isoformat(timespec="seconds")
-        self.conn.execute(f"UPDATE playbook SET {', '.join(f'{k}=?' for k in fields)} WHERE key=?", (*fields.values(), key))
-        self.conn.commit()
+        self.db._exec(f"UPDATE playbook SET {', '.join(f'{k}=?' for k in fields)} WHERE key=?", (*fields.values(), key))
         return self.get(key)
 
     def delete(self, key: str) -> None:
-        self.conn.execute("DELETE FROM playbook WHERE key=?", (key,))
-        self.conn.commit()
+        self.db._exec("DELETE FROM playbook WHERE key=?", (key,))
 
     # ---- read
     @staticmethod
@@ -103,11 +100,11 @@ class Playbook:
         return d
 
     def get(self, key: str) -> dict | None:
-        r = self.conn.execute("SELECT * FROM playbook WHERE key=?", (key,)).fetchone()
-        return self._row(r) if r else None
+        rows = self.db._exec("SELECT * FROM playbook WHERE key=?", (key,))
+        return self._row(rows[0]) if rows else None
 
     def all(self, q: str = "") -> list[dict]:
-        rows = [self._row(r) for r in self.conn.execute("SELECT * FROM playbook ORDER BY occurrences DESC, last_seen DESC")]
+        rows = [self._row(r) for r in self.db._exec("SELECT * FROM playbook ORDER BY occurrences DESC, last_seen DESC")]
         if q:
             ql = q.lower()
             rows = [r for r in rows if ql in r["template"] or ql in r["resolution"].lower() or ql in r["runbook"].lower()

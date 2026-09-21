@@ -3,6 +3,7 @@
 streamlit>=1.35
 pandas>=1.5
 python-dateutil>=2.8
+psycopg[binary]>=3.1                  # PostgreSQL sürücüsü (DATABASE_URL); yoksa gömülü SQLite kullanılır
 
 # Geliştirme / test
 pytest>=8
