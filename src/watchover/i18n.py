@@ -5,7 +5,7 @@ from __future__ import annotations
 STRINGS: dict[str, dict[str, str]] = {
     "en": {
         "tagline": "noise → signals → explained incidents → tracked actions",
-        "upload": "Upload dataset (file / ZIP / TAR.GZ, up to 1 GB)",
+        "upload": "Upload datasets (one or more files / ZIP / TAR.GZ, up to 1 GB each)", "upload_combine": "Analyse the files together as one dataset", "upload_combine_help": "On: all selected files form one dataset (like a ZIP), so events from several hosts are correlated. Off: every file becomes its own dataset.", "upload_empty": "Empty file skipped: {n}", "upload_failed": "The file could not be loaded: {e}",
         "load_demo": "Load demo dataset", "working": "Parsing, fingerprinting, correlating…",
         "raw_events": "raw events", "fingerprints": "fingerprints", "meaningful": "meaningful signals",
         "incidents": "incidents", "actions": "actions",
@@ -151,7 +151,7 @@ STRINGS: dict[str, dict[str, str]] = {
     },
     "tr": {
         "tagline": "gürültü → sinyal → gerekçeli incident → takip edilen aksiyon",
-        "upload": "Veri seti yükle (dosya / ZIP / TAR.GZ, 1 GB'a kadar)",
+        "upload": "Veri seti yükle (bir veya daha çok dosya / ZIP / TAR.GZ, her biri 1 GB'a kadar)", "upload_combine": "Dosyaları tek veri seti olarak birlikte analiz et", "upload_combine_help": "Açık: seçilen tüm dosyalar tek bir veri seti oluşturur (ZIP gibi), farklı sunucuların olayları birlikte ilişkilendirilir. Kapalı: her dosya ayrı bir veri seti olur.", "upload_empty": "Boş dosya atlandı: {n}", "upload_failed": "Dosya yüklenemedi: {e}",
         "load_demo": "Demo veri setini yükle", "working": "Ayrıştırılıyor, gruplanıyor, ilişkilendiriliyor…",
         "raw_events": "ham olay", "fingerprints": "fingerprint", "meaningful": "anlamlı sinyal",
         "incidents": "incident", "actions": "aksiyon",

@@ -79,3 +79,25 @@ def test_model_switch_does_not_touch_widget_keys(tmp_path, monkeypatch):
     body = src[i:src.index("\ndef ", i + 10)]
     assert "ss.update(changed)" not in body and '_pending_settings' in body
     assert src.index('st.session_state.pop("_pending_settings"') < src.index('if "cfg_loaded" not in st.session_state')
+
+
+def test_upload_processed_once_and_multi_file(tmp_path, monkeypatch):
+    """Regression: a re-uploaded same-named file (stdout0 from several SAP hosts) or a switch of the active dataset re-triggered
+    the load on every run (the page kept 'loading'). Uploads are tracked by upload id; several files load as one dataset."""
+    import io, zipfile
+    src = (ROOT / "app.py").read_text(encoding="utf-8")
+    assert 'accept_multiple_files=True' in src and 'u.file_id not in done' in src and 'st.session_state.get("dataset") != up.name' not in src
+    monkeypatch.setenv("KNOWLEDGE_DB", str(tmp_path / "k.db")); monkeypatch.setenv("PLAYBOOK_DB", str(tmp_path / "pb.db"))
+    monkeypatch.setenv("WATCHOVER_HOME", str(tmp_path / "home")); monkeypatch.setenv("WATCHOVER_SKIP_SETUP", "1"); monkeypatch.setenv("LIVE_PORT", "18633")
+    from streamlit.testing.v1 import AppTest
+    at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=90).run()
+    at.sidebar.radio(key="page").set_value("data").run()
+    assert not at.exception
+    # the combined-upload path: two SAP-style files packed the way the page packs them
+    from watchover.pipeline import ingest_bytes
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("dev_w0", "A  Mon Sep 21 10:00:01 2026\nA  ** ERROR => rollback failed [dbsl.c 123]\n")
+        z.writestr("stdout0", "")
+    obs, _ = ingest_bytes("dev_w0 +1.zip", buf.getvalue())
+    assert len(obs) >= 1

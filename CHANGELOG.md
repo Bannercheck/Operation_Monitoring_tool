@@ -2,6 +2,13 @@
 
 Numaralandırma: büyük sürüm **v1, v2** (ürün sahibinin kararı), küçük güncelleme **v1.1, v1.2** (her devreye alınan özellik adımı), düzeltme **v1.1.1**. Her sürüm `python -m watchover.release <major|minor|patch> "özet"` ile açılır; Sistem › Güncelleme sayfası bu dosyayı gösterir, anlık görüntüler sürüm numarasını taşır.
 
+## v1.1 · 2026-09-21 · güncelleme
+
+- Veri seti yükleme: aynı adlı veya boş SAP dosyalarında sonsuz yükleme döngüsü giderildi
+- Çoklu dosya yükleme: dosyalar birlikte tek veri seti (varsayılan) ya da ayrı veri setleri olarak
+- Boş dosyalar atlanır, yükleme hatası ekranda gösterilir
+
+
 ## v1.0 · 2026-09-20 · büyük sürüm
 
 - Ürün sürümü: giriş kapısı (cam giriş kartı, Google / Microsoft / Apple / OIDC, Beni hatırla, e-posta MFA, kayıtta e-posta doğrulaması), yerleşik yönetici ve zorunlu parola değişimi

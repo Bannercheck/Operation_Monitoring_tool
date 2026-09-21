@@ -3320,10 +3320,35 @@ def page_llm() -> None:
 def datasets_controls() -> None:
     st.markdown(f"## {t('sb_data')}")
     c1, c2 = st.columns([3, 1])
-    up = c1.file_uploader(t("upload"), type=None, key="up_main")
-    if up is not None and st.session_state.get("dataset") != up.name:
-        load(up.name, data=up.getvalue())
-        st.rerun()
+    ups = c1.file_uploader(t("upload"), type=None, key="up_main", accept_multiple_files=True)
+    if ups:
+        combine = len(ups) > 1 and c1.toggle(t("upload_combine"), value=True, key="up_combine", help=t("upload_combine_help"))
+        # every uploaded file is processed exactly once (by its upload id): re-uploads of a same-named file (stdout0, dev_w0 on
+        # several SAP hosts) or switching the active dataset never trigger the load again
+        done = st.session_state.setdefault("uploaded_ids", set())
+        fresh = [u for u in ups if u.file_id not in done]
+        batch_key = "|".join(sorted(u.file_id for u in ups))
+        if fresh and (not combine or st.session_state.get("uploaded_batch") != batch_key):
+            empty = [u.name for u in ups if u.size == 0]
+            if empty:
+                st.toast(t("upload_empty", n=", ".join(empty[:5])), icon="⚠️")     # survives the rerun that follows the load
+            todo = [u for u in (ups if combine else fresh) if u.size > 0]
+            try:
+                if combine and len(todo) > 1:
+                    import io as _io, zipfile as _zf
+                    buf = _io.BytesIO()
+                    with _zf.ZipFile(buf, "w", _zf.ZIP_DEFLATED) as z:
+                        for u in todo:
+                            z.writestr(u.name, u.getvalue())
+                    load(f"{todo[0].name} +{len(todo) - 1}.zip", data=buf.getvalue())
+                else:
+                    for u in todo:
+                        load(u.name, data=u.getvalue())
+            except Exception as e:  # noqa: BLE001
+                st.error(t("upload_failed", e=f"{type(e).__name__}: {str(e)[:200]}"))
+            done.update(u.file_id for u in ups)
+            st.session_state["uploaded_batch"] = batch_key
+            st.rerun()
     with c2:
         if demo.exists() and st.button(t("load_demo"), key="demo_main", **wide("button")):
             load(demo.name, path=str(demo))
