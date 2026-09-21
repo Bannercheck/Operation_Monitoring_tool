@@ -37,11 +37,14 @@ def version_info() -> dict:
             git = subprocess.run(["git", "-C", str(root), "log", "-1", "--format=%h %cs %s"], capture_output=True, text=True, timeout=5).stdout.strip()
         except Exception:  # noqa: BLE001
             git = ""
+        if not git:                                               # no git binary / no checkout (container): the revision baked at build time
+            git = stamp.git_rev() if stamp.git_rev() != "-" else ""
         _git_cache.update({"line": git, "at": time.time()})
     import streamlit
     return {"engine": stamp.engine_id()[:12] if hasattr(stamp, "engine_id") else "-", "git": git or "-", "python": platform.python_version(),
             "streamlit": streamlit.__version__, "platform": f"{platform.system()} {platform.release()}", "root": str(root),
             "home": os.environ.get("WATCHOVER_HOME", "-"), "uptime_s": int(time.time() - STARTED), "launcher": os.environ.get("WATCHOVER_LAUNCHER", ""),
+            "docker": in_docker(), "image_tag": os.environ.get("WATCHOVER_TAG", ""),
             "started": datetime.fromtimestamp(STARTED, tz=UTC).isoformat(timespec="seconds")}
 
 
@@ -120,8 +123,13 @@ def deploy_finish(reason: str = "deploy") -> dict:
     return out
 
 
+def in_docker() -> bool:
+    return os.environ.get("WATCHOVER_DOCKER") == "1" or Path("/.dockerenv").exists()
+
+
 def restart_app(delay: float = 1.0, hard: bool = False) -> str:
-    """Restart through the launcher when installed (service-aware), otherwise exit and let the service manager restart us."""
+    """Restart through the launcher when installed (service-aware), otherwise exit and let the service manager restart us
+    (in Docker the container's restart policy brings it back)."""
     launcher = os.environ.get("WATCHOVER_LAUNCHER", "")
 
     def go():
@@ -131,7 +139,7 @@ def restart_app(delay: float = 1.0, hard: bool = False) -> str:
             time.sleep(2)
         os._exit(3)
     threading.Thread(target=go, daemon=True).start()
-    return "launcher" if launcher else "exit"
+    return "launcher" if launcher else ("docker" if in_docker() else "exit")
 
 
 def db_info(kb) -> dict:

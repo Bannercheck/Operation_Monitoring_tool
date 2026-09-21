@@ -2,6 +2,13 @@
 
 Numaralandırma: büyük sürüm **v1, v2** (ürün sahibinin kararı), küçük güncelleme **v1.1, v1.2** (her devreye alınan özellik adımı), düzeltme **v1.1.1**. Her sürüm `python -m watchover.release <major|minor|patch> "özet"` ile açılır; Sistem › Güncelleme sayfası bu dosyayı gösterir, anlık görüntüler sürüm numarasını taşır.
 
+## v1.4 · 2026-09-21 · güncelleme
+
+- Docker dağıtımı: tek imaj (dashboard + alıcı + ajan), compose ile kurulum ve güncelleme, kaynak sınırları, isteğe bağlı PostgreSQL ve MCP profilleri
+- GitHub Actions imajı ghcr.io/bannercheck/watchover olarak yayınlar (main ve sürüm etiketleri)
+- Uygulama Docker farkındalığı: Sistem › Güncelleme compose komutları, imaj etiketi çipi; Docker kurulum rehberi
+
+
 ## v1.3.2 · 2026-09-21 · düzeltme
 
 - SAP NetWeaver Java izleri 4 kat hızlı ayrıştırılır; biçim algılama dosyanın tamamını bölmez; ilerleme çubuğu her dosya başında ilerler

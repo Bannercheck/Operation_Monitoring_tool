@@ -355,3 +355,13 @@ def test_release_bump_and_changelog(tmp_path):
     import pytest
     with pytest.raises(ValueError):
         release.next_version("1.0.0", "huge")
+
+
+def test_docker_mode_stamp_and_restart(monkeypatch):
+    from watchover import admin, stamp
+    monkeypatch.setenv("WATCHOVER_DOCKER", "1"); monkeypatch.setenv("WATCHOVER_GIT_REV", "abcdef1234567")
+    stamp.git_rev.cache_clear(); admin._git_cache.clear()
+    assert admin.in_docker() and stamp.git_rev() == "abcdef1"
+    monkeypatch.setattr(admin.subprocess, "run", lambda *a, **k: (_ for _ in ()).throw(FileNotFoundError("git")))   # no git in the image
+    assert admin.version_info()["git"][:7] == "abcdef1" and admin.version_info()["docker"] is True
+    stamp.git_rev.cache_clear(); admin._git_cache.clear()

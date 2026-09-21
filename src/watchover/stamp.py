@@ -36,7 +36,12 @@ def scenario_id() -> str:
 
 @lru_cache(maxsize=1)
 def git_rev() -> str:
-    """Short git revision of the checkout the package lives in, without spawning git ("-" when not a checkout)."""
+    """Short git revision of the checkout the package lives in, without spawning git ("-" when not a checkout).
+    A container has no .git: the build bakes the revision into WATCHOVER_GIT_REV."""
+    import os
+    baked = os.environ.get("WATCHOVER_GIT_REV", "").strip()
+    if baked and baked != "-":
+        return baked[:7]
     for root in (PKG.parent.parent, PKG.parent):
         head = root / ".git" / "HEAD"
         if head.exists():

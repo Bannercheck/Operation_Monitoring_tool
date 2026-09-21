@@ -2789,7 +2789,7 @@ def page_system() -> None:
     vi = wo_admin.version_info()
     ls = live_store(); kb = knowledge(); us = users()
     _st = wo_stamp.stamp()
-    chips = [("#2dd4bf", f"Watchover {wo_release.display(_st['version'])}"), ("#2dd4bf", f"{t('stamp_engine')} {_st['engine']}"), ("#2dd4bf", f"git {vi['git'][:7] or '-'}"), ("#2dd4bf", f"{t('stamp_scenario')} {_st['scenario']}"),
+    chips = [("#2dd4bf", f"Watchover {wo_release.display(_st['version'])}" + (f" · 🐳 {vi['image_tag'] or 'docker'}" if vi.get("docker") else "")), ("#2dd4bf", f"{t('stamp_engine')} {_st['engine']}"), ("#2dd4bf", f"git {vi['git'][:7] or '-'}"), ("#2dd4bf", f"{t('stamp_scenario')} {_st['scenario']}"),
              ("#60a5fa", f"{t('sys_uptime')} {vi['uptime_s'] // 3600}h {(vi['uptime_s'] % 3600) // 60}m"),
              ("#a78bfa", f"Streamlit {vi['streamlit']} · Python {vi['python']}"), ("#2dd4bf" if vi["launcher"] else "#fbbf24", t("sys_launcher_ok") if vi["launcher"] else t("sys_launcher_none"))]
     st.markdown('<div class="chips">' + "".join(f'<span class="chip"><span class="d" style="background:{c}"></span>{esc(str(x))}</span>' for c, x in chips) + "</div>", unsafe_allow_html=True)
@@ -2856,32 +2856,40 @@ def page_system() -> None:
 
     with tab_upd:
         hc1, hc2 = st.columns([8, 0.6])
-        hc1.caption(t("sys_upd_lead"))
+        hc1.caption(t("sys_upd_docker_lead") if vi.get("docker") else t("sys_upd_lead"))
         with hc2:
-            info_btn("sys_upd_hint")
+            info_btn("sys_upd_docker_hint" if vi.get("docker") else "sys_upd_hint")
         c1, c2, c3 = st.columns(3)
-        with c1:
-            st.markdown(f'<div class="card act2"><div class="act2-t">📦 {t("sys_upd_zip")}</div><div class="act2-b">{t("sys_upd_zip_body")}</div></div>', unsafe_allow_html=True)
-            up = st.file_uploader("zip", type=["zip"], key="sys_zip", label_visibility="collapsed")
-            if up is not None and st.button(t("sys_upd_apply"), key="sys-apply", type="primary", **wide("button")):
-                wo_admin.snapshot(t("ver_r_update")); wo_admin.prune_versions(12)
-                ok, msg = wo_admin.apply_zip(up.getvalue())
-                (st.success if ok else st.error)(msg)
-                if ok:
-                    _deploy_finish()
-        with c2:
-            st.markdown(f'<div class="card act2"><div class="act2-t">🔄 {t("sys_upd_git")}</div><div class="act2-b">{t("sys_upd_git_body")}</div></div>', unsafe_allow_html=True)
-            if st.button(t("sys_upd_pull"), key="sys-pull", **wide("button")):
-                wo_admin.snapshot(t("ver_r_update")); wo_admin.prune_versions(12)
-                ok, msg = wo_admin.git_update()
-                (st.success if ok else st.error)(msg or "-")
-                if ok and "Already up to date" not in msg:
-                    _deploy_finish()
+        if vi.get("docker"):                                  # the code is the image: updates happen with docker compose, not in place
+            with c1:
+                st.markdown(f'<div class="card act2"><div class="act2-t">🐳 {t("sys_upd_docker")}</div><div class="act2-b">{t("sys_upd_docker_body")}</div></div>', unsafe_allow_html=True)
+                st.code("docker compose pull && docker compose up -d", language="bash")
+            with c2:
+                st.markdown(f'<div class="card act2"><div class="act2-t">🏷 {t("sys_upd_docker_pin")}</div><div class="act2-b">{t("sys_upd_docker_pin_body")}</div></div>', unsafe_allow_html=True)
+                st.code(f"WATCHOVER_TAG={wo_release.display(_st['version'])[1:]}   # .env", language="bash")
+        else:
+          with c1:
+              st.markdown(f'<div class="card act2"><div class="act2-t">📦 {t("sys_upd_zip")}</div><div class="act2-b">{t("sys_upd_zip_body")}</div></div>', unsafe_allow_html=True)
+              up = st.file_uploader("zip", type=["zip"], key="sys_zip", label_visibility="collapsed")
+              if up is not None and st.button(t("sys_upd_apply"), key="sys-apply", type="primary", **wide("button")):
+                  wo_admin.snapshot(t("ver_r_update")); wo_admin.prune_versions(12)
+                  ok, msg = wo_admin.apply_zip(up.getvalue())
+                  (st.success if ok else st.error)(msg)
+                  if ok:
+                      _deploy_finish()
+          with c2:
+              st.markdown(f'<div class="card act2"><div class="act2-t">🔄 {t("sys_upd_git")}</div><div class="act2-b">{t("sys_upd_git_body")}</div></div>', unsafe_allow_html=True)
+              if st.button(t("sys_upd_pull"), key="sys-pull", **wide("button")):
+                  wo_admin.snapshot(t("ver_r_update")); wo_admin.prune_versions(12)
+                  ok, msg = wo_admin.git_update()
+                  (st.success if ok else st.error)(msg or "-")
+                  if ok and "Already up to date" not in msg:
+                      _deploy_finish()
         with c3:
             st.markdown(f'<div class="card act2"><div class="act2-t">⏻ {t("sys_restart")}</div><div class="act2-b">{t("sys_restart_body")}</div></div>', unsafe_allow_html=True)
             if st.button(t("sys_restart"), key="sys-restart", type="primary" if ss.get("sys_restart_needed") else "secondary", **wide("button")):
                 how = wo_admin.restart_app()
-                st.info(t("sys_restarting_launcher") if how == "launcher" else t("sys_restarting_exit"))
+                st.info({"launcher": t("sys_restarting_launcher"), "docker": t("sys_restarting_docker")}.get(how, t("sys_restarting_exit")))
         if ss.get("sys_restart_needed"):
             st.warning(t("sys_restart_needed"))
         vh1, vh2, vh3 = st.columns([6, 1.6, 0.5])

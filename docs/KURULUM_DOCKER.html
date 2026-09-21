@@ -1,0 +1,54 @@
+<!doctype html><html lang="tr"><head><meta charset="utf-8"><title>Watchover · Docker kurulum rehberi</title><style>
+@page{size:A4;margin:18mm 16mm}
+body{font-family:-apple-system,"Segoe UI",Inter,Arial,sans-serif;color:#0f172a;font-size:11.5pt;line-height:1.5}
+h1{font-size:24pt;margin:0 0 2px;color:#0f172a}
+.sub{color:#0e7490;font-weight:700;letter-spacing:2px;font-size:9pt;margin-bottom:18px}
+h2{font-size:14.5pt;margin:22px 0 6px;color:#0f172a;border-bottom:2px solid #2dd4bf;padding-bottom:3px}
+p{margin:6px 0}
+pre{background:#0b1220;color:#e2e8f0;padding:10px 12px;border-radius:8px;font-size:9.6pt;line-height:1.45;white-space:pre-wrap;word-break:break-word}
+code{font-family:"SF Mono",Consolas,Menlo,monospace}
+.note{background:#f1f5f9;border-left:4px solid #60a5fa;padding:8px 12px;border-radius:6px;margin:8px 0}
+table{border-collapse:collapse;width:100%;margin:6px 0;font-size:10.5pt}
+td,th{border:1px solid #cbd5e1;padding:6px 8px;text-align:left;vertical-align:top}
+th{background:#f8fafc}
+.foot{margin-top:26px;font-size:9pt;color:#64748b;border-top:1px solid #e2e8f0;padding-top:6px}
+</style></head><body><h1>Watchover · Docker kurulum rehberi</h1>
+<p>Watchover tek bir imaj olarak çalışır: dashboard (8501), canlı alıcı (8600) ve konteynerin kendini izleyen ajanı aynı konteynerdedir. Kod imajın içindedir; ayarlar, token&#x27;lar, veritabanları, canlı tampon, sürüm anlık görüntüleri ve loglar <code>watchover-data</code> biriminde durur. Güncelleme demek yeni imajı çekip konteyneri yeniden oluşturmak demektir; veri birimine hiç dokunulmaz.</p>
+<h2>1. Ön koşullar</h2>
+<ul><li>Docker Engine 24+ ve Docker Compose v2 (Linux sunucu) ya da Docker Desktop (macOS / Windows).</li><li>İmaj kaydı: <code>ghcr.io/bannercheck/watchover</code>. Her <code>main</code> gönderimi <code>:latest</code> ve <code>:main</code>, her <code>vX.Y</code> etiketi <code>:X.Y</code> ve <code>:latest</code> olarak GitHub Actions tarafından yayınlanır. Depo özelse çekmek için bir kez <code>docker login ghcr.io</code> gerekir (kullanıcı adı: GitHub hesabınız, parola: <code>read:packages</code> yetkili bir kişisel erişim belirteci).</li></ul>
+<h2>2. İlk kurulum (beş dakika)</h2>
+<pre>mkdir -p ~/watchover &amp;&amp; cd ~/watchover
+curl -fsSLO https://raw.githubusercontent.com/Bannercheck/Operation_Monitoring_tool/main/docker-compose.yml
+curl -fsSL  https://raw.githubusercontent.com/Bannercheck/Operation_Monitoring_tool/main/.env.docker.example -o .env
+docker compose up -d
+docker compose logs -f dashboard        # &quot;You can now view your Streamlit app&quot; satırından sonra Ctrl-C</pre>
+<p>Tarayıcıda <code>http://&lt;sunucu&gt;:8501</code>. İlk giriş yerleşik yönetici hesabıyla yapılır (<code>admin@watchover.local</code>, başlangıç parolası ayrıca iletilir); ilk girişte yeni parola istenir.</p>
+<p>Depoyu klonladıysanız aynı dizinde <code>docker compose up -d</code> yeterlidir; <code>make docker-up</code>, <code>make docker-update</code>, <code>make docker-logs</code>, <code>make docker-down</code> kısayolları vardır.</p>
+<h2>3. Yapılandırma (.env)</h2>
+<table><tr><th>Değişken</th><th>Varsayılan</th><th>Anlamı</th></tr><tr><td><code>WATCHOVER_TAG</code></td><td><code>latest</code></td><td>Çalıştırılacak sürüm; <code>1.4</code> gibi bir etiket sürümü sabitler</td></tr><tr><td><code>WATCHOVER_UI_PORT</code> / <code>WATCHOVER_LIVE_PORT</code></td><td><code>8501</code> / <code>8600</code></td><td>Ana makinede açılan portlar</td></tr><tr><td><code>WATCHOVER_CPUS</code> / <code>WATCHOVER_MEMORY</code></td><td><code>4</code> / <code>4g</code></td><td>Konteynerin kaynak sınırı</td></tr><tr><td><code>WATCHOVER_SELFMON</code></td><td><code>1</code></td><td>Konteynerin kendini izlemesi; ana makinede ayrı ajan varsa <code>0</code></td></tr><tr><td><code>WATCHOVER_PARALLEL</code></td><td>boş</td><td>Çoklu dosya ayrıştırmada paralellik: boş otomatik (8+ çekirdek), <code>1</code> zorla, <code>0</code> kapalı</td></tr><tr><td><code>TZ</code></td><td><code>Europe/Istanbul</code></td><td>Konteyner saat dilimi</td></tr><tr><td><code>DATABASE_URL</code></td><td>boş</td><td>PostgreSQL bağlantısı (bölüm 6)</td></tr></table>
+<p>Değişiklikten sonra <code>docker compose up -d</code> yeni ayarları uygular.</p>
+<h2>4. Kaynak yönetimi</h2>
+<ul><li>Sınırlar <code>.env</code> içindeki <code>WATCHOVER_CPUS</code> ve <code>WATCHOVER_MEMORY</code> ile verilir; <code>docker stats watchover</code> anlık kullanımı gösterir.</li><li>Büyük SAP arşivleri için önerilen: 4 CPU, 4 GB. 1 GB&#x27;lık arşivlerde 8 GB.</li><li>Loglar json-file sürücüsüyle döner (20 MB × 5 dosya); <code>docker compose logs --tail 200 dashboard</code>.</li><li>Sağlık denetimi 30 saniyede bir çalışır; <code>docker compose ps</code> sütununda <code>healthy</code> görünmelidir. Uygulama çökerse <code>restart: unless-stopped</code> konteyneri geri açar; Sistem › Güncelleme&#x27;deki <b>Uygulamayı yeniden başlat</b> aynı mekanizmayı kullanır.</li></ul>
+<h2>5. Güncelleme ve sürüm geçmişi</h2>
+<pre>cd ~/watchover
+docker compose pull &amp;&amp; docker compose up -d      # ya da: make docker-update
+docker image prune -f                             # eski imaj katmanlarını temizler</pre>
+<ul><li>Belirli bir sürüme geçmek ya da geri dönmek: <code>.env</code> içinde <code>WATCHOVER_TAG=1.3</code> yazıp aynı komutu çalıştırın.</li><li>Sistem › Güncelleme sekmesi Docker&#x27;da zip / git düğmelerini göstermez, bu komutları gösterir; sürüm notları ve veritabanı anlık görüntüleri (Sistem › Güncelleme › Sürüm geçmişi) yine oradadır ve <code>/data/versions</code> altında durur.</li><li>Sistem başlığındaki çip <code>Watchover v1.4 · 🐳 1.4</code> biçiminde imaj etiketini gösterir.</li></ul>
+<h2>6. PostgreSQL ile çalıştırmak</h2>
+<pre># .env
+POSTGRES_PASSWORD=guclu-bir-parola
+DATABASE_URL=postgresql://watchover:guclu-bir-parola@postgres:5432/watchover</pre>
+<pre>docker compose --profile postgres up -d</pre>
+<p>Bilgi tabanı, kullanıcılar, roller, ajanlar, kaynaklar, bildirimler ve rollup&#x27;lar PostgreSQL&#x27;e yazılır. SQLite&#x27;tan geçişte verinin taşınması ayrı bir adımdır (sonraki sürüm).</p>
+<h2>7. MCP sunucusu (isteğe bağlı)</h2>
+<pre>docker compose --profile mcp up -d          # http://&lt;sunucu&gt;:8765/mcp</pre>
+<h2>8. Ajanlar ve kaynaklar</h2>
+<p>Sunuculardaki ajanlar aynı şekilde kurulur; alıcı adresi Docker ana makinesidir:</p>
+<pre>curl -fsSL http://&lt;sunucu&gt;:8600/agent/install.sh | sudo bash -s -- --url http://&lt;sunucu&gt;:8600/ingest --enroll-key wk_… --env prod</pre>
+<p>Konteynerin kendi ajanı konteynerin CPU / bellek / diskini raporlar. Ana makinenin kendisini izlemek için ana makineye normal bir ajan kurun ve <code>WATCHOVER_SELFMON=0</code> yapın.</p>
+<h2>9. Yedekleme ve taşıma</h2>
+<pre>docker run --rm -v watchover_watchover-data:/data -v &quot;$PWD&quot;:/backup alpine tar czf /backup/watchover-data.tgz -C /data .   # yedek
+docker run --rm -v watchover_watchover-data:/data -v &quot;$PWD&quot;:/backup alpine tar xzf /backup/watchover-data.tgz -C /data     # geri yükleme (konteyner durmuşken)</pre>
+<p><code>data/.vault.key</code> sırların anahtarıdır; yedek onsuz açılmaz. Başka bir sunucuya taşımak yedeği oraya açıp <code>docker compose up -d</code> demektir.</p>
+<h2>10. Sorun giderme</h2>
+<table><tr><th>Belirti</th><th>Çözüm</th></tr><tr><td><code>pull access denied</code></td><td><code>docker login ghcr.io</code>; depo özelse paket görünürlüğünü kontrol edin</td></tr><tr><td>Port çakışması</td><td><code>.env</code> içinde <code>WATCHOVER_UI_PORT</code> / <code>WATCHOVER_LIVE_PORT</code> değiştirin</td></tr><tr><td><code>unhealthy</code></td><td><code>docker compose logs --tail 100 dashboard</code>; bellek sınırı düşükse <code>WATCHOVER_MEMORY</code> artırın</td></tr><tr><td>Giriş yapılamıyor</td><td><code>docker compose exec dashboard python -m watchover.useradmin list</code> (ve <code>password EMAIL</code>, <code>unlock EMAIL</code>)</td></tr><tr><td>Yerel imaj ile denemek</td><td><code>make docker-build</code> sonra <code>.env</code> içinde <code>WATCHOVER_IMAGE=watchover WATCHOVER_TAG=local</code></td></tr></table><div class="foot">Watchover v1.4 · Bannercheck/Operation_Monitoring_tool · 2026-09-21</div></body></html>

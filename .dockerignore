@@ -1,6 +1,13 @@
-.venv/
-__pycache__/
-.pytest_cache/
+.git
+.venv
+__pycache__
+.pytest_cache
 *.db
-node_modules/
 data/
+demo/
+docs/
+prompts/
+tests/
+node_modules
+.env
+.streamlit/secrets.toml
