@@ -20,7 +20,7 @@ from email.message import EmailMessage
 from email.utils import formataddr
 
 UTC = timezone.utc
-CONDITIONS = ("slo", "errors", "metric", "agent_offline", "source_failing", "incident")
+CONDITIONS = ("slo", "errors", "metric", "agent_offline", "source_failing", "incident", "anomaly")
 SEVERITIES = ("critical", "high", "medium", "low")
 # SMS gateways. fields: which inputs the settings form shows; number: how the recipient number is written (e164 +90…, digits 90…, national 0…);
 # custom: the URL and body come from the provider's own integration document (operator corporate SMS contracts carry a per-customer endpoint);
@@ -289,6 +289,7 @@ def _html(title: str, body: str, severity: str) -> str:
 class AlertEngine:
     def __init__(self, notifier: Notifier, live, registry=None, sources=None, every: float = 60.0):
         self.n, self.live, self.registry, self.sources, self.every = notifier, live, registry, sources, every
+        self.anomalies = None                                   # AnomalyTracker, set by the app: rule condition "anomaly"
         self.stop = threading.Event()
         self.runs = 0
         self.last_run = ""
@@ -320,6 +321,10 @@ class AlertEngine:
                         limit = thr or scenario.METRIC_THRESHOLDS.get(b["metric"], 90)
                         if b["value"] >= limit:
                             fired.append(self.n.dispatch(rule, f"metric:{b['host']}:{b['metric']}", f"{b['host']} {b['metric']} {b['value']:.0f}% (limit {limit:.0f}%)", f"Host {b['host']} · {b['metric']} at {b['value']:.0f}% in the last 5 minutes."))
+                elif cond == "anomaly" and self.anomalies is not None:
+                    for a in self.anomalies.list("open"):
+                        if a["hits"] == 1 and float(a["score"]) >= (thr or 0):
+                            fired.append(self.n.dispatch(rule, f"anomaly:{a['key']}", f"Anomaly · {a['title']}", f"{a['detail']} · score {a['score']} · kind {a['kind']}"))
                 elif cond == "agent_offline" and self.registry is not None:
                     from datetime import datetime as _dt
                     for a in self.registry.list():

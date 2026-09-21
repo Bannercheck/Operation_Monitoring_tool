@@ -14,6 +14,7 @@ PERMISSIONS: dict[str, tuple[str, str, str]] = {   # key: (group, Turkish label,
     "act.sim": ("act", "Simülasyon modunu açıp kapatma", "Toggle simulation mode"), "act.connect": ("act", "Sunucu bağlama (ajan kaydı)", "Connect a server (enrol an agent)"),
     "act.report": ("act", "SLO raporu indirme", "Download SLO reports"), "act.export": ("act", "Log dosyası dışa aktarma", "Export log files"),
     "act.sources": ("act", "Kaynak ekleme ve düzenleme", "Add and edit sources"), "act.inventory": ("act", "Envanter düzenleme", "Edit the inventory"),
+    "act.anomaly": ("act", "Anomali takibi: adımlar, atama, kapatma", "Anomaly tracking: steps, assignment, closing"),
     "sys.status": ("sys", "Sistem › Durum", "System › Status"), "sys.maint": ("sys", "Sistem › Bakım", "System › Maintenance"), "sys.update": ("sys", "Sistem › Güncelleme ve sürüm geçmişi", "System › Update and version history"),
     "sys.auth": ("sys", "Sistem › Giriş sağlayıcıları", "System › Sign-in providers"),
     "sys.notify": ("sys", "Sistem › Bildirimler", "System › Alerts"), "sys.security": ("sys", "Sistem › Güvenlik günlüğü", "System › Security log"),
@@ -23,7 +24,7 @@ ALL = frozenset(PERMISSIONS)
 BUILTIN: dict[str, dict] = {
     "admin": {"label": ("Yönetici", "Administrator"), "desc": ("Her yetki; daraltılamaz.", "Every permission; cannot be narrowed."), "perms": set(ALL)},
     "operator": {"label": ("Operatör", "Operator"), "desc": ("Operasyon, veri, kaynak, envanter, playbook ve ITSM işleri; sistem yönetimi yok.", "Operations, data, sources, inventory, playbook and ITSM work; no system administration."),
-                 "perms": {k for k in ALL if k.startswith("page.") and k not in ("page.sys", "page.users")} | {"act.sim", "act.connect", "act.report", "act.export", "act.sources", "act.inventory"}},
+                 "perms": {k for k in ALL if k.startswith("page.") and k not in ("page.sys", "page.users")} | {"act.sim", "act.connect", "act.report", "act.export", "act.sources", "act.inventory", "act.anomaly"}},
     "viewer": {"label": ("İzleyici", "Viewer"), "desc": ("Yalnız izleme: operasyon, veri setleri, harita, playbook, ITSM ve README.", "Read-only: operations, datasets, map, playbook, ITSM and README."),
                "perms": {"page.ops", "page.data", "page.map", "page.pb", "page.itsm", "page.readme", "act.report"}},
 }

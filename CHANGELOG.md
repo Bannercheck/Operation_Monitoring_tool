@@ -2,6 +2,12 @@
 
 Numaralandırma: büyük sürüm **v1, v2** (ürün sahibinin kararı), küçük güncelleme **v1.1, v1.2** (her devreye alınan özellik adımı), düzeltme **v1.1.1**. Her sürüm `python -m watchover.release <major|minor|patch> "özet"` ile açılır; Sistem › Güncelleme sayfası bu dosyayı gösterir, anlık görüntüler sürüm numarasını taşır.
 
+## v1.7 · 2026-09-21 · güncelleme
+
+- Anomali takibi: her sunucu kendi normaline göre (hata sıçraması, log fırtınası, sessizlik, yeni örüntü, metrik), operasyonel adım listesiyle takip, aksiyon bağı, bildirim kuralı
+- Operasyon sayfasında Anomali takibi bölümü; act.anomaly yetkisi
+
+
 ## v1.6 · 2026-09-21 · güncelleme
 
 - Kurumsal Docker kurulumu tek komutla: ./watchover.sh install (imaj sunucuda kaynak koddan derlenir, GitHub gerekmez, .env rastgele sırlarla üretilir)

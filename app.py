@@ -35,6 +35,7 @@ from watchover.knowledge import Knowledge, RULE_KINDS
 from watchover.agents import AgentRegistry
 from watchover import settings as wo_settings
 from watchover import migrate as wo_migrate
+from watchover import anomaly as wo_anomaly
 from watchover import assistant as wo_assistant
 from watchover import sources as wo_sources
 from watchover import report as wo_report
@@ -632,10 +633,16 @@ def notifier() -> wo_notify.Notifier:
     return _singleton("notifier", wo_notify.Notifier, lambda: wo_notify.Notifier(knowledge(), notify_channels))
 
 
+def anomaly_tracker() -> wo_anomaly.AnomalyTracker:
+    """Compares the live feed with each host's own baseline every minute and keeps the anomalies with their operational steps."""
+    return _singleton("anomalies", wo_anomaly.AnomalyTracker, lambda: wo_anomaly.AnomalyTracker(knowledge(), live_store()).start())
+
+
 def alert_engine() -> wo_notify.AlertEngine:
     """Evaluates the alert rules against the live feed every minute (only when alerts are switched on)."""
     def make():
         eng = wo_notify.AlertEngine(notifier(), live_store(), agents(), sources())
+        eng.anomalies = anomaly_tracker()
         return eng.start() if st.session_state.get("alerts_on", True) else eng
     return _singleton("alert_engine", wo_notify.AlertEngine, make)
 
@@ -1899,6 +1906,86 @@ def tail_block(ls: LiveStore, n: int = 12, env: str | None = None, host: str | N
 
 
 # ------------------------------------------------------------------ page: Operations (home)
+
+def _anomaly_title(a: dict) -> str:
+    """The card title in the active language, built from the fields (the stored title is the engine's English)."""
+    k = a["kind"]
+    if k in ("errors", "rate"):
+        return t("an_t_" + k, host=a["host"], v=f"{a['observed']:.0f}", b=f"{a['baseline']:.0f}")
+    if k == "metric":
+        return t("an_t_metric", host=a["host"], metric=a["metric"], v=f"{a['observed']:.0f}", b=f"{a['baseline']:.0f}")
+    if k == "silence":
+        return t("an_t_silence", host=a["host"], v=f"{a['observed']:.0f}")
+    return t("an_t_pattern", sev=a["metric"] or "", v=f"{a['observed']:.0f}", tpl=a["key"].split(":", 1)[1][:90])
+
+
+def _anomaly_section(ls) -> None:
+    """Operations › Anomaly tracking: KPIs, filter, one card per anomaly with baseline vs observed, the step checklist, owner / note and status."""
+    tr = anomaly_tracker()
+    editable = can("act.anomaly")
+
+    @st.fragment
+    def _body() -> None:
+        stt = tr.stats()
+        h1, h2, h3 = st.columns([6, 1.4, 0.5])
+        h1.markdown(f"#### 🧭 {t('an_title')}")
+        h1.caption(t("an_sub"))
+        if h2.button(f"🔍 {t('an_scan_now')}", key="an-scan", **wide("button")):
+            tr.scan(); st.rerun()
+        with h3:
+            info_btn("an_info")
+        k = st.columns(4)
+        k[0].markdown(kpi2(stt["open"], t("an_open"), "🔴", "#f87171", " · ".join(f"{t('an_kind_' + kk)} {n}" for kk, n in stt["kinds"].items()) or "-"), unsafe_allow_html=True)
+        k[1].markdown(kpi2(stt["ack"], t("an_ack"), "🟡", "#fbbf24", ""), unsafe_allow_html=True)
+        k[2].markdown(kpi2(stt["resolved_today"], t("an_resolved_today"), "🟢", "#2dd4bf", f"{stt['resolved']} {t('an_st_resolved').lower()}"), unsafe_allow_html=True)
+        k[3].markdown(kpi2(stt["runs"], t("an_scans"), "⏱", "#a78bfa", f"{t('an_last_scan')} {(tr.last_run or '-')[11:19]}"), unsafe_allow_html=True)
+        f1, _ = st.columns([2, 5])
+        pick = f1.selectbox(t("an_status"), ["active", "open", "ack", "resolved", "ignored", "all"], format_func=lambda x: t("an_st_" + x), key="an-filter", label_visibility="collapsed")
+        rows = tr.list(None if pick == "all" else pick)
+        if not rows:
+            st.info(t("an_none")); return
+        icons = {"errors": "🔥", "rate": "🌊", "silence": "🔇", "pattern": "🆕", "metric": "📈"}
+        for a in rows[:60]:
+            aid = a["id"]
+            col = {"open": "#f87171", "ack": "#fbbf24", "resolved": "#2dd4bf", "ignored": "#64748b"}[a["status"]]
+            rec = f" · <span class='role r-viewer'>{t('an_recovered')}</span>" if a["cleared_at"] and a["status"] in ("open", "ack") else ""
+            link = f" · {t('an_linked', id=a['action_id'])}" if a["action_id"] else ""
+            owner = f" · 👤 {esc(a['owner'])}" if a["owner"] else ""
+            bl = f"{t('an_observed')} <b>{a['observed']:.0f}</b> · {t('an_baseline')} {a['baseline']:.0f}" if a["kind"] in ("errors", "rate", "metric") else f"{t('an_observed')} <b>{a['observed']:.0f}</b>"
+            title = _anomaly_title(a)
+            head = (f"<div class='card svc'><div class='svc-h'><span class='d' style='background:{col}'></span>{icons.get(a['kind'], '•')} <b>{esc(title)}</b>"
+                    f" · <span class='chip'>{t('an_kind_' + a['kind'])}</span> · {esc(a['env'])}{rec}{link}{owner}</div>"
+                    f"<div class='svc-v'>{bl} · {t('an_score')} {a['score']} · {t('an_hits')} {a['hits']} · {a['done']}/{len(a['steps'])} {t('an_steps').lower()}"
+                    f" · {t('an_first')} {esc(a['first_seen'][:16].replace('T', ' '))} · {t('an_last')} {esc(a['last_seen'][11:16])}</div></div>")
+            st.markdown(head, unsafe_allow_html=True)
+            with st.expander(f"{t('an_steps')} · {a['done']}/{len(a['steps'])}", expanded=a["status"] == "ack"):
+                st.caption(a["detail"])
+                if a["series"] and a["kind"] in ("errors", "rate", "metric"):
+                    st.line_chart(pd.DataFrame({t("an_series"): a["series"]}), height=120)
+                for s_ in a["steps"]:
+                    v = st.checkbox(t("an_step_" + s_["id"]) + (f"  · {s_['ts'][11:16]}" if s_["ts"] else ""), value=bool(s_["done"]), key=f"an-{aid}-{s_['id']}", disabled=not editable)
+                    if editable and v != bool(s_["done"]):
+                        tr.set_step(aid, s_["id"], v); st.rerun()
+                c1, c2 = st.columns([1, 2])
+                own = c1.text_input(t("an_owner"), value=a["owner"], key=f"an-own-{aid}", disabled=not editable)
+                note = c2.text_input(t("an_note"), value=a["note"], key=f"an-note-{aid}", disabled=not editable)
+                b = st.columns(5)
+                if editable and b[0].button(t("an_save"), key=f"an-save-{aid}", **wide("button")):
+                    tr.set_status(aid, a["status"], owner=own, note=note); st.toast(t("sys_done"), icon="✅"); st.rerun()
+                if editable and a["status"] == "open" and b[1].button(t("an_btn_ack"), key=f"an-ack-{aid}", **wide("button")):
+                    tr.set_status(aid, "ack", owner=own or st.session_state.get("user", {}).get("name", ""), note=note); st.rerun()
+                if editable and a["status"] in ("open", "ack") and b[2].button(t("an_btn_resolve"), key=f"an-res-{aid}", type="primary", **wide("button")):
+                    tr.set_step(aid, "close", True); tr.set_status(aid, "resolved", owner=own, note=note); st.rerun()
+                if editable and a["status"] in ("open", "ack") and b[3].button(t("an_btn_ignore"), key=f"an-ign-{aid}", **wide("button")):
+                    tr.set_status(aid, "ignored", owner=own, note=note); st.rerun()
+                if editable and a["status"] in ("resolved", "ignored") and b[3].button(t("an_btn_reopen"), key=f"an-re-{aid}", **wide("button")):
+                    tr.set_status(aid, "open", owner=own, note=note); st.rerun()
+                if editable and not a["action_id"] and a["status"] in ("open", "ack") and b[4].button(t("an_btn_action"), key=f"an-act-{aid}", **wide("button")):
+                    act = store().create(f"ANOM-{aid}", a["title"][:120], "P1" if a["score"] >= 8 else "P2", own, recommendation=a["detail"][:400], evidence=a["key"])
+                    tr.attach_action(aid, act["id"]); st.toast(t("an_action_created", id=act["id"]), icon="✅"); st.rerun()
+    _body()
+
+
 def page_ops() -> None:
     ls = live_store()
     _k = st.session_state.pop("open_ops_detail", None)          # popped before the fragment: the fragment only asks for a full rerun
@@ -1974,6 +2061,7 @@ def page_ops() -> None:
                 ops_detail_panel(_k, ls, _env, _host, ls.metric_stats(15, _env, _host), ls.stats(15, _env, _host), ls.slo(15, _env, _host))
             _body()
         _ops_dialog()
+    _anomaly_section(ls)
     b1, b2, _ = st.columns([1, 1, 4])
     if b1.button(t("live_analyze"), key="ops_an", **wide("button")) and ls.received:
         name, data = ls.to_dataset()

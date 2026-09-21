@@ -12,7 +12,7 @@ table{border-collapse:collapse;width:100%;margin:6px 0;font-size:10.5pt}
 td,th{border:1px solid #cbd5e1;padding:6px 8px;text-align:left;vertical-align:top}
 th{background:#f8fafc}
 .foot{margin-top:26px;font-size:9pt;color:#64748b;border-top:1px solid #e2e8f0;padding-top:6px}
-</style></head><body><h1>Watchover</h1><div class="sub">KURUMSAL DOCKER KURULUM REHBERİ · v1.6 · tek sunucu, kaynak koddan derleme</div>
+</style></head><body><h1>Watchover</h1><div class="sub">KURUMSAL DOCKER KURULUM REHBERİ · v1.7 · tek sunucu, kaynak koddan derleme</div>
 <p>Watchover şirket içindeki <strong>tek bir sunucuda, tamamen Docker'da</strong> çalışır. Kurulum paketi bu klasördür (<code>watchover.zip</code>): imaj sunucuda kaynak koddan derlenir; GitHub, imaj kaydı ya da sunucuda Python gerekmez. Üç konteyner vardır: <strong>dashboard</strong> (arayüz 8501, canlı alıcı 8600, konteynerin kendini izleyen ajanı), <strong>postgres</strong> (ürün veritabanı, PostgreSQL 16) ve isteğe bağlı <strong>mcp</strong> (kendi MCP sunucumuz, 8765). Kod imajın içindedir; ayarlar, sırlar, anlık görüntüler ve loglar <code>watchover-data</code> biriminde, veritabanı <code>watchover-pg</code> biriminde durur. Güncelleme, yeni paketi klasörün üstüne açıp <code>./watchover.sh update</code> demektir; birimlere dokunulmaz.</p>
 <h2>1. Sunucu gereksinimleri</h2>
 <p>Sunucuya kurulacak <strong>tek bağımlılık Docker'dır</strong> (Engine 24+ ve Compose v2). Python, pip, PostgreSQL ana makineye kurulmaz; hepsi imajların içindedir.</p>
@@ -186,6 +186,7 @@ unzip -q watchover.zip &amp;&amp; mv hackathon watchover &amp;&amp; cd watchover
 <li><strong>Kaynaklar (pull):</strong> Elasticsearch / OpenSearch, Grafana Loki, Splunk, Graylog ve HTTP/JSON uçlarından belirli aralıklarla çekim; Bağlantı ayarları › Kaynaklar sekmesinden adres, kimlik ve sorgu girilir, sırlar veritabanında şifreli tutulur.</li>
 <li><strong>Dosya yükleme:</strong> Datasets sayfasından ZIP / log / CSV / SAP arşivleri (çoklu dosya, arka planda, ilerleme yüzdesiyle).</li>
 </ol>
+<p>Ajanlar ve kaynaklar veri göndermeye başladıktan yaklaşık yarım saat sonra Operasyon sayfasının altındaki <strong>Anomali takibi</strong> çalışır: her sunucu kendi normaline göre izlenir (hata sıçraması, log fırtınası, sessizlik, yeni örüntü, metrik) ve her anomali operasyonel adım listesiyle takip edilir; Sistem › Bildirimler'deki <em>Yeni anomali açıldı</em> kuralı e-posta / SMS gönderir.</p>
 <p>Konteynerin kendi ajanı Watchover sunucusunun konteynerini raporlar; ana makinenin kendisini izlemek için ona da normal bir ajan kurun ve <code>WATCHOVER_SELFMON=0</code> yapın. Uyarılar (e-posta / SMS) Sistem › Bildirimler'den, roller Users sayfasından ayarlanır.</p>
 <h2>6. PostgreSQL: ürün veritabanı</h2>
 <p>Kullanıcılar, roller, bilgi tabanı, kurallar, aksiyonlar, playbook, ajanlar, kaynaklar, envanter, bildirimler ve SLO rollup'ları <strong>tek PostgreSQL veritabanında</strong> tutulur; <code>postgres</code> konteyneri dashboard'un yanında çalışır, ayrıca bir şey gerekmez.</p>
