@@ -116,7 +116,7 @@ def test_ops_page_shows_anomaly_section(tmp_path, monkeypatch):
     assert not at.exception
     at.sidebar.radio(key="page").set_value("ops").run()
     assert not at.exception
-    assert any("web-09: 5 dk'da 80 ERROR+" in m.value for m in at.markdown)
+    assert any("web-09" in m.value and "80 ERROR+" in m.value for m in at.markdown)   # TR or EN title
     assert any(c.key == f"an-{a['id']}-verify" for c in at.checkbox) and any(b.key == f"an-act-{a['id']}" for b in at.button)
     at.checkbox(key=f"an-{a['id']}-verify").check().run()
     assert not at.exception
