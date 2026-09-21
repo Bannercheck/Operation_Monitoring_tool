@@ -312,3 +312,17 @@ def test_restored_features_api(client):
     up = client.post("/api/knowledge/docs/upload", files=[("file", ("runbook.md", b"# Pool\n\nRestart the pool when 90% used.", "text/markdown"))], headers=h)
     assert up.status_code == 201 and up.json()["ids"]
     assert client.post("/api/datasets/fetch", json={"kind": "http", "url": "http://127.0.0.1:1/x"}, headers=h).status_code == 400
+
+
+def test_sources_draft_test_and_dataset_from_source(client):
+    """Pull sources: a draft can be tested without saving, a saved source can be pulled into a dataset; unreachable hosts are reported, not 500s."""
+    h = token(client)
+    draft = {"name": "es-test", "kind": "elasticsearch", "url": "http://127.0.0.1:9", "selector": "logs-*", "auth": "none", "lookback_min": 5}
+    r = client.post("/api/sources/test", json=draft, headers=h)
+    assert r.status_code == 200 and r.json()["ok"] is False and r.json()["sample"] == []
+    assert client.get("/api/sources/kinds", headers=h).json()["loki"]["label"] == "Grafana Loki"
+    sid = client.post("/api/sources", json=draft, headers=h).json()["id"]
+    r = client.post("/api/datasets/from-source", json={"id": sid, "minutes": 30}, headers=h)
+    assert r.status_code == 400 and "fetch failed" in r.json()["detail"]
+    assert client.post("/api/datasets/from-source", json={"id": 999999}, headers=h).status_code == 404
+    client.delete(f"/api/sources/{sid}", headers=h)

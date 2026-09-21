@@ -10,19 +10,20 @@
 @media (prefers-color-scheme: light) { :root[data-theme="system"] { --light: 1; } }
 :root[data-theme="light"], :root[data-theme="system"][style*="--light"] { }
 .light {
-  --bg: #eef2f7; --bg2: #ffffff; --glass: rgba(255, 255, 255, 0.72); --glass2: rgba(255, 255, 255, 0.85); --line: rgba(15, 23, 42, 0.1); --line2: rgba(15, 23, 42, 0.2);
-  --fg: #0f172a; --muted: #475569; --dim: #64748b; --accent: #0d9488; --accent2: #2563eb; --violet: #7c3aed; --amber: #d97706; --red: #dc2626; --green: #059669; --shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+  /* soft light: warm off-white surfaces instead of pure white, slate text instead of near-black, so long sessions do not strain the eyes */
+  --bg: #e6eaf0; --bg2: #f4f6fa; --glass: rgba(247, 249, 252, 0.72); --glass2: rgba(247, 249, 252, 0.86); --line: rgba(30, 41, 59, 0.1); --line2: rgba(30, 41, 59, 0.2);
+  --fg: #1e293b; --muted: #526078; --dim: #6b7a90; --accent: #0f9488; --accent2: #2f68d8; --violet: #7a5ae6; --amber: #c7710a; --red: #d13c3c; --green: #0f9a6e; --shadow: 0 10px 30px rgba(30, 41, 59, 0.07);
 }
-.light body, body.light { background: radial-gradient(1200px 800px at 15% -10%, #dbeafe 0%, transparent 60%), radial-gradient(900px 600px at 100% 100%, #ccfbf1 0%, transparent 55%), var(--bg); }
-.light .side { background: linear-gradient(180deg, rgba(255, 255, 255, 0.85), rgba(241, 245, 249, 0.9)); }
+.light body, body.light { background: radial-gradient(1200px 800px at 15% -10%, #d6e2f3 0%, transparent 60%), radial-gradient(900px 600px at 100% 100%, #cfeee8 0%, transparent 55%), var(--bg); }
+.light .side { background: linear-gradient(180deg, rgba(247, 249, 252, 0.85), rgba(236, 240, 246, 0.9)); }
 .light .side .brand b { color: #0369a1; } .light .side .tile { background: rgba(15, 23, 42, 0.03); } .light .side .tile:hover { background: rgba(15, 23, 42, 0.06); }
 .light .side .tile.active { background: linear-gradient(90deg, rgba(13, 148, 136, 0.16), rgba(37, 99, 235, 0.08)); }
-.light .input, .light select.input, .light textarea.input { background: rgba(255, 255, 255, 0.9); }
+.light .input, .light select.input, .light textarea.input { background: rgba(250, 251, 253, 0.92); }
 .light .btn { background: rgba(15, 23, 42, 0.04); } .light .btn:hover { background: rgba(15, 23, 42, 0.08); } .light .btn.primary { color: #ffffff; } .light .tabs button.on { color: #ffffff; } .light .langs button.on { color: #ffffff; }
-.light .chip { background: rgba(15, 23, 42, 0.04); } .light pre.code { background: #f1f5f9; color: #0f172a; } .light .modal { background: #ffffff; } .light .modal-bg { background: rgba(15, 23, 42, 0.35); }
+.light .chip { background: rgba(15, 23, 42, 0.04); } .light pre.code { background: #eaeef4; color: #1e293b; } .light .modal { background: #f6f8fb; } .light .modal-bg { background: rgba(15, 23, 42, 0.35); }
 .light .badge { background: rgba(15, 23, 42, 0.08); color: #334155; } .light .badge.red { background: rgba(220, 38, 38, 0.12); color: #b91c1c; } .light .badge.amber { background: rgba(217, 119, 6, 0.14); color: #b45309; } .light .badge.green { background: rgba(5, 150, 105, 0.12); color: #047857; } .light .badge.blue { background: rgba(37, 99, 235, 0.12); color: #1d4ed8; } .light .badge.violet { background: rgba(124, 58, 237, 0.12); color: #6d28d9; }
-.light .err { background: rgba(220, 38, 38, 0.08); color: #991b1b; } .light .ok { background: rgba(5, 150, 105, 0.1); color: #065f46; } .light .login { background: rgba(255, 255, 255, 0.8); } .light .side .user .av { color: #ffffff; }
-.light .kpi .v { color: #0f172a; } .light .table tr:hover td { background: rgba(15, 23, 42, 0.03); } .light .empty { color: #64748b; } .light .collapse { background: #ffffff; }
+.light .err { background: rgba(220, 38, 38, 0.08); color: #991b1b; } .light .ok { background: rgba(5, 150, 105, 0.1); color: #065f46; } .light .login { background: rgba(247, 249, 252, 0.85); } .light .side .user .av { color: #ffffff; }
+.light .kpi .v { color: #1e293b; } .light .table tr:hover td { background: rgba(15, 23, 42, 0.03); } .light .empty { color: #64748b; } .light .collapse { background: #f4f6fa; }
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
 body { background: radial-gradient(1200px 800px at 15% -10%, #12305a 0%, transparent 60%), radial-gradient(900px 600px at 100% 100%, #0f2e3d 0%, transparent 55%), var(--bg); color: var(--fg); font-family: var(--font); font-size: 14px; line-height: 1.45; }
@@ -104,3 +105,9 @@ pre.code { background: #0b1220; border: 1px solid var(--line); border-radius: 10
 .spark { display: block; width: 100%; height: 60px; }
 
 .readme h2, .readme h3, .readme h4 { margin: 18px 0 6px; text-transform: none; letter-spacing: 0; color: var(--fg); } .readme h2 { font-size: 20px; } .readme h3 { font-size: 16px; } .readme h4 { font-size: 14px; } .readme p, .readme li { font-size: 13.5px; } .readme code { font-family: var(--mono); font-size: 12px; background: rgba(255,255,255,0.06); padding: 1px 5px; border-radius: 5px; } .readme .table td, .readme .table th { font-size: 12px; }
+
+/* pull-source catalogue cards */
+.card.cat { padding: 12px 14px; min-height: 170px; } .cat-t { font-weight: 700; margin-bottom: 6px; } .cat-b { font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.4; } .cat-b b { color: var(--fg); }
+.kinds { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; } .kinds button { text-align: left; padding: 10px 12px; border-radius: var(--radius-s); border: 1px solid var(--line); background: var(--glass); color: var(--fg); cursor: pointer; }
+.kinds button.on { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(45, 212, 191, 0.18); } .kinds button .kt { font-weight: 700; } .kinds button .kd { font-size: 11px; color: var(--muted); margin-top: 2px; }
+@media (max-width: 760px) { .kinds { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

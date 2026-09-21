@@ -69,6 +69,13 @@ def add(body: SourceIn, user=Depends(require("act.sources")), svc=Depends(servic
     return _row(svc.sources.add(wo_sources.Source(id=None, **body.model_dump())))
 
 
+@router.post("/test")
+def test_draft(body: SourceIn, user=Depends(require("act.sources"))):
+    """Try a not-yet-saved definition once over its lookback window; nothing is stored."""
+    ok, msg, rows = wo_sources.test_source(wo_sources.Source(id=None, **body.model_dump()))
+    return {"ok": ok, "message": msg, "sample": rows[:5]}
+
+
 @router.get("/{sid}")
 def get(sid: int, user=Depends(require("page.src")), svc=Depends(services)):
     s = svc.sources.get(sid)

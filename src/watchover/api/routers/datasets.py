@@ -94,6 +94,31 @@ def fetch_remote(body: FetchIn, user=Depends(require("page.data")), svc=Depends(
     return svc.datasets.submit(name, data)
 
 
+class FromSourceIn(BaseModel):
+    id: int
+    minutes: int = 60              # window before now
+    limit: int = 20000
+
+
+@router.post("/from-source", status_code=202)
+def from_source(body: FromSourceIn, user=Depends(require("page.data")), svc=Depends(services)):
+    """Pull a window from a saved pull source (Elasticsearch, Loki, Splunk, Graylog, HTTP) and load it as a dataset."""
+    from datetime import datetime, timedelta, timezone
+    from ... import sources as wo_src
+    src = svc.sources.get(body.id)
+    if not src:
+        raise KeyError(body.id)
+    since = datetime.now(timezone.utc) - timedelta(minutes=max(1, min(body.minutes, 7 * 1440)))
+    try:
+        rows, _cursor = wo_src.fetch(src, since=since, limit=max(1, min(body.limit, 200000)))
+    except Exception as e:  # noqa: BLE001 - remote errors are reported to the caller, not logged as server faults
+        raise ValueError(f"fetch failed: {type(e).__name__}: {str(e)[:200]}")
+    if not rows:
+        raise ValueError("the source returned no records for that window")
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M")
+    return svc.datasets.submit(f"{src.name}-{stamp}.jsonl", wo_src.to_jsonl(rows, src.env))
+
+
 @router.post("/mcp-tools")
 def list_mcp_tools(body: FetchIn, user=Depends(require("page.data"))):
     try:

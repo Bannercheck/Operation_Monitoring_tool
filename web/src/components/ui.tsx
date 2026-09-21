@@ -27,7 +27,7 @@ export function Confirm({ children, onConfirm, kind = "danger", sm = true }: { c
   return ask ? <Btn kind={kind} sm={sm} onClick={() => { setAsk(false); onConfirm(); }}>{t("confirm")} · {t("yes")}</Btn> : <Btn kind={kind} sm={sm} onClick={() => setAsk(true)}>{children}</Btn>;
 }
 
-export const Field = ({ label, children }: { label: string; children: ReactNode }) => <div className="field"><label>{label}</label>{children}</div>;
+export const Field = ({ label, children, hint }: { label: string; children: ReactNode; hint?: string }) => <div className="field"><label>{label}</label>{children}{hint && <span className="dim small">{hint}</span>}</div>;
 
 export function Modal({ title, onClose, children, wide }: { title: ReactNode; onClose: () => void; children: ReactNode; wide?: boolean }) {
   useEffect(() => { const h = (e: KeyboardEvent) => e.key === "Escape" && onClose(); window.addEventListener("keydown", h); return () => window.removeEventListener("keydown", h); }, [onClose]);

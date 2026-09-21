@@ -10,6 +10,7 @@ import DatasetDetail from "./pages/DatasetDetail";
 import Actions from "./pages/Actions";
 import Playbook from "./pages/Playbook";
 import Connections from "./pages/Connections";
+import SourcesPage from "./pages/Sources";
 import Knowledge from "./pages/Knowledge";
 import Notify from "./pages/Notify";
 import Users from "./pages/Users";
@@ -41,6 +42,7 @@ export default function App() {
         <Route path="/actions" element={<Actions />} />
         <Route path="/playbook" element={<Playbook />} />
         <Route path="/connections" element={<Connections />} />
+        <Route path="/sources" element={<SourcesPage />} />
         <Route path="/knowledge" element={<Knowledge />} />
         <Route path="/alerts" element={<Notify />} />
         <Route path="/users" element={<Users />} />

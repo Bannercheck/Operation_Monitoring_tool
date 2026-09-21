@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import { SourcesPanel } from "./Sources";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, del, get, patch, post, put } from "../api";
 import { useAuth } from "../auth";
@@ -8,10 +10,10 @@ import { Badge, Btn, Card, Confirm, Empty, Err, Field, Modal, Table, Tabs, fmtTs
 type Tab = "agents" | "sources" | "inventory" | "discovered";
 
 export default function Connections() {
-  const { t } = useT(); const [tab, setTab] = useState<Tab>("agents");
+  const { t } = useT(); const [sp] = useSearchParams(); const [tab, setTab] = useState<Tab>((sp.get("tab") as Tab) || "agents");
   return <div className="stack"><h2>🔌 {t("nav_conn")}</h2>
     <Tabs value={tab} onChange={setTab} tabs={[{ k: "agents", label: t("conn_agents") }, { k: "sources", label: t("conn_sources") }, { k: "inventory", label: t("conn_inv") }, { k: "discovered", label: t("conn_discovered") }]} />
-    {tab === "agents" && <Agents />}{tab === "sources" && <Sources />}{tab === "inventory" && <Inventory />}{tab === "discovered" && <Discovered />}</div>;
+    {tab === "agents" && <Agents />}{tab === "sources" && <SourcesPanel />}{tab === "inventory" && <Inventory />}{tab === "discovered" && <Discovered />}</div>;
 }
 
 function Agents() {
@@ -36,38 +38,6 @@ function Agents() {
     {tok && <Modal title={t("agent_enroll")} onClose={() => setTok(null)}><p className="muted">{t("agent_token_once")}</p><pre className="code">{tok.token}</pre>
       <div className="small muted">{t("agent_install")}</div><pre className="code">{`curl -fsSL http://${host}:8600/agent/install.sh | sudo bash -s -- --url http://${host}:8600/ingest --token ${tok.token} --env ${env}`}</pre></Modal>}
   </div>;
-}
-
-function Sources() {
-  const { t } = useT(); const { can } = useAuth(); const qc = useQueryClient(); const [add, setAdd] = useState(false); const [msg, setMsg] = useState<any>(null);
-  const list = useQuery({ queryKey: ["sources"], queryFn: () => get("/sources"), refetchInterval: 15000 });
-  const kinds = useQuery({ queryKey: ["source-kinds"], queryFn: () => get("/sources/kinds") });
-  const inv = () => qc.invalidateQueries({ queryKey: ["sources"] });
-  const op = useMutation({ mutationFn: (p: { id: number; op: string; body?: any }) => (p.op === "delete" ? del(`/sources/${p.id}`) : p.op === "patch" ? patch(`/sources/${p.id}`, p.body) : post(`/sources/${p.id}/${p.op}`)), onSuccess: (r: any, p) => { if (p.op === "test" || p.op === "poll") setMsg(r); inv(); } });
-  const editable = can("act.sources");
-  return <div className="stack">
-    {editable && <div className="row"><Btn kind="primary" onClick={() => setAdd(true)}>{t("src_add")}</Btn></div>}
-    {msg && <div className={msg.ok === false ? "err" : "ok"}>{msg.message ?? `${msg.events} ${t("ds_events")}`}</div>}
-    <Card><Table cols={[{ k: "name", label: t("name"), render: (r) => <b>{r.name}</b> }, { k: "kind", label: t("src_kind"), render: (r) => kinds.data?.[r.kind]?.label ?? r.kind }, { k: "url", label: t("src_url"), render: (r) => <span className="mono">{r.url}</span> },
-      { k: "enabled", label: t("src_enabled"), render: (r) => <input type="checkbox" checked={!!r.enabled} disabled={!editable} onChange={(e) => op.mutate({ id: r.id, op: "patch", body: { enabled: e.target.checked } })} /> },
-      { k: "last_ok", label: t("status"), render: (r) => r.last_err ? <span className="badge red">{r.last_err.slice(0, 60)}</span> : <span className="muted small">{fmtTs(r.last_ok)} · {r.events} ev · {r.polls} polls</span> },
-      { k: "x", label: "", render: (r) => editable ? <div className="row"><Btn sm onClick={() => op.mutate({ id: r.id, op: "test" })}>{t("src_test")}</Btn><Btn sm onClick={() => op.mutate({ id: r.id, op: "poll" })}>{t("src_poll")}</Btn><Confirm onConfirm={() => op.mutate({ id: r.id, op: "delete" })}>{t("delete")}</Confirm></div> : null }]} rows={list.data ?? []} /></Card>
-    <Err e={op.error} />
-    {add && <NewSource kinds={kinds.data ?? {}} onClose={() => { setAdd(false); inv(); }} />}
-  </div>;
-}
-
-function NewSource({ kinds, onClose }: { kinds: Record<string, any>; onClose: () => void }) {
-  const { t } = useT(); const [f, setF] = useState<any>({ name: "", kind: "elasticsearch", url: "", selector: "", auth: "none", user: "", secret: "", interval: 30, env: "prod", verify_tls: true }); const [err, setErr] = useState<any>(null);
-  const k = kinds[f.kind] ?? {}; const set = (key: string) => (e: any) => setF({ ...f, [key]: e.target.type === "checkbox" ? e.target.checked : e.target.value });
-  const submit = async (e: React.FormEvent) => { e.preventDefault(); try { await post("/sources", { ...f, interval: Number(f.interval) }); onClose(); } catch (x) { setErr(x); } };
-  return <Modal title={t("src_add")} onClose={onClose}><form className="stack" onSubmit={submit}>
-    <div className="grid k2"><Field label={t("name")}><input className="input" value={f.name} onChange={set("name")} required /></Field><Field label={t("src_kind")}><select className="input" value={f.kind} onChange={set("kind")}>{Object.entries(kinds).map(([key, v]: any) => <option key={key} value={key}>{v.label}</option>)}</select></Field></div>
-    <Field label={t("src_url")}><input className="input" value={f.url} onChange={set("url")} placeholder={k.port ? `https://host:${k.port}` : ""} required /></Field>
-    <Field label={`${t("src_selector")} ${k.selector ? `· ${k.selector}` : ""}`}><input className="input" value={f.selector} onChange={set("selector")} placeholder={k.selector_ex ?? ""} /></Field>
-    <div className="grid k3"><Field label={t("src_auth")}><select className="input" value={f.auth} onChange={set("auth")}>{(k.auth ?? ["none", "basic", "bearer"]).map((a: string) => <option key={a}>{a}</option>)}</select></Field><Field label={t("src_user")}><input className="input" value={f.user} onChange={set("user")} /></Field><Field label={t("src_secret")}><input className="input" type="password" value={f.secret} onChange={set("secret")} /></Field></div>
-    <div className="grid k3"><Field label={t("src_interval")}><input className="input" type="number" value={f.interval} onChange={set("interval")} /></Field><Field label={t("env")}><input className="input" value={f.env} onChange={set("env")} /></Field><label className="check" style={{ marginTop: 22 }}><input type="checkbox" checked={f.verify_tls} onChange={set("verify_tls")} /> TLS verify</label></div>
-    <Err e={err} /><div className="row"><Btn kind="primary" type="submit">{t("save")}</Btn></div></form></Modal>;
 }
 
 function Inventory() {
