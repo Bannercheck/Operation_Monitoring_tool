@@ -26,6 +26,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+import ssl
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -80,8 +81,13 @@ class Sender:
 
     PERMANENT = {400, 404, 405, 413, 415, 422}                  # the receiver will never accept this exact batch: drop it
 
-    def __init__(self, url: str, key: str | None, agent: str, spool: str | None = None, timeout: int = 15):
+    def __init__(self, url: str, key: str | None, agent: str, spool: str | None = None, timeout: int = 15, ca: str | None = None, insecure: bool = False):
         self.url, self.key, self.agent, self.timeout = url, key, agent, timeout
+        self.ctx = None                                        # TLS: system store by default; --ca adds the company / Caddy root; --insecure skips checks
+        if url.lower().startswith("https"):
+            self.ctx = ssl.create_default_context(cafile=ca) if ca else ssl.create_default_context()
+            if insecure:
+                self.ctx.check_hostname = False; self.ctx.verify_mode = ssl.CERT_NONE
         self.spool = Path(spool) if spool else None
         self._lock = threading.Lock()
         if self.spool:
@@ -97,7 +103,7 @@ class Sender:
         if self.key:
             headers["Authorization"] = f"Bearer {self.key}"
         req = urllib.request.Request(self.url, data=data, headers=headers, method="POST")
-        with urllib.request.urlopen(req, timeout=self.timeout) as r:
+        with urllib.request.urlopen(req, timeout=self.timeout, context=self.ctx) as r:
             return json.loads(r.read() or b"{}")
 
     def send(self, data: bytes, name: str) -> dict | None:
@@ -397,6 +403,8 @@ def main(argv=None) -> int:
     ap.add_argument("--url", default=os.environ.get("WATCHOVER_URL", "http://localhost:8600/ingest"), help="receiver URL (…/ingest); env WATCHOVER_URL")
     ap.add_argument("--key", "--token", dest="key", default=os.environ.get("WATCHOVER_TOKEN"), help="this agent's token (Connection settings › Agents) or the legacy shared key; env WATCHOVER_TOKEN")
     ap.add_argument("--agent", default=os.environ.get("WATCHOVER_AGENT") or socket.gethostname(), help="name sent as X-Agent (a registered token overrides it)")
+    ap.add_argument("--ca", default=os.environ.get("WATCHOVER_CA"), help="CA certificate (PEM) to trust for an https receiver, e.g. the Watchover edge root; env WATCHOVER_CA")
+    ap.add_argument("--insecure", action="store_true", help="skip TLS certificate checks (testing only)")
     ap.add_argument("--env", default=os.environ.get("AGENT_ENV", ""), help="environment tag for this host (a registered token overrides it)")
     ap.add_argument("--tail", action="append", default=[], help="follow a log file or glob; repeatable (env WATCHOVER_LOGS, comma separated)")
     ap.add_argument("--auto", action="store_true", help="discover the applications on this host (SAP, Oracle, EBS, Java servers, web, databases, containers, Kubernetes, system) and follow their logs; env WATCHOVER_LOGS=auto")
@@ -437,7 +445,7 @@ def main(argv=None) -> int:
             args.journal = True
     if os.environ.get("WATCHOVER_METRICS", "").lower() in ("1", "true", "yes"):
         args.metrics = True
-    sender = Sender(args.url, args.key, args.agent, args.spool or None)
+    sender = Sender(args.url, args.key, args.agent, args.spool or None, ca=args.ca, insecure=args.insecure)
     if args.test:
         out = hello(sender, args.env)
         if out is None:

@@ -3,6 +3,7 @@
 #   update:   copy the new source tree over this folder, then  ./watchover.sh update
 #   mcp:      ./watchover.sh mcp on                          (our MCP server; MCP_API_KEY in .env; datasets in ./datasets)
 #   legacy:   ./watchover.sh legacy on                       (the former Streamlit interface on :8502, same database; to be removed)
+#   edge:     ./watchover.sh edge on <host>                  (Caddy: https://<host> for the company network, TLS from its own CA or ./certs)
 #   external PostgreSQL: DATABASE_URL in .env and  docker compose up -d --no-deps dashboard
 #   plain compose works too:  docker compose build && docker compose up -d
 name: watchover
@@ -107,6 +108,32 @@ services:
       resources:
         limits: { cpus: "2", memory: 2g }
 
+  edge:
+    profiles: [edge]
+    image: caddy:2-alpine
+    container_name: watchover-edge
+    restart: unless-stopped
+    ports:
+      - "${WATCHOVER_EDGE_HTTPS_PORT:-443}:${WATCHOVER_EDGE_HTTPS_PORT:-443}"   # the only ports colleagues reach; UI / API and /ingest go through here
+      - "${WATCHOVER_EDGE_HTTP_PORT:-80}:${WATCHOVER_EDGE_HTTP_PORT:-80}"       # redirect to https
+    environment:
+      WATCHOVER_EDGE_HOST: ${WATCHOVER_EDGE_HOST:-localhost}
+      WATCHOVER_EDGE_TLS: ${WATCHOVER_EDGE_TLS:-internal}
+      WATCHOVER_EDGE_HTTPS_PORT: ${WATCHOVER_EDGE_HTTPS_PORT:-443}
+      WATCHOVER_EDGE_HTTP_PORT: ${WATCHOVER_EDGE_HTTP_PORT:-80}
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./certs:/certs:ro                           # company certificate (optional): watchover.crt + watchover.key
+      - watchover-edge:/data                        # Caddy's own CA and issued certificates
+    depends_on:
+      - dashboard
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+    deploy:
+      resources:
+        limits: { cpus: "1", memory: 256m }
+
   postgres:
     image: postgres:16-alpine
     container_name: watchover-postgres
@@ -138,3 +165,4 @@ services:
 volumes:
   watchover-data:
   watchover-pg:
+  watchover-edge:

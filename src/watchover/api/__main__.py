@@ -10,7 +10,8 @@ def main(argv=None) -> int:
     ap.add_argument("--port", type=int, default=8000)
     ap.add_argument("--reload", action="store_true")
     a = ap.parse_args(argv)
-    uvicorn.run("watchover.api:app", host=a.host, port=a.port, reload=a.reload, log_level="info")
+    # behind the edge container (Caddy) X-Forwarded-For / -Proto carry the real client; ./watchover.sh edge on binds the plain port to localhost
+    uvicorn.run("watchover.api:app", host=a.host, port=a.port, reload=a.reload, log_level="info", proxy_headers=True, forwarded_allow_ips="*")
     return 0
 
 

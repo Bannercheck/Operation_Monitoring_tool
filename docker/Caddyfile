@@ -1,0 +1,36 @@
+# Watchover edge: TLS termination and reverse proxy in front of the dashboard container (./watchover.sh edge on <host>).
+# Variables come from .env through docker-compose: WATCHOVER_EDGE_HOST (name or IP colleagues will type),
+# WATCHOVER_EDGE_TLS ("internal" = Caddy's own CA, export its root with  ./watchover.sh edge cert;
+# or "/certs/watchover.crt /certs/watchover.key" for a company certificate placed in ./certs).
+{
+	admin off
+	https_port {$WATCHOVER_EDGE_HTTPS_PORT:443}
+	http_port {$WATCHOVER_EDGE_HTTP_PORT:80}
+}
+
+{$WATCHOVER_EDGE_HOST} {
+	tls {$WATCHOVER_EDGE_TLS:internal}
+	encode gzip
+	request_body {
+		max_size 512MB
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+	# agents and pull sources: https://<host>/ingest goes to the receiver
+	handle /ingest* {
+		reverse_proxy watchover:8600
+	}
+	# interface and API
+	handle {
+		reverse_proxy watchover:8501
+	}
+	log {
+		output stdout
+		format console
+	}
+}

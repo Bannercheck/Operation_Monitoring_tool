@@ -62,3 +62,20 @@ def test_usage_and_missing_docker(stage):
     env["PATH"] = "/nonexistent"
     r = subprocess.run([shutil.which("bash"), str(d / "watchover.sh"), "install"], cwd=d, env=env, capture_output=True, text=True)
     assert r.returncode == 1 and "Docker is not installed" in r.stderr
+
+
+def test_edge_on_off(stage):
+    """edge on <host>: Caddy profile, host in .env, plain UI port bound to localhost; edge off restores it."""
+    d, _ = stage
+    run(stage, "install")
+    r = run(stage, "edge", "on", "watchover.sirket.local")
+    assert r.returncode == 0, r.stderr
+    env = (d / ".env").read_text()
+    assert "WATCHOVER_EDGE=1" in env and "WATCHOVER_EDGE_HOST=watchover.sirket.local" in env and "WATCHOVER_EDGE_TLS=internal" in env
+    assert "WATCHOVER_UI_PORT=127.0.0.1:8501" in env and "https://watchover.sirket.local" in r.stdout and "--profile edge up -d" in (d / "calls.log").read_text()
+    assert (d / "certs").is_dir()
+    r = run(stage, "edge", "off")
+    env = (d / ".env").read_text()
+    assert r.returncode == 0 and "WATCHOVER_EDGE=0" in env and "WATCHOVER_UI_PORT=8501" in env
+    r = run(stage, "edge")
+    assert r.returncode == 1 and "usage" in r.stderr

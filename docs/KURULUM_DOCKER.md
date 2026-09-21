@@ -153,18 +153,35 @@ Akış standart OpenID Connect yetkilendirme kodu (PKCE; Apple'da form_post) ile
 
 **Tema ve ayrıntı panelleri (v1.11).** Sağ üstte TR / EN'in yanındaki üç düğme temayı seçer: 🌙 koyu, 🖥 sistem (işletim sisteminin tercihini izler), ☀️ açık; seçim tarayıcıda saklanır. Operasyon sayfasında her KPI kartı ve metrik kutusu (olay hızı, ERROR+, erişilebilirlik / SLA / hata bütçesi, p95 gecikme, CPU / bellek / disk / GPU, log dosyaları) tıklanınca kartların altında kapanabilir bir ayrıntı paneli açar; ortam ve sunucu süzgeci tüm kartlara uygulanır. Streamlit'teki incident kartı (flashcard, aksiyon oluştur, geri bildirim, benzer dersler, LLM istemi / açıklama, postmortem), gürültü ısı haritası, örnek veri setleri, uzak kaynaktan (HTTP / MCP) veri çekme, sütun eşleme, bilgi tabanına belge yükleme ve LLM kural önerisi, bakım kartı (canlı akışı temizle, anlık görüntü budama, zip ile dağıtım, git güncelleme) ve README sayfası React arayüzünde de vardır.
 
-## 8. TLS ve şirket ağı
+## 8. TLS ve şirket ağı: uygulamayı dışarı açmak
 
-8501'i doğrudan açmak yerine bir ters vekil arkasına koyup TLS ekleyin. Caddy ile tek satır (`/etc/caddy/Caddyfile`):
+Uygulama şirket ağına **tek bir https ucu** üzerinden açılır: `edge` profili Caddy'yi dashboard'un önüne koyar, TLS'i kendi sertifika otoritesiyle (ya da şirket sertifikasıyla) yapar, 80'i 443'e yönlendirir, güvenlik başlıklarını ekler ve `/ingest` yolunu alıcıya (8600) aktarır. `edge on` düz http portunu (8501) yalnızca o makineye (`127.0.0.1`) bağlar; dışarıdan sadece https görünür.
 
+### 8.1 macOS'ta (Docker Desktop) şirket ağına açmak
+
+```bash
+cd ~/watchover-docker
+./watchover.sh edge on 10.0.0.12          # meslektaşların yazacağı ad ya da IP; boş bırakırsan Mac'in Wi-Fi / Ethernet IP'si alınır
+./watchover.sh edge cert                  # Caddy'nin kök sertifikası -> ./certs/watchover-root.crt (meslektaşlar bir kez kurar)
+./watchover.sh status
 ```
-watchover.sirket.local {
-    tls internal                    # şirket CA'sı varsa: tls /etc/ssl/watchover.crt /etc/ssl/watchover.key
-    reverse_proxy 127.0.0.1:8501
-}
-```
 
-Bu durumda `.env` içinde `WATCHOVER_UI_PORT=127.0.0.1:8501` yazıp portu dışarıya kapatın. Ajan trafiği (8600) HTTP'dir ve token'lıdır; şirket ağı dışına çıkacaksa aynı vekille `reverse_proxy` ekleyin. SSO (Google / Microsoft / Apple / OIDC) Sistem › Giriş sekmesinden; geri dönüş adresi vekil adresiyle aynı olmalıdır.
+Sonra:
+
+1. **Sabit adres.** DHCP'de IP değişebilir; ya yönlendiricide Mac'e sabit IP ayırın ya da BT'den `watchover.sirket.local` gibi bir DNS kaydı isteyip `./watchover.sh edge on watchover.sirket.local` deyin. Aynı ağdaki Mac'ler `<bilgisayar-adı>.local` (Bonjour) ile de ulaşır.
+2. **macOS güvenlik duvarı.** Sistem Ayarları › Ağ › Güvenlik Duvarı açıksa ilk bağlantıda Docker için "İzin ver" deyin (443 ve 80).
+3. **Uyku.** Mac uyuyunca servis durur: Sistem Ayarları › Pil › Güç adaptörü › "Ekran kapalıyken otomatik uykuyu engelle", ya da terminalde `caffeinate -s &`. Docker Desktop › Settings › General › "Start Docker Desktop when you sign in" açık olsun.
+4. **Sertifika.** `edge cert` ile alınan `watchover-root.crt` dosyasını meslektaşlarınıza verin: macOS'ta Anahtar Zinciri Erişimi › Sistem'e sürükleyip "Her Zaman Güven"; Windows'ta `certutil -addstore -f Root watchover-root.crt`; Linux'ta `/usr/local/share/ca-certificates/` altına koyup `update-ca-certificates`. Kurmayan tarayıcı uyarısıyla yine girer. Şirket CA'sından alınmış bir sertifikanız varsa `./certs/watchover.crt` ve `./certs/watchover.key` olarak koyun; `edge on` onu otomatik kullanır, kök sertifika dağıtmak gerekmez.
+5. **Ajanlar ve kaynaklar.** Diğer sunuculardaki ajanlar `https://<adres>/ingest` adresine gönderir: `python3 agent.py --url https://10.0.0.12/ingest --token … --ca watchover-root.crt` (şirket sertifikasında `--ca` gerekmez). Mevcut `http://<adres>:8600/ingest` de çalışmaya devam eder (token'lı düz HTTP, sadece şirket ağı içinde).
+6. **SSO.** Google / Microsoft / OIDC geri dönüş adresleri `https://<adres>/api/auth/oidc/<sağlayıcı>/callback` olur; Sistem › Giriş sağlayıcıları kartı adresi gösterir. Apple yalnızca https ile çalışır ve genel bir alan adı ister.
+
+Kapatmak: `./watchover.sh edge off` (8501 yeniden makinenin IP'sinde açılır). Portlar: `.env` içinde `WATCHOVER_EDGE_HTTPS_PORT=8443` gibi.
+
+### 8.2 Sunucuda
+
+Aynı komutlar; ek olarak güvenlik duvarında yalnızca 443 (ve yönlendirme için 80) açılır: `ufw allow 80,443/tcp`. 8501, 8600 ve 5433 dışarıya kapalı kalır; ajanlar `https://<adres>/ingest` kullanır. Şirket DNS'inde A kaydı ve şirket CA'sından sertifika (`./certs/`) en temiz kurulumdur. Kendi Caddy / nginx / Traefik'iniz zaten varsa `edge` yerine `docker/Caddyfile` içindeki iki `reverse_proxy` satırını oraya taşıyın: arayüz + API `watchover:8501`, `/ingest` `watchover:8600`.
+
+**Güvenlik notu.** Giriş 5 hatalı denemede geçici kilitlenir (`./watchover.sh user unlock EMAIL` açar), yönetici olmayan hesaplara e-posta ile ikinci faktör sorulur (Sistem › Ayarlar), parolalar scrypt ile, sırlar şifreli tutulur. Yönetici parolasını ilk girişte değiştirin ve `.env`'yi paylaşmayın.
 
 ## 9. Kapalı ağ (internet çıkışı olmayan sunucu)
 
