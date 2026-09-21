@@ -3398,12 +3398,12 @@ def page_llm() -> None:
                 if c[5].button("🗑", key=f"rm-{m['name']}", help=t("llm_remove")):
                     wo_ollama.remove(base, m["name"]); st.rerun()
             st.markdown(f"#### {t('llm_recommended')}")
-            have = {m["name"] for m in inst}
+            have = {m["name"].removesuffix(":latest") for m in inst}
             for r in wo_ollama.RECOMMENDED:
                 c = st.columns([3, 4, 1.2])
                 c[0].markdown(f"**{r['name']}** <span class='muted'>· {t('llm_role_' + r['role'])}</span>", unsafe_allow_html=True)
                 c[1].caption(r["note"])
-                if r["name"] in have:
+                if r["name"].removesuffix(":latest") in have:
                     c[2].markdown(f"<span class='pill' style='background:#2dd4bf'>{t('llm_have')}</span>", unsafe_allow_html=True)
                 elif c[2].button(f"⬇ {t('llm_pull')}", key=f"pull-{r['name']}", **wide("button")):
                     ss["llm_pull"] = r["name"]; st.rerun()

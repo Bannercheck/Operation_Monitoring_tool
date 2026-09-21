@@ -66,7 +66,11 @@ def ollama(user=Depends(require("page.llm")), svc=Depends(services)):
     base = cfg.root if cfg.kind == "ollama" and cfg.root else wo_ollama.discover()
     if not base:
         return {"base": None, "installed": [], "running": [], "recommended": wo_ollama.RECOMMENDED, "pulls": list(_pulls.values())}
-    return {"base": base, "installed": wo_ollama.installed(base), "running": wo_ollama.running(base), "recommended": wo_ollama.RECOMMENDED, "pulls": list(_pulls.values())}
+    installed = wo_ollama.installed(base)
+    have = {m["name"].removesuffix(":latest") for m in installed}
+    for name in [n for n, p in _pulls.items() if p["state"] == "done" and n.removesuffix(":latest") in have]:   # finished and visible in the list: drop the bar
+        _pulls.pop(name, None)
+    return {"base": base, "installed": installed, "running": wo_ollama.running(base), "recommended": wo_ollama.RECOMMENDED, "pulls": list(_pulls.values())}
 
 
 @router.post("/ollama/pull", status_code=202)
