@@ -11,18 +11,19 @@ ADMIN = {"email": "admin@watchover.local", "password": "Watchover!Admin2026"}
 
 @pytest.fixture(scope="module")
 def client(tmp_path_factory):
-    import os
     d = tmp_path_factory.mktemp("api")
+    mp = pytest.MonkeyPatch()                                      # module scope: undone by hand so other tests keep their environment
     for k, v in {"KNOWLEDGE_DB": str(d / "k.db"), "ACTIONS_DB": str(d / "a.db"), "PLAYBOOK_DB": str(d / "pb.db"), "WATCHOVER_HOME": str(d / "home"),
                  "LIVE_SPOOL": str(d / "live.jsonl"), "WATCHOVER_API_BACKGROUND": "0", "WATCHOVER_SELFMON": "0"}.items():
-        os.environ[k] = v
-    os.environ.pop("DATABASE_URL", None)
+        mp.setenv(k, v)
+    mp.delenv("DATABASE_URL", raising=False)
     from fastapi.testclient import TestClient
     from watchover.api import create_app
     app = create_app()
     with TestClient(app) as c:
         c.app = app
         yield c
+    mp.undo()
 
 
 def token(client, creds=ADMIN) -> dict:
