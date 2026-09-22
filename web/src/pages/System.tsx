@@ -32,8 +32,8 @@ export default function System() {
         <div className="mono dim">{db.url}</div></div>
         <div className="row" style={{ marginTop: 10 }}><Btn sm onClick={() => vacuum.mutate()}>{t("sys_vacuum")}</Btn></div><Err e={vacuum.error} /></Card>
       <DbTables tables={db.tables ?? {}} />
-      <ParserCoverage />
     </div>
+    <ParserCoverage />
     <Card title={t("sys_snapshots")} right={<Btn sm kind="primary" onClick={() => snap.mutate()} disabled={snap.isPending}>📸 {t("sys_snap_new")}</Btn>}>
       <Table cols={[{ k: "id", label: "ID", render: (r) => <b className="mono">{r.id}</b> }, { k: "version", label: t("sys_version"), render: (r) => `v${r.version} · ${r.git}` }, { k: "ts", label: t("time"), render: (r) => fmtTs(r.ts) }, { k: "reason", label: t("note") }, { k: "size", label: "MB", num: true, render: (r) => (r.size / 1e6).toFixed(1) }, { k: "dbs", label: t("sys_db"), render: (r) => (r.dbs ?? []).join(", ") },
         { k: "x", label: "", render: (r) => <div className="row"><Confirm kind="" onConfirm={() => rollback.mutate(r.id)}>↩ {t("sys_rollback")}</Confirm><Confirm onConfirm={() => rmSnap.mutate(r.id)}>{t("delete")}</Confirm></div> }]} rows={snaps.data ?? []} /><Err e={snap.error || rollback.error} />{rollback.isSuccess && <div className="ok">{t("sys_restarting")}</div>}</Card>
