@@ -142,3 +142,4 @@ Sadece geliştirme adımları. Format: araç + sürüm · tarih · yapılan iş.
 | Claude Fable 5.1 (Cowork) | 2026-09-22 | Menü sadeleştirme (Bildirimler ve README Sistem sekmesi, `unless` kuralı), Sistem kartları `Collapsible` + üstten hizalı ızgara, `NotifyBell` (açık anomaliler, görülmemiş rozeti, sekme başlığı, tarayıcı bildirimi, panel), korpus `.log` dosyaları depoya alındı (`!samples/corpus/*.log`); sürüm v1.20 |
 | Claude Fable 5.1 (Cowork) | 2026-09-22 | Menüde kalan eski Bildirimler öğesi kaldırıldı (Sistem sekmesine taşınmıştı); sürüm v1.20.1 |
 | Claude Fable 5.1 (Cowork) | 2026-09-22 | v1.20.1'de menü dizisinde eksik virgül (derleme hatası) düzeltildi; sürüm v1.20.2 |
+| Claude Fable 5.1 (Cowork) | 2026-09-22 | Watchover'a sor menüden çıkarılıp sağ alt sohbet balonuna taşındı (`ChatWidget`: ask / rate, veri seti seçimi, ortak geçmiş, tam sayfa bağlantısı); sürüm v1.21 |

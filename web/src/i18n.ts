@@ -208,6 +208,7 @@ const S: Record<string, [string, string]> = {
   sys_tab_status: ["Durum", "Status"], sys_tab_notify: ["Bildirimler", "Alerts"], sys_tab_readme: ["README", "README"],
   bell_title: ["Bildirimler", "Notifications"], bell_anom: ["açık anomali", "open anomalies"], bell_none: ["Açık anomali yok.", "No open anomaly."], bell_all: ["Anomaliler sayfası", "Anomalies page"], bell_new: ["yeni", "new"],
   bell_browser: ["Tarayıcı bildirimi aç", "Enable browser notifications"], bell_browser_on: ["Tarayıcı bildirimi açık", "Browser notifications on"], bell_mark: ["Hepsini gördüm", "Mark all seen"], bell_alerts: ["Son gönderimler", "Recent deliveries"],
+  as_open: ["Watchover'a sor", "Ask Watchover"], as_full: ["Tam sayfa", "Full page"],
 };
 
 export function tr(lang: Lang, key: string, kw: Record<string, any> = {}): string {

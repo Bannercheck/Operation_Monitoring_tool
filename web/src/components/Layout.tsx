@@ -5,6 +5,7 @@ import { useAuth } from "../auth";
 import { useT } from "../i18n";
 import { Btn, Modal, Field, Err, LangTheme } from "./ui";
 import { NotifyBell } from "./NotifyBell";
+import { ChatWidget } from "./ChatWidget";
 import { Wordmark } from "./Logo";
 import { post } from "../api";
 
@@ -12,7 +13,7 @@ const NAV = [
   { group: "nav_group_ops", items: [
     { to: "/ops", k: "nav_ops", icon: Activity, perm: "page.ops" }, { to: "/anomalies", k: "nav_anom", icon: AlertTriangle, perm: "page.ops" },
     { to: "/datasets", k: "nav_data", icon: Database, perm: "page.data" }, { to: "/map", k: "nav_map", icon: Network, perm: "page.map" }, { to: "/actions", k: "nav_actions", icon: ClipboardList, perm: "page.data" },
-    { to: "/playbook", k: "nav_pb", icon: BookOpen, perm: "page.pb" }, { to: "/assist", k: "nav_assist", icon: MessageSquare, perm: "page.assist" }, { to: "/knowledge", k: "nav_kb", icon: Brain, perm: "page.assist" }, { to: "/itsm", k: "nav_itsm", icon: Ticket, perm: "page.itsm" } ] },
+    { to: "/playbook", k: "nav_pb", icon: BookOpen, perm: "page.pb" }, { to: "/knowledge", k: "nav_kb", icon: Brain, perm: "page.assist" }, { to: "/itsm", k: "nav_itsm", icon: Ticket, perm: "page.itsm" } ] },
   { group: "nav_group_admin", items: [
     { to: "/connections", k: "nav_conn", icon: Plug, perm: "page.conn" }, { to: "/sources", k: "nav_sources", icon: Radar, perm: "page.src" }, { to: "/inventory", k: "nav_inv", icon: Server, perm: "page.inv" }, { to: "/parser", k: "nav_parser", icon: Puzzle, perm: "page.parser" }, { to: "/llm", k: "nav_llm", icon: Bot, perm: "page.llm" },
     { to: "/users", k: "nav_users", icon: Users, perm: "page.users" }, { to: "/system", k: "nav_sys", icon: Settings2, perm: "sys.status" },
@@ -49,6 +50,7 @@ export default function Layout() {
         </div>
         <Outlet />
       </main>
+      {can("page.assist") && <ChatWidget />}
       {pw && <ChangePassword onDone={async () => { setPw(false); await reload(); }} />}
     </div>
   );
