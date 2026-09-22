@@ -2,6 +2,11 @@
 
 Numaralandırma: büyük sürüm **v1, v2** (ürün sahibinin kararı), küçük güncelleme **v1.1, v1.2** (her devreye alınan özellik adımı), düzeltme **v1.1.1**. Her sürüm `python -m watchover.release <major|minor|patch> "özet"` ile açılır; Sistem › Güncelleme sayfası bu dosyayı gösterir, anlık görüntüler sürüm numarasını taşır.
 
+## v1.17.1 · 2026-09-22 · düzeltme
+
+- Envanter sayfası geri, incident kartı dayanıklılığı, rozet büyük harf, harita kök neden kartı
+
+
 ## v1.17 · 2026-09-22 · güncelleme
 
 - Parser v2 adım 2: yeni biçimler (erişim, CEF/LEEF, Windows, IIS, OTel), çok satırlı olaylar, ERP aileleri (Oracle EBS, Dynamics, SAP); kapsama 44.6 → 80.8

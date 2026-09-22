@@ -14,7 +14,7 @@ export const Chip = ({ children, color }: { children: ReactNode; color?: string 
 
 const STATUS_COLOR: Record<string, string> = { open: "red", ack: "amber", in_progress: "amber", resolved: "green", done: "green", ignored: "", suppressed: "", active: "green", revoked: "red", pending: "amber", disabled: "",
   critical: "red", high: "amber", medium: "blue", low: "", P1: "red", P2: "amber", P3: "blue", P4: "", ERROR: "red", CRITICAL: "red", WARN: "amber", INFO: "blue", DEBUG: "" };
-export const Badge = ({ v, label }: { v: string; label?: string }) => <span className={`badge ${STATUS_COLOR[v] ?? ""}`}>{label ?? v}</span>;
+export const Badge = ({ v, label }: { v: string; label?: string }) => <span lang="en" className={`badge ${STATUS_COLOR[v] ?? ""}`}>{label ?? v}</span>;   // lang=en: CSS uppercase must give CRITICAL, not CRİTİCAL under a Turkish page
 
 export const Btn = ({ children, kind = "", sm, ...p }: { children: ReactNode; kind?: string; sm?: boolean } & React.ButtonHTMLAttributes<HTMLButtonElement>) => (
   <button className={`btn ${kind} ${sm ? "sm" : ""}`} {...p}>{children}</button>

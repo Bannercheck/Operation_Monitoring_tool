@@ -328,3 +328,11 @@ def test_parser_coverage_endpoint(client):
     d = r.json()
     assert d["n"] >= 38 and 0 < d["overall"]["score"] <= 100 and d["regressions"] == []
     assert all("baseline" in f and "delta" in f for f in d["files"])
+
+
+def test_inventory_template_and_incident_json_safe(client):
+    h = token(client)
+    r = client.get("/api/inventory/template", headers=h)
+    assert r.status_code == 200 and "hostname" in r.text.splitlines()[0]
+    from watchover.api.routers.datasets import _json_safe
+    assert _json_safe({"a": float("nan"), "b": [1.5, float("inf")], "c": "x"}) == {"a": None, "b": [1.5, None], "c": "x"}

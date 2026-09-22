@@ -74,7 +74,7 @@ h2 { font-size: 20px; } h3 { font-size: 16px; } h4 { font-size: 13px; text-trans
 .card { background: var(--glass); backdrop-filter: blur(14px); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; box-shadow: var(--shadow); }
 .card.tight { padding: 10px 12px; } .card h3 { margin-bottom: 8px; }
 .kpi { position: relative; overflow: hidden; border-left: 3px solid var(--acc, var(--accent)); }
-.kpi .lb { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); } .kpi .v { font-size: 28px; font-weight: 800; line-height: 1.1; margin: 4px 0 2px; } .kpi .sub { font-size: 12px; color: var(--acc, var(--accent)); }
+.kpi .lb { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); } .kpi .v { font-size: 28px; font-weight: 800; line-height: 1.1; margin: 4px 0 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .kpi .sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--acc, var(--accent)); }
 .kpi .ic { position: absolute; right: 12px; top: 10px; opacity: 0.9; }
 .chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line2); background: rgba(255, 255, 255, 0.04); font-size: 12px; color: var(--fg); white-space: nowrap; }
 .chip .d { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
@@ -119,3 +119,5 @@ pre.code { background: #0b1220; border: 1px solid var(--line); border-radius: 10
 /* Ops metric tiles: every tile in the row takes the row's height, so short ones (GPU without data, log files) line up with the sparkline tiles */
 .grid.tiles { align-items: stretch; } .grid.tiles > * { display: flex; } .grid.tiles > * > .card { flex: 1 1 auto; display: flex; flex-direction: column; justify-content: space-between; }
 @media (max-width: 1100px) { .grid.tiles { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; } } @media (max-width: 700px) { .grid.tiles { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; } }
+/* English tokens (severity, status, format names) keep English casing even when the page is Turkish */
+.badge, .mono, .kinds .kd { font-feature-settings: normal; }

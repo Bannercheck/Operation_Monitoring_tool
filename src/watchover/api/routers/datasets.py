@@ -165,7 +165,8 @@ def _incident(a, inc, lang: str, brief: bool = False) -> dict:
     d = incident_dict(inc)
     d["narrative_text"] = narrative_text(inc, a.signal_by_id, lang)
     d["reason_text"] = reason_text(inc.root_cause_codes, lang)
-    d["root_cause"] = signal_dict(a.signal_by_id[inc.root_cause_signal])
+    root = a.signal_by_id.get(inc.root_cause_signal)
+    d["root_cause"] = signal_dict(root) if root else {"id": inc.root_cause_signal, "template": inc.title, "severity": inc.severity, "count": 0, "services": "", "hosts": "", "onset": ""}
     if brief:
         for k in ("timeline", "links", "factors", "evidence"):
             d[k] = len(d.get(k) or [])
@@ -180,9 +181,28 @@ def incident(key: str, iid: str, user=Depends(require("page.data")), svc=Depends
         raise KeyError(iid)
     d = _incident(a, inc, svc.lang)
     d["signals"] = [signal_dict(a.signal_by_id[s]) for s in inc.signal_ids if s in a.signal_by_id]
-    d["actions"] = svc.actions.list(inc.id)
-    d["playbook"] = svc.playbook.lookup(a.signal_by_id[inc.root_cause_signal].template)
-    return d
+    try:
+        d["actions"] = svc.actions.list(inc.id)
+    except Exception as e:  # noqa: BLE001 - the card is still useful without its side panels
+        d["actions"], d["actions_error"] = [], str(e)[:200]
+    try:
+        root = a.signal_by_id.get(inc.root_cause_signal)
+        d["playbook"] = svc.playbook.lookup(root.template) if root else None
+    except Exception as e:  # noqa: BLE001
+        d["playbook"], d["playbook_error"] = None, str(e)[:200]
+    return _json_safe(d)
+
+
+def _json_safe(x):
+    """NaN / inf floats break the JSON encoder (a 500 the browser shows as an endless spinner): they become null."""
+    import math
+    if isinstance(x, float):
+        return x if math.isfinite(x) else None
+    if isinstance(x, dict):
+        return {k: _json_safe(v) for k, v in x.items()}
+    if isinstance(x, (list, tuple)):
+        return [_json_safe(v) for v in x]
+    return x
 
 
 @router.get("/{key}/actions")

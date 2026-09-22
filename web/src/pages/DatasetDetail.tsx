@@ -86,7 +86,7 @@ function IncidentModal({ dataset, iid, onClose }: { dataset: string; iid: string
   const rk = i?.recovery?.kind ?? "unknown"; const rcol: Record<string, string> = { restart: "#2dd4bf", self_healed: "#2dd4bf", stopped: "#fbbf24", ongoing: "#f87171" };
   return (
     <Modal wide title={<span><Badge v={i?.severity ?? "low"} /> {iid} · {i?.title}</span>} onClose={onClose}>
-      {!i ? <div className="muted">{t("loading")}</div> : (
+      {!i ? (q.error ? <Err e={q.error} /> : <div className="muted">{t("loading")}</div>) : (
         <div className="stack">
           <div className="card" style={{ borderTop: `3px solid ${rcol[rk] ?? "#8b98ad"}` }}><div className="stack small">
             <div><b>{t("fc_what")}</b> · {i.title}. {(i.signals ?? []).reduce((a: number, s: any) => a + (s.count || 0), 0).toLocaleString()} {t("ds_events")}, {i.signal_ids.length} {t("ds_signals")}. <b>{t("fc_chain")}:</b> <span className="mono">{[i.root_cause, ...(i.signals ?? []).filter((s: any) => s.id !== i.root_cause.id).slice(0, 4)].map((s: any) => `${s.id} ${s.template.slice(0, 40)}`).join(" → ")}</span></div>

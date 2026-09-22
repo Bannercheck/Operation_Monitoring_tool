@@ -26,7 +26,7 @@ export default function MapPage() {
       <div className="grid k4">
         <Kpi value={d.nodes} label={t("map_k_services")} accent="#60a5fa" sub={`${d.hosts} ${t("host").toLowerCase()}`} />
         <Kpi value={d.deps} label={t("map_k_deps")} accent={d.deps ? "#f87171" : "#8b98ad"} sub={`${d.dep_events} ${t("ds_events")} · ${d.corr} ${t("map_k_corr")}`} />
-        <Kpi value={(d.root ?? []).join(", ") || "—"} label={t("map_k_root")} accent="#f87171" sub={(d.incidents_hit ?? []).slice(0, 3).join(", ")} />
+        <Kpi value={(d.root ?? []).length || "—"} label={t("map_k_root")} accent="#f87171" sub={<span title={(d.root ?? []).join(", ")}>{(d.root ?? []).slice(0, 3).join(", ")}{(d.root ?? []).length > 3 ? ` +${d.root.length - 3}` : ""}{(d.incidents_hit ?? []).length ? ` · ${d.incidents_hit.slice(0, 3).join(", ")}` : ""}</span>} />
         <Kpi value={d.errors_total} label={t("map_k_errors")} accent="#fb923c" sub={`${d.affected} ${t("map_k_affected")}`} />
       </div>
       <div className="card" style={{ padding: 6 }}><iframe title="map" srcDoc={d.html} style={{ width: "100%", height: 660, border: 0, borderRadius: 10, background: "transparent" }} /></div></>}
