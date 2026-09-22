@@ -209,6 +209,7 @@ const S: Record<string, [string, string]> = {
   bell_title: ["Bildirimler", "Notifications"], bell_anom: ["açık anomali", "open anomalies"], bell_none: ["Açık anomali yok.", "No open anomaly."], bell_all: ["Anomaliler sayfası", "Anomalies page"], bell_new: ["yeni", "new"],
   bell_browser: ["Tarayıcı bildirimi aç", "Enable browser notifications"], bell_browser_on: ["Tarayıcı bildirimi açık", "Browser notifications on"], bell_mark: ["Hepsini gördüm", "Mark all seen"], bell_alerts: ["Son gönderimler", "Recent deliveries"],
   as_open: ["Watchover'a sor", "Ask Watchover"], as_full: ["Tam sayfa", "Full page"],
+  set_thr: ["Eşik", "Threshold"], set_thr_lead: ["Sunucu eşikleri: bir sunucunun son CPU / bellek / disk / GPU değeri eşiği aşınca hemen anomali açılır (zil, Anomaliler sayfası, bildirim kuralları). Taban çizgisi sapmaları ayrıca izlenir.", "Host thresholds: when a host's latest CPU / memory / disk / GPU reading reaches the limit an anomaly opens at once (bell, Anomalies page, alert rules). Baseline deviations are tracked separately."],
 };
 
 export function tr(lang: Lang, key: string, kw: Record<string, any> = {}): string {

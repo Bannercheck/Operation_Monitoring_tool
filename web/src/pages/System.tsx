@@ -94,12 +94,14 @@ function Settings() {
   const q = useQuery({ queryKey: ["sys-settings"], queryFn: () => get("/system/settings") });
   const [f, setF] = useState<any>(null); const [saved, setSaved] = useState(false);
   useEffect(() => { if (q.data && !f) setF(q.data); }, [q.data, f]);
-  const save = useMutation({ mutationFn: () => put("/system/settings", { ...f, learn_min: Number(f.learn_min), live_port: Number(f.live_port) }), onSuccess: () => { setSaved(true); qc.invalidateQueries({ queryKey: ["sys-settings"] }); qc.invalidateQueries({ queryKey: ["sys-status"] }); setTimeout(() => setSaved(false), 2500); } });
+  const save = useMutation({ mutationFn: () => put("/system/settings", { ...f, learn_min: Number(f.learn_min), live_port: Number(f.live_port), thr_cpu: Number(f.thr_cpu), thr_memory: Number(f.thr_memory), thr_disk: Number(f.thr_disk), thr_gpu: Number(f.thr_gpu) }), onSuccess: () => { setSaved(true); qc.invalidateQueries({ queryKey: ["sys-settings"] }); qc.invalidateQueries({ queryKey: ["sys-status"] }); setTimeout(() => setSaved(false), 2500); } });
   if (!f) return null;
   const set = (k: string) => (e: any) => setF({ ...f, [k]: e.target.type === "checkbox" ? e.target.checked : e.target.value });
   return <Collapsible id="sys-settings" title={`⚙ ${t("sys_settings")}`} right={<Btn sm kind="primary" onClick={() => save.mutate()}>{t("save")}</Btn>}><div className="stack">
     <label className="check"><input type="checkbox" checked={!!f.self_monitor} onChange={set("self_monitor")} /> {t("set_self_monitor")}</label>
     <label className="check"><input type="checkbox" checked={!!f.alerts_on} onChange={set("alerts_on")} /> {t("set_alerts_on")}</label>
+    <div className="muted small">{t("set_thr_lead")}</div>
+    <div className="grid k4">{(["cpu", "memory", "disk", "gpu"] as const).map((k) => <Field key={k} label={`${t("set_thr")} ${k.toUpperCase()} %`}><input className="input" type="number" min={1} max={100} value={f[`thr_${k}`] ?? ""} onChange={set(`thr_${k}`)} /></Field>)}</div>
     <div className="grid k2"><Field label={t("set_learn_min")}><input className="input" type="number" value={f.learn_min} onChange={set("learn_min")} /></Field><Field label={t("set_live_port")}><input className="input" type="number" value={f.live_port} onChange={set("live_port")} /></Field>
       <Field label={t("set_live_key")}><input className="input" type="password" value={f.live_key ?? ""} onChange={set("live_key")} autoComplete="off" /></Field><Field label={t("set_public_host")}><input className="input" value={f.public_host ?? ""} onChange={set("public_host")} /></Field>
       <Field label={t("set_workspace")}><input className="input" value={f.workspace ?? ""} onChange={set("workspace")} /></Field><Field label={t("set_lang")}><select className="input" value={f.lang} onChange={set("lang")}><option value="tr">Türkçe</option><option value="en">English</option></select></Field></div>

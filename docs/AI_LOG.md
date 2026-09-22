@@ -143,3 +143,4 @@ Sadece geliştirme adımları. Format: araç + sürüm · tarih · yapılan iş.
 | Claude Fable 5.1 (Cowork) | 2026-09-22 | Menüde kalan eski Bildirimler öğesi kaldırıldı (Sistem sekmesine taşınmıştı); sürüm v1.20.1 |
 | Claude Fable 5.1 (Cowork) | 2026-09-22 | v1.20.1'de menü dizisinde eksik virgül (derleme hatası) düzeltildi; sürüm v1.20.2 |
 | Claude Fable 5.1 (Cowork) | 2026-09-22 | Watchover'a sor menüden çıkarılıp sağ alt sohbet balonuna taşındı (`ChatWidget`: ask / rate, veri seti seçimi, ortak geçmiş, tam sayfa bağlantısı); sürüm v1.21 |
+| Claude Fable 5.1 (Cowork) | 2026-09-22 | Eşik uyarıları: `AnomalyTracker._scan_thresholds` (son değer ≥ `thr_cpu/memory/disk/gpu`, anahtar `threshold:env:host:metric`, düzelince cleared), `threshold_settings()`, ayarlar + Sistem › Ayarlar alanları, zilde metrik etiketi; testler; sürüm v1.22 |

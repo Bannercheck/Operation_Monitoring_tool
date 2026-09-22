@@ -30,7 +30,7 @@ export function NotifyBell() {
       {typeof Notification !== "undefined" && (perm === "granted" ? <div className="dim small" style={{ marginBottom: 6 }}>✓ {t("bell_browser_on")}</div> : perm !== "denied" ? <div style={{ marginBottom: 6 }}><Btn sm onClick={ask}>🔔 {t("bell_browser")}</Btn></div> : null)}
       {!rows.length && <div className="muted small">{t("bell_none")}</div>}
       {rows.slice(0, 15).map((r) => <div key={r.id} className={`item ${seen.has(r.id) ? "" : "new"}`}>
-        <div className="row between"><span><Badge v={r.kind === "errors" ? "high" : r.status} label={r.kind} /> <b>{r.title}</b>{!seen.has(r.id) && <span className="badge green" style={{ marginLeft: 6 }}>{t("bell_new")}</span>}</span><span className="dim small">{(r.last_seen || "").slice(11, 16)}</span></div>
+        <div className="row between"><span><Badge v={r.kind === "errors" || (r.kind === "metric" && String(r.key || "").startsWith("threshold:")) ? "high" : r.status} label={r.kind === "metric" ? (r.metric || "metric") : r.kind} /> <b>{r.title}</b>{!seen.has(r.id) && <span className="badge green" style={{ marginLeft: 6 }}>{t("bell_new")}</span>}</span><span className="dim small">{(r.last_seen || "").slice(11, 16)}</span></div>
         <div className="muted small">{[r.env, r.host, r.service, r.metric].filter(Boolean).join(" · ")}{r.detail ? ` · ${String(r.detail).slice(0, 90)}` : ""}</div>
       </div>)}
     </div>}

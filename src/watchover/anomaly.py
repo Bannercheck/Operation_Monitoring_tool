@@ -26,6 +26,27 @@ from .models import SEV_RANK
 
 UTC = timezone.utc
 KINDS = ("errors", "rate", "silence", "pattern", "metric")
+THRESHOLD_DEFAULTS = {"cpu": 85.0, "memory": 90.0, "disk": 90.0, "gpu": 95.0}
+
+
+def threshold_settings() -> dict[str, float]:
+    """Alert thresholds from System › Settings (thr_cpu …); the scenario's METRIC_THRESHOLDS and then the defaults fill the gaps."""
+    out = dict(THRESHOLD_DEFAULTS)
+    try:
+        from . import scenario
+        out.update({k: float(v) for k, v in getattr(scenario, "METRIC_THRESHOLDS", {}).items()})
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        from . import settings
+        cfg = settings.load()
+        for k in THRESHOLD_DEFAULTS:
+            v = cfg.get(f"thr_{k}")
+            if v not in (None, ""):
+                out[k] = float(v)
+    except Exception:  # noqa: BLE001
+        pass
+    return out
 STATUSES = ("open", "ack", "resolved", "ignored")
 WINDOW_MIN = 5                                    # what "now" means
 BASELINE_MIN = 24 * 60                            # how far back the baseline looks (rollups)
@@ -103,6 +124,7 @@ class AnomalyTracker:
             found += self._scan_counts(now)
             found += self._scan_patterns(now)
             found += self._scan_metrics(now)
+            found += self._scan_thresholds(now)
         self._clear_recovered({f["key"] for f in found})
         self.runs += 1
         self.last_run = _now()
@@ -229,6 +251,27 @@ class AnomalyTracker:
                                         title=f"{host}: {metric} {value:.0f}% (last hours {med:.0f}%)",
                                         detail=f"{metric} averaged {value:.0f}% over the last {WINDOW_MIN} min; this host's normal is {med:.0f} ± {mad:.0f}%",
                                         observed=value, baseline=med, spread=mad, score=z, series=hist[-60:] + [value]))
+        return out
+
+    def _scan_thresholds(self, now: datetime) -> list[dict]:
+        """Hard limits next to the baseline logic: a host whose latest CPU / memory / disk / GPU reading is at or above the configured
+        threshold gets a 'metric' anomaly right away (no history needed), so the bell, the page and the alert rules all see it."""
+        ms = self.live.metric_stats(5) if hasattr(self.live, "metric_stats") else {}
+        thr = threshold_settings()
+        latest: dict[tuple[str, str], tuple] = {}
+        for r in ms.get("per_minute", []):
+            k = (r["host"], r["metric"])
+            if k not in latest or r["minute"] > latest[k][0]:
+                latest[k] = (r["minute"], float(r["value"]), r.get("env", "unknown"))
+        out = []
+        for (host, metric), (_m, value, env) in latest.items():
+            limit = thr.get(metric)
+            if limit is None or value < limit:
+                continue
+            out.append(self._upsert("metric", f"threshold:{env}:{host}:{metric}", env=env, host=host, metric=metric,
+                                    title=f"{host}: {metric} {value:.0f}% ≥ {limit:.0f}%",
+                                    detail=f"{metric} is at {value:.0f}% on {host} ({env}); the alert threshold is {limit:.0f}% (System › Settings)",
+                                    observed=value, baseline=float(limit), spread=0.0, score=round((value - limit) / max(1.0, 100 - limit) * 5 + 3, 2), series=[value]))
         return out
 
     # ---------------------------------------------------------------- store

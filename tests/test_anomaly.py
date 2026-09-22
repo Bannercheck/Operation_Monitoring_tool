@@ -82,7 +82,30 @@ def test_silence_pattern_and_metric(tmp_path):
         v = 92.0 if i <= wo_an.WINDOW_MIN else 30.0 + (i % 5)
         ls.metrics.append((now - timedelta(minutes=i) + timedelta(seconds=30), "web-07", "cpu", v, "prod"))
     m = [f for f in tr.scan(now) if f["kind"] == "metric"]
-    assert len(m) == 1 and m[0]["metric"] == "cpu" and m[0]["observed"] == 92 and 30 <= m[0]["baseline"] <= 35 and m[0]["key"] == "metric:prod:web-07:cpu"
+    base = [f for f in m if f["key"] == "metric:prod:web-07:cpu"]
+    assert len(base) == 1 and base[0]["metric"] == "cpu" and base[0]["observed"] == 92 and 30 <= base[0]["baseline"] <= 35
+    thr = [f for f in m if f["key"] == "threshold:prod:web-07:cpu"]                                 # 92 % is also above the 85 % hard limit
+    assert len(thr) == 1 and thr[0]["baseline"] == 85 and "≥ 85%" in thr[0]["title"] and thr[0]["host"] == "web-07"
+
+
+def test_threshold_alert_without_history(tmp_path, monkeypatch):
+    """A host whose latest reading is over the configured limit is an anomaly at once, no baseline needed; below the limit it clears."""
+    monkeypatch.setenv("WATCHOVER_HOME", str(tmp_path))
+    from watchover import settings as wo_settings
+    wo_settings.save({"thr_memory": 80})
+    kb = Knowledge(str(tmp_path / "k.db")); History(kb); ls = LiveStore()
+    now = datetime.now(UTC)
+    ls.metrics.append((now - timedelta(seconds=40), "db-02", "memory", 91.0, "prod"))
+    ls.metrics.append((now - timedelta(seconds=40), "db-02", "cpu", 40.0, "prod"))
+    tr = wo_an.AnomalyTracker(kb, ls)
+    found = tr.scan(now)
+    keys = {f["key"] for f in found}
+    assert "threshold:prod:db-02:memory" in keys and "threshold:prod:db-02:cpu" not in keys
+    a = next(f for f in found if f["key"] == "threshold:prod:db-02:memory")
+    assert a["observed"] == 91 and a["baseline"] == 80 and a["status"] == "open" and "db-02" in a["title"]
+    ls.metrics.append((now + timedelta(seconds=10), "db-02", "memory", 60.0, "prod"))
+    tr.scan(now + timedelta(seconds=20))
+    assert tr.get(a["id"])["cleared_at"]                                                           # recovered, stays open for the operator
 
 
 def test_alert_rule_on_new_anomalies(tmp_path, monkeypatch):
