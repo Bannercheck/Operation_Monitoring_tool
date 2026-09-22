@@ -38,3 +38,7 @@ datasets/
 certs/
 
 !samples/corpus/*.log
+
+# secrets (never commit)
+data/.api.key
+.streamlit/secrets.toml

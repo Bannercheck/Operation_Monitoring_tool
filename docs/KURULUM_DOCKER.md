@@ -196,6 +196,8 @@ Sistem › **Parser kapsaması** kartı, 43 log ailesinden birer örnek dosyayı
 
 **Kurumsal hafıza (Hafıza sayfası):** canlı akış her `learn_min` dakikada, yüklenen veri setleri, yeni anomaliler ve kapatılan aksiyonlar kendiliğinden hafızaya yazılır; arama ve LLM incelemesi bu hafızaya dayanır. Gömme modeli olmadan da çalışır; LLM sayfasında bge-m3 tanımlandıysa Hafıza › Yeniden indeksle ile vektörler arka planda yenilenir. Parser desenleri artık LLM sayfasının bir sekmesidir.
 
+**Zafiyet taraması (menü):** Envanterdeki sunucuların işletim sistemi/uygulama sürümleri güvenlik danışma kataloğuyla eşleştirilir; EOL OS, izlemesiz kritik sunucu gibi yapılandırma zafiyetleri işaretlenir. "Tümünü tara" bulguları önem sırasına dizer. İsteğe bağlı "Ağ kontrolü" (act.scan) açık portları pasif tespit eder; yalnız kendi sunucularınızda kullanın. **Güvenlik notu:** Bu sürümde SPA yol aşımı, SSRF/`file://`, bildirim SQL enjeksiyonu, ReDoS, sıkıştırma bombası ve OIDC açık yönlendirme kapatıldı; ilk admin parolası değişene kadar API kilitlidir. Docker imajında pip/setuptools/wheel yükseltildi. **Genel git geçmişinde kalan eski `.api.key`, cookie secret ve Google client secret'ı döndürün.**
+
 ## 8c. LLM ile inceleme
 
 LLM sayfasında Ollama (tamamen kapalı ağda çalışır) ya da bir API tanımlandığında: incident kartının üstündeki **LLM yorumu** kutusu modele kartın kanıtını okutur ve özet / kök neden değerlendirmesi / etki / aksiyon / açık sorular başlıklarıyla referanslı bir görüş yazdırır; Veri setleri › **LLM incelemesi** sekmesi tüm seti ya da aradığınız log satırlarını inceletir; **Watchover'a sor** sayfası serbest soru-cevap içindir. Model ne derse desin motorun deterministik kararı değişmez; cevaplardaki atıf oranı ("dayanaklı atıf") gösterilir.

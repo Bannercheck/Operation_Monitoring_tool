@@ -128,11 +128,30 @@ def expand(pattern: str, extra: dict[str, str] | None = None, depth: int = 0) ->
     return out.replace("(?>", "(?:")     # Oniguruma atomic groups: plain groups here
 
 
-def compile_pattern(pattern: str, extra: dict[str, str] | None = None) -> re.Pattern:
+MAX_PATTERN_LEN = 4000
+# Nested unbounded quantifiers ((a+)+, (a*)* , (.*)+ …) are the classic catastrophic-backtracking shape.
+_RISKY = re.compile(r"\([^()]*[+*][^()]*\)\s*[*+]|\)\s*\+\s*[*+]")
+
+
+class UnsafePattern(ValueError):
+    """A regex/grok pattern is too long or has a catastrophic-backtracking shape and is refused."""
+
+
+def guard_regex(expanded: str) -> None:
+    if len(expanded) > MAX_PATTERN_LEN:
+        raise UnsafePattern(f"pattern too long ({len(expanded)} > {MAX_PATTERN_LEN})")
+    if _RISKY.search(expanded):
+        raise UnsafePattern("pattern has nested unbounded quantifiers (catastrophic backtracking risk)")
+
+
+def compile_pattern(pattern: str, extra: dict[str, str] | None = None, trusted: bool = False) -> re.Pattern:
     key = pattern + "\x00" + json.dumps(extra or {}, sort_keys=True)
     rx = _cache.get(key)
     if rx is None:
-        rx = re.compile(expand(pattern, extra))
+        expanded = expand(pattern, extra)
+        if not trusted:
+            guard_regex(expanded)
+        rx = re.compile(expanded)
         if len(_cache) > 512:
             _cache.clear()
         _cache[key] = rx
@@ -203,7 +222,7 @@ def detect(lines: list[str], min_share: float = 0.6) -> tuple[LinePattern | None
     best, best_share = None, 0.0
     for lp in all_patterns():
         try:
-            rx = compile_pattern(lp.pattern)
+            rx = compile_pattern(lp.pattern, trusted=True)
         except (re.error, ValueError):
             continue
         hits = sum(1 for ln in sample if rx.search(ln))
@@ -217,7 +236,7 @@ def coverage_of(lp: LinePattern, corpus_dir: Path) -> dict:
     """How many corpus files / lines a pattern matches (shown next to each pattern on the Parser page)."""
     files = 0; lines_hit = 0
     try:
-        rx = compile_pattern(lp.pattern)
+        rx = compile_pattern(lp.pattern, trusted=True)
     except (re.error, ValueError):
         return {"files": 0, "lines": 0}
     for p in sorted(corpus_dir.glob("*")):

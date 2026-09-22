@@ -461,9 +461,18 @@ def _parse_query(q: str) -> list[tuple[bool, str | None, str]]:
 @router.get("/{key}/search")
 def search(key: str, q: str = "", regex: bool = False, severity: str | None = None, limit: int = Query(200, le=2000), user=Depends(require("page.data")), svc=Depends(services)):
     """Log search over the dataset: AND of terms, field:term narrows one field, -term excludes, quotes keep phrases; optional regex."""
+    from ... import grok
     a = svc.datasets.get(key)["analysis"]
     terms = _parse_query(q)
     sev = {x.strip().upper() for x in (severity or "").split(",") if x.strip()}
+    compiled: dict = {}
+    if regex:                                                # precompile once, refuse catastrophic patterns (ReDoS) -> treated as literal
+        for _neg, _field, term in terms:
+            if term not in compiled:
+                try:
+                    grok.guard_regex(term); compiled[term] = re.compile(term)
+                except (re.error, grok.UnsafePattern):
+                    compiled[term] = None
     out, total = [], 0
     for o in a.observations:
         if sev and o.severity not in sev:
@@ -471,15 +480,13 @@ def search(key: str, q: str = "", regex: bool = False, severity: str | None = No
         hay = None
         ok = True
         for neg, field, term in terms:
+            rx = compiled.get(term) if regex else None
             if field:
                 val = str(getattr(o, field, "") or "").lower()
-                hit = bool(re.search(term, val)) if regex else term in val
+                hit = bool(rx.search(val)) if rx else (term in val)
             else:
                 hay = hay if hay is not None else f"{o.message} {o.service} {o.host} {o.severity} {o.source} {o.environment}".lower()
-                try:
-                    hit = bool(re.search(term, hay)) if regex else term in hay
-                except re.error:
-                    hit = term in hay
+                hit = bool(rx.search(hay)) if rx else (term in hay)
             if hit == neg:
                 ok = False; break
         if not ok:

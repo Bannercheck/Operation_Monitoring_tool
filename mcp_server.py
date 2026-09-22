@@ -45,11 +45,16 @@ def _need() -> Analysis:
 
 # ---- tool implementations (plain functions, also unit-testable without the mcp package)
 def _resolve(path: str) -> str:
-    """Relative paths are looked up in WATCHOVER_DATASETS (the folder mounted into the Docker service)."""
-    base = os.environ.get("WATCHOVER_DATASETS", "")
-    if base and not os.path.isabs(path) and os.path.exists(os.path.join(base, path)):
-        return os.path.join(base, path)
-    return path
+    """Confine dataset paths to WATCHOVER_DATASETS (or, if unset, the current working directory). Absolute paths and
+    ``..`` traversal that escape the root are refused, so the tool cannot read arbitrary files such as data/.api.key."""
+    root = os.environ.get("WATCHOVER_DATASETS")
+    if not root:
+        return path                                          # local stdio use: the operator already has shell access, no confinement
+    base = os.path.realpath(root)
+    full = os.path.realpath(path if os.path.isabs(path) else os.path.join(base, path))
+    if full != base and not full.startswith(base + os.sep):
+        raise ValueError("path is outside the allowed dataset directory")
+    return full
 
 
 def analyze_dataset(path: str) -> dict:
@@ -135,18 +140,22 @@ def main(argv=None) -> int:
         return 1
     if args.http:
         import uvicorn
-        uvicorn.run(http_app(server), host="0.0.0.0", port=args.port, log_level="info")
+        # Without an API key the endpoint is unauthenticated, so it is bound to loopback only; set MCP_API_KEY to expose it.
+        bind = "0.0.0.0" if os.environ.get("MCP_API_KEY") else "127.0.0.1"
+        if bind == "127.0.0.1":
+            print("MCP_API_KEY not set: binding MCP HTTP to 127.0.0.1 only (set MCP_API_KEY to expose on the network)", file=sys.stderr)
+        uvicorn.run(http_app(server, host=bind), host=bind, port=args.port, log_level="info")
     else:
         server.run()
     return 0
 
 
-def http_app(server, api_key: str | None = None):
+def http_app(server, api_key: str | None = None, host: str = "0.0.0.0"):
     """The streamable-HTTP ASGI app, gated by MCP_API_KEY when one is set (Bearer or X-API-Key); /health stays open for Docker."""
     from mcp.server.transport_security import TransportSecuritySettings
     from starlette.responses import JSONResponse, PlainTextResponse
     inner = server.streamable_http_app(transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),   # any client / Docker
-                                       host="0.0.0.0")
+                                       host=host)
     key = os.environ.get("MCP_API_KEY", "") if api_key is None else api_key
 
     async def app(scope, receive, send):

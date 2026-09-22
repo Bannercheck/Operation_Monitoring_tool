@@ -208,6 +208,14 @@ def providers(request: Request):
     return [{"name": n, "label": p["label"], "configured": _provider(n, cfg) is not None, "callback": _redirect_uri(request, n)} for n, p in PROVIDERS.items()]
 
 
+def _safe_next(nxt: str) -> str:
+    """Only a same-origin relative path is a valid return target (blocks open-redirect / token theft via ?next=https://evil)."""
+    nxt = nxt or "/"
+    if not nxt.startswith("/") or nxt.startswith("//") or nxt.startswith("/\\"):
+        return "/"
+    return nxt[:200]
+
+
 @router.get("/oidc/{name}/start")
 def oidc_start(name: str, request: Request, next: str = "/"):
     """Redirects the browser to the provider; state is a short signed token carrying the PKCE verifier and the return path."""
@@ -218,7 +226,7 @@ def oidc_start(name: str, request: Request, next: str = "/"):
     verifier = secrets.token_urlsafe(48)
     challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
     nonce = secrets.token_urlsafe(16)
-    state = issue({"typ": "oidc", "p": name, "v": verifier, "n": nonce, "next": next[:200]}, 10)
+    state = issue({"typ": "oidc", "p": name, "v": verifier, "n": nonce, "next": _safe_next(next)}, 10)
     q = {"response_type": "code", "client_id": p["client_id"], "redirect_uri": _redirect_uri(request, name), "state": state, "nonce": nonce}
     q.update({"scope": "openid email profile", "code_challenge": challenge, "code_challenge_method": "S256"})
     return RedirectResponse(disc["authorization_endpoint"] + "?" + urllib.parse.urlencode(q), status_code=302)
@@ -256,7 +264,7 @@ def _finish(name: str, request: Request, code: str, state: str, error: str, svc)
     u = svc.users.sso_login(email, ident.get("name", ""), cfg.get("auth_domains", ""), bool(cfg.get("auth_self_register", True)), provider=name)
     if not u:
         return RedirectResponse(f"/login?error={urllib.parse.quote('account not allowed')}", status_code=302)
-    return RedirectResponse(f"{claims.get('next') or '/'}#sso={access_token(u)}", status_code=302)
+    return RedirectResponse(f"{_safe_next(claims.get('next') or '/')}#sso={access_token(u)}", status_code=302)
 
 
 @router.get("/oidc/{name}/callback")

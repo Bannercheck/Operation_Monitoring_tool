@@ -82,7 +82,7 @@ def git_update(src: Path | None = None, branch: str = "") -> tuple[bool, str]:
     try:
         cur = subprocess.run(["git", "-C", str(src), "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True, timeout=10).stdout.strip()
         branch = branch or cur
-        r = subprocess.run(["git", "-C", str(src), "pull", "--ff-only", "origin", branch], capture_output=True, text=True, timeout=120)
+        r = subprocess.run(["git", "-C", str(src), "pull", "--ff-only", "origin", "--", branch], capture_output=True, text=True, timeout=120)
         return r.returncode == 0, (r.stdout + r.stderr).strip()[-400:]
     except Exception as e:  # noqa: BLE001
         return False, str(e)

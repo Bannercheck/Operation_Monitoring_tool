@@ -63,10 +63,12 @@ class Services:
         self.anomalies = wo_anomaly.AnomalyTracker(self.kb, self.live)
         from ..drain import TemplateStore
         from ..memory import Memory
+        from ..scanner import ScanStore
         self.templates = TemplateStore(self.kb)
         c0 = wo_settings.load()
         self.memory = Memory(self.kb, self.live, self.lang, interval_min=int(c0.get("learn_min", 15) or 0), inventory_fn=None)
         self.anomalies.on_open = self.memory.remember_anomaly
+        self.scanner = ScanStore(self.kb, home=os.environ.get("WATCHOVER_HOME", "") or None)
         self.anomalies.templates = self.templates
         self.alerts = wo_notify.AlertEngine(self.notifier, self.live, self.agents, self.sources); self.alerts.anomalies = self.anomalies
         self.poller = Poller(self.sources, self.live)

@@ -49,6 +49,14 @@ def add_user(body: UserIn, user=Depends(require("page.users")), svc=Depends(serv
 
 @router.patch("/users/{uid}")
 def update_user(uid: int, body: UserPatch, user=Depends(require("page.users")), svc=Depends(services)):
+    target = next((u for u in svc.users.list() if int(u["id"]) == uid), None)
+    if target is None:
+        raise KeyError(uid)
+    is_admin = user["role"] == "admin"
+    if int(user["id"]) == uid and (body.role is not None or body.status is not None):
+        raise HTTPException(403, "you cannot change your own role or status")   # no self-escalation / self-lockout
+    if not is_admin and (target.get("role") == "admin" or body.role == "admin"):
+        raise HTTPException(403, "only an administrator may manage administrator accounts")
     if body.role is not None:
         svc.users.set_role(uid, body.role, svc.roles.names())
     if body.status is not None:
@@ -63,6 +71,11 @@ def update_user(uid: int, body: UserPatch, user=Depends(require("page.users")), 
 
 @router.post("/users/{uid}/password")
 def set_password(uid: int, body: PasswordIn, user=Depends(require("page.users")), svc=Depends(services)):
+    target = next((u for u in svc.users.list() if int(u["id"]) == uid), None)
+    if target is None:
+        raise KeyError(uid)
+    if user["role"] != "admin" and target.get("role") == "admin" and int(user["id"]) != uid:
+        raise HTTPException(403, "only an administrator may reset an administrator's password")
     why = wo_auth.password_policy(body.password)
     if why:
         raise HTTPException(400, why)
@@ -96,6 +109,13 @@ def roles(user=Depends(require("page.users")), svc=Depends(services)):
 
 @router.put("/roles/{name}")
 def save_role(name: str, body: RoleIn, user=Depends(require("page.users")), svc=Depends(services)):
+    if user["role"] != "admin":
+        if name == "admin":
+            raise HTTPException(403, "only an administrator may edit the administrator role")
+        held = svc.roles.perms(user["role"])
+        extra = set(body.perms) - set(held)
+        if extra:                                            # no privilege escalation: cannot grant a permission you do not hold
+            raise HTTPException(403, f"you cannot grant permissions you do not hold: {', '.join(sorted(extra))}")
     return svc.roles.save(name, body.perms, body.label, body.description)
 
 

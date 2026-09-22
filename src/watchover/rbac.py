@@ -10,23 +10,25 @@ PERMISSIONS: dict[str, tuple[str, str, str]] = {   # key: (group, Turkish label,
     "page.ops": ("page", "Operasyon sayfası", "Operations page"), "page.data": ("page", "Veri setleri", "Datasets"), "page.src": ("page", "Kaynaklar", "Sources"),
     "page.inv": ("page", "Envanter", "Inventory"), "page.map": ("page", "Hata haritası", "Failure map"), "page.assist": ("page", "Watchover'a sor", "Ask Watchover"),
     "page.llm": ("page", "LLM", "LLM"), "page.pb": ("page", "Playbook", "Playbook"), "page.itsm": ("page", "ITSM", "ITSM"), "page.conn": ("page", "Bağlantı ayarları", "Connection settings"),
-    "page.parser": ("page", "Parser desenleri", "Parser patterns"), "page.users": ("page", "Kullanıcılar ve roller sayfası", "Users and roles page"), "page.sys": ("page", "Sistem sayfası", "System page"), "page.readme": ("page", "README", "README"),
+    "page.parser": ("page", "Parser desenleri", "Parser patterns"), "page.scan": ("page", "Zafiyet taraması", "Vulnerability scan"), "page.users": ("page", "Kullanıcılar ve roller sayfası", "Users and roles page"), "page.sys": ("page", "Sistem sayfası", "System page"), "page.readme": ("page", "README", "README"),
     "act.sim": ("act", "Simülasyon modunu açıp kapatma", "Toggle simulation mode"), "act.connect": ("act", "Sunucu bağlama (ajan kaydı)", "Connect a server (enrol an agent)"),
     "act.report": ("act", "SLO raporu indirme", "Download SLO reports"), "act.export": ("act", "Log dosyası dışa aktarma", "Export log files"),
     "act.sources": ("act", "Kaynak ekleme ve düzenleme", "Add and edit sources"), "act.inventory": ("act", "Envanter düzenleme", "Edit the inventory"),
     "act.anomaly": ("act", "Anomali takibi: adımlar, atama, kapatma", "Anomaly tracking: steps, assignment, closing"),
     "act.parser": ("act", "Parser deseni ekleme ve düzenleme", "Add and edit parser patterns"),
+    "act.scan": ("act", "Zafiyet taraması çalıştırma (ağ kontrolü dahil)", "Run vulnerability scans (including network probe)"),
+    "act.itsm": ("act", "ITSM entegrasyon ayarları", "ITSM integration settings"),
     "sys.status": ("sys", "Sistem › Durum", "System › Status"), "sys.maint": ("sys", "Sistem › Bakım", "System › Maintenance"), "sys.update": ("sys", "Sistem › Güncelleme ve sürüm geçmişi", "System › Update and version history"),
     "sys.auth": ("sys", "Sistem › Giriş sağlayıcıları", "System › Sign-in providers"),
     "sys.notify": ("sys", "Sistem › Bildirimler", "System › Alerts"), "sys.security": ("sys", "Sistem › Güvenlik günlüğü", "System › Security log"),
 }
 GROUPS = {"page": ("Sayfalar", "Pages"), "act": ("İşlemler", "Actions"), "sys": ("Sistem sekmeleri", "System tabs")}
 ALL = frozenset(PERMISSIONS)
-NEW_PERMS = frozenset({"page.parser", "act.parser"})          # added after roles started being stored in the database
+NEW_PERMS = frozenset({"page.parser", "act.parser", "page.scan", "act.scan", "act.itsm"})          # added after roles started being stored in the database
 BUILTIN: dict[str, dict] = {
     "admin": {"label": ("Yönetici", "Administrator"), "desc": ("Her yetki; daraltılamaz.", "Every permission; cannot be narrowed."), "perms": set(ALL)},
     "operator": {"label": ("Operatör", "Operator"), "desc": ("Operasyon, veri, kaynak, envanter, playbook ve ITSM işleri; sistem yönetimi yok.", "Operations, data, sources, inventory, playbook and ITSM work; no system administration."),
-                 "perms": {k for k in ALL if k.startswith("page.") and k not in ("page.sys", "page.users")} | {"act.sim", "act.connect", "act.report", "act.export", "act.sources", "act.inventory", "act.anomaly", "act.parser"}},
+                 "perms": {k for k in ALL if k.startswith("page.") and k not in ("page.sys", "page.users")} | {"act.sim", "act.connect", "act.report", "act.export", "act.sources", "act.inventory", "act.anomaly", "act.parser", "act.scan", "act.itsm"}},
     "viewer": {"label": ("İzleyici", "Viewer"), "desc": ("Yalnız izleme: operasyon, veri setleri, harita, playbook, ITSM ve README.", "Read-only: operations, datasets, map, playbook, ITSM and README."),
                "perms": {"page.ops", "page.data", "page.map", "page.pb", "page.itsm", "page.readme", "act.report"}},
 }

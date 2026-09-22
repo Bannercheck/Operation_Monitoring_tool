@@ -80,9 +80,13 @@ def get_config(user=Depends(require("page.itsm"))):
 
 
 @router.put("/config")
-def put_config(body: ConfigIn, user=Depends(require("page.itsm"))):
+def put_config(body: ConfigIn, user=Depends(require("act.itsm"))):
     m = {"system": "x_itsm_system", "base": "x_itsm_base", "user": "x_itsm_user", "password": "x_itsm_pass", "token": "x_itsm_token", "query": "x_itsm_query", "path": "x_itsm_path", "mapping": "x_itsm_mapping"}
     vals = {m[k]: v for k, v in body.model_dump().items() if v is not None and v != MASK}
+    cur = _cfg()
+    new_base = body.model_dump().get("base")
+    if new_base is not None and new_base != cur.get("base") and body.password is None and body.token is None:
+        vals["x_itsm_pass"] = ""; vals["x_itsm_token"] = ""     # never send the stored credentials to a newly pointed endpoint
     wo_settings.save(vals)
     _cache.update({"tickets": None, "system": ""})
     return {"ok": True}
@@ -90,6 +94,8 @@ def put_config(body: ConfigIn, user=Depends(require("page.itsm"))):
 
 @router.get("/tickets")
 def tickets(dataset: str | None = None, refresh: bool = False, user=Depends(require("page.itsm")), svc=Depends(services)):
+    if refresh and not svc.roles.can(user["role"], "act.itsm"):
+        refresh = False                                       # only integration managers trigger a live fetch to the configured endpoint
     """Tickets scored against the last 15 minutes of live signals, metric breaches and (optionally) a dataset's incidents."""
     import time
     c = _cfg()

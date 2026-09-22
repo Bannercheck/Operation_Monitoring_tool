@@ -8,6 +8,8 @@ same window, and a rolling hash set drops the occasional duplicate at the bounda
 """
 from __future__ import annotations
 
+from .connectors import guard_url
+
 import base64
 import hashlib
 import json
@@ -110,6 +112,7 @@ def _headers(src: Source, extra: dict | None = None) -> dict:
 
 def _call(src: Source, url: str, method: str = "GET", body: bytes | None = None, extra: dict | None = None, timeout: int = 30) -> bytes:
     req = urllib.request.Request(url, data=body, method=method, headers=_headers(src, extra))
+    guard_url(url, allow_private=True)                     # admin-configured source may live on the company network; scheme + metadata still blocked
     with urllib.request.urlopen(req, timeout=timeout, context=_ctx(src.verify_tls)) as r:
         return r.read()
 

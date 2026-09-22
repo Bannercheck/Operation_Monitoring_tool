@@ -21,7 +21,7 @@ class GrokParser(Parser):
         lp, _share = grok.detect(lines)
         if lp is None:
             return
-        rx = grok.compile_pattern(lp.pattern)
+        rx = grok.compile_pattern(lp.pattern, trusted=True)
         roles = lp.roles or {}
         prev: tuple[int, dict] | None = None
         for i, ln in enumerate(lines, 1):

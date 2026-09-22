@@ -16,12 +16,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 \
     WATCHOVER_DOCKER=1 WATCHOVER_GIT_REV=$GIT_REV \
     WATCHOVER_HOME=/data KNOWLEDGE_DB=/data/knowledge.db ACTIONS_DB=/data/actions.db PLAYBOOK_DB=/data/playbook.db \
     LIVE_SPOOL=/data/live/events.jsonl WATCHOVER_LOG=/data/watchover.log LIVE_PORT=8600
-RUN apt-get update && apt-get install -y --no-install-recommends curl tini && rm -rf /var/lib/apt/lists/* \
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends curl tini && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --uid 10001 watchover && mkdir -p /app /data && chown -R watchover:watchover /app /data
 WORKDIR /app
 COPY pyproject.toml README.md CHANGELOG.md requirements.txt ./
 COPY src ./src
-RUN pip install --no-cache-dir -e ".[mcp,postgres,api]"
+RUN pip install --no-cache-dir --upgrade "pip>=26.2" "setuptools>=83" "wheel>=0.46.2" \
+    && pip install --no-cache-dir -e ".[mcp,postgres,api]"
 COPY app.py agent.py mcp_server.py ./
 COPY assets ./assets
 COPY samples ./samples

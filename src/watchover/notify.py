@@ -166,7 +166,10 @@ class Notifier:
     def recipients(self) -> list[dict]:
         return [dict(r) for r in self.kb._exec("SELECT * FROM recipients ORDER BY name")]
 
+    _RCPT_COLS = ("name", "email", "phone", "groups", "enabled", "note")
+
     def update_recipient(self, rid: int, **f) -> None:
+        f = {k: v for k, v in f.items() if k in self._RCPT_COLS}      # only real columns: the key is a SQL identifier, never trust the request
         if f:
             self.kb._exec(f"UPDATE recipients SET {', '.join(f'{k}=?' for k in f)} WHERE id=?", tuple(int(v) if isinstance(v, bool) else v for v in f.values()) + (rid,))
 
@@ -217,7 +220,10 @@ class Notifier:
     def rules(self) -> list[dict]:
         return [dict(r) for r in self.kb._exec("SELECT * FROM notify_rules ORDER BY id")]
 
+    _RULE_COLS = ("name", "condition", "threshold", "env", "severity", "channels", "targets", "cooldown_min", "enabled")
+
     def update_rule(self, rid: int, **f) -> None:
+        f = {k: v for k, v in f.items() if k in self._RULE_COLS}      # column allowlist: never interpolate a request-supplied identifier
         if f:
             self.kb._exec(f"UPDATE notify_rules SET {', '.join(f'{k}=?' for k in f)} WHERE id=?", tuple(int(v) if isinstance(v, bool) else v for v in f.values()) + (rid,))
 

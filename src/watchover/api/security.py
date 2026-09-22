@@ -88,6 +88,10 @@ def current_user(request: Request) -> dict:
     u = svc.users.get(claims["email"])
     if not u or u.get("status") != "active":
         raise HTTPException(401, "account disabled or removed")
+    if u.get("must_change"):                                  # a never-changed initial account can only change its own password
+        path = request.url.path.rstrip("/")
+        if path not in ("/api/auth/password", "/api/auth/me", "/api/auth/logout"):
+            raise HTTPException(403, "password change required")
     return {"id": u["id"], "email": u["email"], "name": u.get("name", ""), "role": u.get("role", ""), "must_change": bool(u.get("must_change"))}
 
 

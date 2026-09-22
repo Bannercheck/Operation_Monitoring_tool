@@ -65,10 +65,10 @@ def serve():
 def test_http_connector_zip_and_json_path():
     srv, base = serve()
     try:
-        name, data = fetch_http(base + "/demo.zip")
+        name, data = fetch_http(base + "/demo.zip", allow_private=True)
         obs, _ = ingest_bytes(name, data)
         assert name.endswith(".zip") and len(obs) == 916
-        name, data = fetch_http(base + "/alerts", json_path="data.alerts")
+        name, data = fetch_http(base + "/alerts", json_path="data.alerts", allow_private=True)
         obs, rep = ingest_bytes(name, data)
         assert rep[0]["format"] == "json" and len(obs) == 1 and obs[0].service == "postgres"
     finally:
@@ -80,11 +80,11 @@ def test_mcp_client_and_fetch():
     try:
         headers = parse_headers("Authorization: Bearer secret\nX-Team: sre")
         assert headers == {"Authorization": "Bearer secret", "X-Team": "sre"}
-        assert [t["name"] for t in mcp_tools(base + "/mcp", headers)] == ["export_logs"]
-        name, data = fetch_mcp(base + "/mcp", "export_logs", {}, headers)
+        assert [t["name"] for t in mcp_tools(base + "/mcp", headers, allow_private=True)] == ["export_logs"]
+        name, data = fetch_mcp(base + "/mcp", "export_logs", {}, headers, allow_private=True)
         obs, rep = ingest_bytes(name, data)
         assert rep[0]["format"] == "jsonl" and len(obs) == 3 and obs[0].severity == "ERROR"
-        c = McpClient(base + "/mcp", headers); c.initialize()
+        c = McpClient(base + "/mcp", headers, allow_private=True); c.initialize()
         try:
             c.call_tool("missing")
             assert False, "expected error"
@@ -133,13 +133,13 @@ def test_mcp_server_http_api_key(tmp_path, monkeypatch):
     try:
         assert urllib.request.urlopen(base + "/health").read() == b"ok"
         try:
-            mcp_tools(base + "/mcp", {})
+            mcp_tools(base + "/mcp", {}, allow_private=True)
             assert False, "expected 401"
         except Exception as e:  # noqa: BLE001
             assert "401" in str(e)
-        names = [t["name"] for t in mcp_tools(base + "/mcp", {"Authorization": "Bearer s3cret"})]
+        names = [t["name"] for t in mcp_tools(base + "/mcp", {"Authorization": "Bearer s3cret"}, allow_private=True)]
         assert "analyze_dataset" in names and "list_actions" in names
-        c = McpClient(base + "/mcp", {"X-API-Key": "s3cret"}); c.initialize()
+        c = McpClient(base + "/mcp", {"X-API-Key": "s3cret"}, allow_private=True); c.initialize()
         out = c.call_tool("analyze_dataset", {"path": "demo.zip"})
         assert "raw_events" in out and "916" in out
     finally:

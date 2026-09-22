@@ -7,6 +7,8 @@ Standard library only.
 
 from __future__ import annotations
 
+from .connectors import guard_url
+
 import base64
 import json
 import re
@@ -52,6 +54,7 @@ class Ticket:
 # ---------------------------------------------------------------- fetchers
 def _get(url: str, headers: dict, timeout: int = 30) -> dict | list:
     req = urllib.request.Request(url, headers={"Accept": "application/json", **headers})
+    guard_url(url, allow_private=True)                     # admin-configured ITSM endpoint; scheme + metadata still blocked
     with urllib.request.urlopen(req, timeout=timeout, context=_CTX) as r:
         return json.loads(r.read())
 

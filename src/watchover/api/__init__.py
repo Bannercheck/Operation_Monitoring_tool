@@ -24,7 +24,7 @@ from .. import __version__
 
 def create_app(services=None) -> FastAPI:
     from .services import Services
-    from .routers import actions, agents, anomalies, assist, auth, datasets, grok, inventory, itsm, knowledge, live, llm, map as map_, memory, notify, playbook, sources, system, users
+    from .routers import actions, agents, anomalies, assist, auth, datasets, grok, inventory, itsm, knowledge, live, llm, map as map_, memory, notify, scan, playbook, sources, system, users
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -37,7 +37,20 @@ def create_app(services=None) -> FastAPI:
     origins = [o.strip() for o in os.environ.get("WATCHOVER_CORS", "").split(",") if o.strip()]
     if origins:
         app.add_middleware(CORSMiddleware, allow_origins=origins, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
-    for r in (auth, datasets, live, actions, anomalies, playbook, agents, sources, inventory, knowledge, notify, users, system, map_, assist, llm, itsm, grok, memory):
+
+    @app.middleware("http")
+    async def security_headers(request: Request, call_next):
+        resp = await call_next(request)
+        resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+        resp.headers.setdefault("X-Frame-Options", "DENY")
+        resp.headers.setdefault("Referrer-Policy", "no-referrer")
+        resp.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
+        if not request.url.path.startswith("/api/"):         # the SPA: allow its own inline styles/scripts, block plugins/embedding
+            resp.headers.setdefault("Content-Security-Policy",
+                                    "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
+                                    "script-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'")
+        return resp
+    for r in (auth, datasets, live, actions, anomalies, playbook, agents, sources, inventory, knowledge, notify, users, system, map_, assist, llm, itsm, grok, memory, scan):
         app.include_router(r.router, prefix="/api")
 
     @app.exception_handler(KeyError)
@@ -57,12 +70,22 @@ def create_app(services=None) -> FastAPI:
     if (dist / "index.html").exists():                      # the React build: assets from /assets, every other path -> index.html (client routing)
         app.mount("/assets", StaticFiles(directory=str(dist / "assets")), name="assets")
 
+        _dist_root = dist.resolve()
+
         @app.get("/{path:path}", include_in_schema=False)
         def spa(path: str):
             if path.startswith("api/"):
                 return JSONResponse({"detail": "not found"}, status_code=404)
-            f = dist / path
-            return FileResponse(str(f)) if path and f.is_file() else FileResponse(str(dist / "index.html"))
+            index = _dist_root / "index.html"
+            if not path:
+                return FileResponse(str(index))
+            try:
+                f = (_dist_root / path).resolve()
+            except (OSError, ValueError):
+                return FileResponse(str(index))
+            if f.is_file() and f.is_relative_to(_dist_root):     # never serve a file outside the built SPA (path traversal)
+                return FileResponse(str(f))
+            return FileResponse(str(index))
     return app
 
 

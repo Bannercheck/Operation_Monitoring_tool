@@ -6,7 +6,7 @@ import { Wordmark } from "../components/Logo";
 /** Small Markdown renderer for the README: headings, lists, tables, code, bold, links. Enough for docs, not a full parser. */
 function render(md: string): string {
   const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  const inline = (s: string) => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>").replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
+  const inline = (s: string) => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>").replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_m, label, url) => { const safe = /^(https?:\/\/|\/|#)/i.test(String(url).trim()) ? url : "#"; return `<a href="${safe}" target="_blank" rel="noreferrer noopener">${label}</a>`; });
   const out: string[] = []; const lines = md.split("\n"); let i = 0;
   while (i < lines.length) {
     const l = lines[i];
