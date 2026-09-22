@@ -261,3 +261,39 @@ Soğuk yedek sunucu: aynı klasörü ve `.env`'i kopyalayın, `./watchover.sh in
 **Yük testi.** `python scripts/loadtest.py --url http://<sunucu>:8600 --api http://<sunucu>:8501 --rate 2000 --agents 100 --duration 90 --user … --password …` kendi sunucunuzda 100 sanal ajanla ERP ağırlıklı yük basar ve alım/tarama ölçümlerini yazar; referans sonuçlar `docs/LOAD_TEST.md` (2.000 satır/sn: POST p50 10 ms; 4.000: alım sürer, tarama 12,6 s).
 
 **Ne zaman Kubernetes.** Sıfır kesinti SLA'sı, çoklu lokasyon ya da GPU düğüm havuzu gerektiğinde. Ondan önce Faz 2 (durumsuz API kopyaları, ayrı alıcı servisi, tek worker) uygulanır.
+
+## İnternetsiz (air-gapped) sunucu
+
+Watchover'ın çalışması için internet gerekmez; yalnız **imajların oluşturulması** ve **LLM modellerinin indirilmesi** internet ister. Bu iki iş internete çıkabilen bir makinede (dizüstü, bastion, CI) yapılır ve tek dosya halinde kurumsal sunucuya taşınır.
+
+**1. İnternetli makinede paketi hazırla** (kurulu bir Watchover klasöründe):
+
+```
+git clone https://github.com/Bannercheck/Operation_Monitoring_tool.git watchover-docker && cd watchover-docker
+./watchover.sh install            # imajları oluşturur
+./watchover.sh llm on             # isteğe bağlı: Ollama modelleri (qwen2.5 7B/3B, bge-m3) ve eğitim tabanı iner
+./watchover.sh bundle             # -> watchover-bundle-<sürüm>.tar  (tüm imajlar + Ollama modelleri + eğitim ağırlıkları + kaynak kod)
+```
+
+**2. Kurumsal sunucuya taşı** (USB, SCP, dosya paylaşımı; tek dosya):
+
+```
+mkdir -p /opt/watchover-docker && cd /opt/watchover-docker
+tar xf /mnt/usb/watchover-bundle-<sürüm>.tar --strip-components=1 source      # kaynak kod ve betik
+./watchover.sh unbundle /mnt/usb/watchover-bundle-<sürüm>.tar                 # imajları ve model hacimlerini yükler, kurulumu "çevrimdışı" işaretler
+./watchover.sh install                                                         # build yapmaz, yüklenen imajla başlatır; .env ve şifreler bu sunucuda üretilir
+./watchover.sh llm on                                                          # pakette model varsa yerel LLM (indirme yapmaz)
+./watchover.sh edge on watchover.sirket.local                                  # TLS: iç CA (internet gerektirmez) ya da ./certs içine şirket sertifikası
+```
+
+Sunucuda yalnız Docker Engine + Compose v2 kurulu olmalı (dağıtımın paket deposundan ya da çevrimdışı .deb/.rpm ile).
+
+**3. Diğer sunucular Watchover'a nasıl bağlanır.** Veri akışı **ajanlardan Watchover'a doğru** çalışır: her izlenen sunucu, Watchover'ın 8600 portuna (edge açıksa 443 üzerinden `https://…/ingest`) kendi loglarını gönderir; Watchover sunuculara bağlanmaz. Ajan yalnız Python 3 standart kütüphanesi kullanır ve **Watchover'ın kendisinden indirilir**, internet gerekmez:
+
+```
+curl -fsSL http://<watchover>:8600/agent/install.sh | sudo bash -s -- --url http://<watchover>:8600/ingest --enroll-key <Bağlantılar › Ajanlar> --env prod
+```
+
+İzlenen sunucuda `python3` kurulu olmalı (yoksa kurulum betiği paket deposundan kurmayı dener; çevrimdışı sunucuda önceden kurun). Ajan, Watchover erişilemezken paketleri yerel diskte biriktirir ve bağlantı dönünce boşaltır. Güvenlik duvarında açılması gereken tek kural: izlenen sunuculardan Watchover'a **TCP 8600** (edge ile **443**), arayüz için istemcilerden **443/8501**. Elasticsearch, Grafana, Splunk gibi kaynaklardan **çekme** ise Watchover'dan o sistemlere doğru ilgili portlarda izin ister.
+
+**Güncelleme.** Yeni sürümde internetli makinede `git pull && ./watchover.sh update && ./watchover.sh bundle`, sunucuda kaynak kodu aynı `tar xf … --strip-components=1 source` ile üzerine açıp `./watchover.sh unbundle <dosya> && ./watchover.sh update`. Veri hacimleri (`watchover-data`, `watchover-pg`) ve `.env` dokunulmaz. Çevrimdışı işareti `.env` içindeki `WATCHOVER_OFFLINE=1` satırıdır; sunucu ileride internete çıkarsa satırı silmek yeterlidir.

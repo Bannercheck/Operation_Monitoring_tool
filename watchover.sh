@@ -14,6 +14,8 @@
 #   ./watchover.sh user ...         account management, e.g.  user list | user add ops@firma.com --admin | user password EMAIL | user unlock EMAIL
 #   ./watchover.sh migrate          copy old SQLite files (knowledge.db / actions.db / playbook.db in ./data or the volume) into PostgreSQL
 #   ./watchover.sh save|load FILE   export the built images to a .tgz (build on a machine with internet), import them on an air-gapped server
+#   ./watchover.sh bundle [FILE]    everything an air-gapped server needs in one .tar: all images, downloaded Ollama models, training weights, source
+#   ./watchover.sh unbundle FILE    on the air-gapped server: load the images and model volumes, mark the install offline (no builds, no pulls)
 #   ./watchover.sh shell            a shell inside the dashboard container
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -67,11 +69,19 @@ write_env() {
   mkdir -p datasets backups
 }
 
+offline() { [ "$(env_get WATCHOVER_OFFLINE)" = "1" ]; }
+have_image() { docker image inspect "$1" >/dev/null 2>&1; }
 build() {
+  if offline; then   # air-gapped: the images came in with ./watchover.sh unbundle, never build or pull here
+    have_image "watchover:$(version)" || die "offline install and image watchover:$(version) is missing: unbundle the bundle of this version first (./watchover.sh unbundle watchover-bundle-$(version).tar)"
+    say "offline install: using the loaded image watchover:$(version) (no build)"; return 0
+  fi
   say "building image watchover:$(version) from this source tree (first time: a few minutes, needs internet for PyPI)"
   $COMPOSE build --build-arg GIT_REV="$(git_rev)" --build-arg VERSION="$(version)" dashboard
   [ "$(env_get WATCHOVER_LLM)" = "1" ] && $COMPOSE --profile llm build trainer || true
 }
+# compose volume name (project prefix) for a volume declared in docker-compose.yml
+vol_name() { $COMPOSE config --format json 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin)['volumes']['$1']['name'])" 2>/dev/null || echo "watchover_$1"; }
 
 profiles() { local p=""; [ "$(env_get WATCHOVER_MCP)" = "1" ] && p="$p --profile mcp"; [ "$(env_get WATCHOVER_LEGACY)" = "1" ] && p="$p --profile legacy"; [ "$(env_get WATCHOVER_EDGE)" = "1" ] && p="$p --profile edge"; [ "$(env_get WATCHOVER_LLM)" = "1" ] && p="$p --profile llm"; echo "$p"; }
 # a *.local name on macOS: announce it on the LAN with Bonjour (dns-sd proxy record) so colleagues' Macs, iPhones and Windows 10+ resolve it
@@ -143,11 +153,20 @@ case "${1:-}" in
         else
           say "existing LLM connection kept ($(env_get LLM_BASE_URL)); the bundled Ollama is an extra option at http://ollama:11434 (LLM › Connection)"
         fi
-        say "building the trainer image (torch CPU, transformers, peft; first time a few minutes)"; $COMPOSE --profile llm build trainer
+        if offline; then
+          have_image "watchover-trainer:$(version)" && say "offline install: using the loaded trainer image" || { env_set WATCHOVER_LLM 0; die "offline install and image watchover-trainer:$(version) is missing: run 'llm on' on the internet machine before 'bundle'"; }
+        else
+          say "building the trainer image (torch CPU, transformers, peft; first time a few minutes)"; $COMPOSE --profile llm build trainer
+        fi
         up
         say "waiting for the Ollama service to become healthy"
         for _ in $(seq 1 60); do $COMPOSE ps --format '{{.Service}} {{.Health}}' 2>/dev/null | grep -q '^ollama healthy' && break; sleep 3; done
-        for m in $models; do say "pulling $m (CPU inference; the 7B model is a few GB, first time is slow)"; $COMPOSE exec -T ollama ollama pull "$m" || say "could not pull $m (check internet / disk)"; done
+        have="$($COMPOSE exec -T ollama ollama list 2>/dev/null | awk 'NR>1{print $1}')"
+        for m in $models; do
+          if echo "$have" | grep -qx "$m"; then say "$m already downloaded"; continue; fi
+          if offline; then say "$m is not in the bundle (skipping the download: offline install); add it on the internet machine with 'llm pull $m' and bundle again"; continue; fi
+          say "pulling $m (CPU inference; the 7B model is a few GB, first time is slow)"; $COMPOSE exec -T ollama ollama pull "$m" || say "could not pull $m (check internet / disk)"
+        done
         $COMPOSE exec -T ollama ollama list || true
         say "bundled Ollama on (chat/review: qwen2.5:7b, fast: 3b, embeddings: bge-m3). Models to download: .env WATCHOVER_LLM_MODELS" ;;
       use)   # switch the dashboard's chat model (any model your configured Ollama serves, e.g. watchover-ops); nothing else changes
@@ -224,6 +243,36 @@ case "${1:-}" in
   migrate) need_docker; shift; [ -d data ] && docker cp data/. watchover:/data/ 2>/dev/null || true; $COMPOSE exec dashboard python -m watchover.migrate --source /data "$@" ;;
   save)    need_docker; out="${2:-watchover-images-$(version).tgz}"; docker save "watchover:$(version)" postgres:16-alpine | gzip > "$out"; say "images saved to $out (copy it with this folder to the air-gapped server, then: ./watchover.sh load $out && ./watchover.sh install)" ;;
   load)    need_docker; [ -f "${2:-}" ] || die "usage: ./watchover.sh load watchover-images-X.Y.tgz"; gunzip -c "$2" | docker load; say "images loaded; ./watchover.sh install skips the build when the image tag matches" ;;
+  bundle)  # one file for the air-gapped server: images + model volumes + source tree; built where there is internet
+    need_docker; out="${2:-watchover-bundle-$(version).tar}"; case "$out" in /*) ;; *) out="$PWD/$out" ;; esac
+    have_image "watchover:$(version)" || die "image watchover:$(version) is not built yet: ./watchover.sh install first (and 'llm on' if the server should get the local LLM)"
+    tmp=$(mktemp -d); mkdir -p "$tmp/volumes" "$tmp/source"
+    imgs="watchover:$(version) postgres:16-alpine"
+    for i in "watchover-trainer:$(version)" caddy:2-alpine ollama/ollama:latest alpine:latest; do have_image "$i" && imgs="$imgs $i" || true; done
+    have_image alpine:latest || docker pull alpine:latest >/dev/null 2>&1 || true; have_image alpine:latest && case " $imgs " in *" alpine:latest "*) ;; *) imgs="$imgs alpine:latest" ;; esac
+    say "saving images: $imgs"; docker save $imgs | gzip -1 > "$tmp/images.tar.gz"
+    for v in watchover-ollama watchover-hf watchover-models; do
+      n=$(vol_name "$v"); docker volume inspect "$n" >/dev/null 2>&1 || continue
+      say "exporting volume $v ($n: Ollama models / training weights / adapters)"
+      docker run --rm -v "$n":/v:ro -v "$tmp/volumes":/out alpine tar cf "/out/$v.tar" -C /v . || say "could not export $v (skipped)"
+    done
+    say "adding the source tree"
+    if git rev-parse HEAD >/dev/null 2>&1; then git archive --format=tar HEAD | tar xf - -C "$tmp/source"; else tar cf - --exclude=./.git --exclude=./data --exclude=./backups --exclude=./certs --exclude=./.env --exclude='./*.tar' --exclude='./*.tgz' --exclude=./web/node_modules . | tar xf - -C "$tmp/source"; fi
+    printf 'version=%s\nimages=%s\nvolumes=%s\n' "$(version)" "$imgs" "$(ls "$tmp/volumes" 2>/dev/null | tr '\n' ' ')" > "$tmp/MANIFEST"
+    tar cf "$out" -C "$tmp" MANIFEST images.tar.gz volumes source; rm -rf "$tmp"
+    say "bundle written: $out ($(du -h "$out" | cut -f1)). On the air-gapped server:  tar xf $(basename "$out") --strip-components=1 source  &&  ./watchover.sh unbundle $(basename "$out")  &&  ./watchover.sh install" ;;
+  unbundle)  # on the air-gapped server: images, model volumes, offline marker
+    need_docker; [ -f "${2:-}" ] || die "usage: ./watchover.sh unbundle watchover-bundle-X.Y.tar"
+    tmp=$(mktemp -d); tar xf "$2" -C "$tmp" MANIFEST images.tar.gz volumes 2>/dev/null || tar xf "$2" -C "$tmp"
+    [ -f "$tmp/MANIFEST" ] && say "bundle $(sed -n 's/^version=//p' "$tmp/MANIFEST")" || true
+    say "loading images"; gunzip -c "$tmp/images.tar.gz" | docker load
+    for f in "$tmp"/volumes/*.tar; do
+      [ -f "$f" ] || continue; v=$(basename "$f" .tar); n=$(vol_name "$v")
+      say "restoring volume $v -> $n"; docker volume create "$n" >/dev/null
+      docker run --rm -v "$n":/v -v "$tmp/volumes":/in alpine tar xf "/in/$v.tar" -C /v || say "could not restore $v"
+    done
+    rm -rf "$tmp"; touch "$ENV_FILE"; env_set WATCHOVER_OFFLINE 1
+    say "offline install marked (.env WATCHOVER_OFFLINE=1: install/update never build, llm on never downloads). Next:  ./watchover.sh install   then  ./watchover.sh llm on  if the bundle carried Ollama models" ;;
   shell)   need_docker; $COMPOSE exec dashboard bash ;;
   version) echo "Watchover v$(version) ($(git_rev))" ;;
   *) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;

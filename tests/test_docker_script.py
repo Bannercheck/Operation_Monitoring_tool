@@ -151,3 +151,36 @@ def test_backup_rotation(stage):
     left = sorted(p.name for p in (d / "backups").glob("watchover-*.tgz"))
     assert len(left) == 2 and "watchover-20260101-0200.tgz" not in left and "watchover-20260102-0200.tgz" not in left
 
+
+def test_bundle_and_offline_install(stage):
+    d, env = stage
+    subprocess.run(["git", "init", "-q"], cwd=d, check=True)   # bundle takes the source tree from git when it can
+    r = run(stage, "bundle")
+    assert r.returncode == 0, r.stderr
+    out = d / f"watchover-bundle-{version(d)}.tar"
+    assert out.exists()
+    names = subprocess.run(["tar", "tf", str(out)], capture_output=True, text=True, check=True).stdout.split()
+    assert "MANIFEST" in names and "images.tar.gz" in names
+    log = (d / "calls.log").read_text()
+    assert f"docker save watchover:{version(d)} postgres:16-alpine" in log and "watchover-trainer:" in log and "ollama/ollama:latest" in log
+    assert "docker run --rm -v watchover_watchover-ollama:/v:ro" in log      # model volume exported
+    (d / "calls.log").write_text("")
+    r = run(stage, "unbundle", str(out))
+    assert r.returncode == 0, r.stderr
+    log = (d / "calls.log").read_text()
+    assert "docker load" in log and "WATCHOVER_OFFLINE=1" in (d / ".env").read_text()
+    (d / "calls.log").write_text("")
+    r = run(stage, "install")
+    assert r.returncode == 0, r.stderr
+    log = (d / "calls.log").read_text()
+    assert "compose build" not in log and "compose up -d" in log            # offline: loaded image, no build
+    r = run(stage, "llm", "on")
+    assert r.returncode == 0, r.stderr
+    log = (d / "calls.log").read_text()
+    assert "build trainer" not in log and "ollama pull" not in log         # offline: no downloads either
+
+
+def version(d):
+    import re
+    return re.search(r'^version = "(.*)"', (d / "pyproject.toml").read_text(), re.M).group(1)
+
