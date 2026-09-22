@@ -1,0 +1,4 @@
+Sep 22 09:14:02 prd-api-01 sudo:   deploy : TTY=pts/0 ; PWD=/opt/shop ; USER=root ; COMMAND=/usr/bin/systemctl restart payment-api
+Sep 22 09:14:05 prd-api-01 CRON[100]: (root) CMD (run-parts /etc/cron.hourly)
+Sep 22 09:15:03 prd-api-01 sudo:     ayse : 3 incorrect password attempts ; TTY=pts/1 ; PWD=/home/ayse ; USER=root ; COMMAND=/bin/bash
+Sep 22 09:16:44 prd-api-01 CRON[101]: (postgres) CMD (/usr/local/bin/pg_backup.sh)

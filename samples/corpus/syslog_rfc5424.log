@@ -1,0 +1,6 @@
+<165>1 2026-09-22T09:14:02.003Z prd-api-01 app 3311 ID47 [exampleSDID@32473 iut="3" eventSource="Application" eventID="1011"] BOMAn application event log entry
+<34>1 2026-09-22T09:14:05.120Z prd-db-01 su - ID47 - 'su root' failed for lonvick on /dev/pts/8
+<13>1 2026-09-22T09:15:00Z prd-api-02 nginx 771 - - upstream timed out while connecting to 10.0.4.30:8080
+<11>1 2026-09-22T09:15:03.500+03:00 prd-api-02 payment-api 900 - [meta seq="12"] ERROR gateway timeout order=88213
+<14>1 2026-09-22T09:16:00Z prd-api-01 auth-api 901 - - user login ok user=ali
+<12>1 2026-09-22T09:16:44Z prd-api-01 order-service 902 - - WARN payment retry 3/5 order=88213

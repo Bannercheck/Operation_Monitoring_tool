@@ -1,0 +1,5 @@
+Sep 22 09:14:02 mail-01 postfix/smtpd[1123]: connect from unknown[192.168.7.4]
+Sep 22 09:14:03 mail-01 postfix/smtpd[1123]: NOQUEUE: reject: RCPT from unknown[192.168.7.4]: 554 5.7.1 <spam@example.net>: Relay access denied; from=<x@example.net> to=<spam@example.net> proto=ESMTP helo=<mx>
+Sep 22 09:15:03 mail-01 postfix/qmgr[900]: 4A1B2C3D4E: from=<noreply@example.com>, size=4412, nrcpt=1 (queue active)
+Sep 22 09:15:04 mail-01 postfix/smtp[1130]: 4A1B2C3D4E: to=<ali@example.com>, relay=mx.example.com[10.0.9.30]:25, delay=1.2, delays=0.1/0/0.5/0.6, dsn=2.0.0, status=sent (250 2.0.0 OK)
+Sep 22 09:16:44 mail-01 postfix/smtp[1131]: 5B2C3D4E5F: to=<ayse@example.com>, relay=none, delay=30, status=deferred (connect to mx2.example.com[10.0.9.31]:25: Connection timed out)

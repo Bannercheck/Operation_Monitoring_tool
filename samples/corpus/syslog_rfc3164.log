@@ -1,0 +1,8 @@
+Sep 22 09:14:02 prd-api-01 sshd[1123]: Accepted publickey for deploy from 10.0.4.12 port 51422 ssh2
+Sep 22 09:14:05 prd-api-01 systemd[1]: Started Session 4412 of user deploy.
+Sep 22 09:14:31 prd-db-01 postgres[2231]: [12-1] LOG:  checkpoint starting: time
+Sep 22 09:15:02 prd-db-01 kernel: [812231.112] Out of memory: Killed process 4471 (java) total-vm:8123400kB
+Sep 22 09:15:03 prd-api-02 nginx[771]: 2026/09/22 09:15:03 [error] 771#771: *4412 upstream timed out (110: Connection timed out) while reading response header from upstream
+Sep 22 09:15:10 prd-api-02 cron[100]: (root) CMD (run-parts /etc/cron.hourly)
+Sep 22 09:16:44 prd-api-01 app[3311]: WARN order-service payment retry 3/5 order=88213
+Sep 22 09:17:01 prd-api-01 app[3311]: ERROR order-service payment failed order=88213 reason=gateway_timeout

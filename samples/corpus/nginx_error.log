@@ -1,0 +1,4 @@
+2026/09/22 09:15:03 [error] 771#771: *4412 upstream timed out (110: Connection timed out) while reading response header from upstream, client: 10.0.4.13, server: shop.example.com, request: "POST /api/v1/payments HTTP/1.1", upstream: "http://10.0.4.30:8080/api/v1/payments", host: "shop.example.com"
+2026/09/22 09:15:10 [warn] 771#771: *4413 an upstream response is buffered to a temporary file while reading upstream
+2026/09/22 09:16:00 [notice] 770#770: signal process started
+2026/09/22 09:16:44 [crit] 771#771: *4420 SSL_do_handshake() failed (SSL: error:0A000126:SSL routines::unexpected eof while reading) while SSL handshaking, client: 192.168.7.4

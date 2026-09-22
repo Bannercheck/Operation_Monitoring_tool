@@ -1,0 +1,5 @@
+2026-09-22T06:14:02.003Z INFO  Microsoft.Dynamics.AX.Batch.BatchRun: Batch job 4412 'Posting: ledger journals' started on AOS D365-AOS-01, legal entity USMF
+2026-09-22T06:15:03.500Z ERROR Microsoft.Dynamics.AX.Xpp.SysOperation: SysOperationFramework - Job 4412 task LedgerJournalPost failed: Microsoft.Dynamics.Ax.Xpp.ErrorException: Posting failed, voucher GJ-000821 is out of balance
+   at Dynamics.AX.Application.LedgerJournalPost.run() in xppSource//LedgerJournalPost.xpp:line 412
+2026-09-22T06:15:10.000Z WARN  Microsoft.Dynamics.AX.Data.DMF: DMFEntityExport 'CustomersV3' retry 3/5, 12000 rows staged, target D365-INT-01 unreachable
+2026-09-22T06:16:44.000Z INFO  Microsoft.Dynamics.AX.Batch.BatchRun: Batch job 4413 'Data management export' completed in 118 s

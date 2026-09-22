@@ -1,0 +1,3 @@
+LEEF:2.0|IBM|QRadar|7.5|Login Failure|^|devTime=Sep 22 2026 09:14:02^devTimeFormat=MMM dd yyyy HH:mm:ss^src=10.0.4.12^usrName=ali^sev=5^identHostName=prd-api-01
+LEEF:2.0|IBM|QRadar|7.5|Firewall Deny|^|devTime=Sep 22 2026 09:15:10^devTimeFormat=MMM dd yyyy HH:mm:ss^src=192.168.7.4^dst=10.0.4.30^dstPort=22^sev=4^identHostName=asa-dc1
+LEEF:1.0|Trend Micro|Deep Security|20|Malware Detected|cat=Anti-Malware	sev=8	dvchost=WS-ACC-01	devTime=Sep 22 2026 09:15:03	msg=invoice.exe quarantined

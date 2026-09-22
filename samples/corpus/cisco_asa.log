@@ -1,0 +1,4 @@
+Sep 22 2026 09:15:10 asa-dc1 %ASA-4-106023: Deny tcp src outside:192.168.7.4/51422 dst inside:10.0.4.30/22 by access-group "OUTSIDE_IN" [0x0, 0x0]
+Sep 22 2026 09:15:11 asa-dc1 %ASA-6-302013: Built inbound TCP connection 88213 for outside:10.0.4.12/51423 (10.0.4.12/51423) to inside:10.0.9.8/443 (10.0.9.8/443)
+Sep 22 2026 09:15:12 asa-dc1 %ASA-6-302014: Teardown TCP connection 88213 for outside:10.0.4.12/51423 to inside:10.0.9.8/443 duration 0:00:01 bytes 1432 TCP FINs
+Sep 22 2026 09:16:44 asa-dc1 %ASA-3-710003: TCP access denied by ACL from 192.168.7.4/51500 to outside:10.0.9.1/22

@@ -1,0 +1,6 @@
+22-Sep-2026 09:14:02.003 INFO [main] org.apache.catalina.startup.Catalina.start Server startup in [1183] milliseconds
+22-Sep-2026 09:15:03.500 SEVERE [http-nio-8080-exec-12] org.apache.catalina.core.StandardWrapperValve.invoke Servlet.service() for servlet [dispatcher] threw exception
+	java.net.SocketTimeoutException: Read timed out
+		at java.base/java.net.SocketInputStream.socketRead0(Native Method)
+22-Sep-2026 09:15:10.000 WARNING [http-nio-8080-exec-13] org.apache.catalina.connector.CoyoteAdapter.service Retry 3/5 for order 88213
+22-Sep-2026 09:16:44.000 INFO [Catalina-utility-1] org.apache.catalina.core.StandardContext.reload Reloading Context with name [/shop] has started

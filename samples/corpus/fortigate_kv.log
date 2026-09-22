@@ -1,0 +1,3 @@
+date=2026-09-22 time=09:14:05 devname="fw-ist-02" devid="FG100" logid="0000000013" type="traffic" subtype="forward" level="notice" vd="root" srcip=10.0.4.13 srcport=51422 dstip=8.8.8.8 dstport=53 proto=17 action="accept" service="DNS" sentbyte=72 rcvdbyte=120
+date=2026-09-22 time=09:15:10 devname="fw-ist-02" devid="FG100" logid="0000000013" type="traffic" subtype="forward" level="warning" vd="root" srcip=192.168.7.4 srcport=51500 dstip=10.0.4.30 dstport=22 proto=6 action="deny" service="SSH"
+date=2026-09-22 time=09:16:44 devname="fw-ist-02" devid="FG100" logid="0419016384" type="utm" subtype="ips" level="alert" vd="root" srcip=192.168.7.4 dstip=10.0.9.8 action="dropped" attack="SQL.Injection" severity="critical"

@@ -1,0 +1,5 @@
+2026-09-22 09:14:02 [NavServer] Microsoft Dynamics NAV Server instance BC210-PROD started on NAV-SRV-01 (Business Central 21.5)
+2026-09-22 09:14:05 [NavServer] Session 88213 opened for user CORP\ali, company CRONUS Türkiye A.Ş.
+2026-09-22 09:15:03 [NavServer] Error: Microsoft.Dynamics.Nav.Types.NavCSideException: The Sales Header already exists. Identification fields and values: Document Type='Order',No.='SO-104412' (codeunit 80 Sales-Post, line 412)
+2026-09-22 09:15:10 [NavServer] Warning: Report 206 Sales Invoice exceeded 30 s (session 88214, user CORP\ayse)
+2026-09-22 09:16:44 [NavServer] Error: SQL Server connection lost: A transport-level error has occurred (provider: TCP Provider, error: 0) — database BC210_PROD on DB-SRV-01

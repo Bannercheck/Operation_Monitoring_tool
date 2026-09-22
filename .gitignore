@@ -34,3 +34,5 @@ backups/
 datasets/
 .edge-mdns.pid
 certs/
+
+!samples/corpus/*.log

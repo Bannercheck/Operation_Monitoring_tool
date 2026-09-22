@@ -1,0 +1,5 @@
+2026-09-22 09:14:02.11 spid52      Login failed for user 'CORP\ayse'. Reason: Password did not match that for the login provided. [CLIENT: 10.0.4.12]
+2026-09-22 09:14:05.20 Logon       Error: 18456, Severity: 14, State: 8.
+2026-09-22 09:15:03.50 spid61      Transaction (Process ID 61) was deadlocked on lock resources with another process and has been chosen as the deadlock victim. Rerun the transaction.
+2026-09-22 09:15:10.00 spid12s     SQL Server has encountered 3 occurrence(s) of I/O requests taking longer than 15 seconds to complete on file [D:\Data\PRD.mdf] in database [PRD] (5).
+2026-09-22 09:16:44.00 Backup      BACKUP failed to complete the command BACKUP DATABASE PRD. Check the backup application log for detailed messages.

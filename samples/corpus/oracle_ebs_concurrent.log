@@ -1,0 +1,21 @@
++---------------------------------------------------------------------------+
+Payables: Version : 12.2
+
+Copyright (c) 1979, 1999, Oracle Corporation. All rights reserved.
+
+APXIIMPT module: Payables Open Interface Import
++---------------------------------------------------------------------------+
+
+Current system time is 22-SEP-2026 09:14:02
+
++---------------------------------------------------------------------------+
+
+**Starts**22-SEP-2026 09:14:02
+**Ends**22-SEP-2026 09:15:03
+Request ID: 4412
+Concurrent Manager: Standard Manager
+APP-FND-01564: ORACLE error 1555 in FDPSTP
+Cause: FDPSTP failed due to ORA-01555: snapshot too old: rollback segment number 12 with name "_SYSSMU12$" too small
+ORA-06512: at "APPS.AP_IMPORT_INVOICES_PKG", line 1200
+22-SEP-2026 09:15:10 APP-FND-01388: Cannot read value for profile option FND_SITE_NAME in routine &ROUTINE.
+22-SEP-2026 09:16:44 Concurrent request completed with error status

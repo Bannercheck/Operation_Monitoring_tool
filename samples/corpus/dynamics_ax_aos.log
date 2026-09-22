@@ -1,0 +1,5 @@
+2026-09-22 09:14:02 Ax32Serv: Microsoft Dynamics AX AOS instance 01 started on AX-AOS-01 (build 6.3.6000.149)
+2026-09-22 09:14:05 Ax32Serv: Session 88213 opened for user CORP\ali from 10.0.4.12
+2026-09-22 09:15:03 Ax32Serv: Error: Microsoft.Dynamics.AX.Kernel.CLRInterop - SqlException: Transaction (Process ID 61) was deadlocked on lock resources; batch job 4412 (LedgerJournalPost) failed
+2026-09-22 09:15:10 Ax32Serv: Warning: AOS CPU at 92% for 5 minutes, 180 active sessions
+2026-09-22 09:16:44 Ax32Serv: Critical: Object Server 01: The database reported (session 88214 (ayse)): [Microsoft][SQL Server Native Client 11.0][SQL Server]Login failed for user 'CORP\ayse'. Connect information was: UserId = [AXSERVICE], Database = [AX2012R3_PROD], Server = [DB-SRV-01]

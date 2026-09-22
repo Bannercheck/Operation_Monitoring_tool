@@ -204,6 +204,10 @@ const S: Record<string, [string, string]> = {
   rv_run: ["LLM'e yorumlat", "Ask the LLM"], rv_running: ["Model düşünüyor…", "The model is thinking…"], rv_scope: ["Kapsam", "Scope"], rv_scope_dataset: ["Tüm veri seti", "Whole dataset"], rv_scope_incident: ["Incident", "Incident"], rv_scope_lines: ["Log satırları (arama)", "Log lines (search)"],
   rv_query: ["Arama sorgusu", "Search query"], rv_question: ["Ek soru (isteğe bağlı)", "Extra question (optional)"], rv_no_llm: ["LLM kurulu değil. LLM sayfasından Ollama'yı ya da bir API'yi tanımlayın.", "No LLM configured. Set up Ollama or an API on the LLM page."], rv_model: ["model", "model"], rv_evidence: ["kanıt", "evidence"],
   rv_grounded: ["dayanaklı atıf", "grounded citations"], rv_history: ["Bu oturumdaki incelemeler", "Reviews in this session"], rv_copy: ["Kopyala", "Copy"], rv_open_llm: ["LLM sayfası", "LLM page"],
+  // system tabs + bell
+  sys_tab_status: ["Durum", "Status"], sys_tab_notify: ["Bildirimler", "Alerts"], sys_tab_readme: ["README", "README"],
+  bell_title: ["Bildirimler", "Notifications"], bell_anom: ["açık anomali", "open anomalies"], bell_none: ["Açık anomali yok.", "No open anomaly."], bell_all: ["Anomaliler sayfası", "Anomalies page"], bell_new: ["yeni", "new"],
+  bell_browser: ["Tarayıcı bildirimi aç", "Enable browser notifications"], bell_browser_on: ["Tarayıcı bildirimi açık", "Browser notifications on"], bell_mark: ["Hepsini gördüm", "Mark all seen"], bell_alerts: ["Son gönderimler", "Recent deliveries"],
 };
 
 export function tr(lang: Lang, key: string, kw: Record<string, any> = {}): string {

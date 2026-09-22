@@ -1,0 +1,4 @@
+1790068442.003    117 10.0.4.12 TCP_MISS/200 1432 GET http://shop.example.com/api/v1/orders/88213 ali HIER_DIRECT/10.0.9.8 application/json
+1790068445.120  30001 10.0.4.13 TCP_MISS/504 512 POST http://shop.example.com/api/v1/payments ali HIER_DIRECT/10.0.9.9 text/html
+1790068503.500      2 192.168.7.4 TCP_DENIED/403 3612 GET http://malware.example.net/x.exe - HIER_NONE/- text/html
+1790068560.000     21 10.0.4.14 TCP_HIT/200 87 GET http://shop.example.com/health - HIER_NONE/- application/json

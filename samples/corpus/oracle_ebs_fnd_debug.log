@@ -1,0 +1,5 @@
+[22-SEP-2026 09:14:02:003] [ICM] Started concurrent manager Standard Manager (STANDARD) pid 4471
+[22-SEP-2026 09:14:05:120] [OACORE] WARNING: session pool oacore_server1 at 90% capacity (180/200)
+[22-SEP-2026 09:15:03:500] [APPLCSF] ERROR: request 4412 APXIIMPT ended with error: APP-FND-01564
+[22-SEP-2026 09:15:10:000] [FNDLIBR] Concurrent request 4413 GLPPOS (Posting) started by user ALI
+[22-SEP-2026 09:16:44:000] [WLS_FORMS] ERROR: FRM-92101 There was a failure in the Forms Server during startup

@@ -1,0 +1,6 @@
+2026-09-22 09:14:02 INFO  order-service started on port 8080
+2026-09-22 09:14:05 INFO  POST /api/v1/orders 201 118ms
+2026-09-22 09:15:03 ERROR payment-api gateway timeout order=88213
+2026-09-22 09:15:10 WARN  payment-api retry 3/5 order=88213
+2026-09-22 09:16:00 INFO  auth-api user login ok user=ali
+2026-09-22 09:16:44 CRITICAL payment-api circuit breaker open

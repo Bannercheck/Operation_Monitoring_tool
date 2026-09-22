@@ -1,0 +1,4 @@
+2026-09-22T06:14:02.003412Z 0 [System] [MY-010116] [Server] /usr/sbin/mysqld (mysqld 8.0.36) starting as process 4471
+2026-09-22T06:15:03.500981Z 12 [Warning] [MY-010055] [Server] IP address '192.168.7.4' could not be resolved: Name or service not known
+2026-09-22T06:15:10.000000Z 12 [ERROR] [MY-013183] [InnoDB] Assertion failure: dict0dict.cc:1234 thread 140
+2026-09-22T06:16:44.000000Z 0 [Note] [MY-010931] [Server] /usr/sbin/mysqld: ready for connections. Version: '8.0.36'  socket: '/var/run/mysqld/mysqld.sock'  port: 3306

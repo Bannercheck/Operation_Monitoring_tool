@@ -73,3 +73,16 @@ export function LangTheme() {
     <div className="langs">{(["dark", "system", "light"] as Theme[]).map((k) => <button key={k} className={theme === k ? "on" : ""} onClick={() => setTheme(k)} title={titles[k]}>{icons[k]}</button>)}</div>
   </div>;
 }
+/** Collapsible card: header with a chevron, open state remembered per id in localStorage (System page sections). */
+export function Collapsible({ id, title, right, children, defaultOpen = true, className = "" }: { id: string; title: ReactNode; right?: ReactNode; children: ReactNode; defaultOpen?: boolean; className?: string }) {
+  const key = `wo_open_${id}`;
+  const [open, setOpen] = useState<boolean>(() => { try { const v = localStorage.getItem(key); return v == null ? defaultOpen : v === "1"; } catch { return defaultOpen; } });
+  const toggle = () => { setOpen((o) => { try { localStorage.setItem(key, o ? "0" : "1"); } catch { /* ignore */ } return !o; }); };
+  return <div className={`card collapsible ${open ? "open" : "closed"} ${className}`}>
+    <div className="row between" style={{ cursor: "pointer", marginBottom: open ? 8 : 0 }} onClick={toggle}>
+      <h3 style={{ display: "flex", alignItems: "center", gap: 8 }}><span className="chev">{open ? "▾" : "▸"}</span>{title}</h3>
+      <div className="row" onClick={(e) => e.stopPropagation()}>{right}</div>
+    </div>
+    {open && children}
+  </div>;
+}

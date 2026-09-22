@@ -1,0 +1,10 @@
+2026-09-22T09:14:02.112000+03:00
+Thread 1 advanced to log sequence 4412 (LGWR switch)
+  Current log# 2 seq# 4412 mem# 0: /u01/oradata/PRD/redo02.log
+2026-09-22T09:15:03.500000+03:00
+ORA-01555: snapshot too old: rollback segment number 12 with name "_SYSSMU12$" too small
+2026-09-22T09:15:10.000000+03:00
+ORA-00060: Deadlock detected. See Note 60.1 at My Oracle Support for Troubleshooting ORA-60 Errors. More info in file /u01/diag/rdbms/prd/PRD/trace/PRD_ora_4471.trc.
+2026-09-22T09:16:44.000000+03:00
+Errors in file /u01/diag/rdbms/prd/PRD/trace/PRD_arc1_1200.trc:
+ORA-16014: log 3 sequence# 4410 not archived, no available destinations

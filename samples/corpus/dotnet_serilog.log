@@ -1,0 +1,8 @@
+2026-09-22 09:14:02.003 +03:00 [INF] Now listening on: https://[::]:5001
+2026-09-22 09:14:05.120 +03:00 [INF] HTTP POST /api/orders responded 201 in 118.2 ms
+2026-09-22 09:15:03.500 +03:00 [ERR] Failed to charge order 88213 via gateway
+System.Net.Http.HttpRequestException: The operation was canceled.
+   at System.Net.Http.HttpClient.SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+   at Shop.Payments.GatewayClient.ChargeAsync(Order order) in /src/Shop.Payments/GatewayClient.cs:line 88
+2026-09-22 09:15:10.000 +03:00 [WRN] Retry 3/5 for order 88213
+2026-09-22 09:16:44.000 +03:00 [FTL] Host terminated unexpectedly

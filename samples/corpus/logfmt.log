@@ -1,0 +1,4 @@
+ts=2026-09-22T06:14:02.003Z level=info msg="order-service started" port=8080 service=order-service host=prd-api-01
+ts=2026-09-22T06:15:03.500Z level=error msg="gateway timeout" order=88213 service=payment-api host=prd-api-01 err="read timeout"
+ts=2026-09-22T06:15:10.000Z level=warn msg="retry" attempt=3 max=5 order=88213 service=payment-api host=prd-api-01
+ts=2026-09-22T06:16:00.000Z level=info msg="user login ok" user=ali service=auth-api host=prd-api-02

@@ -1,0 +1,7 @@
+22.09.2026 09:14:02 INFO order-service started
+22/09/2026 09:14:05 INFO POST /api/v1/orders 201
+09/22/2026 09:15:03 AM ERROR payment-api gateway timeout order=88213
+2026-09-22 09:15:10.000123 WARN payment-api retry 3/5
+1790068560 INFO auth-api user login ok user=ali
+Tue, 22 Sep 2026 09:16:44 +0300 CRITICAL payment-api circuit breaker open
+20260922T091700Z INFO auth-api session refreshed user=ali

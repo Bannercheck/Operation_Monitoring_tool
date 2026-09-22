@@ -1,0 +1,7 @@
+2026-09-22 09:14:31.001 +03 [2231] LOG:  checkpoint starting: time
+2026-09-22 09:14:33.512 +03 [2231] LOG:  checkpoint complete: wrote 812 buffers (0.6%); 0 WAL file(s) added, 0 removed, 1 recycled
+2026-09-22 09:15:03.500 +03 [4471] shop@prd ERROR:  deadlock detected
+2026-09-22 09:15:03.500 +03 [4471] shop@prd DETAIL:  Process 4471 waits for ShareLock on transaction 88213; blocked by process 4480.
+2026-09-22 09:15:03.500 +03 [4471] shop@prd STATEMENT:  UPDATE orders SET status='paid' WHERE id=88213
+2026-09-22 09:15:10.020 +03 [4480] shop@prd LOG:  duration: 30012.442 ms  statement: SELECT * FROM orders WHERE customer_id = 9276
+2026-09-22 09:16:44.000 +03 [2231] FATAL:  the database system is in recovery mode

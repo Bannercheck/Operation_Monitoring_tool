@@ -1,0 +1,5 @@
+2026/09/22 09:14:02 main.go:42: starting order-service on :8080
+2026/09/22 09:15:03 gateway.go:88: error: charge failed order=88213: context deadline exceeded
+2026/09/22 09:15:10 retry.go:12: warn: retry 3/5 order=88213
+time="2026-09-22T09:16:00+03:00" level=info msg="user login ok" user=ali service=auth-api host=prd-api-01
+time="2026-09-22T09:16:44+03:00" level=error msg="payment failed" order=88213 reason=gateway_timeout service=payment-api host=prd-api-01

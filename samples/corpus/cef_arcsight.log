@@ -1,0 +1,5 @@
+CEF:0|Palo Alto Networks|PAN-OS|10.1|THREAT|vulnerability|5|rt=Sep 22 2026 09:14:02 src=10.0.4.12 dst=10.0.9.8 spt=51422 dpt=443 act=alert cs1=Web Application Attack dvchost=fw-ist-01
+CEF:0|Fortinet|FortiGate|7.2|0100000|traffic|3|rt=Sep 22 2026 09:14:05 src=10.0.4.13 dst=8.8.8.8 proto=17 act=accept deviceExternalId=FG100 dvchost=fw-ist-02
+CEF:0|Microsoft|Windows Defender|1.0|1116|Malware detected|9|rt=Sep 22 2026 09:15:03 dvchost=WS-ACC-01 suser=CORP\\ayse fname=invoice.exe act=quarantined
+CEF:0|Cisco|ASA|9.16|106023|Deny|4|rt=Sep 22 2026 09:15:10 src=192.168.7.4 dst=10.0.4.30 dpt=22 proto=TCP act=deny dvchost=asa-dc1
+CEF:0|Watchover|Agent|0.5|HEARTBEAT|agent heartbeat|1|rt=Sep 22 2026 09:16:00 dvchost=prd-api-01 cs1=ok

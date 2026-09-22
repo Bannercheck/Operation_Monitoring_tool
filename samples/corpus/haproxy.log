@@ -1,0 +1,3 @@
+Sep 22 09:14:02 lb-01 haproxy[1200]: 10.0.4.12:51422 [22/Sep/2026:09:14:02.003] https~ api/prd-api-01 0/0/1/116/117 200 1432 - - ---- 12/12/3/1/0 0/0 "GET /api/v1/orders/88213 HTTP/1.1"
+Sep 22 09:14:05 lb-01 haproxy[1200]: 10.0.4.13:51423 [22/Sep/2026:09:14:05.120] https~ api/prd-api-02 0/0/0/-1/30001 504 512 - - sH-- 12/12/3/1/0 0/0 "POST /api/v1/payments HTTP/1.1"
+Sep 22 09:15:10 lb-01 haproxy[1200]: Server api/prd-api-02 is DOWN, reason: Layer7 timeout, check duration: 10001ms. 1 active and 0 backup servers left. 3 sessions active, 0 requeued, 0 remaining in queue.

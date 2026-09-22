@@ -4,6 +4,7 @@ import { Activity, AlertTriangle, BellRing, BookOpen, Bot, Brain, ClipboardList,
 import { useAuth } from "../auth";
 import { useT } from "../i18n";
 import { Btn, Modal, Field, Err, LangTheme } from "./ui";
+import { NotifyBell } from "./NotifyBell";
 import { Wordmark } from "./Logo";
 import { post } from "../api";
 
@@ -14,7 +15,8 @@ const NAV = [
     { to: "/playbook", k: "nav_pb", icon: BookOpen, perm: "page.pb" }, { to: "/assist", k: "nav_assist", icon: MessageSquare, perm: "page.assist" }, { to: "/knowledge", k: "nav_kb", icon: Brain, perm: "page.assist" }, { to: "/itsm", k: "nav_itsm", icon: Ticket, perm: "page.itsm" } ] },
   { group: "nav_group_admin", items: [
     { to: "/connections", k: "nav_conn", icon: Plug, perm: "page.conn" }, { to: "/sources", k: "nav_sources", icon: Radar, perm: "page.src" }, { to: "/inventory", k: "nav_inv", icon: Server, perm: "page.inv" }, { to: "/parser", k: "nav_parser", icon: Puzzle, perm: "page.parser" }, { to: "/llm", k: "nav_llm", icon: Bot, perm: "page.llm" }, { to: "/alerts", k: "nav_ntf", icon: BellRing, perm: "sys.notify" },
-    { to: "/users", k: "nav_users", icon: Users, perm: "page.users" }, { to: "/system", k: "nav_sys", icon: Settings2, perm: "sys.status" }, { to: "/readme", k: "nav_readme", icon: FileText, perm: "page.readme" } ] },
+    { to: "/users", k: "nav_users", icon: Users, perm: "page.users" }, { to: "/system", k: "nav_sys", icon: Settings2, perm: "sys.status" },
+    { to: "/alerts", k: "nav_ntf", icon: BellRing, perm: "sys.notify", unless: "sys.status" }, { to: "/readme", k: "nav_readme", icon: FileText, perm: "page.readme", unless: "sys.status" } ] },
 ];
 
 export default function Layout() {
@@ -31,7 +33,7 @@ export default function Layout() {
         <div className="brand"><Wordmark size={40} /></div>
         {NAV.map((g) => (
           <div key={g.group}><div className="group">{t(g.group)}</div>
-            <div className="stack" style={{ gap: 6 }}>{g.items.filter((i) => can(i.perm)).map((i) => (
+            <div className="stack" style={{ gap: 6 }}>{g.items.filter((i: any) => can(i.perm) && !(i.unless && can(i.unless))).map((i) => (
               <NavLink key={i.to} to={i.to} className={({ isActive }) => `tile ${isActive ? "active" : ""}`} onClick={() => setOpen(false)} title={t(i.k)}><i.icon size={16} /><span>{t(i.k)}</span></NavLink>))}</div>
           </div>))}
         <div className="spacer" />
@@ -42,6 +44,7 @@ export default function Layout() {
         <div className="topbar">
           <Btn kind="ghost menu-btn" sm onClick={() => setOpen((o) => !o)}><Menu size={18} /></Btn>
           <div className="grow" />
+          {can("page.ops") && <NotifyBell />}
           <LangTheme />
         </div>
         <Outlet />

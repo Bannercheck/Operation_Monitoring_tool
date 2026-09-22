@@ -1,0 +1,4 @@
+time="2026-09-22T09:14:02.003+03:00" level=info msg="Starting up"
+time="2026-09-22T09:15:03.500+03:00" level=error msg="Handler for POST /v1.45/containers/create returned error: No such image: payment-api:1.4.2" 
+time="2026-09-22T09:15:10.000+03:00" level=warning msg="failed to retrieve docker-init version: exec: \"docker-init\": executable file not found in $PATH"
+time="2026-09-22T09:16:44.000+03:00" level=info msg="Container 4412c0ffee failed to exit within 10 seconds of signal 15 - using the force" container=4412c0ffee

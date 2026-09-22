@@ -1,0 +1,8 @@
+2026-09-22 09:15:03.500 ERROR [payment-api] [http-nio-8080-exec-12] c.e.p.PaymentController - charge failed order=88213
+java.net.SocketTimeoutException: Read timed out
+	at java.base/java.net.SocketInputStream.socketRead0(Native Method)
+	at java.base/java.net.SocketInputStream.read(SocketInputStream.java:168)
+	at com.example.payment.GatewayClient.charge(GatewayClient.java:88)
+	... 42 common frames omitted
+2026-09-22 09:15:10.000 WARN  [payment-api] [http-nio-8080-exec-13] c.e.p.RetryPolicy - retry 3/5 order=88213
+2026-09-22 09:16:00.000 INFO  [auth-api] [http-nio-8080-exec-1] c.e.a.LoginController - user login ok user=ali

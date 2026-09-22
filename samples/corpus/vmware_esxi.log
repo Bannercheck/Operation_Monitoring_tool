@@ -1,0 +1,4 @@
+2026-09-22T06:14:02.003Z info hostd[2099001] [Originator@6876 sub=Vimsvc.ha-eventmgr] Event 4412 : User root@10.0.4.12 logged in as VMware-client/8.0.0
+2026-09-22T06:15:03.500Z warning vmkernel[2099002] [cpu12:2098765] NMP: nmp_ThrottleLogForDevice: Cmd 0x2a (0x45a2c1c0a4c0, 2098765) to dev "naa.6000" on path "vmhba1:C0:T1:L4" Failed: H:0x0 D:0x2 P:0x0 Valid sense data: 0xb 0x0 0x0
+2026-09-22T06:15:10.000Z error hostd[2099003] [Originator@6876 sub=Vmsvc.vm:/vmfs/volumes/datastore1/db-01/db-01.vmx] Failed to power on VM: msg.vmk.status.VMK_NO_MEMORY
+2026-09-22T06:16:44.000Z info vpxa[2099004] [Originator@6876 sub=vpxLro opID=hb-4412] [VpxLRO] -- FINISH lro-4412
