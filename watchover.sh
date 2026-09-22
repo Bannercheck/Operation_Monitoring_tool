@@ -113,17 +113,25 @@ case "${1:-}" in
     need_docker; write_env
     models="$(env_get WATCHOVER_LLM_MODELS)"; models="${models:-qwen2.5:7b-instruct qwen2.5:3b-instruct bge-m3}"
     case "${2:-}" in
-      on)
+      on)   # starts the bundled CPU Ollama; never touches an LLM connection you already configured (LLM page / .env)
         env_set WATCHOVER_LLM 1
-        env_set LLM_PROVIDER ollama; env_set LLM_BASE_URL "http://ollama:11434"
-        [ -n "$(env_get LLM_MODEL)" ] || env_set LLM_MODEL "qwen2.5:7b-instruct"
-        [ -n "$(env_get LLM_EMBED_MODEL)" ] || env_set LLM_EMBED_MODEL "bge-m3"
+        if [ -z "$(env_get LLM_BASE_URL)" ]; then
+          env_set LLM_PROVIDER ollama; env_set LLM_BASE_URL "http://ollama:11434"
+          [ -n "$(env_get LLM_MODEL)" ] || env_set LLM_MODEL "qwen2.5:7b-instruct"
+          [ -n "$(env_get LLM_EMBED_MODEL)" ] || env_set LLM_EMBED_MODEL "bge-m3"
+          say "no LLM connection was configured: the dashboard will use the bundled Ollama (http://ollama:11434)"
+        else
+          say "existing LLM connection kept ($(env_get LLM_BASE_URL)); the bundled Ollama is an extra option at http://ollama:11434 (LLM › Connection)"
+        fi
         up
         say "waiting for the Ollama service to become healthy"
         for _ in $(seq 1 60); do $COMPOSE ps --format '{{.Service}} {{.Health}}' 2>/dev/null | grep -q '^ollama healthy' && break; sleep 3; done
         for m in $models; do say "pulling $m (CPU inference; the 7B model is a few GB, first time is slow)"; $COMPOSE exec -T ollama ollama pull "$m" || say "could not pull $m (check internet / disk)"; done
         $COMPOSE exec -T ollama ollama list || true
-        say "local LLM on: dashboard uses http://ollama:11434 (chat/review: qwen2.5:7b, fast: 3b, embeddings: bge-m3). Change models in .env WATCHOVER_LLM_MODELS / LLM_MODEL." ;;
+        say "bundled Ollama on (chat/review: qwen2.5:7b, fast: 3b, embeddings: bge-m3). Models to download: .env WATCHOVER_LLM_MODELS" ;;
+      use)   # switch the dashboard's chat model (any model your configured Ollama serves, e.g. watchover-ops); nothing else changes
+        [ -n "${3:-}" ] || die "usage: ./watchover.sh llm use <model>"
+        env_set LLM_MODEL "$3"; $COMPOSE $(profiles) up -d --no-deps dashboard; say "LLM_MODEL=$3 (switch back any time with llm use <model> or in LLM › Connection)" ;;
       pull)
         [ -n "${3:-}" ] || die "usage: ./watchover.sh llm pull <model>"
         $COMPOSE exec -T ollama ollama pull "$3" ;;
@@ -135,11 +143,12 @@ case "${1:-}" in
         [ -d "${3:-}" ] && [ -f "$3/Modelfile" ] || die "usage: ./watchover.sh llm import <folder with Modelfile and adapter/>"
         name="${4:-watchover-ops}"
         docker cp "$3" watchover-ollama:/tmp/watchover-ops && $COMPOSE exec -T ollama sh -c "cd /tmp/watchover-ops && ollama create $name -f Modelfile" \
-          && env_set LLM_MODEL "$name" && $COMPOSE $(profiles) up -d --no-deps dashboard && say "model $name created and selected (LLM_MODEL); quality gate: python scripts/train_lora.py --gate --model $name" ;;
+          && say "model $name created next to your existing models (nothing switched). Try it: ./watchover.sh llm use $name  ·  quality gate: python scripts/train_lora.py --gate --model $name" ;;
       off)
-        $COMPOSE --profile llm stop ollama; $COMPOSE --profile llm rm -f ollama; env_set WATCHOVER_LLM 0; env_set LLM_BASE_URL ""
-        say "local LLM off (downloaded models kept in the watchover-ollama volume)" ;;
-      *) die "usage: ./watchover.sh llm on|off|pull <model>|list|export [file]|import <dir> [name]" ;; esac ;;
+        $COMPOSE --profile llm stop ollama; $COMPOSE --profile llm rm -f ollama; env_set WATCHOVER_LLM 0
+        [ "$(env_get LLM_BASE_URL)" = "http://ollama:11434" ] && env_set LLM_BASE_URL ""      # only undo what 'llm on' set itself
+        say "bundled Ollama off (downloaded models kept in the watchover-ollama volume; other LLM connections untouched)" ;;
+      *) die "usage: ./watchover.sh llm on|off|use <model>|pull <model>|list|export [file]|import <dir> [name]" ;; esac ;;
   legacy)
     need_docker; case "${2:-}" in
       on)  env_set WATCHOVER_LEGACY 1; up; say "legacy Streamlit interface on: http://$(host_ip):$(env_get WATCHOVER_LEGACY_PORT || echo 8502)" ;;

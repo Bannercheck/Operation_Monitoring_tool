@@ -108,6 +108,20 @@ def test_llm_export_and_import(stage):
     r = run(stage, "llm", "import", str(m))
     calls = (d / "calls.log").read_text()
     assert r.returncode == 0, r.stderr
-    assert "cp " in calls and "ollama create watchover-ops -f Modelfile" in calls and "LLM_MODEL=watchover-ops" in (d / ".env").read_text()
+    assert "cp " in calls and "ollama create watchover-ops -f Modelfile" in calls and "LLM_MODEL=watchover-ops" not in (d / ".env").read_text()   # import never switches
+    r = run(stage, "llm", "use", "watchover-ops")
+    assert r.returncode == 0 and "LLM_MODEL=watchover-ops" in (d / ".env").read_text()
     assert run(stage, "llm", "import", str(d / "nope")).returncode == 1
+
+
+def test_llm_on_keeps_existing_connection(stage):
+    d, _ = stage
+    run(stage, "install")
+    env = (d / ".env").read_text(); (d / ".env").write_text(env + "LLM_BASE_URL=http://host.docker.internal:11434\nLLM_MODEL=llama3.1\n")
+    r = run(stage, "llm", "on")
+    assert r.returncode == 0, r.stderr
+    env = (d / ".env").read_text()
+    assert "LLM_BASE_URL=http://host.docker.internal:11434" in env and "LLM_MODEL=llama3.1" in env and "existing LLM connection kept" in r.stdout
+    run(stage, "llm", "off")
+    assert "LLM_BASE_URL=http://host.docker.internal:11434" in (d / ".env").read_text()      # off only undoes its own setting
 

@@ -13,6 +13,7 @@ const qc = new QueryClient({ defaultOptions: { queries: { retry: 1, refetchOnWin
 function Root() {
   const [lang, setLangState] = useState<Lang>(() => { try { return (localStorage.getItem("wo_lang") as Lang) || "tr"; } catch { return "tr"; } });
   const setLang = (l: Lang) => { setLangState(l); try { localStorage.setItem("wo_lang", l); } catch { /* ignore */ } document.documentElement.lang = l; };
+  useEffect(() => { document.documentElement.lang = lang; }, [lang]);   // also on first load: CSS text-transform must follow the UI language (installed -> INSTALLED, not İNSTALLED)
   const [theme, setThemeState] = useState<Theme>(() => { try { return (localStorage.getItem("wo_theme") as Theme) || "dark"; } catch { return "dark"; } });
   const setTheme = (t: Theme) => { setThemeState(t); try { localStorage.setItem("wo_theme", t); } catch { /* ignore */ } applyTheme(t); };
   useEffect(() => { applyTheme(theme); const mq = window.matchMedia("(prefers-color-scheme: light)"); const h = () => applyTheme(theme); mq.addEventListener("change", h); return () => mq.removeEventListener("change", h); }, [theme]);
