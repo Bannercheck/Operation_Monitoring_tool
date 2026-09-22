@@ -186,6 +186,10 @@ Aynı komutlar; ek olarak güvenlik duvarında yalnızca 443 (ve yönlendirme i�
 
 **Güvenlik notu.** Giriş 5 hatalı denemede geçici kilitlenir (`./watchover.sh user unlock EMAIL` açar), yönetici olmayan hesaplara e-posta ile ikinci faktör sorulur (Sistem › Ayarlar), parolalar scrypt ile, sırlar şifreli tutulur. Yönetici parolasını ilk girişte değiştirin ve `.env`'yi paylaşmayın.
 
+## 8b. Parser kapsaması: hangi loglar anlaşılır
+
+Sistem › **Parser kapsaması** kartı, 43 log ailesinden birer örnek dosyayı gerçek parser'dan geçirip zaman / seviye / sunucu / servis çıkarım oranını ve gürültü hunisini (ham olay → sinyal → incident, azaltma katsayısı) gösterir. Desteklenen aileler: syslog (RFC 3164 / 5424), CEF / LEEF (ArcSight, QRadar, Palo Alto, Fortinet, Cisco ASA), Apache / nginx / ALB erişim ve hata logları, IIS W3C, Windows Event XML, journald, Docker json-file, Kubernetes CRI, OpenTelemetry, ECS / GELF / logfmt / JSON / CSV, veritabanları (PostgreSQL, MySQL, SQL Server, Oracle alert, MongoDB, Redis), Kafka, HAProxy, Postfix, uygulama logları (Java, Python, .NET Serilog, Go), AWS CloudTrail, Alertmanager ve ERP: SAP (dev trace, HANA, NetWeaver, tp, SM21), Oracle E-Business Suite (concurrent manager, FND), Microsoft Dynamics AX / 365 / NAV-Business Central. Zaman damgasız satırlar (stack trace, ORA- blokları) üstteki olaya katlanır; kayıt servis taşımıyorsa log ailesi servis adı olur. Komut satırından: `python -m watchover.coverage` (Docker'da `./watchover.sh shell` içinden).
+
 ## 9. Kapalı ağ (internet çıkışı olmayan sunucu)
 
 İnternetli bir makinede imajı derleyip taşıyın:

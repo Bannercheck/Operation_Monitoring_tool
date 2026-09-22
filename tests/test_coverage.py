@@ -16,4 +16,6 @@ def test_corpus_coverage_does_not_regress():
 
 def test_measure_file_level_rule():
     r = coverage.measure_file("x.log", "2026-09-22 09:15:03 ERROR payment failed\n2026-09-22 09:15:04 no level here\n")
-    assert r["events"] == 2 and r["timestamp"] == 100.0 and r["level"] == 100.0     # the line without a level token is not counted
+    assert r["events"] == 2 and r["timestamp"] == 100.0 and r["level"] == 50.0      # the line without a level word has a guessed level: not counted as known
+    r = coverage.measure_file("t.log", "2026-09-22 09:15:03 ERROR payment-api failed\n  at com.example.Charge.run(Charge.java:88)\n2026-09-22 09:15:04 INFO auth-api ok\n")
+    assert r["events"] == 2 and r["level"] == 100.0 and r["service"] == 100.0        # the stack frame folds into the error; hyphenated app names become the service

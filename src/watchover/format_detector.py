@@ -5,9 +5,17 @@ from __future__ import annotations
 import json
 import re
 
-SYSLOG_RE = re.compile(
-    r"^(?:<(?P<pri>\d+)>)?(?P<ts>[A-Z][a-z]{2}\s+\d{1,2}\s\d{2}:\d{2}:\d{2}|\d{4}-\d{2}-\d{2}T[\d:.+\-Z]+)\s+"
-    r"(?P<host>\S+)\s+(?P<prog>[^:\[\s]+)(?:\[(?P<pid>\d+)\])?:\s*(?P<msg>.*)$")
+_SYSLOG_TS = r"(?P<ts>[A-Z][a-z]{2}\s+\d{1,2}(?:\s\d{4})?\s\d{2}:\d{2}:\d{2}|\d{4}-\d{2}-\d{2}T[\d:.+\-Z]+)"      # BSD (optionally with year: Cisco) or ISO
+_NOT_LEVEL = r"(?!(?:TRACE|DEBUG|INFO|NOTICE|WARN|WARNING|ERR|ERROR|CRIT|CRITICAL|FATAL|SEVERE|INF|WRN|FTL|DBG)\b)"
+SYSLOG_RE = re.compile(r"^(?:<(?P<pri>\d+)>)?" + _SYSLOG_TS + r"\s+(?P<host>" + _NOT_LEVEL + r"\S+)\s+(?P<prog>[^:\[\s]+)(?:\[(?P<pid>\d+)\])?:\s*(?P<msg>.*)$")
+SYSLOG_NOPROG_RE = re.compile(r"^(?:<(?P<pri>\d+)>)?" + _SYSLOG_TS + r"\s+(?P<host>" + _NOT_LEVEL + r"[A-Za-z][\w.\-]*)\s+(?P<msg>.*)$")       # header without 'program:'
+RFC5424_RE = re.compile(r"^<(?P<pri>\d+)>1 (?P<ts>\S+) (?P<host>\S+) (?P<app>\S+) (?P<pid>\S+) (?P<msgid>\S+) (?P<sd>-|(?:\[.*?\])+) ?(?P<msg>.*)$")
+CEF_RE = re.compile(r"^(?:.*?\s)?(?:CEF:\d+\||LEEF:\d+(?:\.\d+)?\|)")
+CLF_RE = re.compile(r'^\S+ \S+ \S+ \[\d{2}/[A-Z][a-z]{2}/\d{4}:\d{2}:\d{2}:\d{2} [+\-]\d{4}\] "')
+ALB_RE = re.compile(r"^(?:https?|h2|ws|wss|tls|tcp) \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z \S+ ")
+WINEVT_RE = re.compile(r"^\s*<Event\b[^>]*xmlns=")
+W3C_RE = re.compile(r"^#Fields:\s")
+CRI_LINE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z (?:stdout|stderr) [FP] ")
 KV_RE = re.compile(r'([\w.\-@]+)=("(?:[^"\\]|\\.)*"|\S+)')
 DELIMS = ("\t", ",", ";", "|")
 SAMPLE_LINES = 200
@@ -46,9 +54,24 @@ def detect_format(text: str) -> tuple[str, float]:
             pass
     if ok / len(lines) > 0.8:
         return "jsonl", round(ok / len(lines), 2)
-    hits = sum(1 for ln in lines if SYSLOG_RE.match(ln))
+    if any(W3C_RE.match(ln) for ln in lines[:10]):
+        return "w3c", 0.95
+    if sum(1 for ln in lines if WINEVT_RE.match(ln)) / len(lines) > 0.6:
+        return "winevt", 0.95
+    cef = sum(1 for ln in lines if CEF_RE.match(ln))
+    if cef / len(lines) > 0.6:
+        return "cef", round(cef / len(lines), 2)
+    acc = sum(1 for ln in lines if CLF_RE.match(ln) or ALB_RE.match(ln))
+    if acc / len(lines) > 0.6:
+        return "access", round(acc / len(lines), 2)
+    if sum(1 for ln in lines if CRI_LINE_RE.match(ln)) / len(lines) > 0.6:                 # kubernetes container runtime: "ts stream F line"
+        return "text", 0.9
+    hits = sum(1 for ln in lines if SYSLOG_RE.match(ln) or RFC5424_RE.match(ln))
     if hits / len(lines) > 0.6:
         return "syslog", round(hits / len(lines), 2)
+    hits2 = sum(1 for ln in lines if SYSLOG_NOPROG_RE.match(ln))
+    if (hits + hits2) / len(lines) > 0.6:                                                 # BSD header without 'prog:' (PAN-OS CSV, some appliances)
+        return "syslog", round((hits + hits2) / len(lines), 2)
     from .parsers.sap_parser import sap_score          # SAP families (dev traces, HANA, NW Java, JUL, GC, tp, SM21)
     sap = sap_score(lines)
     if sap >= 0.5:

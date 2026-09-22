@@ -7,6 +7,7 @@ from typing import Iterator
 
 from ..normalize import flatten
 from .base import Parser
+from .json_parser import enrich
 
 
 class JsonlParser(Parser):
@@ -23,4 +24,4 @@ class JsonlParser(Parser):
             except json.JSONDecodeError:
                 continue
             if isinstance(r, dict):
-                yield i, flatten(r)
+                yield i, enrich(flatten(r))

@@ -6,7 +6,8 @@
 
 Per file: detected format, non-empty lines, events, and the share of events with a timestamp (not filled in from a
 neighbour), a level that matches the token in the raw line (lines without a level token are not counted), a host and a
-service. `score` is the mean of the four shares. tests/test_coverage.py fails when a file scores below the baseline, so the
+service. Level counts events whose severity came from a field or an explicit level word (guessed levels do not count).
+`score` is the mean of the four shares. tests/test_coverage.py fails when a file scores below the baseline, so the
 parser can only get better; improvements are recorded with --update-baseline.
 """
 from __future__ import annotations
@@ -38,16 +39,17 @@ def measure_file(name: str, text: str) -> dict:
     ts = sum(1 for o in rows if not o.attributes.get("_no_ts"))
     host = sum(1 for o in rows if o.host)
     service = sum(1 for o in rows if o.service)
-    lvl_lines = lvl_hit = 0
+    lvl_hit = 0
     for o in rows:
-        m = LEVEL_RE.search(o.raw or o.message)
-        if not m:
+        src = o.attributes.get("_sev_src", "field")                     # field: a severity column / header; text: a level word; hint / default: guessed
+        if src not in ("field", "text"):
             continue
-        lvl_lines += 1
-        if LEVEL_MAP[m.group(1).upper()] == o.severity:
-            lvl_hit += 1
+        m = LEVEL_RE.search(o.raw or o.message) if o.parser in ("text", "syslog", "kv", "sap") else None
+        if m and LEVEL_MAP[m.group(1).upper()] != o.severity and src == "text":
+            continue                                                    # the line says ERROR, the event says something else
+        lvl_hit += 1
     pct = lambda a, b: round(100.0 * a / b, 1) if b else None  # noqa: E731
-    shares = {"timestamp": pct(ts, n), "level": pct(lvl_hit, lvl_lines), "host": pct(host, n), "service": pct(service, n)}
+    shares = {"timestamp": pct(ts, n), "level": pct(lvl_hit, n), "host": pct(host, n), "service": pct(service, n)}
     known = [v for v in shares.values() if v is not None]
     return {"file": name, "format": rep.get("format", "-"), "confidence": rep.get("confidence"), "lines": lines, "events": n,
             **shares, "score": round(sum(known) / len(known), 1) if known else 0.0}

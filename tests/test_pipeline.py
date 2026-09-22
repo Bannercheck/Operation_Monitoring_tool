@@ -42,7 +42,7 @@ def test_parsers():
     assert (o.service, o.severity, o.message, o.attributes) == ("checkout", "WARN", "HTTP 500 for /pay", {"req": "1"})
     o = parse("text", TEXT)
     assert (o[0].severity, o[0].service, o[0].message) == ("ERROR", "com.acme.Checkout", "NullPointerException")
-    assert o[2].timestamp == o[1].timestamp
+    assert len(o) == 2 and o[1].message == "started\nno timestamp here" and o[1].attributes.get("_lines") == 2   # an untimestamped line continues the event above it
 
 
 def test_auto_map_by_values_and_explicit_mapping():

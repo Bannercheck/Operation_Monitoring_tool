@@ -12,6 +12,11 @@ One small, realistic file per log family; `python -m watchover.coverage` parses 
 - `nginx_error.log`
 - `iis_w3c.log`
 - `windows_event_xml.log`
+- `oracle_ebs_concurrent.log` (ERP)
+- `oracle_ebs_fnd_debug.log` (ERP)
+- `dynamics_ax_aos.log` (ERP)
+- `dynamics_365_batch.log` (ERP)
+- `dynamics_nav_bc.log` (ERP)
 - `journald.jsonl`
 - `docker_jsonfile.jsonl`
 - `kubernetes_cri.log`

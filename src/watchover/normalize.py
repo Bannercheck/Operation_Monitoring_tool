@@ -20,20 +20,27 @@ SEVERITY_MAP = {
     "firing": "ERROR", "resolved": "INFO", "major": "ERROR", "minor": "WARN",
     "path": "DEBUG", "config": "DEBUG", "fine": "DEBUG", "finer": "DEBUG", "finest": "DEBUG", "plain": "INFO",   # NetWeaver / JUL
     "e": "ERROR", "w": "WARN", "i": "INFO", "d": "DEBUG", "f": "CRITICAL",                                       # HANA trace letters
+    "inf": "INFO", "wrn": "WARN", "ftl": "CRITICAL", "dbg": "DEBUG", "vrb": "DEBUG", "err": "ERROR",              # Serilog / .NET
+    "panic": "CRITICAL", "information": "INFO", "verbose": "DEBUG", "audit_success": "INFO", "audit_failure": "WARN",
+    "unknown": "INFO", "success": "INFO", "failed": "ERROR", "failure": "ERROR",
 }
 ROLE_HINTS = {
     "timestamp": ("timestamp", "time", "ts", "@timestamp", "datetime", "date", "event_time", "created_at", "logged_at", "t", "start_time",
+                  "__realtime_timestamp", "timeunixnano", "eventtime", "t.$date", "systemtime", "rt", "devtime", "starttime", "observedtimeunixnano", "timecreated",
                   "startsat", "starts_at", "activeat", "active_at", "firedat", "opened_at", "created", "zaman", "tarih", "olusturma zamani",
                   "olusturma_zamani", "olusturmazamani", "acilis zamani", "kayit zamani"),
-    "severity": ("severity", "level", "loglevel", "log_level", "priority", "sev", "status", "labels.severity", "seviye", "oncelik", "onem", "kritiklik"),
-    "service": ("service", "app", "application", "logger", "module", "job", "program", "svc", "service_name",
-                "alertname", "labels.job", "labels.service", "servis", "uygulama", "sistem", "kaynak sistem"),
+    "severity": ("severity", "level", "loglevel", "log_level", "priority", "sev", "labels.severity", "log.level", "severitytext", "levelname", "s",
+                 "syslog.severity", "severity_label", "seviye", "oncelik", "onem", "kritiklik", "status"),
+    "service": ("service", "app", "application", "logger", "module", "job", "program", "svc", "service_name", "service.name", "syslog_identifier",
+                "_systemd_unit", "eventsource", "c", "logger_name", "appname", "app_name", "container_name", "kubernetes.container_name", "_service",
+                "provider", "provider_name", "deviceproduct", "product", "alertname", "labels.job", "labels.service", "servis", "uygulama", "sistem", "kaynak sistem"),
     "environment": ("environment", "env", "stage", "tier", "deployment", "labels.env", "labels.environment", "ortam", "cevre", "asama"),
     "origin": ("source", "origin", "error_source", "component", "subsystem", "category", "layer", "error_type", "exception", "labels.component",
                "kaynak", "bilesen", "hata kaynagi", "kategori", "katman"),
-    "host": ("host", "hostname", "node", "instance", "server", "pod", "container", "machine", "labels.instance", "sunucu", "makine", "cihaz"),
-    "message": ("message", "msg", "text", "description", "log", "summary", "title", "body", "line", "event", "alert",
-                "annotations.summary", "annotations.description", "ozet", "aciklama", "mesaj", "baslik", "konu"),
+    "host": ("host", "hostname", "node", "instance", "server", "pod", "container", "machine", "labels.instance", "_hostname", "host.name", "computer",
+             "dvchost", "devname", "identhosthame", "identhostname", "kubernetes.pod_name", "sourcehost", "sunucu", "makine", "cihaz"),
+    "message": ("message", "msg", "text", "description", "log", "summary", "title", "body", "line", "event", "alert", "short_message", "full_message",
+                "body.stringvalue", "eventname", "errormessage", "name", "annotations.summary", "annotations.description", "ozet", "aciklama", "mesaj", "baslik", "konu"),
 }
 ENV_MAP = {"prod": "prod", "production": "prod", "prd": "prod", "live": "prod", "canli": "prod", "uretim": "prod",
            "test": "test", "tst": "test", "testing": "test", "qa": "qa", "uat": "uat", "acceptance": "uat", "kabul": "uat",
@@ -41,7 +48,7 @@ ENV_MAP = {"prod": "prod", "production": "prod", "prd": "prod", "live": "prod", 
            "staging": "staging", "stage": "staging", "stg": "staging", "preprod": "staging", "pre-prod": "staging", "canary": "staging",
            "dr": "dr", "disaster": "dr"}
 ENV_TOKEN_RE = re.compile(r"(?<![a-z0-9])(prod|production|prd|test|tst|qa|uat|dev|development|staging|stage|stg|preprod|canary|sandbox|live)(?![a-z0-9])", re.I)
-LEVEL_WORD_RE = re.compile(r"\b(TRACE|DEBUG|INFO|NOTICE|WARN(?:ING)?|ERR(?:OR)?|CRIT(?:ICAL)?|FATAL|ALERT|EMERG)\b", re.I)
+LEVEL_WORD_RE = re.compile(r"(?<![A-Za-z])(TRACE|DEBUG|INFO|NOTICE|WARN(?:ING)?|ERR(?:OR)?|CRIT(?:ICAL)?|FATAL|ALERT|EMERG(?:ENCY)?|SEVERE|PANIC|INF|WRN|FTL|DBG|VRB)(?![A-Za-z])", re.I)
 SYSLOG_TS_RE = re.compile(r"^[A-Z][a-z]{2}\s+\d{1,2}\s\d{2}:\d{2}:\d{2}$")
 _DEFAULT = datetime(datetime.now().year, 1, 1)
 
@@ -49,7 +56,9 @@ _DEFAULT = datetime(datetime.now().year, 1, 1)
 _FAST_FORMATS = (
     "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S,%f", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S.%f",
     "%Y-%m-%d %H:%M", "%d/%m/%Y %H:%M:%S", "%d.%m.%Y %H:%M:%S", "%m/%d/%Y %H:%M:%S", "%Y/%m/%d %H:%M:%S",
-    "%d/%b/%Y:%H:%M:%S %z", "%b %d %H:%M:%S", "%Y%m%d%H%M%S",
+    "%d/%b/%Y:%H:%M:%S %z", "%b %d %H:%M:%S", "%Y%m%d%H%M%S", "%b %d %Y %H:%M:%S", "%d %b %Y %H:%M:%S.%f", "%d %b %Y %H:%M:%S",
+    "%m/%d/%Y %I:%M:%S %p", "%m/%d/%Y %H:%M:%S %p", "%a, %d %b %Y %H:%M:%S %z", "%Y-%m-%d %H:%M:%S.%f %z", "%Y-%m-%d %H:%M:%S %z",
+    "%Y-%m-%dT%H:%M:%S.%f%z", "%Y-%m-%dT%H:%M:%S%z", "%d-%b-%Y %H:%M:%S", "%d-%m-%Y %H:%M:%S", "%Y.%m.%d %H:%M:%S",
 )
 _format_cache: dict[str, str] = {}   # shape signature -> strptime format that worked last time
 
@@ -107,9 +116,19 @@ def _parse_timestamp_str(s: str) -> datetime | None:
             return datetime.fromtimestamp(int(s) / 1000, tz=UTC)
         if len(s) == 10:
             return datetime.fromtimestamp(int(s), tz=UTC)
+        if len(s) == 16:                                                    # microseconds (journald __REALTIME_TIMESTAMP)
+            return datetime.fromtimestamp(int(s) / 1_000_000, tz=UTC)
+        if len(s) == 19:                                                    # nanoseconds (OpenTelemetry timeUnixNano)
+            return datetime.fromtimestamp(int(s) / 1_000_000_000, tz=UTC)
+        if len(s) == 14:                                                    # 20260922091700
+            return datetime.strptime(s, "%Y%m%d%H%M%S").replace(tzinfo=UTC)
+    if re.fullmatch(r"\d{8}T\d{6}(?:\.\d+)?Z?", s):                          # 20260922T091700Z (compact ISO)
+        return datetime.strptime(s[:15], "%Y%m%dT%H%M%S").replace(tzinfo=UTC)
     if re.fullmatch(r"\d{10}\.\d+", s):
         return datetime.fromtimestamp(float(s), tz=UTC)
     dt = None
+    if re.search(r" [+\-]\d{2}$", s):                                        # PostgreSQL "2026-09-22 09:14:31.001 +03": strptime wants +0300
+        s = s + "00"
     if len(s) >= 19 and s[4] == "-" and s[7] == "-":
         dt = _from_iso(s)
     if dt is None:
@@ -209,9 +228,21 @@ def infer_environment(*texts: str) -> str:
     return ""
 
 
+ERROR_HINT_RE = re.compile(r"(ORA-\d{5}|APP-FND-\d{5}|FRM-\d{5}|TNS-\d{5}|Traceback \(most recent call last\)|\b[A-Za-z_.$]*(?:Exception|Error)\b: |deadlock detected|Out of memory|"
+                           r"\bsegfault\b|\bpanic:|\bkernel panic|\bStack overflow\b|\bBACKUP failed\b|\bLogin failed\b|\bAssertion failure\b|\bcircuit breaker open\b)", re.I)
+WARN_HINT_RE = re.compile(r"(\btimed out\b|\btimeout\b|\bretry\b|\bretrying\b|\bdeferred\b|\bdenied\b|\brefused\b|\bslow query\b|\bunreachable\b|\bdegraded\b|\bdeprecated\b)", re.I)
+
+
 def severity_from_text(text: str) -> str:
+    """Level word when the line has one; otherwise conservative hints (ORA-xxxxx, tracebacks, deadlocks -> ERROR; timeouts, denials -> WARN)."""
     m = LEVEL_WORD_RE.search(text)
-    return normalize_severity(m[1]) if m else "INFO"
+    if m:
+        return normalize_severity(m[1])
+    if ERROR_HINT_RE.search(text):
+        return "ERROR"
+    if WARN_HINT_RE.search(text):
+        return "WARN"
+    return "INFO"
 
 
 _TR = str.maketrans("çğıöşüÇĞİÖŞÜ", "cgiosuCGIOSU")
@@ -232,7 +263,10 @@ def auto_map(keys: list[str], sample: list[dict] | None = None, mapping: dict | 
         if mapping and mapping.get(role) in keys:
             out[role] = mapping[role]
             continue
-        hit = next((lowered[h] for h in hints if h in lowered), None)
+        cands = [lowered[h] for h in hints if h in lowered]
+        hit = cands[0] if cands else None
+        if len(cands) > 1 and sample:                                   # "severity" on one row, "level" on every row: take the one that is filled
+            hit = max(cands, key=lambda k: (sum(1 for r in sample if r.get(k) not in (None, "")), -cands.index(k)))
         if hit is None:
             hit = next((k for lk, k in lowered.items()
                         if any(lk.endswith(sep + h) for h in hints for sep in ("_", ".", "-", " "))), None)

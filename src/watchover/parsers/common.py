@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Iterator
 
 from ..models import Observation
-from ..normalize import UTC, auto_map, column_severity, infer_environment, normalize_environment, parse_timestamp, severity_from_text
+from ..normalize import LEVEL_WORD_RE, UTC, auto_map, column_severity, infer_environment, normalize_environment, parse_timestamp, severity_from_text
 
 HEAD = 50  # records used to resolve the schema
 MISSING_TS = datetime.fromtimestamp(0, tz=UTC)  # placeholder, replaced in pipeline.ingest
@@ -41,7 +41,11 @@ def records_to_observations(records: Iterator[tuple[int, dict]], source: str, pa
             last_ts = ts
         msg = str(rec.get(r_msg) or "") if r_msg else " ".join(f"{k}={v}" for k, v in rec.items())
         sev_raw = rec.get(r_sev) if r_sev else None
-        sev = column_severity(sev_raw, use_scale=use_scale) if sev_raw not in (None, "") else severity_from_text(msg)
+        if sev_raw not in (None, ""):
+            sev, sev_src = column_severity(sev_raw, use_scale=use_scale), "field"
+        else:
+            sev = severity_from_text(msg)
+            sev_src = "text" if LEVEL_WORD_RE.search(msg) else "hint" if sev != "INFO" else "default"
         service = str(rec.get(r_svc) or "") if r_svc else ""
         host = str(rec.get(r_host) or "") if r_host else ""
         env = normalize_environment(rec.get(r_env)) if r_env else ""
@@ -57,6 +61,8 @@ def records_to_observations(records: Iterator[tuple[int, dict]], source: str, pa
             attrs["severity_raw"] = sev_raw
         if missing:
             attrs["_no_ts"] = True
+        if sev_src != "field":
+            attrs["_sev_src"] = sev_src
         yield Observation(
             timestamp=ts, message=msg, kind=kind, severity=sev, service=service, host=host, environment=env,
             origin=str(rec.get(r_origin) or "") if r_origin else "", attributes=attrs,
