@@ -32,6 +32,20 @@ def token(client, creds=ADMIN) -> dict:
     return {"Authorization": f"Bearer {r.json()['token']}"}
 
 
+def any_dataset(client, h) -> str:
+    """The first loaded dataset's key; loads the demo when the module's earlier tests left none behind."""
+    import time
+    ds = client.get("/api/datasets", headers=h).json()
+    if not ds:
+        client.post("/api/datasets/demo", headers=h)
+        for _ in range(60):
+            if all(j["state"] != "running" for j in client.get("/api/datasets/jobs", headers=h).json()):
+                break
+            time.sleep(0.5)
+        ds = client.get("/api/datasets", headers=h).json()
+    return ds[0]["id"]
+
+
 def test_health_login_me(client):
     assert client.get("/api/health").json()["ok"] is True
     assert client.get("/api/auth/me").status_code == 401
@@ -362,3 +376,28 @@ def test_grok_api(client, tmp_path):
     key = ds[0]["id"]
     u = client.get(f"/api/grok/unparsed/{key}", headers=h).json()
     assert set(u) == {"total", "unparsed", "groups"} and u["total"] > 0
+
+
+def test_llm_review_endpoint(client, monkeypatch):
+    """The review endpoint bundles evidence for the model; without an LLM it answers 400, with one it returns the text and grounding."""
+    h = token(client)
+    key = any_dataset(client, h)
+    r = client.post(f"/api/datasets/{key}/review", json={"scope": "dataset"}, headers=h)
+    assert r.status_code == 400 and "LLM" in r.json()["detail"]
+    from watchover.api.routers import datasets as d
+    from watchover import llm as wo_llm
+    monkeypatch.setattr(d, "services", d.services)
+    seen = {}
+    def fake_chat(cfg, msgs, temperature=0.2, max_tokens=900, kind="chat"):
+        seen["bundle"] = msgs[-1]["content"]; return "**Özet** kanıt [INC-1] incelendi."
+    monkeypatch.setattr(wo_llm, "chat_messages", fake_chat)
+    app_svc = client.app.state.services
+    class Cfg: enabled = True; model = "test-model"; kind = "ollama"
+    monkeypatch.setattr(app_svc, "llm_cfg", lambda: Cfg())
+    inc = client.get(f"/api/datasets/{key}/incidents", headers=h).json()[0]["id"]
+    r = client.post(f"/api/datasets/{key}/review", json={"scope": "incident", "incident": inc}, headers=h)
+    assert r.status_code == 200 and r.json()["model"] == "test-model" and f"INCIDENT {inc}" in seen["bundle"] and r.json()["text"].startswith("**Özet**")
+    r = client.post(f"/api/datasets/{key}/review", json={"scope": "lines", "query": "ERROR"}, headers=h)
+    assert r.status_code == 200 and "LOG LINES matching" in seen["bundle"]
+    r = client.post(f"/api/datasets/{key}/review", json={"scope": "dataset"}, headers=h)
+    assert r.status_code == 200 and "DATASET ·" in seen["bundle"]

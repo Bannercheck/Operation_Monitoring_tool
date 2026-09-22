@@ -270,6 +270,97 @@ def explain(key: str, iid: str, user=Depends(require("page.data")), svc=Depends(
     return {"text": chat(cfg, llm_prompt(inc, a.signal_by_id)), "model": cfg.model}
 
 
+class ReviewIn(BaseModel):
+    scope: str = "dataset"        # dataset | incident | lines
+    incident: str = ""            # incident id when scope == incident
+    query: str = ""               # search query when scope == lines
+    question: str = ""            # optional extra question for the model
+
+
+REVIEW_SYSTEM = {
+    "tr": ("Sen deneyimli bir SRE'sin ve bir operasyon merkezine danışmanlık yapıyorsun. Yalnızca verilen KANIT'a dayan; bağlamda olmayan bir şeyi bilmiyorsan 'kanıtta yok' de, uydurma. "
+           "Türkçe yaz. Başlıkları kullan: **Özet** (3 cümle), **Kök neden değerlendirmesi** (deterministik motorun kararına katılıyor musun, neden), **Etki**, **Önerilen aksiyonlar** (sıralı, sahibi ile), **Açık sorular**. "
+           "Her iddiada kanıt referansını köşeli parantezle ver: [dosya:satır], [INC-1], [S7]."),
+    "en": ("You are a senior SRE advising an operations centre. Rely only on the EVIDENCE given; say 'not in the evidence' rather than inventing. "
+           "Write in English with these headings: **Summary** (3 sentences), **Root cause assessment** (do you agree with the deterministic engine, why), **Impact**, **Recommended actions** (ordered, with an owner), **Open questions**. "
+           "Cite evidence refs in brackets: [file:line], [INC-1], [S7]."),
+}
+
+
+def _review_bundle(a, scope: str, incident: str, query: str, lang: str) -> str:
+    """Evidence handed to the model: an incident card, the whole dataset (funnel + incidents + top signals) or searched lines."""
+    lines = []
+    if scope == "incident":
+        inc = a.incident_by_id.get(incident)
+        if not inc:
+            raise KeyError(incident)
+        d = _incident(a, inc, lang)
+        lines.append(f"INCIDENT {inc.id} · {inc.severity} · {inc.title}")
+        lines.append(f"root cause: {d['root_cause'].get('template', '')} ({inc.root_cause_reason})")
+        lines.append(f"narrative: {d.get('narrative_text', '')}")
+        lines.append("affected: " + ", ".join(inc.affected_services) + " · hosts: " + ", ".join(inc.affected_hosts))
+        lines.append("timeline:")
+        for tl in (d.get("timeline") or [])[:20]:
+            lines.append(f"  {tl}")
+        lines.append("evidence:")
+        for sid in inc.signal_ids:
+            sg = a.signal_by_id.get(sid)
+            if not sg:
+                continue
+            lines.append(f"  signal {sg.id} · {sg.severity} · x{sg.count} · {sg.template[:140]}")
+            for o in sg.observations[:6]:
+                lines.append(f"    [{o.ref}] {o.timestamp:%Y-%m-%d %H:%M:%S} {o.severity} {o.service} {o.host} {o.message[:200]}")
+    elif scope == "lines":
+        terms = _parse_query(query)
+        hits = 0
+        lines.append(f"LOG LINES matching '{query}' (first 80 of the dataset)")
+        for o in a.observations:
+            hay = f"{o.service} {o.host} {o.severity} {o.message}".lower()
+            if all((term.lower() in hay) != neg for neg, _f, term in terms):
+                lines.append(f"[{o.ref}] {o.timestamp:%Y-%m-%d %H:%M:%S} {o.severity} {o.service} {o.host} {o.message[:220]}")
+                hits += 1
+                if hits >= 80:
+                    break
+        if hits == 0:
+            lines.append("(no line matched)")
+    else:
+        f = a.funnel()
+        lines.append(f"DATASET · {f['raw_events']} raw events → {f['fingerprints']} fingerprints → {f['meaningful_signals']} signals → {f['incidents']} incidents (reduction {f['reduction']}x)")
+        for inc in a.incidents[:12]:
+            lines.append(f"INCIDENT {inc.id} · {inc.severity} · {inc.title} · root cause: {inc.root_cause_reason} · services: {', '.join(inc.affected_services)}")
+        lines.append("top signals:")
+        for sg in sorted(a.signals, key=lambda x: -x.count)[:15]:
+            lines.append(f"  {sg.id} · {sg.severity} · x{sg.count} · {', '.join(sg.services)} · {sg.template[:140]}")
+            for o in sg.observations[:2]:
+                lines.append(f"    [{o.ref}] {o.timestamp:%H:%M:%S} {o.message[:160]}")
+    return "\n".join(lines)[:16000]
+
+
+@router.post("/{key}/review")
+def review(key: str, body: ReviewIn, user=Depends(require("page.data")), svc=Depends(services)):
+    """Ask the configured LLM (Ollama or an API) to review an incident, the whole dataset or searched log lines.
+    The deterministic verdicts are never changed by the answer; it is an opinion with citations."""
+    from ...llm import chat_messages
+    a = svc.datasets.get(key)["analysis"]
+    cfg = svc.llm_cfg()
+    if not cfg.enabled:
+        raise ValueError("no LLM configured: set one up on the LLM page (Ollama runs fully offline)")
+    lang = svc.lang if svc.lang in REVIEW_SYSTEM else "en"
+    bundle = _review_bundle(a, body.scope, body.incident, body.query, lang)
+    ask = body.question.strip() or ("Bu kanıtı incele." if lang == "tr" else "Review this evidence.")
+    msgs = [{"role": "system", "content": REVIEW_SYSTEM[lang]}, {"role": "user", "content": f"{ask}\n\nEVIDENCE\n{bundle}"}]
+    try:
+        text = chat_messages(cfg, msgs, kind="review", max_tokens=1200)
+    except Exception as e:  # noqa: BLE001 - the model being down is the caller's news, not a server fault
+        raise ValueError(f"LLM call failed: {str(e)[:200]}")
+    try:
+        from ...llm_eval import grounding
+        g = grounding(text, bundle)
+    except Exception:  # noqa: BLE001
+        g = None
+    return {"text": text, "model": cfg.model, "provider": cfg.kind, "scope": body.scope, "evidence_chars": len(bundle), "grounding": g}
+
+
 @router.get("/{key}/incidents/{iid}/postmortem", response_class=PlainTextResponse)
 def postmortem(key: str, iid: str, user=Depends(require("page.data")), svc=Depends(services)):
     a = svc.datasets.get(key)["analysis"]

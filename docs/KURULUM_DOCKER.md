@@ -192,6 +192,10 @@ Sistem › **Parser kapsaması** kartı, 43 log ailesinden birer örnek dosyayı
 
 **Kendi uygulamanızın logları için desen:** Yönetim › **Parser desenleri** sayfasında Test sekmesine birkaç satır yapıştırın, grok deseni yazın (`^%{TIMESTAMP_ISO8601:timestamp} %{LOGLEVEL:severity} \[%{DATA:service}\] %{GREEDYDATA:message}$` gibi), satır satır alanları görün ve "Desen olarak kaydet" deyin; sonraki yüklemelerde o dosya bu desenle ayrıştırılır. "Ayrıştırılamayan satırlar" sekmesi bir veri setinde zamanı ya da seviyesi çıkarılamayan satırları gösterir ve teste taşır. Hazır paketler (Squid, BIND, iptables, Nagios, ESXi, Tomcat, RabbitMQ, Docker, F5, Junos, Check Point, Zeek …) otomatik denenir.
 
+## 8c. LLM ile inceleme
+
+LLM sayfasında Ollama (tamamen kapalı ağda çalışır) ya da bir API tanımlandığında: incident kartının üstündeki **LLM yorumu** kutusu modele kartın kanıtını okutur ve özet / kök neden değerlendirmesi / etki / aksiyon / açık sorular başlıklarıyla referanslı bir görüş yazdırır; Veri setleri › **LLM incelemesi** sekmesi tüm seti ya da aradığınız log satırlarını inceletir; **Watchover'a sor** sayfası serbest soru-cevap içindir. Model ne derse desin motorun deterministik kararı değişmez; cevaplardaki atıf oranı ("dayanaklı atıf") gösterilir.
+
 ## 9. Kapalı ağ (internet çıkışı olmayan sunucu)
 
 İnternetli bir makinede imajı derleyip taşıyın:

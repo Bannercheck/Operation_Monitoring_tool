@@ -3,9 +3,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { api, get, post } from "../api";
 import { useT } from "../i18n";
+import { LlmReview } from "../components/LlmReview";
 import { Badge, Btn, Card, Empty, Err, Field, Kpi, Modal, Table, Tabs, hhmm } from "../components/ui";
 
-type Tab = "overview" | "incidents" | "signals" | "noise" | "search" | "actions";
+type Tab = "overview" | "incidents" | "signals" | "noise" | "search" | "actions" | "llm";
 
 export default function DatasetDetail() {
   const { key = "" } = useParams(); const { t } = useT();
@@ -27,7 +28,8 @@ export default function DatasetDetail() {
         <Kpi value={f.incidents ?? 0} label={t("funnel_incidents")} accent="#f87171" />
         <Kpi value={f.reduction ? `${f.reduction}×` : "-"} label={t("funnel_reduction")} accent="#a78bfa" />
       </div>
-      <Tabs value={tab} onChange={setTab} tabs={[{ k: "overview", label: t("tab_overview") }, { k: "incidents", label: `${t("tab_incidents")} · ${incs.data?.length ?? ""}` }, { k: "signals", label: t("tab_signals") }, { k: "noise", label: t("tab_noise") }, { k: "search", label: t("tab_search") }, { k: "actions", label: t("tab_actions_ds") }]} />
+      <Tabs value={tab} onChange={setTab} tabs={[{ k: "overview", label: t("tab_overview") }, { k: "incidents", label: `${t("tab_incidents")} · ${incs.data?.length ?? ""}` }, { k: "signals", label: t("tab_signals") }, { k: "noise", label: t("tab_noise") }, { k: "search", label: t("tab_search") }, { k: "llm", label: `🤖 ${t("tab_llm_review")}` }, { k: "actions", label: t("tab_actions_ds") }]} />
+      {tab === "llm" && <LlmReview dataset={key} />}
       {tab === "actions" && <Card><Table cols={[{ k: "priority", label: t("act_priority"), render: (r) => <Badge v={r.priority} /> }, { k: "incident_id", label: t("act_incident"), render: (r) => <span className="mono">{r.incident_id}</span> }, { k: "title", label: t("act_title_f"), render: (r) => <div><b>{r.title}</b><div className="muted small">{r.recommendation?.slice(0, 120)}</div></div> }, { k: "owner", label: t("owner") }, { k: "status", label: t("status"), render: (r) => <Badge v={r.status} label={t("st_" + r.status)} /> }]} rows={acts.data ?? []} /></Card>}
       {tab === "search" && <SearchTab dataset={key} />}
       {tab === "overview" && <div className="grid k2">
@@ -98,6 +100,7 @@ function IncidentModal({ dataset, iid, onClose }: { dataset: string; iid: string
             {!!i.root_cause_alternatives?.length && <div><b>{t("fc_alts")}</b><ul style={{ margin: "2px 0 0", paddingLeft: 18 }}>{i.root_cause_alternatives.slice(0, 3).map((a: any, n: number) => <li key={n}><span className="mono">{a.signal}</span> "{String(a.template ?? "").slice(0, 70)}" ({(a.services ?? []).slice(0, 2).join(", ")}) · {t("inc_score")} {Number(a.score).toFixed(1)}</li>)}</ul></div>}
             {i.playbook && (i.playbook.datasets?.length > 1 || i.playbook.occurrences > 1) && <div><b>📚 {t("pb_seen_before")}</b> {t("pb_times", { n: i.playbook.occurrences, d: i.playbook.datasets.length })} · {i.playbook.datasets.slice(0, 3).join(", ")}{i.playbook.resolution && ` · ${i.playbook.resolution.slice(0, 140)}`}</div>}
             <div className="row"><Link className="btn sm" to={`/map?dataset=${dataset}&incident=${iid}`}>🕸 {t("fc_map")}</Link></div></div></div>
+          <LlmReview dataset={dataset} incident={iid} compact />
           <Card title={t("inc_root")}><div className="stack small"><div className="mono">{i.root_cause.template}</div><div className="muted">{i.root_cause_reason}</div><div><b>{t("inc_why")}</b> {i.reason_text}</div></div></Card>
           <Card title={t("inc_narrative")}><p style={{ margin: 0 }}>{i.narrative_text}</p></Card>
           <div className="grid k2">
