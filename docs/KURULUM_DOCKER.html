@@ -12,7 +12,8 @@ table{border-collapse:collapse;width:100%;margin:6px 0;font-size:10.5pt}
 td,th{border:1px solid #cbd5e1;padding:6px 8px;text-align:left;vertical-align:top}
 th{background:#f8fafc}
 .foot{margin-top:26px;font-size:9pt;color:#64748b;border-top:1px solid #e2e8f0;padding-top:6px}
-</style></head><body><h1>Watchover · Kurumsal Docker kurulum rehberi</h1>
+</style></head><body>
+<h1>Watchover · Kurumsal Docker kurulum rehberi</h1>
 <p>Watchover şirket içindeki <strong>tek bir sunucuda, tamamen Docker'da</strong> çalışır. Kurulum paketi bu klasördür (<code>watchover.zip</code>): imaj sunucuda kaynak koddan derlenir (Node aşaması React arayüzünü, Python aşaması motoru kurar); GitHub, imaj kaydı ya da sunucuda Python gerekmez. Üç konteyner vardır: <strong>dashboard</strong> (React arayüzü + HTTP API 8501, canlı alıcı 8600, konteynerin kendini izleyen ajanı), <strong>postgres</strong> (ürün veritabanı, PostgreSQL 16) ve isteğe bağlı <strong>mcp</strong> (kendi MCP sunucumuz, 8765). Eski Streamlit arayüzü <code>legacy</code> profiliyle 8502'de bir süre daha açılabilir. Kod imajın içindedir; ayarlar, sırlar, anlık görüntüler ve loglar <code>watchover-data</code> biriminde, veritabanı <code>watchover-pg</code> biriminde durur. Güncelleme, yeni paketi klasörün üstüne açıp <code>./watchover.sh update</code> demektir; birimlere dokunulmaz.</p>
 <h2>1. Sunucu gereksinimleri</h2>
 <p>Sunucuya kurulacak <strong>tek bağımlılık Docker'dır</strong> (Engine 24+ ve Compose v2). Python, pip, PostgreSQL ana makineye kurulmaz; hepsi imajların içindedir.</p>
@@ -345,4 +346,27 @@ unzip -q watchover.zip &amp;&amp; mv hackathon watchover &amp;&amp; cd watchover
 </code></pre>
 <p>Soğuk yedek sunucu: aynı klasörü ve <code>.env</code>'i kopyalayın, <code>./watchover.sh install</code> ile kurun, son yedeği <code>./watchover.sh restore backups/watchover-….tgz</code> ile yükleyin; ajanlar yeni adrese <code>--url</code> ile yönlendirilir (kesinti sırasında yerel spool'da biriktirirler, veri kaybı olmaz).</p>
 <p><strong>Yük testi.</strong> <code>python scripts/loadtest.py --url http://&lt;sunucu&gt;:8600 --api http://&lt;sunucu&gt;:8501 --rate 2000 --agents 100 --duration 90 --user … --password …</code> kendi sunucunuzda 100 sanal ajanla ERP ağırlıklı yük basar ve alım/tarama ölçümlerini yazar; referans sonuçlar <code>docs/LOAD_TEST.md</code> (2.000 satır/sn: POST p50 10 ms; 4.000: alım sürer, tarama 12,6 s).</p>
-<p><strong>Ne zaman Kubernetes.</strong> Sıfır kesinti SLA'sı, çoklu lokasyon ya da GPU düğüm havuzu gerektiğinde. Ondan önce Faz 2 (durumsuz API kopyaları, ayrı alıcı servisi, tek worker) uygulanır.</p></body></html>
+<p><strong>Ne zaman Kubernetes.</strong> Sıfır kesinti SLA'sı, çoklu lokasyon ya da GPU düğüm havuzu gerektiğinde. Ondan önce Faz 2 (durumsuz API kopyaları, ayrı alıcı servisi, tek worker) uygulanır.</p>
+<h2>İnternetsiz (air-gapped) sunucu</h2>
+<p>Watchover'ın çalışması için internet gerekmez; yalnız <strong>imajların oluşturulması</strong> ve <strong>LLM modellerinin indirilmesi</strong> internet ister. Bu iki iş internete çıkabilen bir makinede (dizüstü, bastion, CI) yapılır ve tek dosya halinde kurumsal sunucuya taşınır.</p>
+<p><strong>1. İnternetli makinede paketi hazırla</strong> (kurulu bir Watchover klasöründe):</p>
+<pre><code>git clone https://github.com/Bannercheck/Operation_Monitoring_tool.git watchover-docker &amp;&amp; cd watchover-docker
+./watchover.sh install            # imajları oluşturur
+./watchover.sh llm on             # isteğe bağlı: Ollama modelleri (qwen2.5 7B/3B, bge-m3) ve eğitim tabanı iner
+./watchover.sh bundle             # -&gt; watchover-bundle-&lt;sürüm&gt;.tar  (tüm imajlar + Ollama modelleri + eğitim ağırlıkları + kaynak kod)
+</code></pre>
+<p><strong>2. Kurumsal sunucuya taşı</strong> (USB, SCP, dosya paylaşımı; tek dosya):</p>
+<pre><code>mkdir -p /opt/watchover-docker &amp;&amp; cd /opt/watchover-docker
+tar xf /mnt/usb/watchover-bundle-&lt;sürüm&gt;.tar --strip-components=1 source      # kaynak kod ve betik
+./watchover.sh unbundle /mnt/usb/watchover-bundle-&lt;sürüm&gt;.tar                 # imajları ve model hacimlerini yükler, kurulumu &quot;çevrimdışı&quot; işaretler
+./watchover.sh install                                                         # build yapmaz, yüklenen imajla başlatır; .env ve şifreler bu sunucuda üretilir
+./watchover.sh llm on                                                          # pakette model varsa yerel LLM (indirme yapmaz)
+./watchover.sh edge on watchover.sirket.local                                  # TLS: iç CA (internet gerektirmez) ya da ./certs içine şirket sertifikası
+</code></pre>
+<p>Sunucuda yalnız Docker Engine + Compose v2 kurulu olmalı (dağıtımın paket deposundan ya da çevrimdışı .deb/.rpm ile).</p>
+<p><strong>3. Diğer sunucular Watchover'a nasıl bağlanır.</strong> Veri akışı <strong>ajanlardan Watchover'a doğru</strong> çalışır: her izlenen sunucu, Watchover'ın 8600 portuna (edge açıksa 443 üzerinden <code>https://…/ingest</code>) kendi loglarını gönderir; Watchover sunuculara bağlanmaz. Ajan yalnız Python 3 standart kütüphanesi kullanır ve <strong>Watchover'ın kendisinden indirilir</strong>, internet gerekmez:</p>
+<pre><code>curl -fsSL http://&lt;watchover&gt;:8600/agent/install.sh | sudo bash -s -- --url http://&lt;watchover&gt;:8600/ingest --enroll-key &lt;Bağlantılar › Ajanlar&gt; --env prod
+</code></pre>
+<p>İzlenen sunucuda <code>python3</code> kurulu olmalı (yoksa kurulum betiği paket deposundan kurmayı dener; çevrimdışı sunucuda önceden kurun). Ajan, Watchover erişilemezken paketleri yerel diskte biriktirir ve bağlantı dönünce boşaltır. Güvenlik duvarında açılması gereken tek kural: izlenen sunuculardan Watchover'a <strong>TCP 8600</strong> (edge ile <strong>443</strong>), arayüz için istemcilerden <strong>443/8501</strong>. Elasticsearch, Grafana, Splunk gibi kaynaklardan <strong>çekme</strong> ise Watchover'dan o sistemlere doğru ilgili portlarda izin ister.</p>
+<p><strong>Güncelleme.</strong> Yeni sürümde internetli makinede <code>git pull &amp;&amp; ./watchover.sh update &amp;&amp; ./watchover.sh bundle</code>, sunucuda kaynak kodu aynı <code>tar xf … --strip-components=1 source</code> ile üzerine açıp <code>./watchover.sh unbundle &lt;dosya&gt; &amp;&amp; ./watchover.sh update</code>. Veri hacimleri (<code>watchover-data</code>, <code>watchover-pg</code>) ve <code>.env</code> dokunulmaz. Çevrimdışı işareti <code>.env</code> içindeki <code>WATCHOVER_OFFLINE=1</code> satırıdır; sunucu ileride internete çıkarsa satırı silmek yeterlidir.</p>
+</body></html>
