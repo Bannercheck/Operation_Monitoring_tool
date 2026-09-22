@@ -457,3 +457,13 @@ def test_scan_requires_permission(client):
     admin = token(client)
     # promote nobody; log in as the viewer via local password is not wired in tests -> assert admin can, endpoint guarded
     assert client.post("/api/scan/all", json={"probe": False}).status_code in (401, 403)
+
+
+def test_training_export_api(client):
+    h = token(client)
+    any_dataset(client, h)
+    st = client.get("/api/llm/training-stats", headers=h).json()
+    assert st["total"] >= 1 and "by_source" in st
+    r = client.get("/api/llm/training-export", headers=h)
+    assert r.status_code == 200 and "attachment" in r.headers.get("content-disposition", "") and '"messages"' in r.text
+    assert client.get("/api/llm/training-export?part=train", headers=h).status_code == 200

@@ -97,3 +97,17 @@ def test_llm_on_off(stage):
     r = run(stage, "llm", "off")
     assert r.returncode == 0 and "WATCHOVER_LLM=0" in (d / ".env").read_text() and "LLM_BASE_URL=" in (d / ".env").read_text()
     assert run(stage, "llm").returncode == 1
+
+
+def test_llm_export_and_import(stage):
+    d, _ = stage
+    run(stage, "install"); run(stage, "llm", "on")
+    r = run(stage, "llm", "export", "out.jsonl")
+    assert r.returncode == 0 and "watchover.training export" in (d / "calls.log").read_text() and "cp watchover:/tmp/training.jsonl" in (d / "calls.log").read_text()
+    m = d / "models" / "watchover-ops"; m.mkdir(parents=True); (m / "Modelfile").write_text("FROM qwen2.5:1.5b-instruct\n")
+    r = run(stage, "llm", "import", str(m))
+    calls = (d / "calls.log").read_text()
+    assert r.returncode == 0, r.stderr
+    assert "cp " in calls and "ollama create watchover-ops -f Modelfile" in calls and "LLM_MODEL=watchover-ops" in (d / ".env").read_text()
+    assert run(stage, "llm", "import", str(d / "nope")).returncode == 1
+

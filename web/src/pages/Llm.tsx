@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { del, get, post, put } from "../api";
+import { api, del, get, post, put } from "../api";
 import { useT } from "../i18n";
 import { Btn, Card, Confirm, Empty, Err, Field, Kpi, Table, Tabs } from "../components/ui";
 import { useSearchParams } from "react-router-dom";
@@ -61,10 +61,19 @@ function Quality() {
   const { t } = useT(); const q = useQuery({ queryKey: ["llm-quality"], queryFn: () => get("/llm/quality") });
   const ds = useQuery({ queryKey: ["datasets"], queryFn: () => get("/datasets") });
   const bench = useMutation({ mutationFn: () => post(`/llm/benchmark?dataset=${ds.data?.[0]?.id ?? ""}`), onSuccess: () => q.refetch() });
+  const tr = useQuery({ queryKey: ["llm-training"], queryFn: () => get("/llm/training-stats") });
+  const dl = async (part: string) => { const txt = await api<string>(`/llm/training-export?part=${part}`, { text: true }); const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([txt], { type: "application/jsonl" })); a.download = `watchover-training-${part}.jsonl`; a.click(); };
   const s = q.data?.stats ?? {};
   return <div className="stack">
     <div className="grid k4"><Kpi value={s.calls ?? 0} label={t("llm_calls")} /><Kpi value={s.success != null ? `${Math.round(s.success * 100)}%` : "-"} label={t("llm_success")} accent="#2dd4bf" /><Kpi value={s.grounding_rate != null ? `${Math.round(s.grounding_rate * 100)}%` : "-"} label={t("llm_ground")} accent="#60a5fa" /><Kpi value={s.latency_ms ?? s.p50_ms ?? "-"} label="ms" accent="#a78bfa" /></div>
     <div className="row"><Btn onClick={() => bench.mutate()} disabled={bench.isPending || !ds.data?.length}>{t("llm_benchmark")}</Btn></div><Err e={bench.error} />
+    <Card title={`🎓 ${t("llm_train_title")}`}><div className="muted small" style={{ marginBottom: 8 }}>{t("llm_train_hint")}</div>
+      <div className="row" style={{ flexWrap: "wrap", gap: 8 }}><span className="chip">{tr.data?.total ?? 0} {t("llm_train_examples")}</span>{Object.entries(tr.data?.by_source ?? {}).map(([k, v]) => <span key={k} className="chip">{k} {v as number}</span>)}
+        <div className="grow" /><Btn sm onClick={() => dl("all")} disabled={!tr.data?.total}>⬇ {t("llm_train_dl")}</Btn><Btn sm onClick={() => dl("train")} disabled={!tr.data?.train}>train</Btn><Btn sm onClick={() => dl("eval")} disabled={!tr.data?.eval}>eval</Btn></div>
+      <pre className="code" style={{ marginTop: 8 }}>{`./watchover.sh llm export training.jsonl
+python scripts/train_lora.py --data training.jsonl --base qwen2.5:1.5b-instruct --out models/watchover-ops
+./watchover.sh llm import models/watchover-ops
+python scripts/train_lora.py --gate --model watchover-ops --base-model qwen2.5:1.5b-instruct`}</pre></Card>
     <Card title={t("llm_tab_quality")}><Table cols={[{ k: "ts", label: t("time"), render: (r) => r.ts?.slice(0, 16).replace("T", " ") }, { k: "model", label: t("llm_model") }, { k: "dataset", label: t("as_dataset") }, { k: "n", label: "n", num: true }, { k: "correct", label: "✓", num: true }, { k: "cited", label: "cite", num: true }, { k: "grounded", label: t("llm_ground"), num: true }, { k: "latency_ms", label: "ms", num: true }]} rows={q.data?.evals ?? []} /></Card>
     <Card title={t("llm_calls")}><Table cols={[{ k: "ts", label: t("time"), render: (r) => r.ts?.slice(11, 19) }, { k: "provider", label: t("llm_provider") }, { k: "model", label: t("llm_model") }, { k: "kind", label: "kind" }, { k: "ok", label: "ok", render: (r) => (r.ok ? "✓" : "✗") }, { k: "latency_ms", label: "ms", num: true }, { k: "citations", label: "cite", num: true }, { k: "error", label: t("error"), render: (r) => <span className="muted small">{r.error?.slice(0, 60)}</span> }]} rows={(q.data?.calls ?? []).slice(0, 60)} /></Card>
   </div>;

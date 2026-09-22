@@ -4,8 +4,10 @@ from __future__ import annotations
 import threading
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
+from ... import autolearn as wo_learn
 from ... import llm as wo_llm
 from ... import llm_eval as wo_eval
 from ... import ollama as wo_ollama
@@ -119,3 +121,20 @@ def benchmark(dataset: str | None = None, lang: str = "tr", user=Depends(require
     res = wo_eval.run_benchmark(cfg, a, lang)
     svc.kb.save_eval(cfg.model, dataset or "-", res)
     return res
+
+
+@router.get("/training-stats")
+def training_stats(lang: str = "tr", user=Depends(require("page.llm")), svc=Depends(services)):
+    """How many fine-tuning examples the memory yields today, by source (patterns, anomalies, resolutions, notes, rules …)."""
+    return wo_learn.training_bundle(svc.kb, lang)["stats"]
+
+
+@router.get("/training-export", response_class=PlainTextResponse)
+def training_export(lang: str = "tr", part: str = "all", user=Depends(require("page.llm")), svc=Depends(services)):
+    """Chat-format JSONL for scripts/train_lora.py: part=all (default), train or eval (held-out 10 %)."""
+    if part in ("train", "eval"):
+        body = wo_learn.training_bundle(svc.kb, lang)[part]
+    else:
+        body = wo_learn.training_export(svc.kb, lang).decode()
+    name = f"watchover-training-{part}-{lang}.jsonl"
+    return PlainTextResponse(body, media_type="application/jsonl", headers={"Content-Disposition": f'attachment; filename="{name}"'})

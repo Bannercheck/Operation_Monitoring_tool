@@ -4,7 +4,9 @@ incident patterns into the knowledge base (one lesson per root cause, repeats bu
 (chat-format JSONL) built from lessons, approved rules and thumbs-up answers for teams that do train their own model."""
 from __future__ import annotations
 
+import hashlib
 import json
+import random
 import threading
 import time
 from datetime import datetime, timedelta, timezone
@@ -58,26 +60,61 @@ class LiveLearner:
         return self
 
 
-def training_export(kb, lang: str = "tr") -> bytes:
-    """Chat-format JSONL (system / user / assistant) from pattern lessons, notes, approved rules and thumbs-up answers."""
+def training_examples(kb, lang: str = "tr") -> tuple[list[dict], dict]:
+    """Chat-format examples (system / user / assistant) from everything the company taught Watchover: root-cause patterns,
+    anomalies, resolutions (closed actions), notes, runbook chunks, saved chats, approved rules and thumbs-up answers.
+    Deduplicated on (question, answer); returns (examples, counts-by-source)."""
     sys_tr = "Sen Watchover operasyon asistanısın. Kanıta dayalı, kısa ve gerekçeli yanıt verirsin."
     sys_en = "You are the Watchover operations assistant. Answer briefly, with evidence and reasons."
     system = sys_tr if lang == "tr" else sys_en
-    q_pat = "Bu hata kalıbı ne anlama geliyor, kök nedeni ve ilk aksiyonu nedir? {t}" if lang == "tr" else "What does this error pattern mean, what is the root cause and the first action? {t}"
-    q_note = "{t} hakkında ne biliyoruz?" if lang == "tr" else "What do we know about {t}?"
-    q_rule = "{k} için geçerli kural nedir?" if lang == "tr" else "What is the rule for {k}?"
-    lines = []
-    for r in kb._exec("SELECT kind, title, text FROM lessons WHERE kind IN ('pattern', 'note', 'doc', 'chat') ORDER BY id"):
-        if r["kind"] == "chat" and r["text"].startswith("Q: ") and "\nA: " in r["text"]:
-            q, a = r["text"][3:].split("\nA: ", 1)
-        else:
-            q, a = (q_pat if r["kind"] == "pattern" else q_note).format(t=r["title"]), r["text"]
-        lines.append({"messages": [{"role": "system", "content": system}, {"role": "user", "content": q.strip()}, {"role": "assistant", "content": a.strip()}]})
+    q = {
+        "pattern": "Bu hata kalıbı ne anlama geliyor, kök nedeni ve ilk aksiyonu nedir? {t}" if lang == "tr" else "What does this error pattern mean, what is the root cause and the first action? {t}",
+        "anomaly": "Bu anomali ne anlama geliyor ve nasıl ele alınmalı? {t}" if lang == "tr" else "What does this anomaly mean and how should it be handled? {t}",
+        "resolution": "{t} için hangi aksiyon alındı ve sonucu ne oldu?" if lang == "tr" else "What action was taken for {t} and what was the outcome?",
+        "note": "{t} hakkında ne biliyoruz?" if lang == "tr" else "What do we know about {t}?",
+        "doc": "{t} hakkında ne biliyoruz?" if lang == "tr" else "What do we know about {t}?",
+        "rule": "{k} için geçerli kural nedir?" if lang == "tr" else "What is the rule for {k}?",
+    }
+    out, seen, counts = [], set(), {}
+
+    def add(src: str, question: str, answer: str) -> None:
+        question, answer = question.strip(), answer.strip()
+        if not question or not answer:
+            return
+        h = hashlib.sha1(f"{question}\n{answer}".encode()).hexdigest()
+        if h in seen:
+            return
+        seen.add(h); counts[src] = counts.get(src, 0) + 1
+        out.append({"messages": [{"role": "system", "content": system}, {"role": "user", "content": question}, {"role": "assistant", "content": answer}]})
+
+    for r in kb._exec("SELECT kind, title, text FROM lessons WHERE kind IN ('pattern', 'anomaly', 'resolution', 'note', 'doc', 'chat') ORDER BY id"):
+        if r["kind"] == "chat":
+            if r["text"].startswith("Q: ") and "\nA: " in r["text"]:
+                qq, aa = r["text"][3:].split("\nA: ", 1)
+                add("chat", qq, aa)
+            continue
+        add(r["kind"], q[r["kind"]].format(t=r["title"]), r["text"])
     for r in kb._exec("SELECT kind, key, value, reason FROM rules WHERE status='approved' ORDER BY id"):
-        a = f"{r['kind']}: {r['key']} → {r['value']}" + (f" ({r['reason']})" if r["reason"] else "")
-        lines.append({"messages": [{"role": "system", "content": system}, {"role": "user", "content": q_rule.format(k=r["key"])}, {"role": "assistant", "content": a}]})
-    cols = kb.columns("answer_feedback")
-    if "answer" in cols:
+        add("rule", q["rule"].format(k=r["key"]), f"{r['kind']}: {r['key']} → {r['value']}" + (f" ({r['reason']})" if r["reason"] else ""))
+    if "answer" in kb.columns("answer_feedback"):
         for r in kb._exec("SELECT question, answer FROM answer_feedback WHERE verdict='up' AND answer <> '' ORDER BY id"):
-            lines.append({"messages": [{"role": "system", "content": system}, {"role": "user", "content": r["question"]}, {"role": "assistant", "content": r["answer"]}]})
-    return ("\n".join(json.dumps(x, ensure_ascii=False) for x in lines) + ("\n" if lines else "")).encode()
+            add("feedback", r["question"], r["answer"])
+    return out, counts
+
+
+def training_bundle(kb, lang: str = "tr", holdout: float = 0.1, seed: int = 7) -> dict:
+    """Train / eval split of the examples (deterministic shuffle) plus counts; the eval part is the held-out quality set."""
+    ex, counts = training_examples(kb, lang)
+    order = list(range(len(ex)))
+    random.Random(seed).shuffle(order)
+    n_eval = int(len(ex) * holdout) if len(ex) >= 10 else 0
+    ev = [ex[i] for i in order[:n_eval]]
+    tr = [ex[i] for i in order[n_eval:]]
+    dump = lambda rows: ("\n".join(json.dumps(x, ensure_ascii=False) for x in rows) + ("\n" if rows else ""))
+    return {"train": dump(tr), "eval": dump(ev), "stats": {"total": len(ex), "train": len(tr), "eval": len(ev), "by_source": counts, "lang": lang}}
+
+
+def training_export(kb, lang: str = "tr") -> bytes:
+    """Every example as chat-format JSONL (no split): what the Training page / CLI download by default."""
+    ex, _ = training_examples(kb, lang)
+    return ("\n".join(json.dumps(x, ensure_ascii=False) for x in ex) + ("\n" if ex else "")).encode()

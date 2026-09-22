@@ -128,10 +128,18 @@ case "${1:-}" in
         [ -n "${3:-}" ] || die "usage: ./watchover.sh llm pull <model>"
         $COMPOSE exec -T ollama ollama pull "$3" ;;
       list) $COMPOSE exec -T ollama ollama list ;;
+      export)   # the company's memory as chat-format JSONL for scripts/train_lora.py
+        out="${3:-training.jsonl}"; $COMPOSE exec -T dashboard python -m watchover.training export --out /tmp/training.jsonl --lang "$(env_get WATCHOVER_LANG || echo tr)" \
+          && docker cp watchover:/tmp/training.jsonl "$out" && say "training data -> $out" ;;
+      import)   # a trained adapter folder (Modelfile + adapter/) -> the watchover-ops model inside the Ollama container
+        [ -d "${3:-}" ] && [ -f "$3/Modelfile" ] || die "usage: ./watchover.sh llm import <folder with Modelfile and adapter/>"
+        name="${4:-watchover-ops}"
+        docker cp "$3" watchover-ollama:/tmp/watchover-ops && $COMPOSE exec -T ollama sh -c "cd /tmp/watchover-ops && ollama create $name -f Modelfile" \
+          && env_set LLM_MODEL "$name" && $COMPOSE $(profiles) up -d --no-deps dashboard && say "model $name created and selected (LLM_MODEL); quality gate: python scripts/train_lora.py --gate --model $name" ;;
       off)
         $COMPOSE --profile llm stop ollama; $COMPOSE --profile llm rm -f ollama; env_set WATCHOVER_LLM 0; env_set LLM_BASE_URL ""
         say "local LLM off (downloaded models kept in the watchover-ollama volume)" ;;
-      *) die "usage: ./watchover.sh llm on|off|pull <model>|list" ;; esac ;;
+      *) die "usage: ./watchover.sh llm on|off|pull <model>|list|export [file]|import <dir> [name]" ;; esac ;;
   legacy)
     need_docker; case "${2:-}" in
       on)  env_set WATCHOVER_LEGACY 1; up; say "legacy Streamlit interface on: http://$(host_ip):$(env_get WATCHOVER_LEGACY_PORT || echo 8502)" ;;
