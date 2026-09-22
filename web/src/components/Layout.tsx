@@ -14,7 +14,7 @@ const NAV = [
     { to: "/datasets", k: "nav_data", icon: Database, perm: "page.data" }, { to: "/map", k: "nav_map", icon: Network, perm: "page.map" }, { to: "/actions", k: "nav_actions", icon: ClipboardList, perm: "page.data" },
     { to: "/playbook", k: "nav_pb", icon: BookOpen, perm: "page.pb" }, { to: "/assist", k: "nav_assist", icon: MessageSquare, perm: "page.assist" }, { to: "/knowledge", k: "nav_kb", icon: Brain, perm: "page.assist" }, { to: "/itsm", k: "nav_itsm", icon: Ticket, perm: "page.itsm" } ] },
   { group: "nav_group_admin", items: [
-    { to: "/connections", k: "nav_conn", icon: Plug, perm: "page.conn" }, { to: "/sources", k: "nav_sources", icon: Radar, perm: "page.src" }, { to: "/inventory", k: "nav_inv", icon: Server, perm: "page.inv" }, { to: "/parser", k: "nav_parser", icon: Puzzle, perm: "page.parser" }, { to: "/llm", k: "nav_llm", icon: Bot, perm: "page.llm" }
+    { to: "/connections", k: "nav_conn", icon: Plug, perm: "page.conn" }, { to: "/sources", k: "nav_sources", icon: Radar, perm: "page.src" }, { to: "/inventory", k: "nav_inv", icon: Server, perm: "page.inv" }, { to: "/parser", k: "nav_parser", icon: Puzzle, perm: "page.parser" }, { to: "/llm", k: "nav_llm", icon: Bot, perm: "page.llm" },
     { to: "/users", k: "nav_users", icon: Users, perm: "page.users" }, { to: "/system", k: "nav_sys", icon: Settings2, perm: "sys.status" },
     { to: "/alerts", k: "nav_ntf", icon: BellRing, perm: "sys.notify", unless: "sys.status" }, { to: "/readme", k: "nav_readme", icon: FileText, perm: "page.readme", unless: "sys.status" } ] },
 ];

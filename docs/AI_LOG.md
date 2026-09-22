@@ -141,3 +141,4 @@ Sadece geliştirme adımları. Format: araç + sürüm · tarih · yapılan iş.
 | Claude Fable 5.1 (Cowork) | 2026-09-22 | Yazı ölçeği küçültüldü: gövde 14→13 px, h2 20→17, h3 16→14, KPI değeri 28→22, tablo 12.5, düğmeler 13, kartlar ve modal daha sıkı; incident listesi satırları 13 / 11.5 px; sürüm v1.19.1 |
 | Claude Fable 5.1 (Cowork) | 2026-09-22 | Menü sadeleştirme (Bildirimler ve README Sistem sekmesi, `unless` kuralı), Sistem kartları `Collapsible` + üstten hizalı ızgara, `NotifyBell` (açık anomaliler, görülmemiş rozeti, sekme başlığı, tarayıcı bildirimi, panel), korpus `.log` dosyaları depoya alındı (`!samples/corpus/*.log`); sürüm v1.20 |
 | Claude Fable 5.1 (Cowork) | 2026-09-22 | Menüde kalan eski Bildirimler öğesi kaldırıldı (Sistem sekmesine taşınmıştı); sürüm v1.20.1 |
+| Claude Fable 5.1 (Cowork) | 2026-09-22 | v1.20.1'de menü dizisinde eksik virgül (derleme hatası) düzeltildi; sürüm v1.20.2 |
