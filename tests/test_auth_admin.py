@@ -113,8 +113,9 @@ def test_login_gate_hides_the_app(tmp_path, monkeypatch):
     at = AppTest.from_file(str(root / "app.py"), default_timeout=60).run()
     assert not at.exception
     assert not at.sidebar.radio and not at.sidebar.markdown           # no navigation, no page content
-    assert not at.info and any(x.key == "login-google" for x in at.button)   # brand buttons are on the page, no credential hint
-    assert not any(x.key == "reg_email" for x in at.text_input)        # self-registration is off by default
+    assert any(x.key == "login-google" for x in at.button)             # brand buttons are on the page
+    assert not any("admin@" in str(x.value) for x in at.info)           # no credential hint (the SMTP note of the sign-up tab is fine)
+    assert any(x.key == "reg_email" for x in at.text_input)            # self-registration is on by default (viewer role, admin raises it)
     at.session_state["user"] = {"id": 1, "email": "a@corp.com", "name": "Admin", "role": "admin", "provider": "local"}
     at.run()
     assert not at.exception and at.sidebar.radio(key="page")
