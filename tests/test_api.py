@@ -336,3 +336,29 @@ def test_inventory_template_and_incident_json_safe(client):
     assert r.status_code == 200 and "hostname" in r.text.splitlines()[0]
     from watchover.api.routers.datasets import _json_safe
     assert _json_safe({"a": float("nan"), "b": [1.5, float("inf")], "c": "x"}) == {"a": None, "b": [1.5, None], "c": "x"}
+
+
+def test_grok_api(client, tmp_path):
+    h = token(client)
+    lib = client.get("/api/grok", headers=h).json()
+    assert any(p["name"] == "SQUID_ACCESS" and p["builtin"] for p in lib) and len(client.get("/api/grok/base", headers=h).json()) > 60
+    r = client.post("/api/grok/test", json={"pattern": "%{IP:ip} %{WORD:w}", "sample": "10.0.0.1 hello\nx"}, headers=h).json()
+    assert r["ok"] and r["matched"] == 1
+    r = client.post("/api/grok", json={"name": "T_API", "pattern": "%{TIMESTAMP_ISO8601:ts} %{GREEDYDATA:msg}", "family": "t", "roles": {"timestamp": "ts", "message": "msg"}}, headers=h)
+    assert r.status_code == 201
+    pid = r.json()["id"]
+    assert client.post("/api/grok", json={"name": "BAD", "pattern": "%{NOPE:x}"}, headers=h).status_code == 400
+    assert client.patch(f"/api/grok/{pid}", json={"enabled": False}, headers=h).json()["enabled"] is False
+    assert client.delete(f"/api/grok/{pid}", headers=h).json()["ok"] is True
+    ds = client.get("/api/datasets", headers=h).json()
+    if not ds:
+        import time
+        client.post("/api/datasets/demo", headers=h)
+        for _ in range(60):
+            if all(j["state"] != "running" for j in client.get("/api/datasets/jobs", headers=h).json()):
+                break
+            time.sleep(0.5)
+        ds = client.get("/api/datasets", headers=h).json()
+    key = ds[0]["id"]
+    u = client.get(f"/api/grok/unparsed/{key}", headers=h).json()
+    assert set(u) == {"total", "unparsed", "groups"} and u["total"] > 0

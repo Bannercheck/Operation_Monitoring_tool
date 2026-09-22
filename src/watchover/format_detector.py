@@ -6,7 +6,7 @@ import json
 import re
 
 _SYSLOG_TS = r"(?P<ts>[A-Z][a-z]{2}\s+\d{1,2}(?:\s\d{4})?\s\d{2}:\d{2}:\d{2}|\d{4}-\d{2}-\d{2}T[\d:.+\-Z]+)"      # BSD (optionally with year: Cisco) or ISO
-_NOT_LEVEL = r"(?!(?:TRACE|DEBUG|INFO|NOTICE|WARN|WARNING|ERR|ERROR|CRIT|CRITICAL|FATAL|SEVERE|INF|WRN|FTL|DBG)\b)"
+_NOT_LEVEL = r"(?!(?i:TRACE|DEBUG|INFO|NOTICE|WARN|WARNING|ERR|ERROR|CRIT|CRITICAL|FATAL|SEVERE|INF|WRN|FTL|DBG|VERBOSE)\b)"
 SYSLOG_RE = re.compile(r"^(?:<(?P<pri>\d+)>)?" + _SYSLOG_TS + r"\s+(?P<host>" + _NOT_LEVEL + r"\S+)\s+(?P<prog>[^:\[\s]+)(?:\[(?P<pid>\d+)\])?:\s*(?P<msg>.*)$")
 SYSLOG_NOPROG_RE = re.compile(r"^(?:<(?P<pri>\d+)>)?" + _SYSLOG_TS + r"\s+(?P<host>" + _NOT_LEVEL + r"[A-Za-z][\w.\-]*)\s+(?P<msg>.*)$")       # header without 'program:'
 RFC5424_RE = re.compile(r"^<(?P<pri>\d+)>1 (?P<ts>\S+) (?P<host>\S+) (?P<app>\S+) (?P<pid>\S+) (?P<msgid>\S+) (?P<sd>-|(?:\[.*?\])+) ?(?P<msg>.*)$")
@@ -76,6 +76,10 @@ def detect_format(text: str) -> tuple[str, float]:
     sap = sap_score(lines)
     if sap >= 0.5:
         return "sap", sap
+    from . import grok
+    lp, share = grok.detect(lines)
+    if lp is not None and share >= 0.6:
+        return "grok", share
     d = detect_delimiter(lines)
     if d and len(lines) >= 2:
         import csv as _csv

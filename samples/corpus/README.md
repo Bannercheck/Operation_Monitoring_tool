@@ -45,3 +45,12 @@ One small, realistic file per log family; `python -m watchover.coverage` parses 
 - `alertmanager.json`
 - `plain_app_text.log`
 - `timestamp_variants.log`
+- `squid_access.log` (grok pack)
+- `bind9_query.log` (grok pack)
+- `iptables_kernel.log` (grok pack)
+- `nagios.log` (grok pack)
+- `vmware_esxi.log` (grok pack)
+- `tomcat_juli.log` (grok pack)
+- `rabbitmq.log` (grok pack)
+- `dockerd.log` (grok pack)
+- `sudo_cron.log` (grok pack)

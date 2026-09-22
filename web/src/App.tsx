@@ -12,6 +12,7 @@ import Playbook from "./pages/Playbook";
 import Connections from "./pages/Connections";
 import SourcesPage from "./pages/Sources";
 import InventoryPage from "./pages/Inventory";
+import ParserPage from "./pages/Parser";
 import Knowledge from "./pages/Knowledge";
 import Notify from "./pages/Notify";
 import Users from "./pages/Users";
@@ -45,6 +46,7 @@ export default function App() {
         <Route path="/connections" element={<Connections />} />
         <Route path="/sources" element={<SourcesPage />} />
         <Route path="/inventory" element={<InventoryPage />} />
+        <Route path="/parser" element={<ParserPage />} />
         <Route path="/knowledge" element={<Knowledge />} />
         <Route path="/alerts" element={<Notify />} />
         <Route path="/users" element={<Users />} />

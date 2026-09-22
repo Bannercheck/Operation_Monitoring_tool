@@ -31,6 +31,14 @@
   "score": 62.5,
   "events": 2
  },
+ "bind9_query.log": {
+  "timestamp": 100.0,
+  "level": 100.0,
+  "host": 0.0,
+  "service": 100.0,
+  "score": 75.0,
+  "events": 3
+ },
  "cef_arcsight.log": {
   "timestamp": 100.0,
   "level": 100.0,
@@ -62,6 +70,14 @@
   "service": 50.0,
   "score": 50.0,
   "events": 6
+ },
+ "dockerd.log": {
+  "timestamp": 100.0,
+  "level": 100.0,
+  "host": 0.0,
+  "service": 100.0,
+  "score": 75.0,
+  "events": 4
  },
  "dotnet_serilog.log": {
   "timestamp": 100.0,
@@ -143,6 +159,14 @@
   "score": 100.0,
   "events": 3
  },
+ "iptables_kernel.log": {
+  "timestamp": 100.0,
+  "level": 0.0,
+  "host": 100.0,
+  "service": 100.0,
+  "score": 75.0,
+  "events": 3
+ },
  "java_stacktrace.log": {
   "timestamp": 100.0,
   "level": 100.0,
@@ -206,6 +230,14 @@
   "service": 100.0,
   "score": 75.0,
   "events": 4
+ },
+ "nagios.log": {
+  "timestamp": 100.0,
+  "level": 80.0,
+  "host": 0.0,
+  "service": 100.0,
+  "score": 70.0,
+  "events": 5
  },
  "nginx_combined.log": {
   "timestamp": 100.0,
@@ -295,6 +327,14 @@
   "score": 75.0,
   "events": 3
  },
+ "rabbitmq.log": {
+  "timestamp": 100.0,
+  "level": 100.0,
+  "host": 0.0,
+  "service": 100.0,
+  "score": 75.0,
+  "events": 4
+ },
  "redis.log": {
   "timestamp": 100.0,
   "level": 100.0,
@@ -310,6 +350,22 @@
   "service": 100.0,
   "score": 55.0,
   "events": 5
+ },
+ "squid_access.log": {
+  "timestamp": 100.0,
+  "level": 100.0,
+  "host": 0.0,
+  "service": 100.0,
+  "score": 75.0,
+  "events": 4
+ },
+ "sudo_cron.log": {
+  "timestamp": 100.0,
+  "level": 0.0,
+  "host": 100.0,
+  "service": 100.0,
+  "score": 75.0,
+  "events": 4
  },
  "syslog_rfc3164.log": {
   "timestamp": 100.0,
@@ -334,6 +390,22 @@
   "service": 85.7,
   "score": 71.4,
   "events": 7
+ },
+ "tomcat_juli.log": {
+  "timestamp": 100.0,
+  "level": 100.0,
+  "host": 0.0,
+  "service": 100.0,
+  "score": 75.0,
+  "events": 4
+ },
+ "vmware_esxi.log": {
+  "timestamp": 100.0,
+  "level": 100.0,
+  "host": 0.0,
+  "service": 100.0,
+  "score": 75.0,
+  "events": 4
  },
  "windows_event_xml.log": {
   "timestamp": 100.0,
