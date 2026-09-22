@@ -34,6 +34,24 @@ env_get() { sed -n "s/^$1=//p" "$ENV_FILE" 2>/dev/null | head -1 | sed 's/[[:spa
 env_set() { if grep -q "^$1=" "$ENV_FILE" 2>/dev/null; then sed -i.bak "s|^$1=.*|$1=$2|" "$ENV_FILE" && rm -f "$ENV_FILE.bak"; else printf '%s=%s\n' "$1" "$2" >> "$ENV_FILE"; fi; }
 host_ip() { local ip; ip=$(hostname -I 2>/dev/null | awk '{print $1}'); [ -n "$ip" ] || ip=$(ipconfig getifaddr en0 2>/dev/null); [ -n "$ip" ] || ip=$(ipconfig getifaddr en1 2>/dev/null); echo "${ip:-localhost}"; }   # Linux, then macOS (Wi-Fi / Ethernet)
 
+# sizing follows the machine: every CPU Docker can see and most of its memory, as caps (not reservations) - 10 on a laptop,
+# 32 or 64 on a server. Written on every install/update/start unless WATCHOVER_SIZING=manual keeps your own numbers.
+size_env() {
+  [ "$(env_get WATCHOVER_SIZING)" = "manual" ] && return 0
+  local ncpu mem_b mem_gb llm_mem tr_mem
+  ncpu=$(docker info --format '{{.NCPU}}' 2>/dev/null | tr -dc '0-9'); [ -n "$ncpu" ] && [ "$ncpu" -ge 1 ] || ncpu=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
+  mem_b=$(docker info --format '{{.MemTotal}}' 2>/dev/null | tr -dc '0-9'); [ -n "$mem_b" ] && [ "$mem_b" -ge 1 ] || mem_b=$((8 * 1024 * 1024 * 1024))
+  mem_gb=$((mem_b / 1073741824)); [ "$mem_gb" -ge 2 ] || mem_gb=2
+  llm_mem=$((mem_gb * 80 / 100)); [ "$llm_mem" -ge 4 ] || llm_mem=$(( mem_gb < 4 ? mem_gb : 4 ))
+  tr_mem=$((mem_gb * 60 / 100));  [ "$tr_mem" -ge 4 ]  || tr_mem=$(( mem_gb < 4 ? mem_gb : 4 ))
+  env_set WATCHOVER_SIZING auto
+  env_set WATCHOVER_CPUS "$(( ncpu < 4 ? ncpu : 4 ))";     env_set WATCHOVER_MEMORY "$(( mem_gb < 4 ? mem_gb : 4 ))g"
+  env_set WATCHOVER_PG_CPUS "$(( ncpu < 2 ? ncpu : 2 ))";  env_set WATCHOVER_PG_MEMORY "$(( mem_gb < 2 ? mem_gb : 2 ))g"
+  env_set WATCHOVER_LLM_CPUS "$ncpu";   env_set WATCHOVER_LLM_THREADS "$ncpu";                       env_set WATCHOVER_LLM_MEMORY "${llm_mem}g"
+  env_set WATCHOVER_TRAIN_CPUS "$ncpu"; env_set WATCHOVER_TRAIN_THREADS "$(( ncpu > 1 ? ncpu - 1 : 1 ))"; env_set WATCHOVER_TRAIN_MEMORY "${tr_mem}g"
+  say "sizing: Docker sees $ncpu CPUs / ${mem_gb} GB -> LLM $ncpu cpu ${llm_mem}g, trainer $ncpu cpu ${tr_mem}g, dashboard $(( ncpu < 4 ? ncpu : 4 )) cpu  (WATCHOVER_SIZING=manual in .env keeps your own)"
+}
+
 write_env() {
   if [ ! -f "$ENV_FILE" ]; then
     cp .env.docker.example "$ENV_FILE"
@@ -44,6 +62,7 @@ write_env() {
   env_set GIT_REV "$(git_rev)"
   [ -n "$(env_get POSTGRES_PASSWORD)" ] && [ "$(env_get POSTGRES_PASSWORD)" != "change-me" ] || { env_set POSTGRES_PASSWORD "$(rand 24)"; say "POSTGRES_PASSWORD generated"; }
   [ -n "$(env_get MCP_API_KEY)" ] || { sed -i.bak 's/^#MCP_API_KEY=.*$//' "$ENV_FILE" 2>/dev/null; rm -f "$ENV_FILE.bak"; env_set MCP_API_KEY "$(rand 24)"; say "MCP_API_KEY generated"; }
+  size_env
   chmod 600 "$ENV_FILE"
   mkdir -p datasets backups
 }

@@ -145,7 +145,7 @@ services:
       OLLAMA_KEEP_ALIVE: ${WATCHOVER_LLM_KEEPALIVE:-30m}       # keep a model resident this long between requests
       OLLAMA_NUM_PARALLEL: ${WATCHOVER_LLM_PARALLEL:-1}        # concurrent requests per model (CPU-only: keep low)
       OLLAMA_MAX_LOADED_MODELS: ${WATCHOVER_LLM_MAX_MODELS:-2} # chat + embeddings resident at once
-      OMP_NUM_THREADS: ${WATCHOVER_LLM_THREADS:-16}            # CPU threads for inference (<= the cpus limit below)
+      OMP_NUM_THREADS: ${WATCHOVER_LLM_THREADS:-4}             # CPU threads for inference (= the cpus limit below)
     volumes:
       - watchover-ollama:/root/.ollama                        # downloaded models persist here; cache cleanup never touches them
       - watchover-models:/models:ro                           # adapters written by the trainer (legacy Modelfile import path)
@@ -154,8 +154,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "${WATCHOVER_LLM_CPUS:-16}"                   # 32-CPU server: leave headroom for the app + Postgres
-          memory: ${WATCHOVER_LLM_MEMORY:-24g}
+          cpus: "${WATCHOVER_LLM_CPUS:-4}"                    # watchover.sh sizes this to every CPU Docker sees (10 laptop, 32/64 server)
+          memory: ${WATCHOVER_LLM_MEMORY:-8g}
         reservations:
           cpus: "1"
           memory: 2g
@@ -184,7 +184,7 @@ services:
       TZ: ${TZ:-Europe/Istanbul}
       DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-watchover}:${POSTGRES_PASSWORD:-change-me}@postgres:5432/${POSTGRES_DB:-watchover}}
       OLLAMA_URL: http://ollama:11434
-      WATCHOVER_TRAIN_THREADS: ${WATCHOVER_TRAIN_THREADS:-10}
+      WATCHOVER_TRAIN_THREADS: ${WATCHOVER_TRAIN_THREADS:-3}
       WATCHOVER_MODELS_DIR: /models
     depends_on:
       postgres:
@@ -198,8 +198,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "${WATCHOVER_TRAIN_CPUS:-12}"                   # training is periodic: it borrows cores when it runs, idle otherwise
-          memory: ${WATCHOVER_TRAIN_MEMORY:-12g}
+          cpus: "${WATCHOVER_TRAIN_CPUS:-4}"                    # sized to the machine by watchover.sh; training is periodic, idle otherwise
+          memory: ${WATCHOVER_TRAIN_MEMORY:-6g}
         reservations:
           cpus: "0.25"
           memory: 256m
