@@ -1,20 +1,18 @@
 import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { SourcesPanel } from "./Sources";
-import { InventoryPanel } from "./Inventory";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, del, get, patch, post, put } from "../api";
 import { useAuth } from "../auth";
 import { useT } from "../i18n";
 import { Badge, Btn, Card, Confirm, Empty, Err, Field, Modal, Table, Tabs, fmtTs } from "../components/ui";
 
-type Tab = "agents" | "sources" | "inventory" | "discovered";
+type Tab = "agents" | "discovered";
 
 export default function Connections() {
   const { t } = useT(); const [sp] = useSearchParams(); const [tab, setTab] = useState<Tab>((sp.get("tab") as Tab) || "agents");
   return <div className="stack"><h2>🔌 {t("nav_conn")}</h2>
-    <Tabs value={tab} onChange={setTab} tabs={[{ k: "agents", label: t("conn_agents") }, { k: "sources", label: t("conn_sources") }, { k: "inventory", label: t("conn_inv") }, { k: "discovered", label: t("conn_discovered") }]} />
-    {tab === "agents" && <Agents />}{tab === "sources" && <SourcesPanel />}{tab === "inventory" && <InventoryPanel />}{tab === "discovered" && <Discovered />}</div>;
+    <Tabs value={tab} onChange={setTab} tabs={[{ k: "agents", label: t("conn_agents") }, { k: "discovered", label: t("conn_discovered") }]} />
+    {tab === "agents" && <Agents />}{tab === "discovered" && <Discovered />}</div>;
 }
 
 function Agents() {

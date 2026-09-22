@@ -2,6 +2,11 @@
 
 Numaralandırma: büyük sürüm **v1, v2** (ürün sahibinin kararı), küçük güncelleme **v1.1, v1.2** (her devreye alınan özellik adımı), düzeltme **v1.1.1**. Her sürüm `python -m watchover.release <major|minor|patch> "özet"` ile açılır; Sistem › Güncelleme sayfası bu dosyayı gösterir, anlık görüntüler sürüm numarasını taşır.
 
+## v1.24 · 2026-09-22 · güncelleme
+
+- Kurumsal hafıza: sürekli öğrenen bilgi tabanı, hash/bge-m3 gömme, hafıza sayfası; menü sadeleştirme (Bağlantılar sekmeleri, Parser → LLM)
+
+
 ## v1.23 · 2026-09-22 · güncelleme
 
 - Parser v2 adım 4: Drain şablon madenciliği ve öğrenen sütun eşlemesi

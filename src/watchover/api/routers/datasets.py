@@ -287,9 +287,11 @@ REVIEW_SYSTEM = {
 }
 
 
-def _review_bundle(a, scope: str, incident: str, query: str, lang: str) -> str:
-    """Evidence handed to the model: an incident card, the whole dataset (funnel + incidents + top signals) or searched lines."""
+def _review_bundle(a, scope: str, incident: str, query: str, lang: str, kb=None) -> str:
+    """Evidence handed to the model: an incident card, the whole dataset (funnel + incidents + top signals) or searched lines,
+    plus what the corporate memory remembers about it (past patterns, anomalies, resolutions, notes)."""
     lines = []
+    memo: list[dict] = []
     if scope == "incident":
         inc = a.incident_by_id.get(incident)
         if not inc:
@@ -299,6 +301,11 @@ def _review_bundle(a, scope: str, incident: str, query: str, lang: str) -> str:
         lines.append(f"root cause: {d['root_cause'].get('template', '')} ({inc.root_cause_reason})")
         lines.append(f"narrative: {d.get('narrative_text', '')}")
         lines.append("affected: " + ", ".join(inc.affected_services) + " · hosts: " + ", ".join(inc.affected_hosts))
+        if kb is not None:
+            try:
+                memo = kb.related(inc, a.signal_by_id[inc.root_cause_signal], 4)
+            except Exception:  # noqa: BLE001
+                memo = []
         lines.append("timeline:")
         for tl in (d.get("timeline") or [])[:20]:
             lines.append(f"  {tl}")
@@ -323,6 +330,11 @@ def _review_bundle(a, scope: str, incident: str, query: str, lang: str) -> str:
                     break
         if hits == 0:
             lines.append("(no line matched)")
+        if kb is not None:
+            try:
+                memo = kb.search(query, 4)
+            except Exception:  # noqa: BLE001
+                memo = []
     else:
         f = a.funnel()
         lines.append(f"DATASET · {f['raw_events']} raw events → {f['fingerprints']} fingerprints → {f['meaningful_signals']} signals → {f['incidents']} incidents (reduction {f['reduction']}x)")
@@ -333,7 +345,16 @@ def _review_bundle(a, scope: str, incident: str, query: str, lang: str) -> str:
             lines.append(f"  {sg.id} · {sg.severity} · x{sg.count} · {', '.join(sg.services)} · {sg.template[:140]}")
             for o in sg.observations[:2]:
                 lines.append(f"    [{o.ref}] {o.timestamp:%H:%M:%S} {o.message[:160]}")
-    return "\n".join(lines)[:16000]
+        if kb is not None and a.incidents:
+            try:
+                memo = kb.search(" ".join(i.title for i in a.incidents[:3]), 4)
+            except Exception:  # noqa: BLE001
+                memo = []
+    if memo:
+        lines.append("MEMORY (what this company saw before; cite as [M<id>])")
+        for m in memo:
+            lines.append(f"  [M{m['id']}] {m['kind']} ×{m.get('occurrences', 1)} · {str(m['title'])[:100]} · {str(m['text'])[:300].replace(chr(10), ' ')}")
+    return "\n".join(lines)[:18000]
 
 
 @router.post("/{key}/review")
@@ -346,7 +367,7 @@ def review(key: str, body: ReviewIn, user=Depends(require("page.data")), svc=Dep
     if not cfg.enabled:
         raise ValueError("no LLM configured: set one up on the LLM page (Ollama runs fully offline)")
     lang = svc.lang if svc.lang in REVIEW_SYSTEM else "en"
-    bundle = _review_bundle(a, body.scope, body.incident, body.query, lang)
+    bundle = _review_bundle(a, body.scope, body.incident, body.query, lang, kb=svc.kb)
     ask = body.question.strip() or ("Bu kanıtı incele." if lang == "tr" else "Review this evidence.")
     msgs = [{"role": "system", "content": REVIEW_SYSTEM[lang]}, {"role": "user", "content": f"{ask}\n\nEVIDENCE\n{bundle}"}]
     try:

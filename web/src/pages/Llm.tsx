@@ -3,9 +3,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { del, get, post, put } from "../api";
 import { useT } from "../i18n";
 import { Btn, Card, Confirm, Empty, Err, Field, Kpi, Table, Tabs } from "../components/ui";
+import { useSearchParams } from "react-router-dom";
+import { ParserPanel } from "./Parser";
 
 export default function Llm() {
-  const { t } = useT(); const qc = useQueryClient(); const [tab, setTab] = useState<"conn" | "models" | "quality">("conn");
+  const { t } = useT(); const qc = useQueryClient(); const [sp] = useSearchParams(); const [tab, setTab] = useState<"conn" | "models" | "quality" | "parser">((sp.get("tab") as any) || "conn");
   const cfg = useQuery({ queryKey: ["llm"], queryFn: () => get("/llm") });
   const [f, setF] = useState<any>(null); const [msg, setMsg] = useState<any>(null); const [models, setModels] = useState<string[]>([]);
   useEffect(() => { if (cfg.data && !f) setF(cfg.data); }, [cfg.data, f]);
@@ -18,7 +20,7 @@ export default function Llm() {
     <div className="row between"><div><h2>🧠 {t("llm_title")}</h2><span className="muted small">{t("llm_sub")}</span></div>
       <div className="row"><span className="chip"><span className="d" style={{ background: cfg.data?.enabled ? "#2dd4bf" : "#64748b" }} />{cfg.data?.kind} · {cfg.data?.llm_model || "—"}</span><span className="chip">{st.calls ?? 0} {t("llm_calls")}</span>
         <span className="chip">{t("llm_success")} {st.success != null ? `${Math.round(st.success * 100)}%` : "-"}</span><span className="chip">{t("llm_ground")} {st.grounding_rate != null ? `${Math.round(st.grounding_rate * 100)}%` : "-"}</span></div></div>
-    <Tabs value={tab} onChange={setTab} tabs={[{ k: "conn", label: t("llm_tab_conn") }, { k: "models", label: t("llm_tab_models") }, { k: "quality", label: t("llm_tab_quality") }]} />
+    <Tabs value={tab} onChange={setTab} tabs={[{ k: "conn", label: t("llm_tab_conn") }, { k: "models", label: t("llm_tab_models") }, { k: "quality", label: t("llm_tab_quality") }, { k: "parser", label: `🧩 ${t("llm_tab_parser")}` }]} />
     {tab === "conn" && f && <Card><div className="grid k2">
       <Field label={t("llm_provider")}><select className="input" value={f.llm_provider} onChange={set("llm_provider")}>{(cfg.data?.providers ?? []).map((p: string) => <option key={p}>{p}</option>)}</select></Field>
       <Field label={t("llm_base")}><input className="input" value={f.llm_base} onChange={set("llm_base")} placeholder="http://localhost:11434 · https://api.openai.com/v1" /></Field>
@@ -29,6 +31,7 @@ export default function Llm() {
       {msg && <div className={msg.ok ? "ok" : "err"} style={{ marginTop: 8 }}>{msg.info}</div>}<Err e={save.error || test.error || list.error} /></Card>}
     {tab === "models" && <OllamaModels />}
     {tab === "quality" && <Quality />}
+    {tab === "parser" && <ParserPanel embedded />}
   </div>;
 }
 

@@ -414,3 +414,19 @@ def test_templates_and_profiles_api(client):
     assert client.get("/api/grok/profiles", headers=h).status_code == 200
     assert client.delete("/api/grok/profiles/nope", headers=h).status_code == 404
     assert key
+
+
+def test_memory_api(client):
+    h = token(client)
+    any_dataset(client, h)
+    st = client.get("/api/memory/stats", headers=h).json()
+    assert st["total"] >= 1 and st["index_model"] and "indexed_pct" in st
+    assert client.get("/api/memory/search?q=timeout&k=5", headers=h).status_code == 200
+    assert isinstance(client.get("/api/memory/search", headers=h).json(), list)
+    assert client.get("/api/memory/timeline", headers=h).status_code == 200
+    assert "events" in client.post("/api/memory/learn", headers=h).json()
+    assert client.post("/api/memory/reindex", headers=h).json()["model"]
+    assert client.get("/api/memory/reindex", headers=h).status_code == 200
+    a = client.post("/api/actions", headers=h, json={"incident_id": "INC-1", "title": "Restart api"}).json()
+    client.patch(f"/api/actions/{a['id']}", headers=h, json={"status": "done"})
+    assert any(r["kind"] == "resolution" for r in client.get("/api/memory/search?kinds=resolution", headers=h).json())

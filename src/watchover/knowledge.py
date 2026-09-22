@@ -26,7 +26,9 @@ from .db import Database
 from .playbook import _tokens, similarity
 
 UTC = timezone.utc
-KINDS = ("pattern", "feedback", "note", "doc", "chat")
+KINDS = ("pattern", "feedback", "note", "doc", "chat", "anomaly", "resolution")
+HASH_MODEL = "hash-v1"          # the deterministic fallback embedding (no model server needed)
+HASH_DIMS = 256
 RULE_KINDS = ("owner", "cause_rank", "noise_type", "noise_template", "dependency", "recommendation")
 CHUNK = 900
 
@@ -41,6 +43,23 @@ def _pack(vec: list[float]) -> bytes:
 
 def _unpack(blob: bytes) -> list[float]:
     return list(struct.unpack(f"<{len(blob) // 2}e", blob))
+
+
+def hash_embed(text: str, dims: int = HASH_DIMS) -> list[float]:
+    """Deterministic bag-of-features vector: word unigrams, word bigrams and character trigrams hashed into `dims` buckets
+    (signed, L2-normalised). No model, no network; the same text always gives the same vector, and vectors of texts that
+    share words / stems land close. Used when no embedding model is configured and for rows that model never indexed."""
+    v = [0.0] * dims
+    words = re.findall(r"[0-9a-zçğıöşü_./-]+", (text or "").lower())
+    feats = list(words) + [f"{a} {b}" for a, b in zip(words, words[1:])]
+    for w in words:
+        if len(w) > 3:
+            feats.extend(w[i:i + 3] for i in range(len(w) - 2))
+    for f in feats:
+        h = int(hashlib.blake2b(f.encode(), digest_size=4).hexdigest(), 16)
+        v[h % dims] += 1.0 if (h >> 31) & 1 else -1.0
+    n = sum(x * x for x in v) ** 0.5
+    return [x / n for x in v] if n else v
 
 
 def cosine(a: list[float], b: list[float]) -> float:
@@ -70,6 +89,7 @@ class Knowledge(Database):
     def __init__(self, url: str | None = None, embedder: Callable[[list[str]], list[list[float]]] | None = None):
         super().__init__(url)
         self.embedder = embedder
+        self.embed_name = ""            # name of the model behind `embedder` (bge-m3 …); "" -> hash fallback
         self._schema()
         self._base: dict | None = None
 
@@ -83,6 +103,8 @@ class Knowledge(Database):
         self._exec("CREATE INDEX IF NOT EXISTS lessons_kind ON lessons(kind)")
         self._exec("CREATE INDEX IF NOT EXISTS lessons_key ON lessons(key)")
         self._exec("CREATE INDEX IF NOT EXISTS lessons_hash ON lessons(content_hash)")
+        if "embed_model" not in self.columns("lessons"):
+            self._exec("ALTER TABLE lessons ADD COLUMN embed_model TEXT DEFAULT ''")
         self._exec(f"""CREATE TABLE IF NOT EXISTS llm_calls (
             id {pk}, ts TEXT, provider TEXT, model TEXT, kind TEXT, ok INTEGER, latency_ms INTEGER, prompt_chars INTEGER, answer_chars INTEGER,
             citations INTEGER DEFAULT 0, grounded INTEGER DEFAULT 0, invalid INTEGER DEFAULT 0, error TEXT DEFAULT '')""")
@@ -95,13 +117,25 @@ class Knowledge(Database):
             status TEXT DEFAULT 'proposed', created_at TEXT, decided_at TEXT)""")
 
     # ---------------------------------------------------------------- write
+    @property
+    def index_model(self) -> str:
+        return self.embed_name if (self.embedder and self.embed_name) else HASH_MODEL
+
+    def _vec(self, text: str) -> tuple[list[float], str]:
+        """(vector, model): the configured embedding model when it answers, else the hash fallback."""
+        if self.embedder:
+            try:
+                return self.embedder([text[:2000]])[0], self.index_model
+            except Exception:  # noqa: BLE001 - embeddings are optional, never block a write
+                pass
+        return hash_embed(text), HASH_MODEL
+
     def _embed(self, text: str) -> bytes | None:
-        if not self.embedder:
-            return None
-        try:
-            return _pack(self.embedder([text[:2000]])[0])
-        except Exception:  # noqa: BLE001 - embeddings are optional, never block a write
-            return None
+        return _pack(self._vec(text)[0])
+
+    def _embed2(self, text: str) -> tuple[bytes, str]:
+        vec, model = self._vec(text)
+        return _pack(vec), model
 
     def add(self, kind: str, title: str, text: str, *, key: str = "", dataset: str = "", incident_id: str = "", root_cause: str = "",
             services: list | None = None, recovery: str = "", tags: list | None = None, refs: list | None = None, meta: dict | None = None) -> int:
@@ -111,12 +145,49 @@ class Knowledge(Database):
         if ex:
             return int(ex[0]["id"])
         toks = " ".join(sorted(_tokens(f"{title} {text} {' '.join(services or [])} {' '.join(tags or [])}")))
+        emb, model = self._embed2(f"{title}\n{text}")
         return self._insert(
-            "INSERT INTO lessons (kind, key, title, text, tokens, dataset, incident_id, root_cause, services, recovery, tags, refs, occurrences, content_hash, embedding, meta, created_at, updated_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO lessons (kind, key, title, text, tokens, dataset, incident_id, root_cause, services, recovery, tags, refs, occurrences, content_hash, embedding, embed_model, meta, created_at, updated_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (kind, key, title, text, toks, dataset, incident_id, root_cause, json.dumps(services or [], ensure_ascii=False), recovery,
-             json.dumps(tags or [], ensure_ascii=False), json.dumps(refs or [], ensure_ascii=False), 1, h, self._embed(f"{title}\n{text}"),
+             json.dumps(tags or [], ensure_ascii=False), json.dumps(refs or [], ensure_ascii=False), 1, h, emb, model,
              json.dumps(meta or {}, ensure_ascii=False, default=str), _now(), _now()))
+
+    def add_event(self, kind: str, key: str, title: str, text: str, *, services: list | None = None, tags: list | None = None,
+                  meta: dict | None = None, dataset: str = "") -> int:
+        """One row per (kind, key) that keeps refreshing: a repeat bumps occurrences and rewrites text / vector / updated_at.
+        Used for the memory feeds (anomalies, resolutions) whose wording changes every time but whose identity does not."""
+        toks = " ".join(sorted(_tokens(f"{title} {text} {' '.join(services or [])} {' '.join(tags or [])}")))
+        emb, model = self._embed2(f"{title}\n{text}")
+        row = self._exec("SELECT id, occurrences FROM lessons WHERE kind=? AND key=?", (kind, key))
+        if row:
+            self._exec("UPDATE lessons SET title=?, text=?, tokens=?, services=?, tags=?, meta=?, embedding=?, embed_model=?, occurrences=?, updated_at=? WHERE id=?",
+                       (title, text, toks, json.dumps(services or [], ensure_ascii=False), json.dumps(tags or [], ensure_ascii=False),
+                        json.dumps(meta or {}, ensure_ascii=False, default=str), emb, model, int(row[0]["occurrences"] or 1) + 1, _now(), row[0]["id"]))
+            return int(row[0]["id"])
+        return self._insert(
+            "INSERT INTO lessons (kind, key, title, text, tokens, dataset, incident_id, root_cause, services, recovery, tags, refs, occurrences, content_hash, embedding, embed_model, meta, created_at, updated_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (kind, key, title, text, toks, dataset, "", "", json.dumps(services or [], ensure_ascii=False), "", json.dumps(tags or [], ensure_ascii=False), "[]", 1,
+             hashlib.sha256(f"{kind}|{key}".encode()).hexdigest()[:16], emb, model, json.dumps(meta or {}, ensure_ascii=False, default=str), _now(), _now()))
+
+    def reindex(self, limit: int = 64) -> dict:
+        """Re-embed rows whose vector was not made by the current index model (batches, so a model switch catches up in the background)."""
+        model = self.index_model
+        rows = self._exec("SELECT id, title, text FROM lessons WHERE COALESCE(embed_model, '') <> ? ORDER BY updated_at DESC LIMIT ?", (model, limit))
+        done = 0
+        for r in rows:
+            emb, m = self._embed2(f"{r['title']}\n{r['text']}")
+            if m != model:                                     # the model server did not answer: stop, do not overwrite with the fallback
+                break
+            self._exec("UPDATE lessons SET embedding=?, embed_model=? WHERE id=?", (emb, m, r["id"]))
+            done += 1
+        rem = self._exec("SELECT COUNT(*) AS n FROM lessons WHERE COALESCE(embed_model, '') <> ?", (model,))
+        return {"model": model, "done": done, "remaining": int(rem[0]["n"]) if rem else 0}
+
+    def embed_coverage(self) -> dict:
+        rows = self._exec("SELECT COALESCE(embed_model, '') AS m, COUNT(*) AS n FROM lessons GROUP BY m")
+        return {(r["m"] or "-"): int(r["n"]) for r in rows}
 
     def record(self, analysis, dataset: str, lang: str = "tr") -> int:
         """One pattern lesson per root cause; a repeat bumps occurrences and appends the (dataset, incident) reference."""
@@ -148,12 +219,13 @@ class Knowledge(Database):
                     f"First action: {inc.recommendations[0] if inc.recommendations else '-'} · owner: {suggested_owner(inc, root)}\n"
                     f"Counter-hypotheses: {alts or '-'}")
             evidence = [o.ref for o in root.observations[:5]]
+            emb, model = self._embed2(f"{inc.title}\n{text}")
             self._insert(
-                "INSERT INTO lessons (kind, key, title, text, tokens, dataset, incident_id, root_cause, services, recovery, tags, refs, occurrences, content_hash, embedding, meta, created_at, updated_at) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO lessons (kind, key, title, text, tokens, dataset, incident_id, root_cause, services, recovery, tags, refs, occurrences, content_hash, embedding, embed_model, meta, created_at, updated_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 ("pattern", key, inc.title[:160], text, " ".join(sorted(_tokens(f"{inc.title} {text}"))), dataset, inc.id, root.template,
                  json.dumps(inc.affected_services, ensure_ascii=False), inc.recovery.get("kind", ""), json.dumps(["auto"]),
-                 json.dumps([ref], ensure_ascii=False), 1, hashlib.sha256(f"pattern|{key}".encode()).hexdigest()[:16], self._embed(f"{inc.title}\n{text}"),
+                 json.dumps([ref], ensure_ascii=False), 1, hashlib.sha256(f"pattern|{key}".encode()).hexdigest()[:16], emb, model,
                  json.dumps({"evidence": evidence, "owner": suggested_owner(inc, root)}, ensure_ascii=False), _now(), _now()))
             n += 1
         return n
@@ -223,12 +295,7 @@ class Knowledge(Database):
         if not q:
             return []
         qt = _tokens(q)
-        qvec = None
-        if self.embedder:
-            try:
-                qvec = self.embedder([q[:2000]])[0]
-            except Exception:  # noqa: BLE001
-                qvec = None
+        qvecs: dict[str, list[float] | None] = {}                      # query vector per index model (bge-m3 rows and hash rows both score)
         rows = self._exec("SELECT * FROM lessons" + (" WHERE kind IN (%s)" % ",".join("?" * len(kinds)) if kinds else ""), tuple(kinds or ()))
         scored = []
         ql = q.lower()
@@ -238,10 +305,26 @@ class Knowledge(Database):
             lex = (0.7 * common / len(qt) + 0.3 * common / len(qt | toks)) if qt and toks and common else 0.0   # coverage first, then overlap
             if ql and ql in (r.get("title") or "").lower():
                 lex = max(lex, 0.6)
-            emb = 0.0
-            if qvec is not None and r.get("embedding"):
-                emb = max(0.0, cosine(qvec, _unpack(bytes(r["embedding"]))))
-            score = (0.55 * lex + 0.45 * emb) if qvec is not None and r.get("embedding") else lex
+            emb = None
+            m = r.get("embed_model") or ""
+            if r.get("embedding") and m:
+                if m not in qvecs:
+                    if m == HASH_MODEL:
+                        qvecs[m] = hash_embed(q)
+                    elif m == self.index_model:
+                        vec, got = self._vec(q)
+                        qvecs[m] = vec if got == m else None
+                    else:
+                        qvecs[m] = None
+                qv = qvecs[m]
+                if qv is not None:
+                    emb = max(0.0, cosine(qv, _unpack(bytes(r["embedding"]))))
+            if emb is None:
+                score = lex
+            elif m == HASH_MODEL:
+                score = 0.75 * lex + 0.25 * max(0.0, emb - 0.1)         # hash cosine is a weak, noisy signal: lexical stays in charge
+            else:
+                score = 0.55 * lex + 0.45 * emb
             score += min(0.1, 0.02 * (int(r.get("occurrences") or 1) - 1))
             if score > 0.02:
                 d = self._row(r); d["score"] = round(score, 3)
@@ -258,7 +341,8 @@ class Knowledge(Database):
         rows = self._exec("SELECT kind, COUNT(*) AS n FROM lessons GROUP BY kind")
         rules = self._exec("SELECT status, COUNT(*) AS n FROM rules GROUP BY status")
         size = self.size_bytes()
-        return {"lessons": {r["kind"]: int(r["n"]) for r in rows}, "rules": {r["status"]: int(r["n"]) for r in rules}, "bytes": size}
+        return {"lessons": {r["kind"]: int(r["n"]) for r in rows}, "rules": {r["status"]: int(r["n"]) for r in rules}, "bytes": size,
+                "index_model": self.index_model, "embedded": self.embed_coverage()}
 
     # ---------------------------------------------------------------- rules: proposed by feedback / facts, approved by a human
     def propose(self, kind: str, key: str, value: str, reason: str = "", source: str = "manual") -> int:

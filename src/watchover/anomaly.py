@@ -88,6 +88,7 @@ class AnomalyTracker:
         self.runs = 0
         self.last_run = ""
         self.last_found: list[dict] = []
+        self.on_open = None                      # memory feed: called with the row of every newly opened anomaly
         kb._exec(f"""CREATE TABLE IF NOT EXISTS anomalies (id {kb.pk}, kind TEXT NOT NULL, key TEXT NOT NULL, env TEXT DEFAULT '', host TEXT DEFAULT '',
             service TEXT DEFAULT '', metric TEXT DEFAULT '', title TEXT DEFAULT '', detail TEXT DEFAULT '', observed REAL DEFAULT 0, baseline REAL DEFAULT 0,
             spread REAL DEFAULT 0, score REAL DEFAULT 0, hits INTEGER DEFAULT 1, first_seen TEXT, last_seen TEXT, cleared_at TEXT DEFAULT '',

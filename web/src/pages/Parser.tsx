@@ -11,9 +11,9 @@ type Tab = "lib" | "test" | "unparsed" | "templates" | "profiles" | "base";
 const ROLES = ["timestamp", "severity", "host", "service", "message", "status"];
 const EMPTY = { name: "", pattern: "", family: "", description: "", roles: {} as Record<string, string>, enabled: true };
 
-export default function ParserPage() {
+export function ParserPanel({ embedded = false }: { embedded?: boolean }) {
   const { t } = useT(); const { can } = useAuth(); const qc = useQueryClient(); const [sp] = useSearchParams();
-  const [tab, setTab] = useState<Tab>((sp.get("tab") as Tab) || "lib"); const [q, setQ] = useState(""); const [edit, setEdit] = useState<any>(null);
+  const TABS: Tab[] = ["lib", "test", "unparsed", "templates", "profiles", "base"]; const [tab, setTab] = useState<Tab>(TABS.includes(sp.get("tab") as Tab) ? (sp.get("tab") as Tab) : "lib"); const [q, setQ] = useState(""); const [edit, setEdit] = useState<any>(null);
   const [sample, setSample] = useState(sp.get("sample") ?? ""); const [pattern, setPattern] = useState(sp.get("pattern") ?? "%{TIMESTAMP_ISO8601:timestamp} %{LOGLEVEL:severity} %{GREEDYDATA:message}"); const [res, setRes] = useState<any>(null);
   const list = useQuery({ queryKey: ["grok"], queryFn: () => get("/grok") });
   const base = useQuery({ queryKey: ["grok-base"], queryFn: () => get("/grok/base"), enabled: tab === "base" });
@@ -25,7 +25,7 @@ export default function ParserPage() {
   const rows: any[] = (list.data ?? []).filter((r: any) => !q || r.name.toLowerCase().includes(q.toLowerCase()) || r.family.includes(q.toLowerCase()) || (r.description ?? "").toLowerCase().includes(q.toLowerCase()));
   const users = (list.data ?? []).filter((r: any) => !r.builtin).length;
   return <div className="stack">
-    <div><h2>🧩 {t("nav_parser")}</h2><div className="muted small">{t("gk_tag")}</div></div>
+    {!embedded && <div><h2>🧩 {t("nav_parser")}</h2><div className="muted small">{t("gk_tag")}</div></div>}
     <div className="chips"><Chip color="#60a5fa">{(list.data ?? []).length - users} {t("gk_builtin")}</Chip><Chip color="#2dd4bf">{users} {t("gk_user")}</Chip></div>
     <div className="muted small">{t("gk_intro")}</div>
     <Tabs value={tab} onChange={setTab} tabs={[{ k: "lib", label: t("gk_tab_lib") }, { k: "test", label: t("gk_tab_test") }, { k: "unparsed", label: t("gk_tab_unparsed") }, { k: "templates", label: `🧠 ${t("gk_tab_templates")}` }, { k: "profiles", label: t("gk_tab_profiles") }, { k: "base", label: t("gk_tab_base") }]} />
@@ -116,4 +116,9 @@ function Profiles({ editable }: { editable: boolean }) {
       <div className="grid k2">{["timestamp", "severity", "service", "host", "message", "environment", "origin"].map((role) => <Field key={role} label={role}><select className="input" value={edit.mapping?.[role] ?? ""} onChange={(e) => setEdit({ ...edit, mapping: { ...edit.mapping, [role]: e.target.value } })}><option value="">-</option>{(edit.keys ?? []).map((k: string) => <option key={k} value={k}>{k}</option>)}</select></Field>)}</div>
       <Err e={save.error} /><div className="row"><Btn kind="primary" onClick={() => save.mutate(edit)}>💾 {t("save")}</Btn></div></div></Modal>}
     <Err e={rm.error} /></Card>;
+}
+
+
+export default function ParserPage() {
+  return <ParserPanel />;
 }

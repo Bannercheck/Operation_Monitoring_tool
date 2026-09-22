@@ -5,7 +5,7 @@ export type Lang = "tr" | "en";
 const S: Record<string, [string, string]> = {
   brand_tag: ["OPERASYON SİNYAL MASASI", "OPERATIONS SIGNAL DESK"],
   nav_ops: ["Operasyon", "Operations"], nav_anom: ["Anomaliler", "Anomalies"], nav_data: ["Veri setleri", "Datasets"], nav_actions: ["Aksiyonlar", "Actions"],
-  nav_pb: ["Playbook", "Playbook"], nav_conn: ["Bağlantılar", "Connections"], nav_kb: ["Bilgi tabanı", "Knowledge"], nav_ntf: ["Bildirimler", "Alerts"],
+  nav_pb: ["Playbook", "Playbook"], nav_conn: ["Bağlantılar", "Connections"], nav_kb: ["Hafıza", "Memory"], nav_ntf: ["Bildirimler", "Alerts"],
   nav_users: ["Kullanıcılar", "Users"], nav_sys: ["Sistem", "System"], nav_map: ["Hata haritası", "Failure map"], nav_assist: ["Watchover'a sor", "Ask Watchover"], nav_llm: ["LLM", "LLM"], nav_itsm: ["ITSM", "ITSM"], nav_group_ops: ["İZLEME", "MONITORING"], nav_group_admin: ["YÖNETİM", "ADMIN"],
   signout: ["Çıkış", "Sign out"], collapse: ["Menüyü daralt", "Collapse"], expand: ["Menüyü aç", "Expand"],
   login_title: ["Watchover'a giriş", "Sign in to Watchover"], login_lead: ["Operasyon sinyal masası", "Operations signal desk"], email: ["E-posta", "E-mail"], password: ["Parola", "Password"],
@@ -121,7 +121,12 @@ const S: Record<string, [string, string]> = {
   src_enabled: ["etkin", "enabled"], src_user: ["Kullanıcı", "User"], src_secret: ["Parola / token", "Password / token"], src_auth: ["Kimlik", "Auth"],
   inv_add: ["Sunucu ekle / güncelle", "Add / update host"], inv_hostname: ["Sunucu adı", "Hostname"], inv_dc: ["Veri merkezi", "Data center"], inv_crit: ["Kritiklik", "Criticality"], inv_export: ["CSV indir", "Download CSV"], inv_import: ["CSV yükle", "Upload CSV"],
   // knowledge
-  kb_title: ["Bilgi tabanı", "Knowledge base"], kb_search: ["Bilgi tabanında ara", "Search the knowledge base"], kb_note_add: ["Not ekle", "Add note"], kb_rules: ["Kurallar", "Rules"], kb_propose: ["Kural öner", "Propose rule"],
+  kb_title: ["Kurumsal hafıza", "Corporate memory"], kb_search: ["Hafızada ara (anlamsal + kelime)", "Search memory (semantic + keyword)"],
+  mem_sub: ["canlı akış, veri setleri, anomaliler ve kapatılan aksiyonlar kendiliğinden öğrenilir; notlar ve runbook'lar elle eklenir", "live feed, datasets, anomalies and closed actions are learned automatically; notes and runbooks are added by hand"],
+  mem_learn_now: ["Şimdi öğren", "Learn now"], mem_reindex: ["Yeniden indeksle", "Re-index"], mem_total: ["Hafıza kaydı", "Memories"], mem_indexed: ["Vektör kapsamı", "Vector coverage"], mem_hash: ["yerel hash gömme (model yok)", "local hash embedding (no model)"],
+  mem_last_learn: ["Son öğrenme", "Last learn"], mem_every: ["her", "every"], mem_rules_ok: ["Onaylı kural", "Approved rules"], mem_rules_pending: ["bekleyen öneri", "pending proposals"], mem_lessons: ["kayıt", "memories"], mem_timeline: ["Günlük öğrenme", "Daily learning"],
+  mem_all_kinds: ["Tüm türler", "All kinds"], mem_day: ["Gün", "Day"], mem_min: ["dk", "min"], mem_k_pattern: ["Kök neden deseni", "Root-cause pattern"], mem_k_anomaly: ["Anomali", "Anomaly"], mem_k_resolution: ["Çözüm", "Resolution"], mem_k_feedback: ["Geri bildirim", "Feedback"], mem_k_note: ["Not", "Note"], mem_k_doc: ["Belge", "Document"], mem_k_chat: ["Sohbet", "Chat"],
+  llm_tab_parser: ["Parser desenleri", "Parser patterns"], kb_note_add: ["Not ekle", "Add note"], kb_rules: ["Kurallar", "Rules"], kb_propose: ["Kural öner", "Propose rule"],
   kb_approve: ["Onayla", "Approve"], kb_reject: ["Reddet", "Reject"], kb_kind: ["Tür", "Kind"], kb_key: ["Anahtar", "Key"], kb_value: ["Değer", "Value"], kb_title_f: ["Başlık", "Title"], kb_text: ["Metin", "Text"],
   // notify
   ntf_title: ["Bildirimler", "Alerts"], ntf_recipients: ["Alıcılar", "Recipients"], ntf_rules: ["Kurallar", "Rules"], ntf_log: ["Gönderim geçmişi", "Sent alerts"], ntf_phone: ["Telefon", "Phone"], ntf_groups: ["Gruplar", "Groups"],

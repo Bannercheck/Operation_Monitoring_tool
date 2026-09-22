@@ -42,7 +42,9 @@ def get(aid: int, user=Depends(require("page.data")), svc=Depends(services)):
 
 @router.patch("/{aid}")
 def update(aid: int, body: ActionPatch, user=Depends(require("page.data")), svc=Depends(services)):
-    return svc.actions.update(aid, **body.model_dump(exclude_none=True))
+    a = svc.actions.update(aid, **body.model_dump(exclude_none=True))
+    svc.memory.remember_action(a)                  # a closed action becomes a resolution memory
+    return a
 
 
 @router.delete("/{aid}")

@@ -62,7 +62,11 @@ class Services:
         self.notifier = wo_notify.Notifier(self.kb, notify_channels)
         self.anomalies = wo_anomaly.AnomalyTracker(self.kb, self.live)
         from ..drain import TemplateStore
+        from ..memory import Memory
         self.templates = TemplateStore(self.kb)
+        c0 = wo_settings.load()
+        self.memory = Memory(self.kb, self.live, self.lang, interval_min=int(c0.get("learn_min", 15) or 0), inventory_fn=None)
+        self.anomalies.on_open = self.memory.remember_anomaly
         self.anomalies.templates = self.templates
         self.alerts = wo_notify.AlertEngine(self.notifier, self.live, self.agents, self.sources); self.alerts.anomalies = self.anomalies
         self.poller = Poller(self.sources, self.live)
@@ -75,7 +79,7 @@ class Services:
         llm_set_sink(self.kb.log_call)                       # every LLM call lands in the quality log
         self.refresh_llm()
         if bg:
-            self.history.start(); self.anomalies.start(); self.alerts.start(); self.poller.start()
+            self.history.start(); self.anomalies.start(); self.alerts.start(); self.poller.start(); self.memory.learner.start()
             c = wo_settings.load()
             if os.environ.get("WATCHOVER_API_RECEIVER", "1") == "1":      # the API is the product now: it owns the agent receiver
                 try:
@@ -109,6 +113,7 @@ class Services:
             wo_settings.save(vals)
         cfg = self.llm_cfg()
         self.kb.embedder = (lambda texts, c_=cfg: llm_embed(c_, texts)) if cfg.base_url and cfg.embed_model else None
+        self.kb.embed_name = cfg.embed_model if self.kb.embedder else ""
         return cfg
 
     def live_analysis(self):
@@ -139,7 +144,7 @@ class Services:
                 "anomalies": self.anomalies.stats(), "datasets": len(self.datasets.items), "users": self.users.count()}
 
     def close(self) -> None:
-        for obj in (self.anomalies, self.alerts):
+        for obj in (self.anomalies, self.alerts, self.memory.learner):
             try:
                 obj.stop.set()
             except Exception:  # noqa: BLE001
