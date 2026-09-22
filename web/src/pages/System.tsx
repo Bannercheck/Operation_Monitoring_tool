@@ -50,7 +50,6 @@ export default function System() {
 const PROVIDERS = [
   { name: "google", label: "Google", flag: "auth_google", fields: [["google_client_id", "sso_client_id"], ["google_client_secret", "sso_client_secret"]] },
   { name: "microsoft", label: "Microsoft", flag: "auth_microsoft", fields: [["ms_tenant", "sso_tenant"], ["ms_client_id", "sso_client_id"], ["ms_client_secret", "sso_client_secret"]] },
-  { name: "apple", label: "Apple", flag: "auth_apple", fields: [["apple_client_id", "sso_client_id"], ["apple_team_id", "sso_team"], ["apple_key_id", "sso_key_id"], ["apple_private_key", "sso_p8"]] },
   { name: "oidc", label: "OIDC", flag: "auth_oidc", fields: [["oidc_issuer", "sso_issuer"], ["oidc_client_id", "sso_client_id"], ["oidc_client_secret", "sso_client_secret"]] },
 ];
 

@@ -19,7 +19,7 @@ SETTING_KEYS = ("self_monitor", "learn_min", "alerts_on", "live_port", "live_key
 CHANNEL_KEYS = ("smtp_host", "smtp_port", "smtp_security", "smtp_user", "smtp_password", "smtp_from", "smtp_from_name",
                 "sms_preset", "sms_url", "sms_method", "sms_auth", "sms_user", "sms_password", "sms_token", "sms_from", "sms_account", "sms_body", "sms_content_type")
 AUTH_KEYS = ("auth_google", "google_client_id", "google_client_secret", "auth_microsoft", "ms_tenant", "ms_client_id", "ms_client_secret",
-             "auth_apple", "apple_client_id", "apple_team_id", "apple_key_id", "apple_private_key", "auth_oidc", "oidc_issuer", "oidc_client_id", "oidc_client_secret",
+             "auth_oidc", "oidc_issuer", "oidc_client_id", "oidc_client_secret",
              "auth_self_register", "auth_domains", "public_host", "mfa_email")
 MASK = "•••"
 

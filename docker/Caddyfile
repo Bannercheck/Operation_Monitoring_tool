@@ -1,5 +1,6 @@
 # Watchover edge: TLS termination and reverse proxy in front of the dashboard container (./watchover.sh edge on <host>).
-# Variables come from .env through docker-compose: WATCHOVER_EDGE_HOST (name or IP colleagues will type),
+# Variables come from .env through docker-compose: WATCHOVER_EDGE_HOSTS (site addresses: "watchover.local, 192.168.1.107"),
+# WATCHOVER_EDGE_HOST (the first of them, used when a client sends no server name),
 # WATCHOVER_EDGE_TLS ("internal" = Caddy's own CA, export its root with  ./watchover.sh edge cert;
 # or "/certs/watchover.crt /certs/watchover.key" for a company certificate placed in ./certs).
 {
@@ -14,7 +15,7 @@
 	}
 }
 
-{$WATCHOVER_EDGE_HOST} {
+{$WATCHOVER_EDGE_HOSTS} {
 	tls {$WATCHOVER_EDGE_TLS:internal}
 	encode gzip
 	request_body {

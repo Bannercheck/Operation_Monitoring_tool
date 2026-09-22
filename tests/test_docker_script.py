@@ -72,6 +72,8 @@ def test_edge_on_off(stage):
     assert r.returncode == 0, r.stderr
     env = (d / ".env").read_text()
     assert "WATCHOVER_EDGE=1" in env and "WATCHOVER_EDGE_HOST=watchover.sirket.local" in env and "WATCHOVER_EDGE_TLS=internal" in env
+    hosts = [l for l in env.splitlines() if l.startswith("WATCHOVER_EDGE_HOSTS=")][0]
+    assert hosts.startswith("WATCHOVER_EDGE_HOSTS=watchover.sirket.local, ") and hosts.count(",") == 1          # the machine's IP is added
     assert "COMPOSE_FILE=docker-compose.yml:docker-compose.edge.yml" in env and "WATCHOVER_UI_PORT=127.0.0.1" not in env
     assert "https://watchover.sirket.local" in r.stdout and "--profile edge up -d --remove-orphans --force-recreate dashboard edge" in (d / "calls.log").read_text()
     assert (d / "certs").is_dir()

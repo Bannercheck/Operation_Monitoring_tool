@@ -32,3 +32,5 @@ data/.vault.key
 data/self-agent.pid
 backups/
 datasets/
+.edge-mdns.pid
+certs/

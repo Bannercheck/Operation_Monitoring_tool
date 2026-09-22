@@ -12,7 +12,7 @@ const S: Record<string, [string, string]> = {
   login_btn: ["Devam et", "Continue"], login_or: ["veya", "or"], login_with: ["{p} ile giriş", "Sign in with {p}"], mfa_title: ["Doğrulama kodu", "Verification code"],
   mfa_lead: ["E-postanıza gönderilen 6 haneli kodu girin ({m} dk geçerli).", "Enter the 6-digit code sent to your e-mail (valid {m} min)."], mfa_btn: ["Doğrula", "Verify"],
   login_failed: ["Giriş başarısız", "Sign-in failed"], back: ["Geri", "Back"], login_not_configured: ["Yapılandırılmadı: Sistem › Giriş sağlayıcıları", "Not configured: System › Sign-in providers"],
-  sso_title: ["Giriş sağlayıcıları (SSO)", "Sign-in providers (SSO)"], sso_lead: ["Google, Microsoft, Apple ya da kurumun OIDC sağlayıcısıyla giriş. Sağlayıcı tarafında geri dönüş adresi olarak yanındaki adresi tanımlayın.", "Sign in with Google, Microsoft, Apple or the company's OIDC provider. Register the callback next to each provider on their side."],
+  sso_title: ["Giriş sağlayıcıları (SSO)", "Sign-in providers (SSO)"], sso_lead: ["Google, Microsoft (Entra ID / Exchange hesapları) ya da kurumun OIDC sağlayıcısıyla giriş. Sağlayıcı tarafında geri dönüş adresi olarak yanındaki adresi tanımlayın.", "Sign in with Google, Microsoft (Entra ID / Exchange accounts) or the company's OIDC provider. Register the callback next to each provider on their side."],
   sso_enabled: ["etkin", "enabled"], sso_client_id: ["Client ID", "Client ID"], sso_client_secret: ["Client secret", "Client secret"], sso_tenant: ["Tenant", "Tenant"], sso_issuer: ["Issuer URL", "Issuer URL"], sso_team: ["Team ID", "Team ID"], sso_key_id: ["Key ID", "Key ID"], sso_p8: ["Private key (.p8)", "Private key (.p8)"],
   sso_self_register: ["Sağlayıcıdan gelen yeni hesaplar otomatik açılsın (operatör rolüyle)", "New identities from a provider get an account automatically (operator role)"], sso_domains: ["İzinli e-posta alanları (virgülle; boş = hepsi)", "Allowed e-mail domains (comma separated; empty = any)"],
   reg_title: ["Hesap oluştur", "Create an account"], reg_btn: ["Kayıt ol", "Register"], reg_have: ["Hesabım var, giriş yap", "I have an account, sign in"], reg_new: ["Hesabın yok mu? Kayıt ol", "No account? Register"],
@@ -164,6 +164,8 @@ const S: Record<string, [string, string]> = {
   ds_fetch_source_hint: ["Bağlantılar › Veri kaynakları altında tanımlı Elasticsearch / Loki / Splunk / Graylog / HTTP kaynağından seçilen pencere çekilir.", "Pulls the chosen window from an Elasticsearch / Loki / Splunk / Graylog / HTTP source defined under Connections › Data sources."],
   ds_fetch_pick: ["Kaynak", "Source"], ds_fetch_minutes: ["Pencere (dk)", "Window (min)"], ds_fetch_limit: ["En çok kayıt", "Max records"], ds_fetch_nosrc: ["Tanımlı kaynak yok.", "No source defined."], ds_fetch_define: ["Kaynak tanımla", "Define a source"],
   ds_fetch_mcp_hint: ["Kendi motorumuz MCP olarak: python mcp_server.py --http --port 8765 → http://localhost:8765/mcp", "Our own engine as MCP: python mcp_server.py --http --port 8765 → http://localhost:8765/mcp"],
+  reg_wait_admin: ["Hesabınız oluşturuldu. Bir yönetici Kullanıcılar sayfasından onayladığında giriş yapabilirsiniz.", "Your account was created. You can sign in once an administrator approves it on the Users page."],
+  reg_need_smtp_admin: ["SMTP tanımlı değil: yeni kayıtlar e-posta doğrulaması yerine yönetici onayı bekler.", "No SMTP configured: new registrations wait for an administrator instead of e-mail verification."],
 };
 
 export function tr(lang: Lang, key: string, kw: Record<string, any> = {}): string {

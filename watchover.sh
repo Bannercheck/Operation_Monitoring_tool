@@ -6,7 +6,8 @@
 #   ./watchover.sh start|stop|restart|status|logs [service]
 #   ./watchover.sh mcp on|off       our MCP server as a third container (MCP_API_KEY from .env)
 #   ./watchover.sh legacy on|off    the former Streamlit interface as an extra container (:8502) while teams move over
-#   ./watchover.sh edge on HOST     Caddy in front: https://HOST for the company network (TLS from Caddy's CA, or ./certs/watchover.crt+key)
+#   ./watchover.sh edge on NAME     Caddy in front: https://NAME for the company network (TLS from Caddy's CA, or ./certs/watchover.crt+key);
+#                                   NAME may be a DNS name, an IP or a Bonjour name like watchover.local (announced by the Mac itself)
 #   ./watchover.sh edge off|cert    stop it | export the CA root certificate colleagues install once (./certs/watchover-root.crt)
 #   ./watchover.sh backup           PostgreSQL dump + data volume -> ./backups/watchover-YYYYMMDD-HHMM.tgz
 #   ./watchover.sh restore FILE     bring a backup back (containers are stopped meanwhile)
@@ -53,6 +54,20 @@ build() {
 }
 
 profiles() { local p=""; [ "$(env_get WATCHOVER_MCP)" = "1" ] && p="$p --profile mcp"; [ "$(env_get WATCHOVER_LEGACY)" = "1" ] && p="$p --profile legacy"; [ "$(env_get WATCHOVER_EDGE)" = "1" ] && p="$p --profile edge"; echo "$p"; }
+# a *.local name on macOS: announce it on the LAN with Bonjour (dns-sd proxy record) so colleagues' Macs, iPhones and Windows 10+ resolve it
+mdns_start() {
+  mdns_stop
+  command -v dns-sd >/dev/null 2>&1 || return 0
+  local n ip; ip=$(host_ip)
+  for n in $(echo "$1" | tr ',' ' '); do
+    case "$n" in *.local)
+      nohup dns-sd -P "$n" _https._tcp local 443 "$n" "$ip" >/dev/null 2>&1 &
+      echo $! >> .edge-mdns.pid
+      say "Bonjour: $n -> $ip announced (dns-sd, stops with edge off or reboot; run 'edge on' again after a reboot)" ;;
+    esac
+  done
+}
+mdns_stop() { if [ -f .edge-mdns.pid ]; then while read -r pid; do kill "$pid" 2>/dev/null || true; done < .edge-mdns.pid; rm -f .edge-mdns.pid; fi; }
 edge_url() { local h p; h=$(env_get WATCHOVER_EDGE_HOST); p=$(env_get WATCHOVER_EDGE_HTTPS_PORT || echo 443); [ "$p" = "443" ] && echo "https://$h" || echo "https://$h:$p"; }
 up() { $COMPOSE $(profiles) up -d --remove-orphans; }
 
@@ -103,8 +118,12 @@ case "${1:-}" in
     [ -z "$(env_get WATCHOVER_UI_PORT)" ] || env_set WATCHOVER_UI_PORT "$(env_get WATCHOVER_UI_PORT | sed 's/^127\.0\.0\.1://')"   # undo the v1.13 localhost binding
     case "${2:-}" in
       on)
-        host="${3:-$(env_get WATCHOVER_EDGE_HOST)}"; [ -n "$host" ] || host=$(host_ip)
-        env_set WATCHOVER_EDGE 1; env_set WATCHOVER_EDGE_HOST "$host"
+        hosts="${3:-$(env_get WATCHOVER_EDGE_HOSTS)}"; hosts="${hosts:-$(env_get WATCHOVER_EDGE_HOST)}"; [ -n "$hosts" ] || hosts=$(host_ip)
+        hosts=$(echo "$hosts" | tr ' ' ',' | tr -s ',' | sed 's/^,//; s/,$//')
+        host="${hosts%%,*}"
+        case ",$hosts," in *,"$(host_ip)",*) ;; *) hosts="$hosts,$(host_ip)" ;; esac      # the IP is always on the certificate too
+        env_set WATCHOVER_EDGE 1; env_set WATCHOVER_EDGE_HOST "$host"; env_set WATCHOVER_EDGE_HOSTS "$(echo "$hosts" | sed 's/,/, /g')"
+        mdns_start "$hosts"
         [ -n "$(env_get WATCHOVER_EDGE_TLS)" ] || env_set WATCHOVER_EDGE_TLS internal
         [ -n "$(env_get WATCHOVER_EDGE_HTTPS_PORT)" ] || env_set WATCHOVER_EDGE_HTTPS_PORT 443
         [ -n "$(env_get WATCHOVER_EDGE_HTTP_PORT)" ] || env_set WATCHOVER_EDGE_HTTP_PORT 80
@@ -115,13 +134,13 @@ case "${1:-}" in
         say "edge on: $(edge_url)   (http://$(env_get WATCHOVER_EDGE_HOST) redirects; plain :8501 is no longer published)"
         if [ "$(env_get WATCHOVER_EDGE_TLS)" = "internal" ]; then say "colleagues install the CA root once: ./watchover.sh edge cert  ->  ./certs/watchover-root.crt"; fi ;;
       off)
-        $COMPOSE --profile edge stop edge; $COMPOSE --profile edge rm -f edge; env_set WATCHOVER_EDGE 0
+        $COMPOSE --profile edge stop edge; $COMPOSE --profile edge rm -f edge; env_set WATCHOVER_EDGE 0; mdns_stop
         sed -i.bak '/^COMPOSE_FILE=/d' "$ENV_FILE"; rm -f "$ENV_FILE.bak"
         $COMPOSE $(profiles) up -d --remove-orphans --force-recreate dashboard; say "edge off: http://$(host_ip):$(env_get WATCHOVER_UI_PORT || echo 8501)" ;;
       cert)
         mkdir -p certs; docker cp watchover-edge:/data/caddy/pki/authorities/local/root.crt certs/watchover-root.crt
         say "CA root: ./certs/watchover-root.crt  — macOS: Keychain Access › System › import, set to Always Trust; Windows: certutil -addstore -f Root watchover-root.crt; Linux agents: --ca watchover-root.crt" ;;
-      *) die "usage: ./watchover.sh edge on [host] | off | cert" ;; esac ;;
+      *) die "usage: ./watchover.sh edge on [name[,name2,ip]] | off | cert     e.g.  edge on watchover.local" ;; esac ;;
   api)     say "the API now runs inside the dashboard container: http://$(host_ip):$(env_get WATCHOVER_UI_PORT || echo 8501)/api/docs" ;;
   backup)
     need_docker; mkdir -p backups; stamp=$(date +%Y%m%d-%H%M); out="backups/watchover-$stamp.tgz"; tmp=$(mktemp -d)

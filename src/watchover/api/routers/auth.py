@@ -110,23 +110,27 @@ def change_password(body: PasswordIn, user: dict = Depends(current_user), svc=De
 def options():
     """What the sign-in page offers: local self-registration (needs SMTP for the verification code) and the providers."""
     cfg = wo_settings.load()
-    return {"register": bool(cfg.get("auth_self_register")) and bool(notify_channels().get("email", {}).get("host")), "mfa": bool(cfg.get("mfa_email", True))}
+    smtp = bool(notify_channels().get("email", {}).get("host"))
+    return {"register": bool(cfg.get("auth_self_register", True)), "verify": smtp, "mfa": bool(cfg.get("mfa_email", True))}
 
 
 @router.post("/register", status_code=202)
 def register(body: RegisterIn, svc=Depends(services)):
-    """Local account: created pending, a verification code goes to the e-mail; /auth/verify activates it and signs in."""
+    """Local account, created pending. With SMTP a verification code goes to the e-mail and /auth/verify activates it;
+    without SMTP the account waits for an administrator (Users page) — the same rule as the Streamlit sign-up tab."""
     cfg = wo_settings.load()
-    if not cfg.get("auth_self_register"):
+    if not cfg.get("auth_self_register", True):
         raise HTTPException(403, "self-registration is off")
-    if not notify_channels().get("email", {}).get("host"):
-        raise HTTPException(400, "smtp not configured")
     us = svc.users
     ex = us.get(body.email.strip().lower())
     if ex and ex["status"] == "pending":
         u = ex
+    elif ex:
+        raise HTTPException(409, "an account with this e-mail already exists")
     else:
         u = us.register(body.email, body.password, body.name, cfg.get("auth_domains", ""), status="pending")
+    if not notify_channels().get("email", {}).get("host"):
+        return {"pending": True, "approval": True}
     ok, why = _send_otp(us, u)
     if not ok:
         raise HTTPException(502, why)
@@ -153,11 +157,10 @@ def logout(user: dict = Depends(current_user)):
     return {"ok": True}
 
 
-# ---------------------------------------------------------------- SSO: OpenID Connect (Google, Microsoft, Apple, any OIDC issuer)
+# ---------------------------------------------------------------- SSO: OpenID Connect (Google, Microsoft, any OIDC issuer)
 # Settings keys are the same ones the Streamlit System › Sign-in form writes, so both interfaces share one configuration.
 PROVIDERS = {"google": {"issuer": "https://accounts.google.com", "flag": "auth_google", "id": "google_client_id", "secret": "google_client_secret", "label": "Google"},
              "microsoft": {"issuer": "https://login.microsoftonline.com/{tenant}/v2.0", "flag": "auth_microsoft", "id": "ms_client_id", "secret": "ms_client_secret", "label": "Microsoft"},
-             "apple": {"issuer": "https://appleid.apple.com", "flag": "auth_apple", "id": "apple_client_id", "secret": "apple_private_key", "label": "Apple"},
              "oidc": {"issuer": None, "flag": "auth_oidc", "id": "oidc_client_id", "secret": "oidc_client_secret", "label": "SSO"}}
 _discovery: dict[str, tuple[float, dict]] = {}
 
@@ -172,14 +175,8 @@ def _provider(name: str, cfg: dict) -> dict | None:
         issuer = issuer.format(tenant=cfg.get("ms_tenant") or "common")
     if not issuer:
         return None
-    if name == "apple":
-        if not (cfg.get("apple_team_id") and cfg.get("apple_key_id")):
-            return None
-        secret = wo_auth.apple_client_secret(cfg["apple_team_id"], cfg["apple_key_id"], cfg["apple_client_id"], cfg["apple_private_key"])
-    else:
-        secret = cfg[p["secret"]]
     return {"name": name, "label": (cfg.get("oidc_label") or p["label"]) if name == "oidc" else p["label"], "issuer": issuer.rstrip("/"),
-            "client_id": cfg[p["id"]], "client_secret": secret}
+            "client_id": cfg[p["id"]], "client_secret": cfg[p["secret"]]}
 
 
 def _discover(issuer: str) -> dict:
@@ -219,14 +216,11 @@ def oidc_start(name: str, request: Request, next: str = "/"):
     nonce = secrets.token_urlsafe(16)
     state = issue({"typ": "oidc", "p": name, "v": verifier, "n": nonce, "next": next[:200]}, 10)
     q = {"response_type": "code", "client_id": p["client_id"], "redirect_uri": _redirect_uri(request, name), "state": state, "nonce": nonce}
-    if name == "apple":                                              # Apple: name + email come back as a form POST, no PKCE
-        q.update({"scope": "name email", "response_mode": "form_post"})
-    else:
-        q.update({"scope": "openid email profile", "code_challenge": challenge, "code_challenge_method": "S256"})
+    q.update({"scope": "openid email profile", "code_challenge": challenge, "code_challenge_method": "S256"})
     return RedirectResponse(disc["authorization_endpoint"] + "?" + urllib.parse.urlencode(q), status_code=302)
 
 
-def _finish(name: str, request: Request, code: str, state: str, error: str, svc, user_json: str = ""):
+def _finish(name: str, request: Request, code: str, state: str, error: str, svc):
     """Exchanges the code, reads the identity (userinfo or id_token claims), signs the account in and returns to the app with the token in the URL fragment."""
     if error:
         return RedirectResponse(f"/login?error={urllib.parse.quote(error)}", status_code=302)
@@ -238,27 +232,20 @@ def _finish(name: str, request: Request, code: str, state: str, error: str, svc,
     if not p:
         raise HTTPException(404, "provider not configured")
     disc = _discover(p["issuer"])
-    data = {"grant_type": "authorization_code", "code": code, "redirect_uri": _redirect_uri(request, name), "client_id": p["client_id"], "client_secret": p["client_secret"]}
-    if name != "apple":
-        data["code_verifier"] = claims["v"]
+    data = {"grant_type": "authorization_code", "code": code, "redirect_uri": _redirect_uri(request, name), "client_id": p["client_id"], "client_secret": p["client_secret"],
+            "code_verifier": claims["v"]}
     tok = httpx.post(disc["token_endpoint"], data=data, timeout=15)
     if tok.status_code != 200:
         return RedirectResponse(f"/login?error={urllib.parse.quote('token exchange failed')}", status_code=302)
     t = tok.json()
     ident: dict = {}
-    if disc.get("userinfo_endpoint") and t.get("access_token") and name != "apple":
+    if disc.get("userinfo_endpoint") and t.get("access_token"):
         ui = httpx.get(disc["userinfo_endpoint"], headers={"Authorization": f"Bearer {t['access_token']}"}, timeout=10)
         if ui.status_code == 200:
             ident = ui.json()
     if not ident.get("email") and t.get("id_token"):
         payload = t["id_token"].split(".")[1]
         ident = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
-    if user_json and not ident.get("name"):                         # Apple sends the name once, in the `user` form field
-        try:
-            n = json.loads(user_json).get("name", {})
-            ident["name"] = " ".join(x for x in (n.get("firstName"), n.get("lastName")) if x)
-        except ValueError:
-            pass
     email = (ident.get("email") or ident.get("preferred_username") or "").lower()
     if not email or (ident.get("nonce") and ident.get("nonce") != claims["n"]):
         return RedirectResponse(f"/login?error={urllib.parse.quote('no e-mail from provider')}", status_code=302)
@@ -275,6 +262,6 @@ def oidc_callback(name: str, request: Request, code: str = "", state: str = "", 
 
 @router.post("/oidc/{name}/callback")
 async def oidc_callback_post(name: str, request: Request, svc=Depends(services)):
-    """Apple (response_mode=form_post) and any provider that posts the code back."""
+    """Providers that post the code back (response_mode=form_post)."""
     form = await request.form()
-    return _finish(name, request, str(form.get("code", "")), str(form.get("state", "")), str(form.get("error", "")), svc, str(form.get("user", "")))
+    return _finish(name, request, str(form.get("code", "")), str(form.get("state", "")), str(form.get("error", "")), svc)
