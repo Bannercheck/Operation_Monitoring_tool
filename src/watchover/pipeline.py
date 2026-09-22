@@ -22,15 +22,21 @@ PARALLEL_MIN_CPUS = 8                     # ...on machines with enough cores: re
                                           # fewer cores lose. WATCHOVER_PARALLEL=1 forces it on, =0 off.
 
 
-def _parse_one(fname: str, text: str, mapping: dict | None, progress=None, base: float = 0.0, span: float = 1.0) -> tuple[list[Observation], dict]:
+def _parse_one(fname: str, text: str, mapping: dict | None, progress=None, base: float = 0.0, span: float = 1.0, hint: dict | None = None) -> tuple[list[Observation], dict]:
     """Parse one file (runs in the main process or in a worker); pure function of its inputs, so the order of results
     is fixed by the caller and the outcome is identical either way."""
     if tables.is_side_table(fname):        # reference data (dependencies, inventory, dictionary): kept, not parsed as events
         rows = tables.read_table(fname, text)
         return [], {"file": fname, "format": "table", "confidence": 1.0, "rows": len(rows), "kind": "table",
                     "keys": list(rows[0].keys()) if rows else [], "roles": {}, "table": rows, "sha": stamp.file_id(fname, text)}
-    fmt, conf = detect_format(text)
+    from .parsers.family import FAMILY_HINT, FAMILY_SEEN
+    if hint and hint.get("format") in PARSERS:                 # a live source seen before (agent + file name): skip detection, it is the same stream
+        fmt, conf = hint["format"], float(hint.get("confidence", 0.9))
+    else:
+        fmt, conf = detect_format(text)
     parser = PARSERS[fmt]
+    tok_hint = FAMILY_HINT.set(hint["family"]) if hint and "family" in hint else None
+    tok_seen = FAMILY_SEEN.set(None)
     probe = text[:400_000] if getattr(parser, "line_oriented", False) else text    # line formats: probe a prefix, never split a 300 MB file twice
     head = [r for _, r in itertools.islice(parser.records(probe), 50)]
     keys: list[str] = []
@@ -60,7 +66,11 @@ def _parse_one(fname: str, text: str, mapping: dict | None, progress=None, base:
             wo_profiles.remember(fmt, keys, {k: v for k, v in roles.items() if v}, name=fname, source="user" if (mapping and not learned) else "auto")
         except Exception:  # noqa: BLE001 - remembering is a convenience, never a parse failure
             pass
-    return rows, {"file": fname, "format": fmt, "confidence": conf, "rows": len(rows),
+    family = FAMILY_SEEN.get()
+    if tok_hint is not None:
+        FAMILY_HINT.reset(tok_hint)
+    FAMILY_SEEN.reset(tok_seen)
+    return rows, {"file": fname, "format": fmt, "confidence": conf, "rows": len(rows), "family": family or "",
                   "kind": rows[0].kind if rows else "-", "keys": keys, "roles": roles, "profile": (learned or {}).get("id", ""), "sha": stamp.file_id(fname, text)}
 
 
@@ -74,7 +84,7 @@ def _workers(items: list[tuple[str, str]]) -> int:
     return max(1, min(len(items), cpus - 2, 8))
 
 
-def ingest(files: Iterator[tuple[str, str]], mapping: dict | None = None, progress=None) -> tuple[list[Observation], list[dict]]:
+def ingest(files: Iterator[tuple[str, str]], mapping: dict | None = None, progress=None, hint: dict | None = None) -> tuple[list[Observation], list[dict]]:
     """progress(fraction 0..1, current file name) is called while parsing (by bytes of input done), so a UI can show a percentage."""
     mapping = mapping or scenario.MAPPING or None
     items = list(files)
@@ -100,7 +110,7 @@ def ingest(files: Iterator[tuple[str, str]], mapping: dict | None = None, progre
     if results is None:
         results, done_bytes = [], 0
         for fname, text in items:
-            results.append(_parse_one(fname, text, mapping, progress, done_bytes / total_bytes, len(text) / total_bytes))
+            results.append(_parse_one(fname, text, mapping, progress, done_bytes / total_bytes, len(text) / total_bytes, hint))
             done_bytes += len(text)
     for rows, rep in results:
         observations.extend(rows)
@@ -159,5 +169,5 @@ def ingest_path(path: str, mapping: dict | None = None):
     return ingest(iter_path(path), mapping)
 
 
-def ingest_bytes(name: str, data: bytes, mapping: dict | None = None, progress=None):
-    return ingest(iter_bytes(name, data), mapping, progress)
+def ingest_bytes(name: str, data: bytes, mapping: dict | None = None, progress=None, hint: dict | None = None):
+    return ingest(iter_bytes(name, data), mapping, progress, hint)

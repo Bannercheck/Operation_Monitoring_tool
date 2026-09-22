@@ -1,0 +1,44 @@
+{
+ "target_rate": 2000,
+ "agents": 100,
+ "per_batch": 40,
+ "duration_s": 91.7,
+ "sent": 179960,
+ "accepted": 149048,
+ "achieved_rate": 1963.4,
+ "accepted_rate": 1626.1,
+ "batches": 4499,
+ "errors": 0,
+ "last_error": "",
+ "post_latency_ms": {
+  "p50": 9.7,
+  "p95": 78.6,
+  "max": 1606.5
+ },
+ "final_scan": {
+  "ms": 3342
+ },
+ "final_capacity": {
+  "ring": {
+   "events": 50000,
+   "maxlen": 50000,
+   "fill_pct": 100.0,
+   "span_s": 30,
+   "covers_window": false
+  },
+  "db": {
+   "enabled": true,
+   "batches": 4499,
+   "events": 149048,
+   "oldest": "2026-09-22T09:14:02+00:00",
+   "newest": "2026-09-22T10:47:04+00:00",
+   "bytes": 38753704
+  },
+  "ingest": {
+   "batches": 500,
+   "avg_ms": 7.41,
+   "p95_ms": 15.83
+  },
+  "last_db_window_ms": 680.6
+ }
+}

@@ -60,10 +60,13 @@ class LiveStore:
         self.retention_h = 48                    # how long batches stay in the database
         self.window_max_events = 200_000         # a window read from the database is capped to the newest N events
         self.spool_max_bytes = self.SPOOL_MAX_BYTES
-        self._rate: deque[tuple[float, int]] = deque(maxlen=2000)   # (epoch, events) per ingest, for events/s
+        self._rate: deque[tuple[float, int]] = deque(maxlen=60_000)  # (epoch, events) per ingest; 5 min at 200 batches/s
         self._persist_n = 0
         self.db_served = 0                       # windows answered from the database instead of the ring
         self.last_db_window: tuple | None = None
+        self.last_db_window_ms = 0.0
+        self._ingest_ms: deque[float] = deque(maxlen=500)   # per-batch ingest time (parse + ring + hooks + db)
+        self._detect: dict[tuple[str, str], dict] = {}       # (agent, file) -> format/family decided once; re-checked every 200 batches
         if self.spool:
             self.spool.parent.mkdir(parents=True, exist_ok=True)
 
@@ -130,6 +133,13 @@ class LiveStore:
         return int(before[0]["n"]) if before else 0
 
     def _window_from_db(self, since: datetime) -> list[Observation]:
+        t0 = time.perf_counter()
+        try:
+            return self._window_from_db_inner(since)
+        finally:
+            self.last_db_window_ms = round((time.perf_counter() - t0) * 1000, 1)
+
+    def _window_from_db_inner(self, since: datetime) -> list[Observation]:
         rows = self.db._exec("SELECT payload FROM live_batches WHERE ts_max >= ? ORDER BY id", (self._utc_iso(since),))
         s_utc = since if since.tzinfo else since.replace(tzinfo=UTC)
         out: list[Observation] = []
@@ -164,10 +174,14 @@ class LiveStore:
         now = time.time()
         with self.lock:
             rate = list(self._rate); n = len(self.buf); maxlen = self.buf.maxlen or 1
-            oldest = self.buf[0].timestamp if self.buf else None; newest = self.buf[-1].timestamp if self.buf else None
-        r60 = sum(k for t, k in rate if t > now - 60) / 60.0
-        r300 = sum(k for t, k in rate if t > now - 300) / 300.0
-        span = (newest - oldest).total_seconds() if (oldest and newest) else 0.0
+            head = [self.buf[i].timestamp for i in range(min(n, 500))]                      # arrival is only roughly ordered under 100 agents:
+            tail = [self.buf[-1 - i].timestamp for i in range(min(n, 500))]                 # take the extremes of both ends, not two single events
+        norm = lambda t: t if t.tzinfo else t.replace(tzinfo=UTC)
+        oldest = min(map(norm, head)) if head else None; newest = max(map(norm, tail)) if tail else None
+        window60 = min(60.0, max(1.0, now - rate[0][0])) if rate else 60.0                   # a young process: divide by the seconds actually observed
+        r60 = sum(k for t, k in rate if t > now - 60) / window60
+        r300 = sum(k for t, k in rate if t > now - 300) / min(300.0, max(1.0, now - rate[0][0])) if rate else 0.0
+        span = max(0.0, (newest - oldest).total_seconds()) if (oldest and newest) else 0.0
         need = window_min * 60
         spool_bytes = 0; disk = None
         if self.spool:
@@ -189,17 +203,38 @@ class LiveStore:
             per_day = r60 * 86400 * (db["bytes"] / max(1, db["events"]))
             if per_day > 50 * 1024 ** 3:
                 warnings.append({"code": "db_growth", "detail": f"~{per_day / 1024 ** 3:.0f} GB/day of live batches at the current rate; lower live_retention_h"})
-        return {"events_per_s": round(r60, 2), "events_per_s_5m": round(r300, 2), "ring": {"events": n, "maxlen": maxlen, "fill_pct": round(100.0 * n / maxlen, 1), "span_s": round(span),
+        ing = list(self._ingest_ms)
+        ing_stats = {"batches": len(ing), "avg_ms": round(sum(ing) / len(ing), 2) if ing else 0.0, "p95_ms": round(sorted(ing)[int(len(ing) * 0.95) - 1], 2) if len(ing) >= 20 else 0.0}
+        return {"events_per_s": round(r60, 2), "events_per_s_5m": round(r300, 2), "ingest": ing_stats, "last_db_window_ms": self.last_db_window_ms, "ring": {"events": n, "maxlen": maxlen, "fill_pct": round(100.0 * n / maxlen, 1), "span_s": round(span),
                 "covers_window": bool(span >= need or n < maxlen)}, "window_min": window_min, "db": db, "db_served": self.db_served, "last_db_window": self.last_db_window,
                 "spool_bytes": spool_bytes, "disk": disk, "retention_h": self.retention_h, "window_max_events": self.window_max_events, "warnings": warnings}
 
     def ingest(self, name: str, data: bytes, agent: str = "unknown", env: str = "", site: str = "", agent_id: int | None = None) -> int:
-        obs, _ = ingest_bytes(name, data)
+        t0 = time.perf_counter()
+        try:
+            return self._ingest(name, data, agent, env, site, agent_id)
+        finally:
+            self._ingest_ms.append((time.perf_counter() - t0) * 1000)
+
+    def _ingest(self, name: str, data: bytes, agent: str, env: str, site: str, agent_id: int | None) -> int:
+        key = (agent, name)
+        hint = self._detect.get(key)
+        if hint is not None:
+            hint["n"] += 1
+            if hint["n"] % 200 == 0:                          # a stream can change shape: re-detect now and then
+                hint = None
+        obs, rep = ingest_bytes(name, data, hint=hint)
+        if rep and rep[0].get("format") not in (None, "table") and (hint is None or hint.get("n", 0) % 200 == 0):
+            self._detect[key] = {"format": rep[0]["format"], "confidence": rep[0].get("confidence", 0.9), "family": rep[0].get("family", ""), "n": 1}
+            if len(self._detect) > 5000:
+                self._detect.clear()
         now = datetime.now(UTC)
         metric_rows: list[tuple] = []
         events: list[Observation] = []
+        horizon = now + timedelta(days=1)
         for o in obs:
-            if o.attributes.pop("_no_ts", False) or o.timestamp.year < 2000:
+            ts = o.timestamp if o.timestamp.tzinfo else o.timestamp.replace(tzinfo=UTC)
+            if o.attributes.pop("_no_ts", False) or o.timestamp.year < 2000 or ts > horizon:   # missing, ancient or absurdly future stamp: arrival time
                 o.timestamp = now
             o.attributes["agent"] = agent
             if self.enricher is not None:

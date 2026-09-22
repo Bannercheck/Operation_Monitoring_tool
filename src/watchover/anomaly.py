@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import statistics
 import threading
+import time
 from datetime import datetime, timedelta, timezone
 
 from .models import SEV_RANK
@@ -87,6 +88,8 @@ class AnomalyTracker:
         self.thread = None
         self.runs = 0
         self.last_run = ""
+        self.last_scan_ms = 0.0
+        self.last_scan_events = 0
         self.last_found: list[dict] = []
         self.on_open = None                      # memory feed: called with the row of every newly opened anomaly
         kb._exec(f"""CREATE TABLE IF NOT EXISTS anomalies (id {kb.pk}, kind TEXT NOT NULL, key TEXT NOT NULL, env TEXT DEFAULT '', host TEXT DEFAULT '',
@@ -118,8 +121,28 @@ class AnomalyTracker:
 
     # ---------------------------------------------------------------- detection
     def scan(self, now: datetime | None = None) -> list[dict]:
+        t0 = time.perf_counter()
+        try:
+            return self._scan(now)
+        finally:
+            self.last_scan_ms = round((time.perf_counter() - t0) * 1000, 1)
+
+    def _window(self, since: datetime):
+        """The live window, read once per scan however many phases ask for it (a database-served window is expensive)."""
+        key = since.isoformat(timespec="seconds")
+        memo = getattr(self, "_win", None)
+        if memo is None or memo.get("key") != key:
+            try:
+                obs = self.live.snapshot(since=since)
+            except TypeError:
+                obs = self.live.snapshot()
+            self._win = memo = {"key": key, "obs": obs}
+        return memo["obs"]
+
+    def _scan(self, now: datetime | None = None) -> list[dict]:
         """One pass over the live feed; returns the anomalies opened or refreshed by this pass."""
         now = now or datetime.now(UTC)
+        self._win = None
         found: list[dict] = []
         if self.live is not None:
             found += self._scan_counts(now)
@@ -147,10 +170,7 @@ class AnomalyTracker:
     def _scan_counts(self, now: datetime) -> list[dict]:
         out = []
         start = now - timedelta(minutes=WINDOW_MIN)
-        try:
-            obs = self.live.snapshot(since=start)
-        except TypeError:
-            obs = self.live.snapshot()
+        obs = self._window(start)
         per_host: dict[tuple[str, str], list[int]] = {}
         services: dict[tuple[str, str], dict] = {}
         for o in obs:
@@ -200,15 +220,18 @@ class AnomalyTracker:
     def _scan_patterns(self, now: datetime) -> list[dict]:
         from .analysis import template_of
         start = now - timedelta(minutes=WINDOW_MIN)
-        try:
-            obs = self.live.snapshot(since=start)
-        except TypeError:
-            obs = self.live.snapshot()
+        obs = self._window(start)
         counts: dict[str, dict] = {}
+        memo: dict[str, str] = {}                      # live traffic repeats messages heavily: template each distinct text once per scan
         for o in obs:
             if o.timestamp < start or SEV_RANK.get(o.severity, 0) < 2:
                 continue
-            tpl = o.template or template_of(o.message or "")
+            msg = o.message or ""
+            tpl = o.template or memo.get(msg)
+            if tpl is None:
+                tpl = template_of(msg)
+                if len(memo) < 100_000:
+                    memo[msg] = tpl
             if not tpl:
                 continue
             c = counts.setdefault(tpl, {"n": 0, "host": o.host or "", "env": o.environment or "unknown", "service": o.service or "", "sev": o.severity})
@@ -261,10 +284,7 @@ class AnomalyTracker:
         if store is None:
             return
         since = getattr(self, "_mined_until", None) or (now - timedelta(minutes=WINDOW_MIN))
-        try:
-            obs = self.live.snapshot(since=since)
-        except TypeError:
-            obs = self.live.snapshot()
+        obs = self._window(since)
         try:
             store.learn(obs[:20000], source="live")
         except Exception:  # noqa: BLE001
@@ -374,7 +394,7 @@ class AnomalyTracker:
 
     def stats(self) -> dict:
         rows = self.kb._exec("SELECT status, kind, COUNT(*) AS n FROM anomalies GROUP BY status, kind")
-        out = {"open": 0, "ack": 0, "resolved": 0, "ignored": 0, "kinds": {}, "runs": self.runs, "last_run": self.last_run}
+        out = {"open": 0, "ack": 0, "resolved": 0, "ignored": 0, "kinds": {}, "runs": self.runs, "last_run": self.last_run, "last_scan_ms": self.last_scan_ms}
         for r in rows:
             out[r["status"]] = out.get(r["status"], 0) + int(r["n"])
             if r["status"] in ("open", "ack"):

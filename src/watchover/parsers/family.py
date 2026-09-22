@@ -35,7 +35,23 @@ FAMILIES: list[tuple[str, list[re.Pattern]]] = [
 STRONG = {"oracle-ebs", "dynamics-ax", "dynamics-365", "dynamics-nav", "sap", "iis", "redis", "postgres", "mysql", "sqlserver", "kafka", "haproxy", "postfix", "java", "python", "dotnet", "golang"}
 
 
+import contextvars
+
+FAMILY_HINT: contextvars.ContextVar = contextvars.ContextVar("watchover_family_hint", default=None)   # set by the pipeline when the source's family is already known
+FAMILY_SEEN: contextvars.ContextVar = contextvars.ContextVar("watchover_family_seen", default=None)   # what the last detection decided (read back by the pipeline)
+
+
 def detect_family(lines: list[str]) -> str:
+    hinted = FAMILY_HINT.get()
+    if hinted is not None:
+        FAMILY_SEEN.set(hinted)
+        return hinted
+    fam = _detect_family(lines)
+    FAMILY_SEEN.set(fam)
+    return fam
+
+
+def _detect_family(lines: list[str]) -> str:
     """Family with the most matching lines among the first 200; '' when nothing reaches the threshold."""
     sample = [ln for ln in lines[:200] if ln.strip()]
     if not sample:

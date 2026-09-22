@@ -258,4 +258,6 @@ Gecelik yedek: `crontab -e` → `0 2 * * * cd /home/kullanici/watchover && ./wat
 
 Soğuk yedek sunucu: aynı klasörü ve `.env`'i kopyalayın, `./watchover.sh install` ile kurun, son yedeği `./watchover.sh restore backups/watchover-….tgz` ile yükleyin; ajanlar yeni adrese `--url` ile yönlendirilir (kesinti sırasında yerel spool'da biriktirirler, veri kaybı olmaz).
 
+**Yük testi.** `python scripts/loadtest.py --url http://<sunucu>:8600 --api http://<sunucu>:8501 --rate 2000 --agents 100 --duration 90 --user … --password …` kendi sunucunuzda 100 sanal ajanla ERP ağırlıklı yük basar ve alım/tarama ölçümlerini yazar; referans sonuçlar `docs/LOAD_TEST.md` (2.000 satır/sn: POST p50 10 ms; 4.000: alım sürer, tarama 12,6 s).
+
 **Ne zaman Kubernetes.** Sıfır kesinti SLA'sı, çoklu lokasyon ya da GPU düğüm havuzu gerektiğinde. Ondan önce Faz 2 (durumsuz API kopyaları, ayrı alıcı servisi, tek worker) uygulanır.
