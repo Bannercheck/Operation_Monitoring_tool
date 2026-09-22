@@ -31,7 +31,7 @@ export default function System() {
         <div className="row"><span className="chip"><span className="d" style={{ background: s?.live?.receiver ? "#34d399" : "#64748b" }} />receiver</span><span className="chip"><span className="d" style={{ background: s?.live?.simulator ? "#fbbf24" : "#64748b" }} />simulator</span></div>
         <div className="mono dim">{db.url}</div></div>
         <div className="row" style={{ marginTop: 10 }}><Btn sm onClick={() => vacuum.mutate()}>{t("sys_vacuum")}</Btn></div><Err e={vacuum.error} /></Card>
-      <Card title={t("sys_db")}><Table cols={[{ k: "table", label: t("sys_tables") }, { k: "n", label: t("count"), num: true }]} rows={Object.entries(db.tables ?? {}).map(([table, n]) => ({ id: table, table, n }))} /></Card>
+      <DbTables tables={db.tables ?? {}} />
     </div>
     <Card title={t("sys_snapshots")} right={<Btn sm kind="primary" onClick={() => snap.mutate()} disabled={snap.isPending}>📸 {t("sys_snap_new")}</Btn>}>
       <Table cols={[{ k: "id", label: "ID", render: (r) => <b className="mono">{r.id}</b> }, { k: "version", label: t("sys_version"), render: (r) => `v${r.version} · ${r.git}` }, { k: "ts", label: t("time"), render: (r) => fmtTs(r.ts) }, { k: "reason", label: t("note") }, { k: "size", label: "MB", num: true, render: (r) => (r.size / 1e6).toFixed(1) }, { k: "dbs", label: t("sys_db"), render: (r) => (r.dbs ?? []).join(", ") },
@@ -105,4 +105,18 @@ function Maintenance({ docker }: { docker: boolean }) {
     <Confirm kind="" onConfirm={() => run(() => post("/system/snapshots/prune?keep=10"))}>🗂 {t("sys_prune")}</Confirm>
     {!docker && <><label className="btn">📦 {t("sys_zip_deploy")}<input type="file" accept=".zip" style={{ display: "none" }} onChange={(e) => deploy(e.target.files)} /></label><Confirm kind="" onConfirm={() => run(() => post("/system/git-update"))}>⬇ {t("sys_git_update")}</Confirm></>}
     {msg && <span className={msg.ok ? "ok" : "err"}>{msg.text.slice(0, 200)}</span>}</div></Card>;
+}
+/** Table list of the database: filter box, "only non-empty" switch, collapsed to the first rows until expanded. */
+function DbTables({ tables }: { tables: Record<string, number> }) {
+  const { t } = useT(); const [q, setQ] = useState(""); const [open, setOpen] = useState(false); const [nonEmpty, setNonEmpty] = useState(false);
+  const all = Object.entries(tables).map(([table, n]) => ({ id: table, table, n: Number(n) || 0 })).sort((a, b) => b.n - a.n || a.table.localeCompare(b.table));
+  const rows = all.filter((r) => (!q || r.table.includes(q.toLowerCase())) && (!nonEmpty || r.n > 0));
+  const shown = open || q ? rows : rows.slice(0, 8);
+  const total = all.reduce((a, r) => a + r.n, 0);
+  return <Card title={t("sys_db")} right={<span className="muted small">{all.length} {t("sys_tables")} · {total.toLocaleString()} {t("sys_rows")}</span>}>
+    <div className="row" style={{ marginBottom: 8 }}><input className="input grow" placeholder={t("sys_tbl_filter")} value={q} onChange={(e) => setQ(e.target.value)} />
+      <label className="check" style={{ padding: 0 }}><input type="checkbox" checked={nonEmpty} onChange={(e) => setNonEmpty(e.target.checked)} /> {t("sys_tbl_nonempty")}</label></div>
+    <Table cols={[{ k: "table", label: t("sys_tables"), render: (r) => <span className="mono">{r.table}</span> }, { k: "n", label: t("count"), num: true, render: (r) => r.n.toLocaleString() }]} rows={shown} />
+    {rows.length > 8 && !q && <div className="row" style={{ marginTop: 8 }}><Btn sm onClick={() => setOpen(!open)}>{open ? t("sys_tbl_less") : t("sys_tbl_more", { n: rows.length - 8 })}</Btn></div>}
+  </Card>;
 }

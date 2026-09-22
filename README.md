@@ -331,7 +331,7 @@ Sol menüdeki **Envanter** sayfası (`src/watchover/inventory.py`) kurumun sunuc
 
 - `./watchover.sh edge on watchover.local`: Mac adı Bonjour ile duyurur, sertifika ad + IP'ye kesilir; meslektaşlar `https://watchover.local` yazar.
 - Giriş sayfasında **Kayıt ol** geri geldi (varsayılan açık; eski `config.json`'lar `version` 2 göçüyle açılır). Kayıt olan hesap görüntüleyici rolüyle hemen açılır ve giriş yapar (`/auth/register` `token` döner); yetkiyi yönetici artırır. SMTP varsa önce e-posta doğrulaması (`/auth/options` `verify`). Beklemedeki hesap giriş denerse 403 `pending_approval`; parola kuralı ve alan hataları Türkçe gösterilir.
-- Operasyon metrik kutuları eşit yükseklikte (`.grid.tiles`).
+- Operasyon metrik kutuları eşit yükseklikte (`.grid.tiles`). Sistem › Veritabanı tablo listesi süzgeçli, "sadece dolu" seçenekli ve daraltılmış (ilk 8 satır, satır sayısına göre sıralı; `DbTables`).
 - Apple ile giriş kaldırıldı; Google, Microsoft (Entra ID) ve OIDC kaldı.
 
 ### Şirket ağına açılış: `edge` profili (v1.13)

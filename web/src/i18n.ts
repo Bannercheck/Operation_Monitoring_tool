@@ -169,6 +169,7 @@ const S: Record<string, [string, string]> = {
   reg_exists: ["Bu e-posta ile zaten bir hesap var; giriş yapın ya da parolanızı yöneticiden sıfırlatın.", "An account with this e-mail already exists; sign in or ask an administrator to reset the password."],
   reg_pw_short: ["Parola en az 10 karakter olmalı.", "The password must be at least 10 characters."], reg_pw_weak: ["Parola harf ve rakam içermeli.", "The password must contain letters and digits."],
   reg_domain: ["Bu e-posta alanına kayıt kapalı; yöneticiye başvurun.", "Registration is closed for this e-mail domain; contact an administrator."], reg_pw_rule: ["En az 10 karakter, harf ve rakam.", "At least 10 characters, letters and digits."],
+  sys_rows: ["satır", "rows"], sys_tbl_filter: ["Tablo adı süz…", "Filter tables…"], sys_tbl_nonempty: ["Sadece dolu", "Non-empty only"], sys_tbl_more: ["{n} tablo daha ▾", "{n} more tables ▾"], sys_tbl_less: ["Daralt ▴", "Collapse ▴"],
 };
 
 export function tr(lang: Lang, key: string, kw: Record<string, any> = {}): string {
