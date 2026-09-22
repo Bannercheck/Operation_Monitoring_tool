@@ -12,7 +12,7 @@ FAKE = r'''#!/usr/bin/env bash
 echo "docker $*" >> "$FAKE_LOG"
 case "$1 $2" in
   "compose version") echo "Docker Compose version v2.29" ;;
-  "compose ps") [[ "$*" == *--format* ]] && echo "dashboard healthy" || echo "NAME  STATUS"; ;;
+  "compose ps") [[ "$*" == *--format* ]] && { echo "dashboard healthy"; echo "ollama healthy"; } || echo "NAME  STATUS"; ;;
   "compose config") echo '{"volumes":{"watchover-data":{"name":"watchover_watchover-data"}}}' ;;
 esac
 exit 0
@@ -82,3 +82,18 @@ def test_edge_on_off(stage):
     assert r.returncode == 0 and "WATCHOVER_EDGE=0" in env and "COMPOSE_FILE=" not in env and "WATCHOVER_UI_PORT=8501" in env
     r = run(stage, "edge")
     assert r.returncode == 1 and "usage" in r.stderr
+
+
+def test_llm_on_off(stage):
+    d, _ = stage
+    run(stage, "install")
+    r = run(stage, "llm", "on")
+    assert r.returncode == 0, r.stderr
+    env = (d / ".env").read_text()
+    assert "WATCHOVER_LLM=1" in env and "LLM_BASE_URL=http://ollama:11434" in env and "LLM_PROVIDER=ollama" in env
+    assert "LLM_MODEL=qwen2.5:7b-instruct" in env and "LLM_EMBED_MODEL=bge-m3" in env
+    calls = (d / "calls.log").read_text()
+    assert "--profile llm" in calls and "ollama pull qwen2.5:7b-instruct" in calls and "ollama pull bge-m3" in calls
+    r = run(stage, "llm", "off")
+    assert r.returncode == 0 and "WATCHOVER_LLM=0" in (d / ".env").read_text() and "LLM_BASE_URL=" in (d / ".env").read_text()
+    assert run(stage, "llm").returncode == 1

@@ -53,7 +53,7 @@ build() {
   $COMPOSE build --build-arg GIT_REV="$(git_rev)" --build-arg VERSION="$(version)" dashboard
 }
 
-profiles() { local p=""; [ "$(env_get WATCHOVER_MCP)" = "1" ] && p="$p --profile mcp"; [ "$(env_get WATCHOVER_LEGACY)" = "1" ] && p="$p --profile legacy"; [ "$(env_get WATCHOVER_EDGE)" = "1" ] && p="$p --profile edge"; echo "$p"; }
+profiles() { local p=""; [ "$(env_get WATCHOVER_MCP)" = "1" ] && p="$p --profile mcp"; [ "$(env_get WATCHOVER_LEGACY)" = "1" ] && p="$p --profile legacy"; [ "$(env_get WATCHOVER_EDGE)" = "1" ] && p="$p --profile edge"; [ "$(env_get WATCHOVER_LLM)" = "1" ] && p="$p --profile llm"; echo "$p"; }
 # a *.local name on macOS: announce it on the LAN with Bonjour (dns-sd proxy record) so colleagues' Macs, iPhones and Windows 10+ resolve it
 mdns_start() {
   mdns_stop
@@ -80,6 +80,7 @@ banner() {
     Agents post to http://$ip:$(env_get WATCHOVER_LIVE_PORT || echo 8600)/ingest
 $( [ "$(env_get WATCHOVER_MCP)" = "1" ] && printf '    MCP server     http://%s:%s/mcp   (Authorization: Bearer <MCP_API_KEY in .env>)\n' "$ip" "$(env_get WATCHOVER_MCP_PORT || echo 8765)" )
 $( [ "$(env_get WATCHOVER_LEGACY)" = "1" ] && printf '    Legacy (Streamlit) http://%s:%s\n' "$ip" "$(env_get WATCHOVER_LEGACY_PORT || echo 8502)" )
+$( [ "$(env_get WATCHOVER_LLM)" = "1" ] && printf '    Local LLM        Ollama on the compose network (models: %s); manage with ./watchover.sh llm\n' "$(env_get WATCHOVER_LLM_MODELS || echo 'qwen2.5:7b-instruct qwen2.5:3b-instruct bge-m3')" )
 $( [ "$(env_get WATCHOVER_EDGE)" = "1" ] && printf '    Company network  %s   (agents: %s/ingest; CA root for colleagues: ./watchover.sh edge cert)\n' "$(edge_url)" "$(edge_url)" )
     First sign-in: admin@watchover.local with the initial password you were given; a new password is required at once.
     Open the firewall for $(env_get WATCHOVER_UI_PORT || echo 8501) and $(env_get WATCHOVER_LIVE_PORT || echo 8600) if the server has one (ufw allow 8501,8600/tcp).
@@ -108,6 +109,29 @@ case "${1:-}" in
       on)  env_set WATCHOVER_MCP 1; up; say "MCP server on: http://$(host_ip):$(env_get WATCHOVER_MCP_PORT || echo 8765)/mcp  key: $(env_get MCP_API_KEY)" ;;
       off) $COMPOSE --profile mcp stop mcp; $COMPOSE --profile mcp rm -f mcp; env_set WATCHOVER_MCP 0; say "MCP server off" ;;
       *) die "usage: ./watchover.sh mcp on|off" ;; esac ;;
+  llm)
+    need_docker; write_env
+    models="$(env_get WATCHOVER_LLM_MODELS)"; models="${models:-qwen2.5:7b-instruct qwen2.5:3b-instruct bge-m3}"
+    case "${2:-}" in
+      on)
+        env_set WATCHOVER_LLM 1
+        env_set LLM_PROVIDER ollama; env_set LLM_BASE_URL "http://ollama:11434"
+        [ -n "$(env_get LLM_MODEL)" ] || env_set LLM_MODEL "qwen2.5:7b-instruct"
+        [ -n "$(env_get LLM_EMBED_MODEL)" ] || env_set LLM_EMBED_MODEL "bge-m3"
+        up
+        say "waiting for the Ollama service to become healthy"
+        for _ in $(seq 1 60); do $COMPOSE ps --format '{{.Service}} {{.Health}}' 2>/dev/null | grep -q '^ollama healthy' && break; sleep 3; done
+        for m in $models; do say "pulling $m (CPU inference; the 7B model is a few GB, first time is slow)"; $COMPOSE exec -T ollama ollama pull "$m" || say "could not pull $m (check internet / disk)"; done
+        $COMPOSE exec -T ollama ollama list || true
+        say "local LLM on: dashboard uses http://ollama:11434 (chat/review: qwen2.5:7b, fast: 3b, embeddings: bge-m3). Change models in .env WATCHOVER_LLM_MODELS / LLM_MODEL." ;;
+      pull)
+        [ -n "${3:-}" ] || die "usage: ./watchover.sh llm pull <model>"
+        $COMPOSE exec -T ollama ollama pull "$3" ;;
+      list) $COMPOSE exec -T ollama ollama list ;;
+      off)
+        $COMPOSE --profile llm stop ollama; $COMPOSE --profile llm rm -f ollama; env_set WATCHOVER_LLM 0; env_set LLM_BASE_URL ""
+        say "local LLM off (downloaded models kept in the watchover-ollama volume)" ;;
+      *) die "usage: ./watchover.sh llm on|off|pull <model>|list" ;; esac ;;
   legacy)
     need_docker; case "${2:-}" in
       on)  env_set WATCHOVER_LEGACY 1; up; say "legacy Streamlit interface on: http://$(host_ip):$(env_get WATCHOVER_LEGACY_PORT || echo 8502)" ;;
