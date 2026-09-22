@@ -33,7 +33,7 @@ export default function Login() {
       <h1>{challenge || mode === "verify" ? t("mfa_title") : mode === "register" ? t("reg_title") : t("login_title")}</h1>
       {info && mode === "login" && <div className="ok" style={{ marginTop: 10 }}>{info}</div>}
       <form className="stack" onSubmit={submit} style={{ marginTop: 14 }}>
-        {challenge || mode === "verify" ? (<><p className="muted">{info || t("mfa_lead", { m: 5 })}</p><input className="input mono" style={{ fontSize: 22, letterSpacing: 8, textAlign: "center" }} value={code} onChange={(e) => setCode(e.target.value)} maxLength={6} autoFocus inputMode="numeric" /></>) : (<>
+        {challenge || mode === "verify" ? (<><p className="muted">{info || t("mfa_lead", { m: 5 })}</p><input className="input mono" style={{ fontSize: 20, letterSpacing: 8, textAlign: "center" }} value={code} onChange={(e) => setCode(e.target.value)} maxLength={6} autoFocus inputMode="numeric" /></>) : (<>
           {mode === "register" && options.data && !options.data.verify && <div className="muted small">{t("reg_need_smtp_admin")}</div>}
           {mode === "register" && <Field label={t("name")}><input className="input" value={name} onChange={(e) => setName(e.target.value)} /></Field>}
           <Field label={t("email")}><input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" autoFocus required /></Field>
