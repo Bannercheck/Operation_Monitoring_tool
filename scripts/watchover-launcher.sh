@@ -77,8 +77,27 @@ case "${1:-start}" in
     fi
     exec "$DIR/bin/watchover" restart --hard;;
   logs) tail -f "$LOG";;
+  uninstall)   # remove the login item / service, the 'watchover' command and the install folder (Docker install is separate, untouched)
+    KEEP=0; [[ "${2:-}" == "--keep-data" ]] && KEEP=1
+    case "$(svc)" in
+      launchd) launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true;;
+      systemd) systemctl --user disable --now watchover 2>/dev/null || true;;
+    esac
+    [[ -f "$PID" ]] && kill "$(cat "$PID")" 2>/dev/null || true
+    rm -f "$PLIST"; [[ "$(uname -s)" == "Darwin" ]] && launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
+    rm -f "$HOME/.config/systemd/user/watchover.service" 2>/dev/null || true
+    command -v systemctl >/dev/null 2>&1 && systemctl --user daemon-reload 2>/dev/null || true
+    for b in "$HOME/.local/bin" /usr/local/bin /opt/homebrew/bin; do [[ -L "$b/watchover" ]] && rm -f "$b/watchover"; done
+    if [[ $KEEP -eq 1 ]]; then
+      find "$DIR" -mindepth 1 -maxdepth 1 ! -name data -exec rm -rf {} + 2>/dev/null || true
+      echo "Streamlit uygulamasi kaldirildi; veriler korundu: $DIR/data"
+    else
+      cd /; rm -rf "$DIR"; echo "Streamlit uygulamasi tamamen kaldirildi: $DIR"
+    fi
+    echo "Port 8501 artik bosta. Docker kurulumu ayridir ve etkilenmedi."
+    exit 0;;
   version) cd "$SRC" && exec "$DIR/.venv/bin/python" -m watchover.release show;;          # Watchover v1.1 · date · notes
   agent) shift; cd "$SRC" && exec "$DIR/.venv/bin/python" agent.py "$@";;
   user) shift; cd "$SRC" && exec "$DIR/.venv/bin/python" -m watchover.useradmin "$@";;   # accounts from the terminal: list | add | promote | password | unlock | enable | disable | delete
-  *) echo "usage: watchover start|stop|restart [--hard]|status|run|open|update [file.zip]|version|logs|agent [args]|user [list|add|promote|password|unlock|enable|disable|delete]"; exit 1;;
+  *) echo "usage: watchover start|stop|restart [--hard]|status|run|open|update [file.zip]|uninstall [--keep-data]|version|logs|agent [args]|user [list|add|promote|password|unlock|enable|disable|delete]"; exit 1;;
 esac
