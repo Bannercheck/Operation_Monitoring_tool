@@ -2,6 +2,11 @@
 
 Numaralandırma: büyük sürüm **v1, v2** (ürün sahibinin kararı), küçük güncelleme **v1.1, v1.2** (her devreye alınan özellik adımı), düzeltme **v1.1.1**. Her sürüm `python -m watchover.release <major|minor|patch> "özet"` ile açılır; Sistem › Güncelleme sayfası bu dosyayı gösterir, anlık görüntüler sürüm numarasını taşır.
 
+## v1.31.1 · 2026-09-22 · düzeltme
+
+- Çevrimdışı öğrenme: llm prepare ve HF offline
+
+
 ## v1.31 · 2026-09-22 · güncelleme
 
 - İnternetsiz kurulum: bundle/unbundle ve çevrimdışı mod

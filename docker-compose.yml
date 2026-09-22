@@ -186,6 +186,8 @@ services:
       OLLAMA_URL: http://ollama:11434
       WATCHOVER_TRAIN_THREADS: ${WATCHOVER_TRAIN_THREADS:-3}
       WATCHOVER_MODELS_DIR: /models
+      HF_HUB_OFFLINE: ${WATCHOVER_OFFLINE:-0}                    # air-gapped (unbundle): never call huggingface.co, use the cached base weights
+      TRANSFORMERS_OFFLINE: ${WATCHOVER_OFFLINE:-0}
     depends_on:
       postgres:
         condition: service_healthy

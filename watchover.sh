@@ -16,6 +16,7 @@
 #   ./watchover.sh save|load FILE   export the built images to a .tgz (build on a machine with internet), import them on an air-gapped server
 #   ./watchover.sh bundle [FILE]    everything an air-gapped server needs in one .tar: all images, downloaded Ollama models, training weights, source
 #   ./watchover.sh unbundle FILE    on the air-gapped server: load the images and model volumes, mark the install offline (no builds, no pulls)
+#   ./watchover.sh llm prepare      cache the training base weights (done by 'bundle' automatically) so the trainer never needs internet
 #   ./watchover.sh shell            a shell inside the dashboard container
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -176,6 +177,11 @@ case "${1:-}" in
         [ -n "${3:-}" ] || die "usage: ./watchover.sh llm pull <model>"
         $COMPOSE exec -T ollama ollama pull "$3" ;;
       list) $COMPOSE exec -T ollama ollama list ;;
+      prepare)   # download the training base weights into the watchover-hf volume now (otherwise the first training does it); needed before 'bundle'
+        base="${3:-$(env_get WATCHOVER_TRAIN_BASE)}"; base="${base:-qwen2.5:1.5b-instruct}"
+        offline && die "offline install: the base weights come with the bundle (run 'llm prepare' on the internet machine, then 'bundle')"
+        say "caching the base weights of $base for the trainer (Hugging Face, once; a few GB)"
+        $COMPOSE --profile llm run --rm --no-deps -T trainer python -c "from watchover.training import HF_BASE; from huggingface_hub import snapshot_download; import sys; b=sys.argv[1]; p=snapshot_download(HF_BASE.get(b, b)); print('cached', HF_BASE.get(b, b), '->', p)" "$base" ;;
       export)   # the company's memory as chat-format JSONL for scripts/train_lora.py
         out="${3:-training.jsonl}"; $COMPOSE exec -T dashboard python -m watchover.training export --out /tmp/training.jsonl --lang "$(env_get WATCHOVER_LANG || echo tr)" \
           && docker cp watchover:/tmp/training.jsonl "$out" && say "training data -> $out" ;;
@@ -188,7 +194,7 @@ case "${1:-}" in
         $COMPOSE --profile llm stop trainer ollama; $COMPOSE --profile llm rm -f trainer ollama; env_set WATCHOVER_LLM 0
         [ "$(env_get LLM_BASE_URL)" = "http://ollama:11434" ] && env_set LLM_BASE_URL ""      # only undo what 'llm on' set itself
         say "bundled Ollama off (downloaded models kept in the watchover-ollama volume; other LLM connections untouched)" ;;
-      *) die "usage: ./watchover.sh llm on|off|use <model>|pull <model>|list|export [file]|import <dir> [name]" ;; esac ;;
+      *) die "usage: ./watchover.sh llm on|off|use <model>|pull <model>|list|prepare [base]|export [file]|import <dir> [name]" ;; esac ;;
   legacy)
     need_docker; case "${2:-}" in
       on)  env_set WATCHOVER_LEGACY 1; up; say "legacy Streamlit interface on: http://$(host_ip):$(env_get WATCHOVER_LEGACY_PORT || echo 8502)" ;;
@@ -250,6 +256,10 @@ case "${1:-}" in
     imgs="watchover:$(version) postgres:16-alpine"
     for i in "watchover-trainer:$(version)" caddy:2-alpine ollama/ollama:latest alpine:latest; do have_image "$i" && imgs="$imgs $i" || true; done
     have_image alpine:latest || docker pull alpine:latest >/dev/null 2>&1 || true; have_image alpine:latest && case " $imgs " in *" alpine:latest "*) ;; *) imgs="$imgs alpine:latest" ;; esac
+    if have_image "watchover-trainer:$(version)" && ! offline; then
+      say "trainer image present: caching the training base weights so auto-learning works on the air-gapped server"
+      bash "./$(basename "$0")" llm prepare || say "WARNING: base weights could not be cached; auto-learning on the offline server will fail until you run 'llm prepare' here and bundle again"
+    fi
     say "saving images: $imgs"; docker save $imgs | gzip -1 > "$tmp/images.tar.gz"
     for v in watchover-ollama watchover-hf watchover-models; do
       n=$(vol_name "$v"); docker volume inspect "$n" >/dev/null 2>&1 || continue

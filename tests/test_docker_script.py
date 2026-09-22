@@ -164,6 +164,7 @@ def test_bundle_and_offline_install(stage):
     log = (d / "calls.log").read_text()
     assert f"docker save watchover:{version(d)} postgres:16-alpine" in log and "watchover-trainer:" in log and "ollama/ollama:latest" in log
     assert "docker run --rm -v watchover_watchover-ollama:/v:ro" in log      # model volume exported
+    assert "run --rm --no-deps -T trainer python" in log                      # base weights cached for offline auto-learning
     (d / "calls.log").write_text("")
     r = run(stage, "unbundle", str(out))
     assert r.returncode == 0, r.stderr

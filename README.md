@@ -344,7 +344,7 @@ Sol menüdeki **Envanter** sayfası (`src/watchover/inventory.py`) kurumun sunuc
 
 ### İnternetsiz kurulum: tek dosyalık paket (v1.31)
 
-- `./watchover.sh bundle` internetli makinede imajları (dashboard, trainer, PostgreSQL, Caddy, Ollama), indirilmiş Ollama modellerini, eğitim taban ağırlıklarını, kaynak kodu tek `.tar`a toplar; `./watchover.sh unbundle <dosya>` kurumsal sunucuda imajları ve model hacimlerini yükler, `install` build yapmadan başlatır. İzlenen sunucular Watchover'a 8600 (edge ile 443) üzerinden bağlanır; ajan Watchover'dan indirilir, internet gerekmez. Rehberde "İnternetsiz sunucu" bölümü.
+- `./watchover.sh bundle` internetli makinede imajları (dashboard, trainer, PostgreSQL, Caddy, Ollama), indirilmiş Ollama modellerini, eğitim taban ağırlıklarını, kaynak kodu tek `.tar`a toplar; `./watchover.sh unbundle <dosya>` kurumsal sunucuda imajları ve model hacimlerini yükler, `install` build yapmadan başlatır. İzlenen sunucular Watchover'a 8600 (edge ile 443) üzerinden bağlanır; ajan Watchover'dan indirilir, internet gerekmez. Rehberde "İnternetsiz sunucu" bölümü. Otomatik öğrenme çevrimdışı da çalışır: `llm prepare` (bundle içinde otomatik) taban ağırlıklarını önbelleğe alır, eğitici `HF_HUB_OFFLINE` ile internete çıkmaz.
 
 ### Yük testi: 2.000 olay/sn ERP karışımı ve alım optimizasyonu (v1.30)
 
