@@ -330,7 +330,8 @@ Sol menüdeki **Envanter** sayfası (`src/watchover/inventory.py`) kurumun sunuc
 ### Sanal ad, kayıt ol, Apple kaldırıldı (v1.15)
 
 - `./watchover.sh edge on watchover.local`: Mac adı Bonjour ile duyurur, sertifika ad + IP'ye kesilir; meslektaşlar `https://watchover.local` yazar.
-- Giriş sayfasında **Kayıt ol** geri geldi (Streamlit'teki gibi varsayılan açık). SMTP varsa e-posta doğrulaması, yoksa hesap beklemede oluşur ve yönetici Kullanıcılar sayfasından etkinleştirir (`/auth/options` `verify` alanı, `/auth/register` `approval`).
+- Giriş sayfasında **Kayıt ol** geri geldi (varsayılan açık; eski `config.json`'lar `version` 2 göçüyle açılır). Kayıt olan hesap görüntüleyici rolüyle hemen açılır ve giriş yapar (`/auth/register` `token` döner); yetkiyi yönetici artırır. SMTP varsa önce e-posta doğrulaması (`/auth/options` `verify`). Beklemedeki hesap giriş denerse 403 `pending_approval`; parola kuralı ve alan hataları Türkçe gösterilir.
+- Operasyon metrik kutuları eşit yükseklikte (`.grid.tiles`).
 - Apple ile giriş kaldırıldı; Google, Microsoft (Entra ID) ve OIDC kaldı.
 
 ### Şirket ağına açılış: `edge` profili (v1.13)

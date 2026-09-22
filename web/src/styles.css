@@ -116,3 +116,6 @@ pre.code { background: #0b1220; border: 1px solid var(--line); border-radius: 10
 .kinds { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; } .kinds button { text-align: left; padding: 10px 12px; border-radius: var(--radius-s); border: 1px solid var(--line); background: var(--glass); color: var(--fg); cursor: pointer; }
 .kinds button.on { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(45, 212, 191, 0.18); } .kinds button .kt { font-weight: 700; } .kinds button .kd { font-size: 11px; color: var(--muted); margin-top: 2px; }
 @media (max-width: 760px) { .kinds { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* Ops metric tiles: every tile in the row takes the row's height, so short ones (GPU without data, log files) line up with the sparkline tiles */
+.grid.tiles { align-items: stretch; } .grid.tiles > * { display: flex; } .grid.tiles > * > .card { flex: 1 1 auto; display: flex; flex-direction: column; justify-content: space-between; }
+@media (max-width: 1100px) { .grid.tiles { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; } } @media (max-width: 700px) { .grid.tiles { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; } }

@@ -150,7 +150,7 @@ class Users:
         self.kb._exec("UPDATE users SET status='active' WHERE id=? AND status='pending'", (uid,))
         self._event(str(uid), "verify", True, "e-mail verified")
 
-    def register(self, email: str, password: str, name: str = "", allowed_domains: str = "", provider: str = "local", status: str = "active") -> dict:
+    def register(self, email: str, password: str, name: str = "", allowed_domains: str = "", provider: str = "local", status: str = "active", role: str = "") -> dict:
         email = email.strip().lower()
         if not _EMAIL.match(email):
             raise ValueError("invalid e-mail address")
@@ -163,7 +163,7 @@ class Users:
             raise ValueError("e-mail domain is not allowed")
         if self.get(email):
             raise ValueError("an account with this e-mail already exists")
-        role = "admin" if self.count() == 0 else "operator"
+        role = "admin" if self.count() == 0 else (role if role in ROLES else "operator")   # self-registration passes "viewer": the least privilege, an admin raises it later
         self.kb._exec("INSERT INTO users (email, name, pw_hash, role, status, provider, created_at) VALUES (?,?,?,?,?,?,?)",
                       (email, name.strip()[:80], _hash(password) if provider == "local" else "", role, status, provider, datetime.now(UTC).isoformat(timespec="seconds")))
         self._event(email, "register", True, provider)

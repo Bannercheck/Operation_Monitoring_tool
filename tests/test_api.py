@@ -257,14 +257,13 @@ def test_phase3_map_assist_llm_itsm_search_settings(client, monkeypatch):
     r = client.post("/api/auth/register", json={"email": "new.user@example.com", "password": "Sifre-123456", "name": "New"})
     assert r.status_code == 502                                        # SMTP host set but unreachable: the code cannot be sent
     client.put("/api/system/channels", json={"smtp_host": ""}, headers=h)
-    assert client.get("/api/auth/options").json() == {"register": True, "verify": False, "mfa": True}      # no SMTP: registration waits for an admin
+    assert client.get("/api/auth/options").json() == {"register": True, "verify": False, "mfa": True}      # no SMTP: no verification, viewer at once
     r = client.post("/api/auth/register", json={"email": "new2@example.com", "password": "Sifre-123456"})
-    assert r.status_code == 202 and r.json()["approval"] is True
-    assert client.post("/api/auth/login", json={"email": "new2@example.com", "password": "Sifre-123456"}).status_code == 401
-    uid = [u for u in client.get("/api/users", headers=h).json() if u["email"] == "new2@example.com"][0]
-    assert uid["status"] == "pending"
-    client.patch(f"/api/users/{uid['id']}", json={"status": "active"}, headers=h)
+    assert r.status_code == 202 and r.json()["created"] is True and r.json()["user"]["role"] == "viewer"
+    me = client.get("/api/auth/me", headers={"Authorization": "Bearer " + r.json()["token"]}).json()
+    assert me["email"] == "new2@example.com" and me["role"] == "viewer"
     assert client.post("/api/auth/login", json={"email": "new2@example.com", "password": "Sifre-123456"}).status_code == 200
+    assert client.post("/api/auth/register", json={"email": "new2@example.com", "password": "Sifre-123456"}).status_code == 409
     client.put("/api/system/auth", json={"auth_self_register": False}, headers=h)
     assert client.get("/api/auth/options").json()["register"] is False and client.post("/api/auth/register", json={"email": "new3@example.com", "password": "Sifre-123456"}).status_code == 403
     client.put("/api/system/auth", json={"auth_self_register": True}, headers=h)

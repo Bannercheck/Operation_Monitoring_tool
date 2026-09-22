@@ -164,8 +164,11 @@ const S: Record<string, [string, string]> = {
   ds_fetch_source_hint: ["Bağlantılar › Veri kaynakları altında tanımlı Elasticsearch / Loki / Splunk / Graylog / HTTP kaynağından seçilen pencere çekilir.", "Pulls the chosen window from an Elasticsearch / Loki / Splunk / Graylog / HTTP source defined under Connections › Data sources."],
   ds_fetch_pick: ["Kaynak", "Source"], ds_fetch_minutes: ["Pencere (dk)", "Window (min)"], ds_fetch_limit: ["En çok kayıt", "Max records"], ds_fetch_nosrc: ["Tanımlı kaynak yok.", "No source defined."], ds_fetch_define: ["Kaynak tanımla", "Define a source"],
   ds_fetch_mcp_hint: ["Kendi motorumuz MCP olarak: python mcp_server.py --http --port 8765 → http://localhost:8765/mcp", "Our own engine as MCP: python mcp_server.py --http --port 8765 → http://localhost:8765/mcp"],
-  reg_wait_admin: ["Hesabınız oluşturuldu. Bir yönetici Kullanıcılar sayfasından onayladığında giriş yapabilirsiniz.", "Your account was created. You can sign in once an administrator approves it on the Users page."],
-  reg_need_smtp_admin: ["SMTP tanımlı değil: yeni kayıtlar e-posta doğrulaması yerine yönetici onayı bekler.", "No SMTP configured: new registrations wait for an administrator instead of e-mail verification."],
+  reg_wait_admin: ["Hesabınız e-posta doğrulaması bekliyor; kodu girmediyseniz yeniden kayıt olun.", "Your account is waiting for e-mail verification; register again if you did not enter the code."],
+  reg_need_smtp_admin: ["Hesap görüntüleyici yetkisiyle hemen açılır; yetkiyi yönetici artırır. (SMTP tanımlı olmadığı için e-posta doğrulaması yapılmaz.)", "The account opens at once with viewer rights; an administrator raises them. (No e-mail verification: SMTP is not configured.)"],
+  reg_exists: ["Bu e-posta ile zaten bir hesap var; giriş yapın ya da parolanızı yöneticiden sıfırlatın.", "An account with this e-mail already exists; sign in or ask an administrator to reset the password."],
+  reg_pw_short: ["Parola en az 10 karakter olmalı.", "The password must be at least 10 characters."], reg_pw_weak: ["Parola harf ve rakam içermeli.", "The password must contain letters and digits."],
+  reg_domain: ["Bu e-posta alanına kayıt kapalı; yöneticiye başvurun.", "Registration is closed for this e-mail domain; contact an administrator."], reg_pw_rule: ["En az 10 karakter, harf ve rakam.", "At least 10 characters, letters and digits."],
 };
 
 export function tr(lang: Lang, key: string, kw: Record<string, any> = {}): string {

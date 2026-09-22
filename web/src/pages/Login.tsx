@@ -17,13 +17,13 @@ export default function Login() {
   const providers = useQuery({ queryKey: ["providers"], queryFn: () => get<{ name: string; label: string; configured: boolean }[]>("/auth/providers") });
   useEffect(() => { const m = /error=([^&]+)/.exec(window.location.search); if (m) setErr(decodeURIComponent(m[1])); }, []);
   const submit = async (e: React.FormEvent) => {
-    e.preventDefault(); setErr(null); setBusy(true);
+    e.preventDefault(); setErr(null); setInfo(""); setBusy(true);
     try {
-      if (mode === "register") { if (pw !== pw2) throw new Error(t("reg_mismatch")); const r = await api<any>("/auth/register", { method: "POST", body: { email, password: pw, name }, auth: false }); if (r.approval) { setInfo(t("reg_wait_admin")); setMode("login"); return; } setInfo(t("reg_sent", { m: r.minutes })); setMode("verify"); }
+      if (mode === "register") { if (pw !== pw2) throw new Error(t("reg_mismatch")); const r = await api<any>("/auth/register", { method: "POST", body: { email, password: pw, name }, auth: false }); if (r.token) { await acceptToken(r.token); return; } setInfo(t("reg_sent", { m: r.minutes })); setMode("verify"); }
       else if (mode === "verify") { const r = await api<any>("/auth/verify", { method: "POST", body: { email, code }, auth: false }); await acceptToken(r.token); }
       else if (challenge) await mfa(challenge, code); else { const r = await login(email, pw); if (r.mfa) setChallenge(r.mfa); }
     }
-    catch (x: any) { setErr(x?.message || t("login_failed")); } finally { setBusy(false); }
+    catch (x: any) { const m = String(x?.message || ""); setErr(m.includes("pending_approval") ? t("reg_wait_admin") : m.includes("already exists") ? t("reg_exists") : m.includes("at least") ? t("reg_pw_short") : m.includes("letters and digits") ? t("reg_pw_weak") : m.includes("domain is not allowed") ? t("reg_domain") : m || t("login_failed")); } finally { setBusy(false); }
   };
   return (
     <div className="login-bg"><div className="login">
@@ -31,11 +31,14 @@ export default function Login() {
         <div className="login-brand"><div className="glow"><Logo size={64} /></div><div><div className="wm-name big">Watchover</div><div className="wm-tag">{t("brand_tag")}</div></div></div>
         <LangTheme /></div>
       <h1>{challenge || mode === "verify" ? t("mfa_title") : mode === "register" ? t("reg_title") : t("login_title")}</h1>
+      {info && mode === "login" && <div className="ok" style={{ marginTop: 10 }}>{info}</div>}
       <form className="stack" onSubmit={submit} style={{ marginTop: 14 }}>
         {challenge || mode === "verify" ? (<><p className="muted">{info || t("mfa_lead", { m: 5 })}</p><input className="input mono" style={{ fontSize: 22, letterSpacing: 8, textAlign: "center" }} value={code} onChange={(e) => setCode(e.target.value)} maxLength={6} autoFocus inputMode="numeric" /></>) : (<>
+          {mode === "register" && options.data && !options.data.verify && <div className="muted small">{t("reg_need_smtp_admin")}</div>}
           {mode === "register" && <Field label={t("name")}><input className="input" value={name} onChange={(e) => setName(e.target.value)} /></Field>}
           <Field label={t("email")}><input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" autoFocus required /></Field>
           <Field label={t("password")}><input className="input" type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete={mode === "register" ? "new-password" : "current-password"} required minLength={mode === "register" ? 10 : undefined} /></Field>
+          {mode === "register" && <div className="dim small">{t("reg_pw_rule")}</div>}
           {mode === "register" && <Field label={t("reg_pw2")}><input className="input" type="password" value={pw2} onChange={(e) => setPw2(e.target.value)} required /></Field>}</>)}
         <Err e={err} />
         <Btn kind="primary" type="submit" disabled={busy}>{mode === "verify" ? t("reg_verify") : challenge ? t("mfa_btn") : mode === "register" ? t("reg_btn") : t("login_btn")}</Btn>

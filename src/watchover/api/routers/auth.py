@@ -69,6 +69,9 @@ def login(body: LoginIn, svc=Depends(services)):
         raise HTTPException(423, f"account locked until {until.isoformat(timespec='seconds')}")
     u = us.login(body.email, body.password)
     if not u:
+        ex = us.get(body.email.strip().lower())
+        if ex and ex.get("status") == "pending" and ex.get("provider") == "local":
+            raise HTTPException(403, "pending_approval")
         raise HTTPException(401, "wrong e-mail or password")
     mfa_on = bool(wo_settings.load().get("mfa_email", True)) and u.get("role") != "admin"
     if mfa_on:
@@ -116,21 +119,22 @@ def options():
 
 @router.post("/register", status_code=202)
 def register(body: RegisterIn, svc=Depends(services)):
-    """Local account, created pending. With SMTP a verification code goes to the e-mail and /auth/verify activates it;
-    without SMTP the account waits for an administrator (Users page) — the same rule as the Streamlit sign-up tab."""
+    """Local account with the least privilege (viewer); an administrator raises the role later on the Users page.
+    With SMTP a verification code goes to the e-mail and /auth/verify activates the account; without SMTP it is active at once and signed in."""
     cfg = wo_settings.load()
     if not cfg.get("auth_self_register", True):
         raise HTTPException(403, "self-registration is off")
     us = svc.users
     ex = us.get(body.email.strip().lower())
+    smtp = bool(notify_channels().get("email", {}).get("host"))
     if ex and ex["status"] == "pending":
         u = ex
     elif ex:
         raise HTTPException(409, "an account with this e-mail already exists")
     else:
-        u = us.register(body.email, body.password, body.name, cfg.get("auth_domains", ""), status="pending")
-    if not notify_channels().get("email", {}).get("host"):
-        return {"pending": True, "approval": True}
+        u = us.register(body.email, body.password, body.name, cfg.get("auth_domains", ""), status="pending" if smtp else "active", role="viewer")
+    if not smtp:
+        return {"created": True, "token": access_token(u), "user": {k: u[k] for k in ("id", "email", "name", "role")}}
     ok, why = _send_otp(us, u)
     if not ok:
         raise HTTPException(502, why)
