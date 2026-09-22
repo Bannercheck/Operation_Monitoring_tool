@@ -138,3 +138,41 @@ def training_export(lang: str = "tr", part: str = "all", user=Depends(require("p
         body = wo_learn.training_export(svc.kb, lang).decode()
     name = f"watchover-training-{part}-{lang}.jsonl"
     return PlainTextResponse(body, media_type="application/jsonl", headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
+TRAIN_KEYS = ("train_auto", "train_every_h", "train_min_examples", "train_min_new", "train_base", "train_gate_min", "train_use_ops")
+
+
+class TrainIn(BaseModel):
+    train_auto: bool | None = None
+    train_every_h: int | None = None
+    train_min_examples: int | None = None
+    train_min_new: int | None = None
+    train_base: str | None = None
+    train_gate_min: float | None = None
+    train_use_ops: bool | None = None
+
+
+@router.get("/autotrain")
+def autotrain_state(user=Depends(require("page.llm")), svc=Depends(services)):
+    """Unattended learning: switches, thresholds, how far the memory is from the next training, run history, the active model."""
+    from ... import autotrain as wo_at
+    c = wo_settings.load()
+    st = wo_at.AutoTrainer(svc.kb, lang=svc.lang).state()
+    return {"settings": {k: c.get(k) for k in TRAIN_KEYS}, **st, "ops_model": svc.OPS_MODEL, "ops_active": bool(svc.ops_ready()) and bool(c.get("train_use_ops", True)),
+            "trainer_alive": wo_at.trainer_alive()}
+
+
+@router.put("/autotrain")
+def autotrain_settings(body: TrainIn, user=Depends(require("page.llm")), svc=Depends(services)):
+    vals = {k: v for k, v in body.model_dump().items() if v is not None and k in TRAIN_KEYS}
+    wo_settings.save(vals)
+    svc._ops_at = 0
+    return {k: wo_settings.load().get(k) for k in TRAIN_KEYS}
+
+
+@router.post("/autotrain/run")
+def autotrain_run(user=Depends(require("page.llm")), svc=Depends(services)):
+    """Ask the trainer service to train at its next poll (even below the thresholds)."""
+    from ... import autotrain as wo_at
+    return {"ok": True, "flag": wo_at.request_run()}

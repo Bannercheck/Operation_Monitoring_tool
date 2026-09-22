@@ -148,6 +148,7 @@ services:
       OMP_NUM_THREADS: ${WATCHOVER_LLM_THREADS:-16}            # CPU threads for inference (<= the cpus limit below)
     volumes:
       - watchover-ollama:/root/.ollama                        # downloaded models persist here; cache cleanup never touches them
+      - watchover-models:/models:ro                           # adapters written by the trainer (legacy Modelfile import path)
     expose:
       - "11434"                                               # on the compose network as http://ollama:11434 (not published to the host)
     deploy:
@@ -167,6 +168,44 @@ services:
       timeout: 10s
       retries: 5
       start_period: 20s
+
+  trainer:
+    profiles: [llm]
+    image: ${WATCHOVER_IMAGE:-watchover}-trainer:${WATCHOVER_TAG:-local}
+    build:
+      context: .
+      dockerfile: Dockerfile.trainer
+    container_name: watchover-trainer
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      TZ: ${TZ:-Europe/Istanbul}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-watchover}:${POSTGRES_PASSWORD:-change-me}@postgres:5432/${POSTGRES_DB:-watchover}}
+      OLLAMA_URL: http://ollama:11434
+      WATCHOVER_TRAIN_THREADS: ${WATCHOVER_TRAIN_THREADS:-10}
+      WATCHOVER_MODELS_DIR: /models
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    volumes:
+      - watchover-data:/data                                    # settings (auto-learn switches), the run-now flag, live spool for the quality gate
+      - watchover-hf:/hf                                        # base weights cache (downloaded once)
+      - watchover-models:/models                                # adapters + Modelfiles, also visible to Ollama for the legacy import path
+    deploy:
+      resources:
+        limits:
+          cpus: "${WATCHOVER_TRAIN_CPUS:-12}"                   # training is periodic: it borrows cores when it runs, idle otherwise
+          memory: ${WATCHOVER_TRAIN_MEMORY:-12g}
+        reservations:
+          cpus: "0.25"
+          memory: 256m
+    logging:
+      driver: json-file
+      options: { max-size: "20m", max-file: "3" }
 
   postgres:
     image: postgres:16-alpine
@@ -201,3 +240,5 @@ volumes:
   watchover-pg:
   watchover-edge:
   watchover-ollama:
+  watchover-hf:
+  watchover-models:

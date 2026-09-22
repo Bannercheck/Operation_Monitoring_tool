@@ -96,8 +96,29 @@ class Services:
                     self.selfmon = None
 
     # ---- LLM (optional, never in the core path)
-    def llm_cfg(self) -> LLMConfig:
+    OPS_MODEL = "watchover-ops"
+
+    def ops_ready(self) -> dict | None:
+        """The last auto-trained model that passed the quality gate (cached 60 s), or None."""
+        now = time.time()
+        if getattr(self, "_ops_at", 0) + 60 > now:
+            return self._ops
+        self._ops_at = now; self._ops = None
+        try:
+            if "train_runs" in self.kb.tables():
+                rows = self.kb._exec("SELECT ts, model, examples, gate FROM train_runs WHERE status='pass' ORDER BY id DESC LIMIT 1")
+                self._ops = dict(rows[0]) if rows else None
+        except Exception:  # noqa: BLE001
+            self._ops = None
+        return self._ops
+
+    def llm_cfg(self, purpose: str = "chat") -> LLMConfig:
+        """purpose='chat': the connection the operator configured (LLM page / .env) - never touched by training.
+        purpose='ops': the auto-trained watchover-ops model when it exists, passed the gate and 'use it' is on; else the chat one."""
         c = wo_settings.load()
+        if purpose == "ops" and c.get("train_use_ops", True) and self.ops_ready():
+            url = os.environ.get("OLLAMA_URL") or ("http://ollama:11434" if os.environ.get("WATCHOVER_DOCKER") else "http://localhost:11434")
+            return LLMConfig(url, self.OPS_MODEL, "", embed_model=c.get("llm_embed", "") or os.environ.get("LLM_EMBED_MODEL", ""), provider="ollama")
         return LLMConfig(c.get("llm_base", "") or os.environ.get("LLM_BASE_URL", ""), c.get("llm_model", "") or os.environ.get("LLM_MODEL", ""),
                          c.get("llm_key", "") or os.environ.get("LLM_API_KEY", ""), embed_model=c.get("llm_embed", "") or os.environ.get("LLM_EMBED_MODEL", ""),
                          provider=c.get("llm_provider", "") or os.environ.get("LLM_PROVIDER", "auto"))

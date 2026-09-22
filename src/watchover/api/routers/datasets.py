@@ -264,7 +264,7 @@ def explain(key: str, iid: str, user=Depends(require("page.data")), svc=Depends(
     inc = a.incident_by_id.get(iid)
     if not inc:
         raise KeyError(iid)
-    cfg = svc.llm_cfg()
+    cfg = svc.llm_cfg("ops")
     if not cfg.enabled:
         raise ValueError("no LLM configured")
     return {"text": chat(cfg, llm_prompt(inc, a.signal_by_id)), "model": cfg.model}
@@ -363,7 +363,7 @@ def review(key: str, body: ReviewIn, user=Depends(require("page.data")), svc=Dep
     The deterministic verdicts are never changed by the answer; it is an opinion with citations."""
     from ...llm import chat_messages
     a = svc.datasets.get(key)["analysis"]
-    cfg = svc.llm_cfg()
+    cfg = svc.llm_cfg("ops")
     if not cfg.enabled:
         raise ValueError("no LLM configured: set one up on the LLM page (Ollama runs fully offline)")
     lang = svc.lang if svc.lang in REVIEW_SYSTEM else "en"

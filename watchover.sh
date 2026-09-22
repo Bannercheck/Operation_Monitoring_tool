@@ -51,6 +51,7 @@ write_env() {
 build() {
   say "building image watchover:$(version) from this source tree (first time: a few minutes, needs internet for PyPI)"
   $COMPOSE build --build-arg GIT_REV="$(git_rev)" --build-arg VERSION="$(version)" dashboard
+  [ "$(env_get WATCHOVER_LLM)" = "1" ] && $COMPOSE --profile llm build trainer || true
 }
 
 profiles() { local p=""; [ "$(env_get WATCHOVER_MCP)" = "1" ] && p="$p --profile mcp"; [ "$(env_get WATCHOVER_LEGACY)" = "1" ] && p="$p --profile legacy"; [ "$(env_get WATCHOVER_EDGE)" = "1" ] && p="$p --profile edge"; [ "$(env_get WATCHOVER_LLM)" = "1" ] && p="$p --profile llm"; echo "$p"; }
@@ -123,6 +124,7 @@ case "${1:-}" in
         else
           say "existing LLM connection kept ($(env_get LLM_BASE_URL)); the bundled Ollama is an extra option at http://ollama:11434 (LLM › Connection)"
         fi
+        say "building the trainer image (torch CPU, transformers, peft; first time a few minutes)"; $COMPOSE --profile llm build trainer
         up
         say "waiting for the Ollama service to become healthy"
         for _ in $(seq 1 60); do $COMPOSE ps --format '{{.Service}} {{.Health}}' 2>/dev/null | grep -q '^ollama healthy' && break; sleep 3; done
@@ -145,7 +147,7 @@ case "${1:-}" in
         docker cp "$3" watchover-ollama:/tmp/watchover-ops && $COMPOSE exec -T ollama sh -c "cd /tmp/watchover-ops && ollama create $name -f Modelfile" \
           && say "model $name created next to your existing models (nothing switched). Try it: ./watchover.sh llm use $name  ·  quality gate: python scripts/train_lora.py --gate --model $name" ;;
       off)
-        $COMPOSE --profile llm stop ollama; $COMPOSE --profile llm rm -f ollama; env_set WATCHOVER_LLM 0
+        $COMPOSE --profile llm stop trainer ollama; $COMPOSE --profile llm rm -f trainer ollama; env_set WATCHOVER_LLM 0
         [ "$(env_get LLM_BASE_URL)" = "http://ollama:11434" ] && env_set LLM_BASE_URL ""      # only undo what 'llm on' set itself
         say "bundled Ollama off (downloaded models kept in the watchover-ollama volume; other LLM connections untouched)" ;;
       *) die "usage: ./watchover.sh llm on|off|use <model>|pull <model>|list|export [file]|import <dir> [name]" ;; esac ;;

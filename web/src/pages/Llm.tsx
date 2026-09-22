@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, del, get, post, put } from "../api";
 import { useT } from "../i18n";
-import { Btn, Card, Confirm, Empty, Err, Field, Kpi, Table, Tabs } from "../components/ui";
+import { Btn, Card, Confirm, Empty, Err, Field, Kpi, Table, Tabs, fmtTs } from "../components/ui";
 import { useSearchParams } from "react-router-dom";
 import { ParserPanel } from "./Parser";
 
@@ -67,14 +67,52 @@ function Quality() {
   return <div className="stack">
     <div className="grid k4"><Kpi value={s.calls ?? 0} label={t("llm_calls")} /><Kpi value={s.success != null ? `${Math.round(s.success * 100)}%` : "-"} label={t("llm_success")} accent="#2dd4bf" /><Kpi value={s.grounding_rate != null ? `${Math.round(s.grounding_rate * 100)}%` : "-"} label={t("llm_ground")} accent="#60a5fa" /><Kpi value={s.latency_ms ?? s.p50_ms ?? "-"} label="ms" accent="#a78bfa" /></div>
     <div className="row"><Btn onClick={() => bench.mutate()} disabled={bench.isPending || !ds.data?.length}>{t("llm_benchmark")}</Btn></div><Err e={bench.error} />
-    <Card title={`🎓 ${t("llm_train_title")}`}><div className="muted small" style={{ marginBottom: 8 }}>{t("llm_train_hint")}</div>
-      <div className="row" style={{ flexWrap: "wrap", gap: 8 }}><span className="chip">{tr.data?.total ?? 0} {t("llm_train_examples")}</span>{Object.entries(tr.data?.by_source ?? {}).map(([k, v]) => <span key={k} className="chip">{k} {v as number}</span>)}
-        <div className="grow" /><Btn sm onClick={() => dl("all")} disabled={!tr.data?.total}>⬇ {t("llm_train_dl")}</Btn><Btn sm onClick={() => dl("train")} disabled={!tr.data?.train}>train</Btn><Btn sm onClick={() => dl("eval")} disabled={!tr.data?.eval}>eval</Btn></div>
-      <pre className="code" style={{ marginTop: 8 }}>{`./watchover.sh llm export training.jsonl
-python scripts/train_lora.py --data training.jsonl --base qwen2.5:1.5b-instruct --out models/watchover-ops
-./watchover.sh llm import models/watchover-ops
-python scripts/train_lora.py --gate --model watchover-ops --base-model qwen2.5:1.5b-instruct`}</pre></Card>
+    <AutoTrain tr={tr.data} dl={dl} />
     <Card title={t("llm_tab_quality")}><Table cols={[{ k: "ts", label: t("time"), render: (r) => r.ts?.slice(0, 16).replace("T", " ") }, { k: "model", label: t("llm_model") }, { k: "dataset", label: t("as_dataset") }, { k: "n", label: "n", num: true }, { k: "correct", label: "✓", num: true }, { k: "cited", label: "cite", num: true }, { k: "grounded", label: t("llm_ground"), num: true }, { k: "latency_ms", label: "ms", num: true }]} rows={q.data?.evals ?? []} /></Card>
     <Card title={t("llm_calls")}><Table cols={[{ k: "ts", label: t("time"), render: (r) => r.ts?.slice(11, 19) }, { k: "provider", label: t("llm_provider") }, { k: "model", label: t("llm_model") }, { k: "kind", label: "kind" }, { k: "ok", label: "ok", render: (r) => (r.ok ? "✓" : "✗") }, { k: "latency_ms", label: "ms", num: true }, { k: "citations", label: "cite", num: true }, { k: "error", label: t("error"), render: (r) => <span className="muted small">{r.error?.slice(0, 60)}</span> }]} rows={(q.data?.calls ?? []).slice(0, 60)} /></Card>
   </div>;
+}
+
+function AutoTrain({ tr, dl }: { tr: any; dl: (p: string) => void }) {
+  const { t } = useT(); const qc = useQueryClient();
+  const q = useQuery({ queryKey: ["llm-autotrain"], queryFn: () => get("/llm/autotrain"), refetchInterval: 20000 });
+  const [f, setF] = useState<any>(null);
+  useEffect(() => { if (q.data?.settings && !f) setF(q.data.settings); }, [q.data, f]);
+  const save = useMutation({ mutationFn: (v: any) => put("/llm/autotrain", v), onSuccess: () => { qc.invalidateQueries({ queryKey: ["llm-autotrain"] }); } });
+  const runNow = useMutation({ mutationFn: () => post("/llm/autotrain/run"), onSuccess: () => q.refetch() });
+  const d = q.data; if (!d || !f) return <Card title={`🎓 ${t("llm_train_title")}`}><Empty /></Card>;
+  const need = Math.max(0, (f.train_min_examples ?? 0) - (d.examples ?? 0)); const pct = Math.min(100, Math.round(100 * (d.examples ?? 0) / Math.max(1, f.train_min_examples ?? 1)));
+  const toggle = (k: string) => { const v = { ...f, [k]: !f[k] }; setF(v); save.mutate({ [k]: v[k] }); };
+  const num = (k: string) => (e: any) => setF({ ...f, [k]: Number(e.target.value) });
+  return <Card title={`🎓 ${t("llm_train_title")}`} right={<span className={`badge ${d.ops_active ? "green" : d.last_pass ? "amber" : ""}`}>{d.ops_active ? `${d.ops_model} ${t("llm_at_active")}` : d.last_pass ? t("llm_at_ready_off") : t("llm_at_none")}</span>}>
+    <div className="muted small" style={{ marginBottom: 8 }}>{t("llm_at_hint")}</div>
+    <div className="grid k4" style={{ marginBottom: 10 }}>
+      <Kpi value={d.examples ?? 0} label={t("llm_train_examples")} sub={need > 0 ? `${need} ${t("llm_at_more")}` : t("llm_at_enough")} accent={need > 0 ? "#f59e0b" : "#2dd4bf"} />
+      <Kpi value={d.new_since_pass ?? 0} label={t("llm_at_new")} sub={`${t("llm_at_min")} ${f.train_min_new}`} accent="#60a5fa" />
+      <Kpi value={d.last_run ? fmtTs(d.last_run.ts) : "-"} label={t("llm_at_last")} sub={d.last_run ? `${d.last_run.status}${d.last_run.gate?.score != null ? ` · ${Math.round(d.last_run.gate.score * 100)}%` : ""}` : t("llm_at_never")} accent={d.last_run?.status === "pass" ? "#2dd4bf" : d.last_run?.status === "fail" || d.last_run?.status === "error" ? "#f87171" : "#a78bfa"} />
+      <Kpi value={d.trainer_alive ? "●" : "○"} label={t("llm_at_service")} sub={d.trainer_alive ? t("llm_at_alive") : t("llm_at_dead")} accent={d.trainer_alive ? "#2dd4bf" : "#64748b"} />
+    </div>
+    <div className="progress" style={{ marginBottom: 10 }}><div style={{ width: `${pct}%` }} /></div>
+    <div className="row" style={{ flexWrap: "wrap", gap: 10, alignItems: "center" }}>
+      <label className="chip"><input type="checkbox" checked={!!f.train_auto} onChange={() => toggle("train_auto")} /> {t("llm_at_auto")}</label>
+      <label className="chip"><input type="checkbox" checked={!!f.train_use_ops} onChange={() => toggle("train_use_ops")} /> {t("llm_at_use")}</label>
+      <label className="small muted">{t("llm_at_every")} <input className="input" type="number" style={{ width: 70 }} value={f.train_every_h} onChange={num("train_every_h")} onBlur={() => save.mutate({ train_every_h: f.train_every_h })} /> h</label>
+      <label className="small muted">{t("llm_at_minex")} <input className="input" type="number" style={{ width: 80 }} value={f.train_min_examples} onChange={num("train_min_examples")} onBlur={() => save.mutate({ train_min_examples: f.train_min_examples })} /></label>
+      <label className="small muted">{t("llm_base_model")} <select className="input" value={f.train_base} onChange={(e) => { setF({ ...f, train_base: e.target.value }); save.mutate({ train_base: e.target.value }); }}>{["qwen2.5:1.5b-instruct", "qwen2.5:3b-instruct"].map((m) => <option key={m} value={m}>{m}</option>)}</select></label>
+      <div className="grow" /><Btn sm kind="primary" onClick={() => runNow.mutate()} disabled={runNow.isPending || !d.trainer_alive} title={!d.trainer_alive ? t("llm_at_dead") : ""}>⚡ {t("llm_at_now")}</Btn>{d.forced && <span className="badge amber">{t("llm_at_queued")}</span>}
+    </div>
+    {!!d.reasons?.length && !d.forced && <div className="muted small" style={{ marginTop: 6 }}>{t("llm_at_waiting")}: {d.reasons.join(" · ")}</div>}
+    <Err e={save.error || runNow.error} />
+    {!!d.runs?.length && <Table cols={[{ k: "ts", label: t("time"), render: (r) => fmtTs(r.ts) }, { k: "status", label: t("status"), render: (r) => <span lang="en" className={`badge ${r.status === "pass" ? "green" : r.status === "fail" || r.status === "error" ? "red" : "amber"}`}>{r.status}</span> },
+      { k: "examples", label: t("llm_train_examples"), num: true }, { k: "base", label: t("llm_base_model") }, { k: "loss", label: "loss", num: true, render: (r) => r.loss ? Number(r.loss).toFixed(3) : "-" },
+      { k: "gate", label: t("llm_at_gate"), render: (r) => r.gate?.score != null ? `${Math.round(r.gate.score * 100)}%${r.gate.base_score != null ? ` (${t("llm_base_model")} ${Math.round(r.gate.base_score * 100)}%)` : ""}` : (r.gate?.note || r.note || "-") },
+      { k: "seconds", label: "s", num: true }]} rows={d.runs.map((r: any) => ({ id: r.id, ...r }))} />}
+    <details style={{ marginTop: 10 }}><summary className="muted small">{t("llm_at_manual")}</summary>
+      <div className="row" style={{ marginTop: 8, flexWrap: "wrap", gap: 8 }}><span className="chip">{tr?.total ?? 0} {t("llm_train_examples")}</span>{Object.entries(tr?.by_source ?? {}).map(([k, v]) => <span key={k} className="chip">{k} {v as number}</span>)}
+        <div className="grow" /><Btn sm onClick={() => dl("all")} disabled={!tr?.total}>⬇ {t("llm_train_dl")}</Btn><Btn sm onClick={() => dl("train")} disabled={!tr?.train}>train</Btn><Btn sm onClick={() => dl("eval")} disabled={!tr?.eval}>eval</Btn></div>
+      <pre className="code" style={{ marginTop: 8 }}>{`./watchover.sh llm export training.jsonl
+python scripts/train_lora.py --data training.jsonl --base qwen2.5:1.5b-instruct --out models/watchover-ops
+./watchover.sh llm import models/watchover-ops
+python scripts/train_lora.py --gate --model watchover-ops --base-model qwen2.5:1.5b-instruct`}</pre></details>
+  </Card>;
 }

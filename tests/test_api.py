@@ -394,7 +394,7 @@ def test_llm_review_endpoint(client, monkeypatch):
     monkeypatch.setattr(wo_llm, "chat_messages", fake_chat)
     app_svc = client.app.state.services
     class Cfg: enabled = True; model = "test-model"; kind = "ollama"
-    monkeypatch.setattr(app_svc, "llm_cfg", lambda: Cfg())
+    monkeypatch.setattr(app_svc, "llm_cfg", lambda *a, **k: Cfg())
     inc = client.get(f"/api/datasets/{key}/incidents", headers=h).json()[0]["id"]
     r = client.post(f"/api/datasets/{key}/review", json={"scope": "incident", "incident": inc}, headers=h)
     assert r.status_code == 200 and r.json()["model"] == "test-model" and f"INCIDENT {inc}" in seen["bundle"] and r.json()["text"].startswith("**Özet**")
@@ -467,3 +467,20 @@ def test_training_export_api(client):
     r = client.get("/api/llm/training-export", headers=h)
     assert r.status_code == 200 and "attachment" in r.headers.get("content-disposition", "") and '"messages"' in r.text
     assert client.get("/api/llm/training-export?part=train", headers=h).status_code == 200
+
+
+def test_autotrain_api_and_ops_config(client):
+    h = token(client)
+    d = client.get("/api/llm/autotrain", headers=h).json()
+    assert "settings" in d and d["settings"]["train_auto"] is True and "examples" in d and d["ops_active"] is False and d["trainer_alive"] is False
+    r = client.put("/api/llm/autotrain", headers=h, json={"train_min_examples": 20, "train_auto": False}).json()
+    assert r["train_min_examples"] == 20 and r["train_auto"] is False
+    assert client.post("/api/llm/autotrain/run", headers=h).json()["ok"] and client.get("/api/llm/autotrain", headers=h).json()["forced"] is True
+    svc = client.app.state.services
+    assert svc.llm_cfg("ops").model == svc.llm_cfg().model                       # no passing model yet: ops == chat connection
+    svc.kb._exec("INSERT INTO train_runs (ts, status, examples, model, gate) VALUES ('2026-09-22T00:00:00', 'pass', 50, 'watchover-ops', '{}')")
+    svc._ops_at = 0
+    assert svc.llm_cfg("ops").model == "watchover-ops" and svc.llm_cfg("ops").kind == "ollama"
+    client.put("/api/llm/autotrain", headers=h, json={"train_use_ops": False})
+    assert svc.llm_cfg("ops").model == svc.llm_cfg().model                       # "use it" off: chat connection again
+    assert client.get("/api/llm/autotrain", headers=h).json()["ops_active"] is False

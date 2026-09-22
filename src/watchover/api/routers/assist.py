@@ -39,7 +39,7 @@ def _analysis(svc, dataset: str | None):
 
 @router.post("/ask")
 def ask(body: AskIn, user=Depends(require("page.assist")), svc=Depends(services)):
-    cfg = svc.llm_cfg()
+    cfg = svc.llm_cfg("ops")
     res = wo_assistant.answer(cfg, body.question, body.history[-6:], _analysis(svc, body.dataset), svc.kb, body.lang)
     return {**res, "model": cfg.model if cfg.enabled else ""}
 

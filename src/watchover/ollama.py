@@ -77,3 +77,71 @@ def running(base: str) -> list[dict]:
     except Exception:  # noqa: BLE001
         return []
     return [{"name": m.get("name"), "size_vram_gb": round((m.get("size_vram") or 0) / 1e9, 2), "until": (m.get("expires_at") or "")[:16]} for m in doc.get("models", [])]
+
+
+# ---------------------------------------------------------------- model creation from a trained adapter (autotrain)
+def _post(base: str, path: str, body: dict, timeout: float = 600) -> dict:
+    req = urllib.request.Request(base.rstrip("/") + path, data=json.dumps(body).encode(), headers={"Content-Type": "application/json"}, method="POST")
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        raw = r.read()
+    out: dict = {}
+    for line in raw.splitlines():                      # streaming or single JSON: keep the last status
+        try:
+            out = json.loads(line) or out
+        except ValueError:
+            continue
+    return out
+
+
+def exists(base: str, name: str) -> bool:
+    try:
+        return any((m.get("name") or m.get("model")) in (name, f"{name}:latest") for m in _get(base.rstrip("/") + "/api/tags", 5).get("models", []))
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def copy(base: str, src: str, dst: str) -> None:
+    _post(base, "/api/copy", {"source": src, "destination": dst}, 60)
+
+
+def delete(base: str, name: str) -> None:
+    req = urllib.request.Request(base.rstrip("/") + "/api/delete", data=json.dumps({"name": name}).encode(), headers={"Content-Type": "application/json"}, method="DELETE")
+    with urllib.request.urlopen(req, timeout=60):
+        pass
+
+
+def upload_blob(base: str, path: str, timeout: float = 1800) -> str:
+    """POST /api/blobs/sha256:<digest> with the file body; returns the digest reference Ollama expects in `adapters`."""
+    import hashlib
+    data = open(path, "rb").read()
+    digest = "sha256:" + hashlib.sha256(data).hexdigest()
+    req = urllib.request.Request(base.rstrip("/") + "/api/blobs/" + digest, data=data, headers={"Content-Type": "application/octet-stream"}, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout):
+            pass
+    except urllib.error.HTTPError as e:
+        if e.code not in (200, 201):                 # an already-present blob answers 200/201 as well
+            raise
+    return digest
+
+
+def create_from_adapter(base: str, name: str, adapter_dir: str, from_tag: str, system: str = "", parameters: dict | None = None,
+                        server_adapter_path: str | None = None) -> dict:
+    """Create `name` = `from_tag` + the safetensors LoRA in `adapter_dir`. First the blob API (Ollama >= 0.5: files are
+    uploaded, no shared filesystem needed); if the server rejects it, the legacy Modelfile form with a path that is visible
+    to the Ollama server (`server_adapter_path`, a shared volume)."""
+    import os
+    params = parameters or {"temperature": 0.2, "num_ctx": 4096, "stop": ["<|im_end|>", "<|endoftext|>"]}
+    files = [f for f in sorted(os.listdir(adapter_dir)) if f.endswith((".safetensors", ".json"))]
+    try:
+        adapters = {f: upload_blob(base, os.path.join(adapter_dir, f)) for f in files}
+        return _post(base, "/api/create", {"model": name, "from": from_tag, "adapters": adapters, "system": system or None, "parameters": params, "stream": False}) | {"via": "blobs"}
+    except (urllib.error.HTTPError, urllib.error.URLError, ValueError) as first:
+        if not server_adapter_path:
+            raise
+        mf = f"FROM {from_tag}\nADAPTER {server_adapter_path}\n" + (f'SYSTEM """{system}"""\n' if system else "") + \
+             "".join(f"PARAMETER {k} {v}\n" for k, v in params.items() if k != "stop") + "".join(f'PARAMETER stop "{s}"\n' for s in params.get("stop", []))
+        try:
+            return _post(base, "/api/create", {"name": name, "modelfile": mf, "stream": False}) | {"via": "modelfile"}
+        except Exception as second:  # noqa: BLE001
+            raise RuntimeError(f"ollama create failed (blobs: {first}; modelfile: {second})") from second
