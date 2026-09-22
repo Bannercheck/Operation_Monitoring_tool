@@ -1,0 +1,327 @@
+{
+ "alertmanager.json": {
+  "timestamp": 100.0,
+  "level": 0.0,
+  "host": 100.0,
+  "service": 100.0,
+  "score": 75.0,
+  "events": 2
+ },
+ "apache_access_clf.log": {
+  "timestamp": 0.0,
+  "level": null,
+  "host": 0.0,
+  "service": 0.0,
+  "score": 0.0,
+  "events": 5
+ },
+ "aws_alb_access.log": {
+  "timestamp": 0.0,
+  "level": null,
+  "host": 0.0,
+  "service": 0.0,
+  "score": 0.0,
+  "events": 2
+ },
+ "aws_cloudtrail.json": {
+  "timestamp": 100.0,
+  "level": null,
+  "host": 0.0,
+  "service": 0.0,
+  "score": 33.3,
+  "events": 2
+ },
+ "cef_arcsight.log": {
+  "timestamp": 0.0,
+  "level": 0.0,
+  "host": 0.0,
+  "service": 0.0,
+  "score": 0.0,
+  "events": 5
+ },
+ "cisco_asa.log": {
+  "timestamp": 0.0,
+  "level": null,
+  "host": 0.0,
+  "service": 0.0,
+  "score": 0.0,
+  "events": 4
+ },
+ "csv_events.csv": {
+  "timestamp": 100.0,
+  "level": 100.0,
+  "host": 100.0,
+  "service": 100.0,
+  "score": 100.0,
+  "events": 4
+ },
+ "docker_jsonfile.jsonl": {
+  "timestamp": 100.0,
+  "level": 100.0,
+  "host": 0.0,
+  "service": 0.0,
+  "score": 50.0,
+  "events": 6
+ },
+ "dotnet_serilog.log": {
+  "timestamp": 62.5,
+  "level": 100.0,
+  "host": 0.0,
+  "service": 12.5,
+  "score": 43.8,
+  "events": 8
+ },
+ "ecs_json.jsonl": {
+  "timestamp": 100.0,
+  "level": 100.0,
+  "host": 0.0,
+  "service": 0.0,
+  "score": 50.0,
+  "events": 4
+ },
+ "fortigate_kv.log": {
+  "timestamp": 100.0,
+  "level": 66.7,
+  "host": 0.0,
+  "service": 66.7,
+  "score": 58.3,
+  "events": 3
+ },
+ "gelf.jsonl": {
+  "timestamp": 100.0,
+  "level": null,
+  "host": 100.0,
+  "service": 100.0,
+  "score": 100.0,
+  "events": 4
+ },
+ "golang_log.log": {
+  "timestamp": 60.0,
+  "level": 100.0,
+  "host": 0.0,
+  "service": 0.0,
+  "score": 40.0,
+  "events": 5
+ },
+ "haproxy.log": {
+  "timestamp": 100.0,
+  "level": null,
+  "host": 100.0,
+  "service": 100.0,
+  "score": 100.0,
+  "events": 3
+ },
+ "iis_w3c.log": {
+  "timestamp": 0.0,
+  "level": 100.0,
+  "host": 0.0,
+  "service": 0.0,
+  "score": 25.0,
+  "events": 7
+ },
+ "java_stacktrace.log": {
+  "timestamp": 37.5,
+  "level": 100.0,
+  "host": 0.0,
+  "service": 12.5,
+  "score": 37.5,
+  "events": 8
+ },
+ "journald.jsonl": {
+  "timestamp": 0.0,
+  "level": null,
+  "host": 100.0,
+  "service": 0.0,
+  "score": 33.3,
+  "events": 4
+ },
+ "kafka_log4j.log": {
+  "timestamp": 66.7,
+  "level": 100.0,
+  "host": 0.0,
+  "service": 16.7,
+  "score": 45.8,
+  "events": 6
+ },
+ "kubernetes_cri.log": {
+  "timestamp": 100.0,
+  "level": 100.0,
+  "host": 0.0,
+  "service": 0.0,
+  "score": 50.0,
+  "events": 6
+ },
+ "leef_qradar.log": {
+  "timestamp": 0.0,
+  "level": null,
+  "host": 0.0,
+  "service": 0.0,
+  "score": 0.0,
+  "events": 3
+ },
+ "logfmt.log": {
+  "timestamp": 100.0,
+  "level": 100.0,
+  "host": 100.0,
+  "service": 100.0,
+  "score": 100.0,
+  "events": 4
+ },
+ "mongodb.jsonl": {
+  "timestamp": 100.0,
+  "level": 100.0,
+  "host": 0.0,
+  "service": 0.0,
+  "score": 50.0,
+  "events": 4
+ },
+ "mysql_error.log": {
+  "timestamp": 100.0,
+  "level": 100.0,
+  "host": 0.0,
+  "service": 0.0,
+  "score": 50.0,
+  "events": 4
+ },
+ "nginx_combined.log": {
+  "timestamp": 0.0,
+  "level": null,
+  "host": 0.0,
+  "service": 0.0,
+  "score": 0.0,
+  "events": 3
+ },
+ "nginx_error.log": {
+  "timestamp": 100.0,
+  "level": 100.0,
+  "host": 0.0,
+  "service": 0.0,
+  "score": 50.0,
+  "events": 4
+ },
+ "oracle_alert.log": {
+  "timestamp": 40.0,
+  "level": 100.0,
+  "host": 0.0,
+  "service": 30.0,
+  "score": 42.5,
+  "events": 10
+ },
+ "otel_logs.json": {
+  "timestamp": 0.0,
+  "level": 100.0,
+  "host": 0.0,
+  "service": 0.0,
+  "score": 25.0,
+  "events": 1
+ },
+ "paloalto_csv.log": {
+  "timestamp": 0.0,
+  "level": 100.0,
+  "host": 0.0,
+  "service": 0.0,
+  "score": 25.0,
+  "events": 2
+ },
+ "plain_app_text.log": {
+  "timestamp": 100.0,
+  "level": 100.0,
+  "host": 0.0,
+  "service": 0.0,
+  "score": 50.0,
+  "events": 6
+ },
+ "postfix.log": {
+  "timestamp": 100.0,
+  "level": null,
+  "host": 100.0,
+  "service": 100.0,
+  "score": 100.0,
+  "events": 5
+ },
+ "postgres.log": {
+  "timestamp": 100.0,
+  "level": 100.0,
+  "host": 0.0,
+  "service": 0.0,
+  "score": 50.0,
+  "events": 7
+ },
+ "python_traceback.log": {
+  "timestamp": 33.3,
+  "level": 100.0,
+  "host": 0.0,
+  "service": 44.4,
+  "score": 44.4,
+  "events": 9
+ },
+ "redis.log": {
+  "timestamp": 0.0,
+  "level": 100.0,
+  "host": 0.0,
+  "service": 0.0,
+  "score": 25.0,
+  "events": 5
+ },
+ "sqlserver_errorlog.log": {
+  "timestamp": 100.0,
+  "level": 100.0,
+  "host": 0.0,
+  "service": 0.0,
+  "score": 50.0,
+  "events": 5
+ },
+ "syslog_rfc3164.log": {
+  "timestamp": 100.0,
+  "level": 100.0,
+  "host": 100.0,
+  "service": 100.0,
+  "score": 100.0,
+  "events": 8
+ },
+ "syslog_rfc5424.log": {
+  "timestamp": 0.0,
+  "level": 100.0,
+  "host": 0.0,
+  "service": 0.0,
+  "score": 25.0,
+  "events": 6
+ },
+ "timestamp_variants.log": {
+  "timestamp": 28.6,
+  "level": 100.0,
+  "host": 0.0,
+  "service": 0.0,
+  "score": 32.1,
+  "events": 7
+ },
+ "windows_event_xml.log": {
+  "timestamp": 100.0,
+  "level": null,
+  "host": 0.0,
+  "service": 0.0,
+  "score": 33.3,
+  "events": 3
+ },
+ "noise:demo_mixed.zip": {
+  "reduction": 70.5,
+  "incidents": 2,
+  "signals": 5,
+  "eliminated_pct": 87.1,
+  "noise_precision": null
+ },
+ "noise:alarm_storm.zip": {
+  "reduction": 5.3,
+  "incidents": 5,
+  "signals": 40,
+  "eliminated_pct": 70.0,
+  "noise_precision": 97.3
+ },
+ "noise:sap_logs.zip": {
+  "reduction": 1.1,
+  "incidents": 12,
+  "signals": 15,
+  "eliminated_pct": 60.9,
+  "noise_precision": null
+ }
+}

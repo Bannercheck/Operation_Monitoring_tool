@@ -1,0 +1,4 @@
+{"@timestamp":"2026-09-22T06:14:02.003Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-09-22T06:15:03.500Z","log.level":"error","message":"gateway timeout order=88213","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-09-22T06:15:10.000Z","log.level":"warn","message":"retry 3/5 order=88213","service.name":"payment-api","host.name":"prd-api-01"}
+{"@timestamp":"2026-09-22T06:16:00.000Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}

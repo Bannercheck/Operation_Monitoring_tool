@@ -1,0 +1,42 @@
+# Parser corpus
+
+One small, realistic file per log family; `python -m watchover.coverage` parses each one with the production pipeline and reports how much it extracts (timestamp, level, host, service). `samples/corpus/baseline.json` is the accepted score per file: `tests/test_coverage.py` fails when a change parses less than before, `python -m watchover.coverage --update-baseline` records improvements.
+
+- `syslog_rfc3164.log`
+- `syslog_rfc5424.log`
+- `cef_arcsight.log`
+- `leef_qradar.log`
+- `gelf.jsonl`
+- `apache_access_clf.log`
+- `nginx_combined.log`
+- `nginx_error.log`
+- `iis_w3c.log`
+- `windows_event_xml.log`
+- `journald.jsonl`
+- `docker_jsonfile.jsonl`
+- `kubernetes_cri.log`
+- `otel_logs.json`
+- `cisco_asa.log`
+- `fortigate_kv.log`
+- `paloalto_csv.log`
+- `oracle_alert.log`
+- `sqlserver_errorlog.log`
+- `postgres.log`
+- `mysql_error.log`
+- `java_stacktrace.log`
+- `python_traceback.log`
+- `dotnet_serilog.log`
+- `golang_log.log`
+- `haproxy.log`
+- `postfix.log`
+- `redis.log`
+- `mongodb.jsonl`
+- `kafka_log4j.log`
+- `aws_cloudtrail.json`
+- `aws_alb_access.log`
+- `ecs_json.jsonl`
+- `logfmt.log`
+- `csv_events.csv`
+- `alertmanager.json`
+- `plain_app_text.log`
+- `timestamp_variants.log`

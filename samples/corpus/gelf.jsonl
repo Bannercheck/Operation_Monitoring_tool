@@ -1,0 +1,4 @@
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=88213","full_message":"payment failed order=88213 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-api-02","short_message":"upstream timed out","timestamp":1790068503.1,"level":4,"_service":"nginx"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}

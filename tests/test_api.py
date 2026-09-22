@@ -319,3 +319,12 @@ def test_sources_draft_test_and_dataset_from_source(client):
     assert r.status_code == 400 and "fetch failed" in r.json()["detail"]
     assert client.post("/api/datasets/from-source", json={"id": 999999}, headers=h).status_code == 404
     client.delete(f"/api/sources/{sid}", headers=h)
+
+
+def test_parser_coverage_endpoint(client):
+    h = token(client)
+    r = client.get("/api/system/coverage", headers=h)
+    assert r.status_code == 200
+    d = r.json()
+    assert d["n"] >= 38 and 0 < d["overall"]["score"] <= 100 and d["regressions"] == []
+    assert all("baseline" in f and "delta" in f for f in d["files"])

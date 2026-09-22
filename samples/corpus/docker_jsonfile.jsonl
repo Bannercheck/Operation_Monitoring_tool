@@ -1,0 +1,6 @@
+{"log":"2026-09-22T06:14:02.003Z INFO  order-service started on port 8080\n","stream":"stdout","time":"2026-09-22T06:14:02.003412Z"}
+{"log":"2026-09-22T06:15:03.500Z ERROR payment-api gateway timeout order=88213\n","stream":"stderr","time":"2026-09-22T06:15:03.500981Z"}
+{"log":"Traceback (most recent call last):\n","stream":"stderr","time":"2026-09-22T06:15:03.501Z"}
+{"log":"  File \"app.py\", line 88, in charge\n","stream":"stderr","time":"2026-09-22T06:15:03.501Z"}
+{"log":"requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='gw.example.com', port=443): Read timed out\n","stream":"stderr","time":"2026-09-22T06:15:03.502Z"}
+{"log":"2026-09-22T06:16:00Z INFO  auth-api user login ok user=ali\n","stream":"stdout","time":"2026-09-22T06:16:00.000Z"}

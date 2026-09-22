@@ -37,6 +37,25 @@ def status(user=Depends(require("sys.status")), svc=Depends(services)):
     return svc.status()
 
 
+_coverage_cache: dict = {}
+
+
+@router.get("/coverage")
+def parser_coverage(refresh: bool = False, user=Depends(require("sys.status"))):
+    """Parser coverage over samples/corpus (one file per log family) with the accepted baseline; cached per process."""
+    from ... import coverage as wo_cov
+    if refresh or "res" not in _coverage_cache:
+        res = wo_cov.run()
+        base = wo_cov.load_baseline()
+        for r in res["files"]:
+            b = base.get(r["file"], {})
+            r["baseline"] = b.get("score")
+            r["delta"] = round(r["score"] - b["score"], 1) if b.get("score") is not None else None
+        res["regressions"] = wo_cov.regressions(res, base)
+        _coverage_cache["res"] = res
+    return _coverage_cache["res"]
+
+
 @router.get("/releases")
 def releases(user=Depends(require("sys.status"))):
     return wo_release.entries() if hasattr(wo_release, "entries") else []

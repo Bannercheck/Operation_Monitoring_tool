@@ -1,0 +1,4 @@
+{"t":{"$date":"2026-09-22T06:14:02.003+00:00"},"s":"I","c":"NETWORK","id":22943,"ctx":"listener","msg":"Connection accepted","attr":{"remote":"10.0.4.12:51422","connectionId":88213}}
+{"t":{"$date":"2026-09-22T06:15:03.500+00:00"},"s":"W","c":"COMMAND","id":51803,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":30012}}
+{"t":{"$date":"2026-09-22T06:15:10.000+00:00"},"s":"E","c":"STORAGE","id":22435,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-09-22T06:16:44.000+00:00"},"s":"F","c":"CONTROL","id":20573,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":28578}}

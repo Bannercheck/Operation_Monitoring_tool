@@ -32,6 +32,7 @@ export default function System() {
         <div className="mono dim">{db.url}</div></div>
         <div className="row" style={{ marginTop: 10 }}><Btn sm onClick={() => vacuum.mutate()}>{t("sys_vacuum")}</Btn></div><Err e={vacuum.error} /></Card>
       <DbTables tables={db.tables ?? {}} />
+      <ParserCoverage />
     </div>
     <Card title={t("sys_snapshots")} right={<Btn sm kind="primary" onClick={() => snap.mutate()} disabled={snap.isPending}>📸 {t("sys_snap_new")}</Btn>}>
       <Table cols={[{ k: "id", label: "ID", render: (r) => <b className="mono">{r.id}</b> }, { k: "version", label: t("sys_version"), render: (r) => `v${r.version} · ${r.git}` }, { k: "ts", label: t("time"), render: (r) => fmtTs(r.ts) }, { k: "reason", label: t("note") }, { k: "size", label: "MB", num: true, render: (r) => (r.size / 1e6).toFixed(1) }, { k: "dbs", label: t("sys_db"), render: (r) => (r.dbs ?? []).join(", ") },
@@ -118,5 +119,26 @@ function DbTables({ tables }: { tables: Record<string, number> }) {
       <label className="check" style={{ padding: 0 }}><input type="checkbox" checked={nonEmpty} onChange={(e) => setNonEmpty(e.target.checked)} /> {t("sys_tbl_nonempty")}</label></div>
     <Table cols={[{ k: "table", label: t("sys_tables"), render: (r) => <span className="mono">{r.table}</span> }, { k: "n", label: t("count"), num: true, render: (r) => r.n.toLocaleString() }]} rows={shown} />
     {rows.length > 8 && !q && <div className="row" style={{ marginTop: 8 }}><Btn sm onClick={() => setOpen(!open)}>{open ? t("sys_tbl_less") : t("sys_tbl_more", { n: rows.length - 8 })}</Btn></div>}
+  </Card>;
+}
+
+/** Parser v2 step 1: coverage of the format corpus (samples/corpus) through the production pipeline, against the accepted baseline. */
+function ParserCoverage() {
+  const { t } = useT(); const [open, setOpen] = useState(false); const [q, setQ] = useState("");
+  const cov = useQuery({ queryKey: ["coverage"], queryFn: () => get("/system/coverage"), staleTime: 600000 });
+  const d = cov.data; if (!d) return null;
+  const o = d.overall; const pc = (v: any) => (v == null ? "-" : `${v}%`);
+  const color = (v: any) => (v == null ? "var(--muted)" : v >= 80 ? "var(--green)" : v >= 50 ? "var(--amber)" : "var(--red)");
+  const rows = (d.files as any[]).filter((r) => !q || r.file.includes(q.toLowerCase()) || r.format.includes(q.toLowerCase()));
+  return <Card title={`🧪 ${t("sys_cov")}`} right={<span className="muted small">{d.n} {t("sys_cov_files")} · {t("sys_cov_score")} <b style={{ color: color(o.score) }}>{o.score}</b></span>}>
+    <div className="muted small" style={{ marginBottom: 8 }}>{t("sys_cov_lead")}</div>
+    <div className="chips" style={{ marginBottom: 8 }}>{(["timestamp", "level", "host", "service"] as const).map((k) => <span key={k} className="chip"><span className="d" style={{ background: color(o[k]) }} />{t("sys_cov_" + k)} {pc(o[k])}</span>)}{d.regressions?.length > 0 && <span className="chip" style={{ color: "var(--red)" }}>⚠ {d.regressions.length} {t("sys_cov_regress")}</span>}</div>
+    {d.noise?.length > 0 && <Table cols={[{ k: "dataset", label: t("sys_cov_dataset"), render: (r) => <span className="mono small">{r.dataset}</span> }, { k: "raw", label: t("ds_events"), num: true, render: (r) => r.raw.toLocaleString() }, { k: "signals", label: t("ds_signals"), num: true, render: (r) => `${r.signals} / ${r.fingerprints}` }, { k: "incidents", label: t("ds_incidents"), num: true },
+      { k: "reduction", label: t("sys_cov_reduction"), num: true, render: (r) => <b style={{ color: "var(--accent)" }}>{r.reduction}×</b> }, { k: "eliminated_pct", label: t("sys_cov_elim"), num: true, render: (r) => `${r.eliminated_pct}%` }, { k: "noise_precision", label: t("sys_cov_precision"), num: true, render: (r) => r.noise_precision == null ? "-" : <span style={{ color: color(r.noise_precision) }}>{r.noise_precision}%</span> }]} rows={d.noise.map((r: any) => ({ id: r.dataset, ...r }))} />}
+    {open && <div className="row" style={{ marginBottom: 8, marginTop: 8 }}><input className="input grow" placeholder={t("sys_tbl_filter")} value={q} onChange={(e) => setQ(e.target.value)} /></div>}
+    {open && <Table cols={[{ k: "file", label: t("file"), render: (r) => <span className="mono small">{r.file}</span> }, { k: "format", label: t("sys_cov_format") }, { k: "events", label: t("ds_events"), num: true, render: (r) => `${r.events}/${r.lines}` },
+      ...(["timestamp", "level", "host", "service"] as const).map((k) => ({ k, label: t("sys_cov_" + k), num: true, render: (r: any) => <span style={{ color: color(r[k]) }}>{pc(r[k])}</span> })),
+      { k: "score", label: t("sys_cov_score"), num: true, render: (r) => <b style={{ color: color(r.score) }}>{r.score}</b> }, { k: "delta", label: "Δ", num: true, render: (r) => r.delta == null ? "-" : <span style={{ color: r.delta > 0 ? "var(--green)" : r.delta < 0 ? "var(--red)" : undefined }}>{r.delta > 0 ? "+" : ""}{r.delta}</span> }]} rows={rows.map((r) => ({ id: r.file, ...r }))} />}
+    <div className="row" style={{ marginTop: 8 }}><Btn sm onClick={() => setOpen(!open)}>{open ? t("sys_tbl_less") : t("sys_cov_show", { n: d.n })}</Btn></div>
   </Card>;
 }

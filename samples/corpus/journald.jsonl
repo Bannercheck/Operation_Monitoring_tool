@@ -1,0 +1,4 @@
+{"__REALTIME_TIMESTAMP":"1790068442000000","_HOSTNAME":"prd-api-01","PRIORITY":"6","SYSLOG_IDENTIFIER":"sshd","_PID":"1123","MESSAGE":"Accepted publickey for deploy from 10.0.4.12 port 51422 ssh2","_SYSTEMD_UNIT":"ssh.service"}
+{"__REALTIME_TIMESTAMP":"1790068503000000","_HOSTNAME":"prd-api-02","PRIORITY":"3","SYSLOG_IDENTIFIER":"nginx","_PID":"771","MESSAGE":"upstream timed out (110: Connection timed out)","_SYSTEMD_UNIT":"nginx.service"}
+{"__REALTIME_TIMESTAMP":"1790068502000000","_HOSTNAME":"prd-db-01","PRIORITY":"2","SYSLOG_IDENTIFIER":"kernel","MESSAGE":"Out of memory: Killed process 4471 (java)","_TRANSPORT":"kernel"}
+{"__REALTIME_TIMESTAMP":"1790068604000000","_HOSTNAME":"prd-api-01","PRIORITY":"4","SYSLOG_IDENTIFIER":"app","_PID":"3311","MESSAGE":"order-service payment retry 3/5 order=88213","_SYSTEMD_UNIT":"app.service"}
