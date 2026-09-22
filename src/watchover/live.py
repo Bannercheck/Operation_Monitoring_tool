@@ -13,6 +13,7 @@ from __future__ import annotations
 import hmac
 import json
 import re
+import shutil
 import statistics
 import threading
 import time
@@ -55,8 +56,142 @@ class LiveStore:
         self.metric_hosts: dict[str, set] = {}   # sender -> hosts it reported metrics for (purge on simulation off)
         self.matched = 0                         # events matched to the inventory
         self.started = time.time()
+        self.db = None                           # attach_db(): the durable live window (live_batches) behind the ring buffer
+        self.retention_h = 48                    # how long batches stay in the database
+        self.window_max_events = 200_000         # a window read from the database is capped to the newest N events
+        self.spool_max_bytes = self.SPOOL_MAX_BYTES
+        self._rate: deque[tuple[float, int]] = deque(maxlen=2000)   # (epoch, events) per ingest, for events/s
+        self._persist_n = 0
+        self.db_served = 0                       # windows answered from the database instead of the ring
+        self.last_db_window: tuple | None = None
         if self.spool:
             self.spool.parent.mkdir(parents=True, exist_ok=True)
+
+    # ---------------------------------------------------------------- durable window (100+ hosts: the ring alone is seconds of data)
+    def attach_db(self, db) -> None:
+        """Keep every ingested batch in `live_batches` so a window longer than the ring (anomaly scan, live analysis, learner)
+        is complete whatever the event rate. One row per agent POST, JSONL payload, pruned after `retention_h` hours."""
+        db._exec(f"""CREATE TABLE IF NOT EXISTS live_batches (id {db.pk}, ts_min TEXT, ts_max TEXT, received_at TEXT, agent TEXT DEFAULT '',
+            env TEXT DEFAULT '', n INTEGER DEFAULT 0, payload TEXT DEFAULT '')""")
+        db._exec("CREATE INDEX IF NOT EXISTS live_batches_ts ON live_batches(ts_max)")
+        self.db = db
+
+    @staticmethod
+    def _utc_iso(ts: datetime) -> str:
+        return (ts if ts.tzinfo else ts.replace(tzinfo=UTC)).astimezone(UTC).isoformat(timespec="seconds")
+
+    @staticmethod
+    def _pack(o: Observation, agent: str) -> dict:
+        a = o.attributes or {}
+        d = {"ts": o.timestamp.isoformat(), "sev": o.severity, "svc": o.service, "host": o.host, "env": o.environment, "msg": o.message,
+             "src": o.source, "agent": a.get("agent", agent), "kind": o.kind}
+        if o.origin:
+            d["org"] = o.origin
+        if a.get("site"):
+            d["site"] = a["site"]
+        if a.get("agent_id") is not None:
+            d["aid"] = a["agent_id"]
+        return d
+
+    @staticmethod
+    def _unpack(d: dict) -> Observation:
+        attrs = {"agent": d.get("agent", "-")}
+        if d.get("site"):
+            attrs["site"] = d["site"]
+        if d.get("aid") is not None:
+            attrs["agent_id"] = d["aid"]
+        ts = datetime.fromisoformat(d["ts"])
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=UTC)
+        return Observation(timestamp=ts, message=d.get("msg", ""), kind=d.get("kind", "log"), severity=d.get("sev", "INFO"), service=d.get("svc", ""),
+                           host=d.get("host", ""), environment=d.get("env", ""), origin=d.get("org", ""), attributes=attrs, source=d.get("src", ""))
+
+    def _persist(self, events: list[Observation], agent: str, env: str) -> None:
+        if not self.db or not events:
+            return
+        try:
+            tss = [self._utc_iso(o.timestamp) for o in events]
+            payload = "\n".join(json.dumps(self._pack(o, agent), ensure_ascii=False) for o in events)
+            self.db._insert("INSERT INTO live_batches (ts_min, ts_max, received_at, agent, env, n, payload) VALUES (?,?,?,?,?,?,?)",
+                            (min(tss), max(tss), self._utc_iso(datetime.now(UTC)), agent, env or "", len(events), payload))
+            self._persist_n += 1
+            if self._persist_n % 200 == 0:
+                self.prune()
+        except Exception:  # noqa: BLE001 - the database is never allowed to stop ingestion
+            pass
+
+    def prune(self, now: datetime | None = None) -> int:
+        """Drop batches older than `retention_h`; returns the number removed (0 when no database)."""
+        if not self.db:
+            return 0
+        cut = self._utc_iso((now or datetime.now(UTC)) - timedelta(hours=float(self.retention_h)))
+        before = self.db._exec("SELECT COUNT(*) AS n FROM live_batches WHERE ts_max < ?", (cut,))
+        self.db._exec("DELETE FROM live_batches WHERE ts_max < ?", (cut,))
+        return int(before[0]["n"]) if before else 0
+
+    def _window_from_db(self, since: datetime) -> list[Observation]:
+        rows = self.db._exec("SELECT payload FROM live_batches WHERE ts_max >= ? ORDER BY id", (self._utc_iso(since),))
+        s_utc = since if since.tzinfo else since.replace(tzinfo=UTC)
+        out: list[Observation] = []
+        for r in rows:
+            for line in (r["payload"] or "").split("\n"):
+                if not line:
+                    continue
+                try:
+                    o = self._unpack(json.loads(line))
+                except (ValueError, KeyError):
+                    continue
+                if o.timestamp >= s_utc:
+                    out.append(o)
+        if len(out) > self.window_max_events:
+            out = out[-self.window_max_events:]
+        self.db_served += 1
+        self.last_db_window = (self._utc_iso(since), len(out))
+        return out
+
+    def db_stats(self) -> dict:
+        if not self.db:
+            return {"enabled": False}
+        try:
+            r = self.db._exec("SELECT COUNT(*) AS batches, COALESCE(SUM(n), 0) AS events, MIN(ts_min) AS oldest, MAX(ts_max) AS newest, COALESCE(SUM(LENGTH(payload)), 0) AS bytes FROM live_batches")[0]
+            return {"enabled": True, "batches": int(r["batches"] or 0), "events": int(r["events"] or 0), "oldest": r["oldest"] or "", "newest": r["newest"] or "", "bytes": int(r["bytes"] or 0)}
+        except Exception:  # noqa: BLE001
+            return {"enabled": True, "error": True}
+
+    def capacity(self, window_min: int = 5) -> dict:
+        """What the operator needs to size the box: events/s, how much of the anomaly window the ring still covers, database
+        window depth, spool and disk. `warnings` are the things that will bite first at 100+ hosts."""
+        now = time.time()
+        with self.lock:
+            rate = list(self._rate); n = len(self.buf); maxlen = self.buf.maxlen or 1
+            oldest = self.buf[0].timestamp if self.buf else None; newest = self.buf[-1].timestamp if self.buf else None
+        r60 = sum(k for t, k in rate if t > now - 60) / 60.0
+        r300 = sum(k for t, k in rate if t > now - 300) / 300.0
+        span = (newest - oldest).total_seconds() if (oldest and newest) else 0.0
+        need = window_min * 60
+        spool_bytes = 0; disk = None
+        if self.spool:
+            try:
+                for f in self.spool.parent.glob(self.spool.name + "*"):
+                    spool_bytes += f.stat().st_size
+                u = shutil.disk_usage(self.spool.parent)
+                disk = {"total": u.total, "free": u.free, "free_pct": round(100.0 * u.free / u.total, 1) if u.total else 0}
+            except OSError:
+                pass
+        db = self.db_stats()
+        warnings = []
+        if n >= maxlen and span < need:
+            warnings.append({"code": "ring_short", "detail": f"ring holds {span:.0f}s at this rate, the {window_min} min window is served from the database"} if db.get("enabled")
+                            else {"code": "ring_short_no_db", "detail": f"ring holds {span:.0f}s, no database window: the {window_min} min analysis is incomplete"})
+        if disk and disk["free_pct"] < 10:
+            warnings.append({"code": "disk_low", "detail": f"{disk['free_pct']}% disk free"})
+        if r60 > 0 and self.db and db.get("bytes", 0) and db.get("events"):
+            per_day = r60 * 86400 * (db["bytes"] / max(1, db["events"]))
+            if per_day > 50 * 1024 ** 3:
+                warnings.append({"code": "db_growth", "detail": f"~{per_day / 1024 ** 3:.0f} GB/day of live batches at the current rate; lower live_retention_h"})
+        return {"events_per_s": round(r60, 2), "events_per_s_5m": round(r300, 2), "ring": {"events": n, "maxlen": maxlen, "fill_pct": round(100.0 * n / maxlen, 1), "span_s": round(span),
+                "covers_window": bool(span >= need or n < maxlen)}, "window_min": window_min, "db": db, "db_served": self.db_served, "last_db_window": self.last_db_window,
+                "spool_bytes": spool_bytes, "disk": disk, "retention_h": self.retention_h, "window_max_events": self.window_max_events, "warnings": warnings}
 
     def ingest(self, name: str, data: bytes, agent: str = "unknown", env: str = "", site: str = "", agent_id: int | None = None) -> int:
         obs, _ = ingest_bytes(name, data)
@@ -91,7 +226,9 @@ class LiveStore:
                 self.metric_hosts.setdefault(agent, set()).update(r[1] for r in metric_rows)
             self.received += len(obs)
             self.agents[agent] = time.time()
+            self._rate.append((time.time(), len(obs)))
         obs = events
+        self._persist(events, agent, env)
         if self.on_ingest and events:
             try:
                 self.on_ingest(events)
@@ -112,7 +249,7 @@ class LiveStore:
     SPOOL_KEEP = 3
 
     def _rotate_spool(self) -> None:
-        if not self.spool or not self.spool.exists() or self.spool.stat().st_size < self.SPOOL_MAX_BYTES:
+        if not self.spool or not self.spool.exists() or self.spool.stat().st_size < self.spool_max_bytes:
             return
         for i in range(self.SPOOL_KEEP, 0, -1):
             src = self.spool.with_name(f"{self.spool.name}.{i - 1}") if i > 1 else self.spool
@@ -124,19 +261,32 @@ class LiveStore:
         """Events (optionally one env / host, optionally not older than `since`). Events arrive roughly in time order, so a
         `since` scan walks the buffer from the newest end and stops once a run of 2000 older events is seen instead of
         touching all 50k on every 2-second refresh."""
+        from_db = False
         with self.lock:
             if since is None:
                 obs = list(self.buf)
             else:
+                s_cmp = since if since.tzinfo else since.replace(tzinfo=UTC)
+                oldest = self.buf[0].timestamp if self.buf else None
+                if oldest is not None and oldest.tzinfo is None:
+                    oldest = oldest.replace(tzinfo=UTC)
+                from_db = bool(self.db) and (oldest is None or oldest > s_cmp)      # the ring no longer reaches back to `since`
                 obs, stale = [], 0
-                for o in reversed(self.buf):
-                    if o.timestamp >= since:
-                        obs.append(o); stale = 0
-                    else:
-                        stale += 1
-                        if stale > 2000:
-                            break
-                obs.reverse()
+                if not from_db:
+                    for o in reversed(self.buf):
+                        if o.timestamp >= since:
+                            obs.append(o); stale = 0
+                        else:
+                            stale += 1
+                            if stale > 2000:
+                                break
+                    obs.reverse()
+        if from_db:
+            try:
+                obs = self._window_from_db(since)
+            except Exception:  # noqa: BLE001 - a database hiccup degrades to the ring, never to an error
+                with self.lock:
+                    obs = [o for o in self.buf if o.timestamp >= since]
         if env:
             obs = [o for o in obs if (o.environment or "unknown") == env]
         if host:

@@ -484,3 +484,15 @@ def test_autotrain_api_and_ops_config(client):
     client.put("/api/llm/autotrain", headers=h, json={"train_use_ops": False})
     assert svc.llm_cfg("ops").model == svc.llm_cfg().model                       # "use it" off: chat connection again
     assert client.get("/api/llm/autotrain", headers=h).json()["ops_active"] is False
+
+
+def test_capacity_status_and_retention_settings(client):
+    h = token(client)
+    st = client.get("/api/system/status", headers=h).json()
+    cap = st["capacity"]
+    assert cap["db"]["enabled"] is True and "events_per_s" in cap and "ring" in cap and cap["retention_h"] == 48
+    assert client.put("/api/system/settings", headers=h, json={"live_retention_h": 12, "history_retention_days": 30, "live_spool_mb": 16}).json()["ok"]
+    r = client.get("/api/system/settings", headers=h).json()
+    assert r["live_retention_h"] == 12 and r["history_retention_days"] == 30
+    svc = client.app.state.services                          # applied live by the endpoint, no restart
+    assert svc.live.retention_h == 12 and svc.history.retention_days == 30 and svc.live.spool_max_bytes == 16 * 1024 * 1024

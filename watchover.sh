@@ -9,7 +9,7 @@
 #   ./watchover.sh edge on NAME     Caddy in front: https://NAME for the company network (TLS from Caddy's CA, or ./certs/watchover.crt+key);
 #                                   NAME may be a DNS name, an IP or a Bonjour name like watchover.local (announced by the Mac itself)
 #   ./watchover.sh edge off|cert    stop it | export the CA root certificate colleagues install once (./certs/watchover-root.crt)
-#   ./watchover.sh backup           PostgreSQL dump + data volume -> ./backups/watchover-YYYYMMDD-HHMM.tgz
+#   ./watchover.sh backup [--keep N] PostgreSQL dump + data volume -> ./backups/watchover-YYYYMMDD-HHMM.tgz (oldest beyond N=14 removed)
 #   ./watchover.sh restore FILE     bring a backup back (containers are stopped meanwhile)
 #   ./watchover.sh user ...         account management, e.g.  user list | user add ops@firma.com --admin | user password EMAIL | user unlock EMAIL
 #   ./watchover.sh migrate          copy old SQLite files (knowledge.db / actions.db / playbook.db in ./data or the volume) into PostgreSQL
@@ -208,7 +208,10 @@ case "${1:-}" in
     need_docker; mkdir -p backups; stamp=$(date +%Y%m%d-%H%M); out="backups/watchover-$stamp.tgz"; tmp=$(mktemp -d)
     $COMPOSE exec -T postgres pg_dump -U "$(env_get POSTGRES_USER || echo watchover)" "$(env_get POSTGRES_DB || echo watchover)" | gzip > "$tmp/db.sql.gz"
     docker run --rm -v "$($COMPOSE config --format json | python3 -c 'import json,sys; print(json.load(sys.stdin)["volumes"]["watchover-data"]["name"])' 2>/dev/null || echo watchover_watchover-data)":/data -v "$tmp":/out alpine tar czf /out/data.tgz -C /data .
-    cp "$ENV_FILE" "$tmp/env"; tar czf "$out" -C "$tmp" .; rm -rf "$tmp"; say "backup written: $out ($(du -h "$out" | cut -f1))" ;;
+    cp "$ENV_FILE" "$tmp/env"; tar czf "$out" -C "$tmp" .; rm -rf "$tmp"; say "backup written: $out ($(du -h "$out" | cut -f1))"
+    keep="${WATCHOVER_BACKUP_KEEP:-$(env_get WATCHOVER_BACKUP_KEEP)}"; keep="${keep:-14}"
+    case "${2:-}" in --keep) keep="${3:-14}" ;; esac
+    ls -1t backups/watchover-*.tgz 2>/dev/null | tail -n +"$((keep + 1))" | while read -r old; do rm -f "$old"; say "old backup removed: $old"; done ;;
   restore)
     need_docker; [ -f "${2:-}" ] || die "usage: ./watchover.sh restore backups/watchover-….tgz"; tmp=$(mktemp -d); tar xzf "$2" -C "$tmp"
     $COMPOSE $(profiles) stop dashboard mcp legacy 2>/dev/null || $COMPOSE stop dashboard

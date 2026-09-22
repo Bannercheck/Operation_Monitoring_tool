@@ -139,3 +139,15 @@ def test_manual_sizing_is_kept(stage):
     assert run(stage, "start").returncode == 0
     assert "WATCHOVER_LLM_CPUS=3\n" in (d / ".env").read_text() and "WATCHOVER_SIZING=manual" in (d / ".env").read_text()
 
+
+def test_backup_rotation(stage):
+    d, _ = stage
+    run(stage, "install")
+    (d / "backups").mkdir(exist_ok=True)
+    for i in range(4):
+        f = d / "backups" / f"watchover-2026010{i + 1}-0200.tgz"; f.write_bytes(b"x"); os.utime(f, (1700000000 + i, 1700000000 + i))
+    r = run(stage, "backup", "--keep", "2")
+    assert r.returncode == 0, r.stderr
+    left = sorted(p.name for p in (d / "backups").glob("watchover-*.tgz"))
+    assert len(left) == 2 and "watchover-20260101-0200.tgz" not in left and "watchover-20260102-0200.tgz" not in left
+

@@ -54,11 +54,14 @@ class Services:
         self.roles = Roles(self.kb)
         self.actions = ActionStore(self.kb if self.kb.pg else os.environ.get("ACTIONS_DB", "actions.db"))
         self.playbook = Playbook(self.kb if self.kb.pg else os.environ.get("PLAYBOOK_DB", "playbook.db"))
-        self.live = LiveStore(spool=os.environ.get("LIVE_SPOOL", "data/live/events.jsonl"))
+        cfg0 = wo_settings.load()
+        self.live = LiveStore(spool=os.environ.get("LIVE_SPOOL", "data/live/events.jsonl"), maxlen=int(cfg0.get("live_ring", 50000) or 50000))
+        self.live.attach_db(self.kb)                          # 100+ hosts: the ring is seconds of data, the database holds the window
+        self.apply_capacity_settings(cfg0)
         self.agents = AgentRegistry(self.kb)
         self.sources = SourceStore(self.kb)
         self.inventory = Inventory(self.kb); self.live.enricher = self.inventory.enrich
-        self.history = History(self.kb); self.live.on_ingest = self.history.add
+        self.history = History(self.kb, retention_days=int(cfg0.get("history_retention_days", 400) or 400)); self.live.on_ingest = self.history.add
         self.notifier = wo_notify.Notifier(self.kb, notify_channels)
         self.anomalies = wo_anomaly.AnomalyTracker(self.kb, self.live)
         from ..drain import TemplateStore
@@ -94,6 +97,14 @@ class Services:
                     self.selfmon = wo_selfmon.SelfMonitor(int(os.environ.get("LIVE_PORT", c.get("live_port", 8600)) or 8600), tok, log=os.environ.get("WATCHOVER_LOG", "")).start()
                 except Exception:  # noqa: BLE001 - the host agent is best effort
                     self.selfmon = None
+
+    def apply_capacity_settings(self, c: dict | None = None) -> None:
+        c = c or wo_settings.load()
+        self.live.retention_h = float(c.get("live_retention_h", 48) or 48)
+        self.live.window_max_events = int(c.get("live_window_max_events", 200000) or 200000)
+        self.live.spool_max_bytes = int(c.get("live_spool_mb", 64) or 64) * 1024 * 1024
+        if hasattr(self, "history"):
+            self.history.retention_days = int(c.get("history_retention_days", 400) or 400)
 
     # ---- LLM (optional, never in the core path)
     OPS_MODEL = "watchover-ops"
@@ -164,7 +175,7 @@ class Services:
                 "llm": {"provider": self.llm_cfg().kind, "model": self.llm_cfg().model, "enabled": self.llm_cfg().enabled},
                 "services": {"history": bool(self.history.thread and self.history.thread.is_alive()) if hasattr(self.history, "thread") else None,
                              "anomalies": bool(self.anomalies.thread and self.anomalies.thread.is_alive()), "alerts": self.alerts.runs, "poller": self.poller.thread.is_alive() if getattr(self.poller, "thread", None) else False},
-                "anomalies": self.anomalies.stats(), "datasets": len(self.datasets.items), "users": self.users.count()}
+                "anomalies": self.anomalies.stats(), "datasets": len(self.datasets.items), "users": self.users.count(), "capacity": self.live.capacity()}
 
     def close(self) -> None:
         for obj in (self.anomalies, self.alerts, self.memory.learner):

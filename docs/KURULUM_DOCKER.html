@@ -335,4 +335,13 @@ unzip -q watchover.zip &amp;&amp; mv hackathon watchover &amp;&amp; cd watchover
 <td>Sunucudan <code>curl -s http://&lt;watchover&gt;:8600/health</code>; 8600 açık mı; token / kayıt anahtarı Bağlantı ayarları › Ajanlar'da geçerli mi</td>
 </tr>
 </tbody>
-</table></body></html>
+</table>
+<h2>Ölçek: 100+ sunucu, 50+ uygulama (Faz 1)</h2>
+<p><strong>Canlı pencere veritabanında.</strong> Ajanlardan gelen her paket <code>live_batches</code> tablosuna yazılır (paket başına bir satır). Bellekteki halka tampon anomali penceresini kapsamadığında (yüksek olay hızı ya da yeniden başlatma sonrası) pencere veritabanından okunur; Sistem › Kapasite paneli hangi kaynağın kullanıldığını, olay/sn hızını, disk ve veritabanı büyümesini gösterir ve ilk zorlanacak yeri uyarı olarak işaretler.</p>
+<p><strong>Saklama süreleri</strong> (Sistem › Ayarlar): canlı olay saklama (varsayılan 48 saat; 1.000 olay/sn ≈ 17 GB/gün), rollup saklama (400 gün), halka tampon boyutu (50.000 olay ≈ 100 MB bellek), spool dosyası (64 MB × 3 nesil).</p>
+<p><strong>Boyutlandırma.</strong> 100 sunucu ≈ 1.000 olay/sn; tek düğüm 32 CPU / 64 GB / 500 GB SSD yeterlidir. Yerel LLM'i ayrı bir kutuya almak için LLM › Bağlantı adresini o sunucunun Ollama'sına (<code>http://&lt;sunucu&gt;:11434</code>) çevirin; uygulama sunucusundaki yük büyük ölçüde düşer.</p>
+<p><strong>Gece yedeği ve soğuk yedek.</strong> Yedek dosyaları döner (varsayılan son 14 tane; <code>WATCHOVER_BACKUP_KEEP</code> ya da <code>backup --keep N</code>). Cron örneği:</p>
+<pre><code>0 2 * * * cd /opt/watchover-docker &amp;&amp; ./watchover.sh backup &gt;&gt; backups/backup.log 2&gt;&amp;1
+</code></pre>
+<p>Soğuk yedek sunucu: aynı klasörü ve <code>.env</code>'i kopyalayın, <code>./watchover.sh install</code> ile kurun, son yedeği <code>./watchover.sh restore backups/watchover-….tgz</code> ile yükleyin; ajanlar yeni adrese <code>--url</code> ile yönlendirilir (kesinti sırasında yerel spool'da biriktirirler, veri kaybı olmaz).</p>
+<p><strong>Ne zaman Kubernetes.</strong> Sıfır kesinti SLA'sı, çoklu lokasyon ya da GPU düğüm havuzu gerektiğinde. Ondan önce Faz 2 (durumsuz API kopyaları, ayrı alıcı servisi, tek worker) uygulanır.</p></body></html>

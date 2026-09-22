@@ -241,3 +241,21 @@ Gecelik yedek: `crontab -e` → `0 2 * * * cd /home/kullanici/watchover && ./wat
 | `password authentication failed` | `.env` parolası birim oluşturulduktan sonra değişti: bölüm 6'daki `ALTER USER` |
 | Giriş yapılamıyor | `./watchover.sh user list`, `user password EMAIL`, `user unlock EMAIL` |
 | Ajan gönderemiyor | Sunucudan `curl -s http://<watchover>:8600/health`; 8600 açık mı; token / kayıt anahtarı Bağlantı ayarları › Ajanlar'da geçerli mi |
+
+## Ölçek: 100+ sunucu, 50+ uygulama (Faz 1)
+
+**Canlı pencere veritabanında.** Ajanlardan gelen her paket `live_batches` tablosuna yazılır (paket başına bir satır). Bellekteki halka tampon anomali penceresini kapsamadığında (yüksek olay hızı ya da yeniden başlatma sonrası) pencere veritabanından okunur; Sistem › Kapasite paneli hangi kaynağın kullanıldığını, olay/sn hızını, disk ve veritabanı büyümesini gösterir ve ilk zorlanacak yeri uyarı olarak işaretler.
+
+**Saklama süreleri** (Sistem › Ayarlar): canlı olay saklama (varsayılan 48 saat; 1.000 olay/sn ≈ 17 GB/gün), rollup saklama (400 gün), halka tampon boyutu (50.000 olay ≈ 100 MB bellek), spool dosyası (64 MB × 3 nesil).
+
+**Boyutlandırma.** 100 sunucu ≈ 1.000 olay/sn; tek düğüm 32 CPU / 64 GB / 500 GB SSD yeterlidir. Yerel LLM'i ayrı bir kutuya almak için LLM › Bağlantı adresini o sunucunun Ollama'sına (`http://<sunucu>:11434`) çevirin; uygulama sunucusundaki yük büyük ölçüde düşer.
+
+**Gece yedeği ve soğuk yedek.** Yedek dosyaları döner (varsayılan son 14 tane; `WATCHOVER_BACKUP_KEEP` ya da `backup --keep N`). Cron örneği:
+
+```
+0 2 * * * cd /opt/watchover-docker && ./watchover.sh backup >> backups/backup.log 2>&1
+```
+
+Soğuk yedek sunucu: aynı klasörü ve `.env`'i kopyalayın, `./watchover.sh install` ile kurun, son yedeği `./watchover.sh restore backups/watchover-….tgz` ile yükleyin; ajanlar yeni adrese `--url` ile yönlendirilir (kesinti sırasında yerel spool'da biriktirirler, veri kaybı olmaz).
+
+**Ne zaman Kubernetes.** Sıfır kesinti SLA'sı, çoklu lokasyon ya da GPU düğüm havuzu gerektiğinde. Ondan önce Faz 2 (durumsuz API kopyaları, ayrı alıcı servisi, tek worker) uygulanır.
