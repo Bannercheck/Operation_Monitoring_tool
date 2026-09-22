@@ -61,6 +61,9 @@ class Services:
         self.history = History(self.kb); self.live.on_ingest = self.history.add
         self.notifier = wo_notify.Notifier(self.kb, notify_channels)
         self.anomalies = wo_anomaly.AnomalyTracker(self.kb, self.live)
+        from ..drain import TemplateStore
+        self.templates = TemplateStore(self.kb)
+        self.anomalies.templates = self.templates
         self.alerts = wo_notify.AlertEngine(self.notifier, self.live, self.agents, self.sources); self.alerts.anomalies = self.anomalies
         self.poller = Poller(self.sources, self.live)
         self.receiver = None
@@ -197,6 +200,10 @@ class DatasetRegistry:
                                "mapping": mapping or {}, "loaded_at": datetime.now(UTC).isoformat(timespec="seconds")}
         self.record_first_actions(analysis, name)
         self.svc.playbook.record(analysis, name)
+        try:
+            self.svc.templates.learn(analysis.observations[:50000], source=name)          # Drain: every dataset teaches the template miner
+        except Exception:  # noqa: BLE001
+            pass
         try:
             self.svc.kb.record(analysis, name, self.svc.lang)
         except Exception:  # noqa: BLE001 - lessons are best effort

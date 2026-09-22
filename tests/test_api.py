@@ -401,3 +401,16 @@ def test_llm_review_endpoint(client, monkeypatch):
     assert r.status_code == 200 and "LOG LINES matching" in seen["bundle"]
     r = client.post(f"/api/datasets/{key}/review", json={"scope": "dataset"}, headers=h)
     assert r.status_code == 200 and "DATASET ·" in seen["bundle"]
+
+
+def test_templates_and_profiles_api(client):
+    h = token(client)
+    key = any_dataset(client, h)
+    d = client.get("/api/grok/templates?limit=5", headers=h).json()
+    assert d["stats"]["clusters"] > 0 and d["rows"] and all("template" in r for r in d["rows"])
+    cid = d["rows"][0]["id"]
+    p = client.post(f"/api/grok/templates/{cid}/propose", headers=h).json()
+    assert p["pattern"].startswith("^") and p["template"]
+    assert client.get("/api/grok/profiles", headers=h).status_code == 200
+    assert client.delete("/api/grok/profiles/nope", headers=h).status_code == 404
+    assert key

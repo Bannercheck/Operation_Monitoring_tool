@@ -19,6 +19,8 @@ build/
 .pytest_cache/
 *.db
 data/live/
+data/profiles.json
+data/grok.json
 
 # Editör / OS
 .DS_Store

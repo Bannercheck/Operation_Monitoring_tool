@@ -36,6 +36,12 @@ def _parse_one(fname: str, text: str, mapping: dict | None, progress=None, base:
     keys: list[str] = []
     for r in head:
         keys.extend(k for k in r if k not in keys)
+    learned = None
+    if mapping is None and keys and fmt in ("json", "jsonl", "csv", "kv", "grok"):          # a shape seen before: reuse the roles decided then
+        from . import profiles as wo_profiles
+        learned = wo_profiles.lookup(fmt, keys)
+        if learned:
+            mapping = dict(learned["mapping"])
     roles = auto_map(keys, head, mapping)
     if progress is None:
         rows = list(parser.parse(text, fname, mapping, conf))
@@ -48,8 +54,14 @@ def _parse_one(fname: str, text: str, mapping: dict | None, progress=None, base:
             if len(rows) % 5000 == 0:
                 progress(base + span * min(o.line_no / n_lines, 1.0), fname)
         progress(base + span, fname)
+    if keys and fmt in ("json", "jsonl", "csv", "kv", "grok"):
+        try:
+            from . import profiles as wo_profiles
+            wo_profiles.remember(fmt, keys, {k: v for k, v in roles.items() if v}, name=fname, source="user" if (mapping and not learned) else "auto")
+        except Exception:  # noqa: BLE001 - remembering is a convenience, never a parse failure
+            pass
     return rows, {"file": fname, "format": fmt, "confidence": conf, "rows": len(rows),
-                  "kind": rows[0].kind if rows else "-", "keys": keys, "roles": roles, "sha": stamp.file_id(fname, text)}
+                  "kind": rows[0].kind if rows else "-", "keys": keys, "roles": roles, "profile": (learned or {}).get("id", ""), "sha": stamp.file_id(fname, text)}
 
 
 def _workers(items: list[tuple[str, str]]) -> int:

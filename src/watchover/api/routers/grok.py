@@ -9,7 +9,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
-from ... import grok
+from ... import drain, grok
 from ..security import require, services
 
 router = APIRouter(prefix="/grok", tags=["grok"])
@@ -130,3 +130,63 @@ def unparsed(key: str, limit: int = 200, user=Depends(require("page.parser")), s
         g["no_level"] += 1 if at.get("_sev_src", "field") not in ("field", "text") else 0
     rows = sorted(groups.values(), key=lambda g: -g["count"])[:limit]
     return {"total": len(a.observations), "unparsed": sum(g["count"] for g in groups.values()), "groups": rows}
+
+
+# ------------------------------------------------------------------ Drain templates (learned from the live feed and every dataset)
+@router.get("/templates")
+def templates(q: str = "", limit: int = 200, user=Depends(require("page.parser")), svc=Depends(services)):
+    return {"stats": svc.templates.stats(), "rows": svc.templates.list(q, limit)}
+
+
+@router.post("/templates/{cid}/propose")
+def propose(cid: int, user=Depends(require("page.parser")), svc=Depends(services)):
+    """A grok pattern drafted from a cluster: literal tokens kept, variables typed from the sample (IP, NUMBER, path, URI, UUID, ISO time)."""
+    c = svc.templates.get(cid)
+    if not c:
+        raise KeyError(cid)
+    pat = drain.propose_grok(c.template, c.sample)
+    ok = grok.test_pattern(pat, c.sample)
+    return {"pattern": pat, "sample": c.sample, "template": c.template, "matches_sample": bool(ok.get("matched"))}
+
+
+@router.delete("/templates/{cid}")
+def forget_template(cid: int, user=Depends(require("act.parser")), svc=Depends(services)):
+    c = svc.templates.get(cid)
+    if not c:
+        raise KeyError(cid)
+    with svc.templates.drain.lock:
+        svc.templates.drain.clusters.pop(cid, None)
+        leaf = svc.templates.drain._leaf(c.tokens, create=False)
+        if leaf and c in leaf:
+            leaf.remove(c)
+    svc.kb._exec("DELETE FROM drain_clusters WHERE id=?", (cid,))
+    return {"ok": True}
+
+
+# ------------------------------------------------------------------ learned column mappings (format profiles)
+class ProfilePatch(BaseModel):
+    mapping: dict | None = None
+    name: str | None = None
+
+
+@router.get("/profiles")
+def profiles_list(user=Depends(require("page.parser"))):
+    from ... import profiles as wo_profiles
+    return wo_profiles.all_profiles()
+
+
+@router.patch("/profiles/{sig}")
+def profiles_update(sig: str, body: ProfilePatch, user=Depends(require("act.parser"))):
+    from ... import profiles as wo_profiles
+    rec = wo_profiles.update(sig, body.mapping, body.name)
+    if not rec:
+        raise KeyError(sig)
+    return rec
+
+
+@router.delete("/profiles/{sig}")
+def profiles_delete(sig: str, user=Depends(require("act.parser"))):
+    from ... import profiles as wo_profiles
+    if not wo_profiles.delete(sig):
+        raise KeyError(sig)
+    return {"ok": True}

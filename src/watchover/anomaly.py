@@ -125,6 +125,7 @@ class AnomalyTracker:
             found += self._scan_patterns(now)
             found += self._scan_metrics(now)
             found += self._scan_thresholds(now)
+            self._mine_templates(now)
         self._clear_recovered({f["key"] for f in found})
         self.runs += 1
         self.last_run = _now()
@@ -252,6 +253,22 @@ class AnomalyTracker:
                                         detail=f"{metric} averaged {value:.0f}% over the last {WINDOW_MIN} min; this host's normal is {med:.0f} ± {mad:.0f}%",
                                         observed=value, baseline=med, spread=mad, score=z, series=hist[-60:] + [value]))
         return out
+
+    def _mine_templates(self, now: datetime) -> None:
+        """Drain learns from the last window of the live feed (messages newer than the previous pass)."""
+        store = getattr(self, "templates", None)
+        if store is None:
+            return
+        since = getattr(self, "_mined_until", None) or (now - timedelta(minutes=WINDOW_MIN))
+        try:
+            obs = self.live.snapshot(since=since)
+        except TypeError:
+            obs = self.live.snapshot()
+        try:
+            store.learn(obs[:20000], source="live")
+        except Exception:  # noqa: BLE001
+            return
+        self._mined_until = now
 
     def _scan_thresholds(self, now: datetime) -> list[dict]:
         """Hard limits next to the baseline logic: a host whose latest CPU / memory / disk / GPU reading is at or above the configured

@@ -44,6 +44,7 @@ BASE: dict[str, str] = {
     "JAVASTACKTRACEPART": r"%{SPACE}at %{JAVACLASS:class}\.%{JAVAMETHOD:method}\(%{JAVAFILE:file}(?::%{NUMBER:line})?\)", "JAVALOGMESSAGE": r"(?:.*)",
     "CATALINA_DATESTAMP": r"(?:%{MONTH} %{MONTHDAY}, %{YEAR} %{HOUR}:%{MINUTE}:%{SECOND} (?:AM|PM))", "TOMCAT_DATESTAMP": r"%{YEAR}-%{MONTHNUM}-%{MONTHDAY} %{HOUR}:%{MINUTE}:%{SECOND}(?:,%{INT})? %{ISO8601_TIMEZONE}?",
     "SQUID_STATUS": r"(?:TCP|UDP|NONE)_[A-Z_]+", "NAGIOSTIME": r"\[%{NUMBER:nagios_epoch}\]",
+    "QUANTITY": r"%{NUMBER}\s?(?:ms|us|ns|s|sec|m|min|h|%|[KMGT]i?B|[kmgt]b|B)",
 }
 
 # ------------------------------------------------------------------ line packs: whole-line patterns with the role of each field
