@@ -7,6 +7,8 @@
 //
 //	POST /ingest              agent batches (X-API-Key / Bearer token, X-File-Name, X-Agent)       -> spooled, 200 {"queued": true}
 //	POST /enroll              agent self-enrolment                                                 -> proxied to the dashboard
+//	POST /rum, /mobile        browser / mobile sensor batches (?k=<app key>, CORS, origin check)   -> spooled, 202
+//	GET  /rum.js              the browser sensor
 //	GET  /agent.py, /agent/install.sh                                                             -> the collector itself
 //	GET  /health, /metrics    counters, backlog, auth state (JSON / Prometheus text)
 //
@@ -83,7 +85,13 @@ type agentRec struct {
 	Site string `json:"site"`
 }
 
+type appRec struct {
+	Name    string   `json:"name"`
+	Origins []string `json:"origins"`
+}
+
 type authState struct {
+	Apps      map[string]appRec   `json:"apps"`       // RUM / mobile app key -> app (keys are public; origins bind browser posts)
 	Agents    map[string]agentRec `json:"agents"`     // sha256(token) -> agent
 	KeySHA256 string              `json:"key_sha256"` // legacy shared key, "" when none
 	Open      bool                `json:"open"`       // no key and no active agent: accept anyone (first setup only)
@@ -118,6 +126,9 @@ func (a *auth) reload() {
 	}
 	if st.Agents == nil {
 		st.Agents = map[string]agentRec{}
+	}
+	if st.Apps == nil {
+		st.Apps = map[string]appRec{}
 	}
 	a.mu.Lock()
 	a.st, a.mtime = &st, fi.ModTime()
@@ -276,7 +287,7 @@ type server struct {
 	sp    *spool
 	proxy *httputil.ReverseProxy
 	start time.Time
-	stats struct{ batches, bytes, rejected, busy, unauth atomic.Int64 }
+	stats struct{ batches, bytes, rejected, busy, unauth, sensor atomic.Int64 }
 }
 
 func (s *server) json(w http.ResponseWriter, code int, v any) {
@@ -384,6 +395,107 @@ func (s *server) ingest(w http.ResponseWriter, r *http.Request) {
 	s.json(w, 200, map[string]any{"accepted": lines, "agent": agentName, "identity": identity, "queued": true})
 }
 
+const rumMaxBody = 512 << 10
+
+func originAllowed(app appRec, origin string) bool {
+	if origin == "" || len(app.Origins) == 0 {
+		return true // mobile SDKs send no Origin; an app without a list accepts any
+	}
+	o := strings.TrimRight(origin, "/")
+	for _, a := range app.Origins {
+		if a == "*" || a == o || (strings.HasPrefix(a, "*.") && strings.HasSuffix(o, a[1:])) {
+			return true
+		}
+	}
+	return false
+}
+
+func cors(w http.ResponseWriter, origin string) {
+	if origin != "" {
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+		w.Header().Add("Vary", "Origin")
+	} else {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+	}
+}
+
+// rum: browser (/rum) and mobile (/mobile) sensor batches. The app key comes in ?k= (sendBeacon cannot set headers) or
+// X-Watchover-Key; browser posts must come from one of the app's origins. Spooled like agent batches, parsed by the dashboard.
+func (s *server) rum(w http.ResponseWriter, r *http.Request) {
+	origin := r.Header.Get("Origin")
+	cors(w, origin)
+	if r.Method == http.MethodOptions {
+		w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Watchover-Key")
+		w.Header().Set("Access-Control-Max-Age", "600")
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if r.Method != http.MethodPost {
+		s.json(w, http.StatusMethodNotAllowed, map[string]string{"error": "POST only"})
+		return
+	}
+	key := r.Header.Get("X-Watchover-Key")
+	if key == "" {
+		key = r.URL.Query().Get("k")
+	}
+	s.auth.mu.RLock()
+	st := s.auth.st
+	s.auth.mu.RUnlock()
+	if st == nil {
+		w.Header().Set("Retry-After", "5")
+		s.json(w, http.StatusServiceUnavailable, map[string]string{"error": "receiver starting: retry"})
+		return
+	}
+	app, ok := st.Apps[key]
+	if !ok {
+		s.stats.unauth.Add(1)
+		s.json(w, http.StatusUnauthorized, map[string]string{"error": "unknown or disabled app key"})
+		return
+	}
+	if !originAllowed(app, origin) {
+		s.stats.unauth.Add(1)
+		s.json(w, http.StatusForbidden, map[string]string{"error": "origin not allowed for this app"})
+		return
+	}
+	if s.sp.backlog.Load() > s.cfg.maxBacklog {
+		s.stats.busy.Add(1)
+		w.Header().Set("Retry-After", "10")
+		s.json(w, http.StatusServiceUnavailable, map[string]string{"error": "backlog full"})
+		return
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, rumMaxBody+1))
+	if err != nil || len(body) == 0 {
+		s.json(w, http.StatusBadRequest, map[string]string{"error": "empty or unreadable body"})
+		return
+	}
+	if len(body) > rumMaxBody {
+		s.json(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "sensor batch too large"})
+		return
+	}
+	ua := r.Header.Get("User-Agent")
+	if len(ua) > 300 {
+		ua = ua[:300]
+	}
+	hb, _ := json.Marshal(map[string]any{"v": 1, "path": r.URL.Path, "app": app.Name, "app_key": key, "origin": origin, "ua": ua,
+		"ts": time.Now().UTC().Format(time.RFC3339Nano), "len": len(body)})
+	rec := record{header: hb, body: body, done: make(chan error, 1)}
+	select {
+	case s.sp.in <- rec:
+	case <-time.After(2 * time.Second):
+		s.stats.busy.Add(1)
+		s.json(w, http.StatusServiceUnavailable, map[string]string{"error": "receiver busy: retry"})
+		return
+	}
+	if err := <-rec.done; err != nil {
+		s.stats.rejected.Add(1)
+		s.json(w, http.StatusServiceUnavailable, map[string]string{"error": "spool write failed"})
+		return
+	}
+	s.stats.sensor.Add(1)
+	s.json(w, http.StatusAccepted, map[string]any{"ok": true, "queued": true})
+}
+
 func (s *server) health() map[string]any {
 	s.auth.mu.RLock()
 	st := s.auth.st
@@ -393,7 +505,7 @@ func (s *server) health() map[string]any {
 		agents = len(st.Agents)
 	}
 	return map[string]any{"status": "ok", "engine": "go", "uptime_s": int(time.Since(s.start).Seconds()), "auth_ready": ready, "agents": agents,
-		"batches": s.stats.batches.Load(), "bytes": s.stats.bytes.Load(), "unauthorized": s.stats.unauth.Load(), "busy": s.stats.busy.Load(),
+		"batches": s.stats.batches.Load(), "sensor_batches": s.stats.sensor.Load(), "bytes": s.stats.bytes.Load(), "unauthorized": s.stats.unauth.Load(), "busy": s.stats.busy.Load(),
 		"write_errors": s.stats.rejected.Load(), "backlog_bytes": s.sp.backlog.Load(), "backlog_segments": s.sp.segments.Load(),
 		"max_backlog_bytes": s.cfg.maxBacklog, "queue": len(s.sp.in)}
 }
@@ -420,11 +532,20 @@ func (s *server) routes() http.Handler {
 		s.ingest(w, r)
 	})
 	mux.HandleFunc("/enroll", func(w http.ResponseWriter, r *http.Request) { s.proxy.ServeHTTP(w, r) })
-	files := map[string]string{"/agent.py": "agent.py", "/agent/install.sh": "agent-install.sh"}
+	mux.HandleFunc("/rum", s.rum)
+	mux.HandleFunc("/mobile", s.rum)
+	files := map[string]string{"/agent.py": "agent.py", "/agent/install.sh": "agent-install.sh", "/rum.js": "rum.js"}
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if f, ok := files[r.URL.Path]; ok && r.Method == http.MethodGet {
 			b, err := os.ReadFile(filepath.Join(s.cfg.agentDir, f))
 			if err == nil {
+				if strings.HasSuffix(f, ".js") {
+					w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+					w.Header().Set("Access-Control-Allow-Origin", "*")
+					w.Header().Set("Cache-Control", "public, max-age=3600")
+					_, _ = w.Write(b)
+					return
+				}
 				w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 				_, _ = w.Write(b)
 				return

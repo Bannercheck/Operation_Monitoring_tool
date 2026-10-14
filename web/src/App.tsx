@@ -26,6 +26,8 @@ import Services from "./pages/apm/Services";
 import ServiceDetail from "./pages/apm/ServiceDetail";
 import Traces from "./pages/apm/Traces";
 import TraceDetail from "./pages/apm/TraceDetail";
+import Rum from "./pages/rum/Rum";
+import RumSession from "./pages/rum/Session";
 
 export default function App() {
   const { user, ready, acceptToken } = useAuth();
@@ -61,6 +63,8 @@ export default function App() {
         <Route path="/services/:name" element={<ServiceDetail />} />
         <Route path="/traces" element={<Traces />} />
         <Route path="/traces/:id" element={<TraceDetail />} />
+        <Route path="/rum" element={<Rum />} />
+        <Route path="/rum/sessions/:id" element={<RumSession />} />
         <Route path="/assist" element={<Assist />} />
         <Route path="/llm" element={<Llm />} />
         <Route path="/itsm" element={<Itsm />} />

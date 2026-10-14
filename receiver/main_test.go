@@ -179,3 +179,50 @@ func TestAgentFilesEnrollProxyAndCrashRecovery(t *testing.T) {
 	}
 	_ = strconv.Itoa(0)
 }
+
+func TestRumAndMobileIntake(t *testing.T) {
+	st := &authState{Apps: map[string]appRec{"pk_web": {Name: "ik-portal", Origins: []string{"https://ik.example.com", "*.turkcell.com.tr"}}, "pk_mob": {Name: "ik-mobil"}}}
+	s, ts, stop := setup(t, st, nil)
+	defer stop()
+	send := func(path, origin, body string) *http.Response {
+		req, _ := http.NewRequest("POST", ts.URL+path, strings.NewReader(body))
+		if origin != "" {
+			req.Header.Set("Origin", origin)
+		}
+		r, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.Body.Close()
+		return r
+	}
+	if r := send("/rum?k=pk_web", "https://ik.example.com", `{"session":"s1","events":[]}`); r.StatusCode != 202 || r.Header.Get("Access-Control-Allow-Origin") != "https://ik.example.com" {
+		t.Fatalf("web %d %v", r.StatusCode, r.Header)
+	}
+	if r := send("/rum?k=pk_web", "https://hr.turkcell.com.tr", `{}`); r.StatusCode != 202 {
+		t.Fatalf("wildcard origin %d", r.StatusCode)
+	}
+	if r := send("/rum?k=pk_web", "https://evil.example", `{}`); r.StatusCode != 403 {
+		t.Fatalf("foreign origin %d", r.StatusCode)
+	}
+	if r := send("/mobile?k=pk_mob", "", `{"platform":"android"}`); r.StatusCode != 202 {
+		t.Fatalf("mobile %d", r.StatusCode)
+	}
+	if r := send("/mobile?k=nope", "", `{}`); r.StatusCode != 401 {
+		t.Fatalf("bad key %d", r.StatusCode)
+	}
+	if r := send("/rum?k=pk_web", "", strings.Repeat("x", rumMaxBody+10)); r.StatusCode != 413 {
+		t.Fatalf("too large %d", r.StatusCode)
+	}
+	req, _ := http.NewRequest("OPTIONS", ts.URL+"/rum?k=pk_web", nil)
+	req.Header.Set("Origin", "https://ik.example.com")
+	r, _ := http.DefaultClient.Do(req)
+	if r.StatusCode != 204 || !strings.Contains(r.Header.Get("Access-Control-Allow-Headers"), "Content-Type") {
+		t.Fatalf("preflight %d", r.StatusCode)
+	}
+	time.Sleep(200 * time.Millisecond)
+	recs := records(t, s.cfg.spool)
+	if len(recs) != 3 || recs[0]["path"] != "/rum" || recs[0]["app"] != "ik-portal" || recs[2]["path"] != "/mobile" || recs[0]["origin"] != "https://ik.example.com" {
+		t.Fatalf("spooled %v", recs)
+	}
+}

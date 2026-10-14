@@ -10,6 +10,7 @@ RUN apk upgrade --no-cache && adduser -D -u 10001 watchover && mkdir -p /app/age
 COPY --from=build /out/wo-receiver /usr/local/bin/wo-receiver
 COPY agent.py /app/agent/agent.py
 COPY scripts/agent-install.sh /app/agent/agent-install.sh
+COPY sensors/web/rum.js /app/agent/rum.js
 USER watchover
 ENV WO_LISTEN=:8600 WO_SPOOL=/data/spool WO_AGENT_DIR=/app/agent
 EXPOSE 8600

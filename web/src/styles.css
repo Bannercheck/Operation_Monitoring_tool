@@ -165,3 +165,11 @@ pre.code { background: #0b1220; border: 1px solid var(--line); border-radius: 10
 .wf-dur { position: absolute; right: -62px; top: 6px; width: 58px; text-align: right; color: var(--muted); font-size: 11px; }
 .kv { width: 100%; border-collapse: collapse; } .kv td { padding: 4px 6px; border-bottom: 1px solid var(--line); vertical-align: top; word-break: break-all; } .kv td:first-child { color: var(--muted); white-space: nowrap; width: 38%; word-break: normal; }
 .badge.blue { background: rgba(96, 165, 250, 0.18); color: #bfdbfe; }
+/* user session timeline */
+.tl { display: flex; flex-direction: column; }
+.tl-row { display: grid; grid-template-columns: 74px 26px minmax(0, 1fr) 220px 150px; align-items: center; gap: 6px; padding: 6px 4px; border-bottom: 1px solid var(--line); }
+.tl-row.sub { padding-left: 18px; background: rgba(148, 163, 184, 0.03); } .tl-row.err .tl-n > span:first-child { color: var(--red); }
+.tl-t { color: var(--dim); font-size: 11px; } .tl-i { font-size: 15px; text-align: center; } .tl-n { min-width: 0; overflow-wrap: anywhere; }
+.tl-d { display: flex; align-items: center; gap: 6px; } .tl-b { text-align: right; }
+@media (max-width: 900px) { .tl-row { grid-template-columns: 60px 22px minmax(0, 1fr); } .tl-d, .tl-b { grid-column: 3; } }
+

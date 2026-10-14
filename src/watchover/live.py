@@ -580,10 +580,36 @@ def metric_of(o: Observation) -> list[tuple] | None:
 
 
 MAX_BODY = 16 * 1024 * 1024                                    # one POST at most 16 MB (agents batch every second anyway)
-AGENT_FILES = {"/agent.py": Path(__file__).resolve().parents[2] / "agent.py", "/agent/install.sh": Path(__file__).resolve().parents[2] / "scripts" / "agent-install.sh"}
+RUM_MAX_BODY = 512 * 1024                                       # one sensor batch from a browser or a phone
+_ROOT = Path(__file__).resolve().parents[2]
+AGENT_FILES = {"/agent.py": _ROOT / "agent.py", "/agent/install.sh": _ROOT / "scripts" / "agent-install.sh", "/rum.js": _ROOT / "sensors" / "web" / "rum.js"}
+RUM_PATHS = ("/rum", "/mobile")
 
 
-def make_handler(store: LiveStore, api_key: str | None, registry=None):
+def rum_request(rum, key: str, origin: str | None, ua: str, body: bytes) -> tuple[int, dict]:
+    """Shared by the Python receiver and the Go receiver's spool consumer: app key, origin and sampling checks, then intake."""
+    app = rum.app_by_key(key) if rum is not None else None
+    if app is None:
+        return 401, {"error": "unknown or disabled app key"}
+    if not rum.origin_allowed(app, origin):
+        return 403, {"error": "origin not allowed for this app"}
+    try:
+        doc = json.loads(body or b"{}")
+    except json.JSONDecodeError:
+        return 400, {"error": "expected JSON"}
+    pct = int(app.get("sample_pct") or 100)
+    if pct < 100 and isinstance(doc, dict):
+        import hashlib
+        if int(hashlib.sha1(str(doc.get("session") or "").encode()).hexdigest()[:8], 16) % 100 >= pct:
+            return 202, {"ok": True, "sampled": False}
+    try:
+        res = rum.ingest(app, doc, ua or "")
+    except ValueError as e:
+        return 400, {"error": str(e)}
+    return 202, {"ok": True, **res}
+
+
+def make_handler(store: LiveStore, api_key: str | None, registry=None, rum=None):
     """Auth order: per-agent token from the registry (identity = the registered record) > legacy shared key > open when no key is set.
     GET /agent.py and /agent/install.sh serve the collector itself, so a server needs nothing but python3 and this port."""
     class H(BaseHTTPRequestHandler):
@@ -618,19 +644,56 @@ def make_handler(store: LiveStore, api_key: str | None, registry=None):
                 return True
             return hmac.compare_digest(tok.encode(), api_key.encode())
 
+        def _cors(self, origin: str | None) -> None:
+            if origin:
+                self.send_header("Access-Control-Allow-Origin", origin)
+                self.send_header("Vary", "Origin")
+            else:
+                self.send_header("Access-Control-Allow-Origin", "*")
+
+        def do_OPTIONS(self):
+            path = self.path.split("?", 1)[0]
+            if path not in RUM_PATHS:
+                return self._send(404, {"error": "not found"})
+            self.send_response(204); self._cors(self.headers.get("Origin"))
+            self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS"); self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Watchover-Key")
+            self.send_header("Access-Control-Max-Age", "600"); self.send_header("Content-Length", "0"); self.end_headers()
+
+        def _rum(self, path: str):
+            from urllib.parse import parse_qs, urlsplit
+            key = self.headers.get("X-Watchover-Key") or (parse_qs(urlsplit(self.path).query).get("k") or [""])[0]
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                n = -1
+            if n < 0 or n > RUM_MAX_BODY:
+                code, body = 413, {"error": "sensor batch too large"}
+            else:
+                code, body = rum_request(rum, key, self.headers.get("Origin"), self.headers.get("User-Agent", ""), self.rfile.read(n) if n else b"")
+            data = json.dumps(body).encode()
+            self.send_response(code); self._cors(self.headers.get("Origin"))
+            self.send_header("Content-Type", "application/json"); self.send_header("Content-Length", str(len(data))); self.end_headers()
+            self.wfile.write(data)
+
         def do_GET(self):
             if self.path.startswith("/health"):
                 return self._send(200, {"status": "ok", "received": store.received, "buffered": len(store.buf), "agents": len(store.agents)})
             path = self.path.split("?", 1)[0]
             if path in AGENT_FILES and AGENT_FILES[path].exists():
                 data = AGENT_FILES[path].read_bytes()
-                self.send_response(200); self.send_header("Content-Type", "text/plain; charset=utf-8"); self.send_header("Content-Length", str(len(data))); self.end_headers()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/javascript; charset=utf-8" if path.endswith(".js") else "text/plain; charset=utf-8")
+                if path.endswith(".js"):
+                    self.send_header("Access-Control-Allow-Origin", "*"); self.send_header("Cache-Control", "public, max-age=3600")
+                self.send_header("Content-Length", str(len(data))); self.end_headers()
                 return self.wfile.write(data)
             self._send(404, {"error": "not found"})
 
         def do_POST(self):
             if self.path.startswith("/enroll"):
                 return self._enroll()
+            if self.path.split("?", 1)[0] in RUM_PATHS:
+                return self._rum(self.path)
             if not self.path.startswith("/ingest"):
                 return self._send(404, {"error": "not found"})
             if not self._authorized():
@@ -681,8 +744,8 @@ def make_handler(store: LiveStore, api_key: str | None, registry=None):
     return H
 
 
-def start_receiver(store: LiveStore, port: int = 8600, api_key: str | None = None, registry=None) -> ThreadingHTTPServer:
-    server = ThreadingHTTPServer(("0.0.0.0", port), make_handler(store, api_key, registry))
+def start_receiver(store: LiveStore, port: int = 8600, api_key: str | None = None, registry=None, rum=None) -> ThreadingHTTPServer:
+    server = ThreadingHTTPServer(("0.0.0.0", port), make_handler(store, api_key, registry, rum))
     server.daemon_threads = True
     threading.Thread(target=server.serve_forever, daemon=True, name=f"live-receiver-{port}").start()
     return server
@@ -776,7 +839,69 @@ def simulate_metrics(rng, state: dict, incident: bool = False) -> bytes:
     return ("\n".join(out) + "\n").encode()
 
 
-def start_simulator(store: LiveStore, interval: float = 1.0, agent: str = "simulator") -> threading.Event:
+SIM_SCREENS = {"mobile": ["Giriş", "Ana sayfa", "Bordro", "İzin talebi", "Masraf", "Profil"], "web": ["/login", "/home", "/payslips", "/leave", "/expenses", "/profile"]}
+SIM_CALLS = {"Giriş": ("POST", "/api/auth/login"), "Ana sayfa": ("GET", "/api/me/summary"), "Bordro": ("GET", "/api/employee/{n}/payslips"),
+             "İzin talebi": ("POST", "/api/employee/{n}/leave"), "Masraf": ("GET", "/api/employee/{n}/expenses"), "Profil": ("GET", "/api/employee/{n}")}
+
+
+def simulate_rum(rng, incident: bool = False) -> tuple[list[tuple[str, dict]], list[str]]:
+    """User sessions as the sensors would send them (an HR mobile app on Android and iOS, the HR web portal) plus the backend
+    log lines those sessions cause (hr-api, payroll-db) with the same trace ids. During an incident payslips are slow, some
+    calls fail and the Android app occasionally crashes."""
+    now_ms = datetime.now(UTC).timestamp() * 1000
+    sessions, backend = [], []
+    for _ in range(rng.randint(1, 2)):
+        platform = rng.choice(["android", "ios", "web", "android"])
+        app = "ik-portal" if platform == "web" else "ik-mobil"
+        sid = "%024x" % rng.getrandbits(96)
+        emp = rng.randint(10000, 99999)
+        user = f"P{emp}"
+        t = now_ms - rng.uniform(0, 4000)
+        ev = []
+        if platform != "web":
+            ev.append({"t": "start", "ts": t, "dur": rng.uniform(600, 2400), "cold": rng.random() < 0.3})
+            t += 800
+        for i in range(rng.randint(2, 4)):
+            name = rng.choice(SIM_SCREENS["mobile"][1:]) if i else "Giriş"
+            method, path = SIM_CALLS[name]
+            path = path.replace("{n}", str(emp))
+            trace, span, cspan = "%032x" % rng.getrandbits(128), "%016x" % rng.getrandbits(64), "%016x" % rng.getrandbits(64)
+            slow = incident and name == "Bordro"
+            d_db = rng.uniform(900, 3500) if slow else rng.uniform(3, 30)
+            d_api = d_db + rng.uniform(10, 60)
+            d_net = d_api + rng.uniform(40, 220 if platform != "web" else 80)
+            fail = slow and rng.random() < 0.35
+            st = 503 if fail else (201 if method == "POST" else 200)
+            view = SIM_SCREENS["web"][SIM_SCREENS["mobile"].index(name)] if platform == "web" else name
+            ev.append({"t": "view", "ts": t, "name": view, "dur": d_net + rng.uniform(20, 120), "trace": trace, "span": span,
+                       **({"vitals": {"lcp": round(rng.uniform(900, 4200 if slow else 2600)), "cls": round(rng.uniform(0, 0.18), 3), "inp": round(rng.uniform(60, 420)),
+                                      "fcp": round(rng.uniform(400, 1600)), "ttfb": round(rng.uniform(80, 700))}} if platform == "web" and i == 0 else {})})
+            ev.append({"t": "http", "ts": t + 15, "method": method, "url": f"https://ik.turkcell.example{path}?lang=tr", "status": st, "dur": d_net, "trace": trace, "span": cspan, "parent": span})
+            if fail:
+                ev.append({"t": "error", "ts": t + d_net + 20, "msg": f"Bordro yüklenemedi: HTTP {st} (personel {emp})", "trace": trace})
+                if platform == "android" and rng.random() < 0.3:
+                    ev.append({"t": "crash", "ts": t + d_net + 60, "msg": "java.lang.IllegalStateException: payslip adapter null",
+                               "stack": "at com.turkcell.ik.PayslipAdapter.bind(PayslipAdapter.kt:88)\nat androidx.recyclerview.widget.RecyclerView..."})
+            iso = lambda ms: datetime.fromtimestamp(ms / 1000, UTC).isoformat()   # noqa: E731
+            backend.append(json.dumps({"ts": iso(t + 30), "level": "error" if fail else "info", "service": "hr-api", "host": "hr-app-01", "env": "prod",
+                                       "msg": f"{method} {path} {st}", "traceparent": f"00-{trace}-{cspan}-01", "duration_ms": round(d_api, 1),
+                                       "http.method": method, "http.route": path, "http.status_code": st, "user.id": user, "span_id": "%016x" % rng.getrandbits(64)}))
+            backend.append(json.dumps({"ts": iso(t + 35), "level": "warn" if slow else "info", "service": "hr-api", "host": "payroll-db", "env": "prod",
+                                       "msg": "SELECT * FROM payslip WHERE emp_id = ?" if name == "Bordro" else "SELECT * FROM employee WHERE id = ?",
+                                       "trace_id": trace, "duration_ms": round(d_db, 1), "db.system": "oracle", "span.kind": "db"}))
+            t += d_net + rng.uniform(1500, 6000)
+            if i and rng.random() < 0.5:
+                act = {"Bordro": "click: Bordro indir", "İzin talebi": "click: Gönder", "Masraf": "click: Masraf ekle", "Profil": "click: Kaydet", "Ana sayfa": "click: Duyurular"}[name]
+                ev.append({"t": "action", "ts": t, "name": act, "dur": rng.uniform(80, 600), "trace": "%032x" % rng.getrandbits(128), "span": "%016x" % rng.getrandbits(64)})
+                t += 1200
+        doc = {"session": sid, "platform": platform, "version": "3.4.1" if platform == "android" else "3.4.0" if platform == "ios" else "web",
+               "env": "prod", "user": user, "device": {"os": "Android 14" if platform == "android" else "iOS 18.1" if platform == "ios" else "", "model": rng.choice(["SM-S911B", "Pixel 8"]) if platform == "android" else "iPhone15,2" if platform == "ios" else "",
+                                                     "net": rng.choice(["wifi", "cellular"]), "carrier": "Turkcell"}, "events": ev}
+        sessions.append((app, doc))
+    return sessions, backend
+
+
+def start_simulator(store: LiveStore, interval: float = 1.0, agent: str = "simulator", extra=None) -> threading.Event:
     """Feed the store every `interval` seconds until the returned Event is set. Bursts every ~2 minutes."""
     import random
     stop = threading.Event()
@@ -791,6 +916,11 @@ def start_simulator(store: LiveStore, interval: float = 1.0, agent: str = "simul
             store.ingest("sim.jsonl", simulate_batch(rng, rng.randint(4, 12), incident, traces=True), agent)
             if tick % 5 == 1:
                 store.ingest("metrics.jsonl", simulate_metrics(rng, mstate, incident), agent)
+            if extra is not None and tick % 3 == 0:
+                try:
+                    extra(rng, incident)
+                except Exception:  # noqa: BLE001 - demo extras never stop the simulator
+                    pass
             stop.wait(interval)
 
     threading.Thread(target=run, daemon=True, name="live-simulator").start()

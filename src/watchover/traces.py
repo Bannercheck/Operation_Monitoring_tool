@@ -221,6 +221,10 @@ class TraceStore:
         self.settings = settings or (lambda: {})
         self.lock = threading.Lock()
         self._agg: dict[tuple, list] = {}                    # (minute, service, operation, kind, env) -> [n, err, sum, max, hist]
+        from collections import OrderedDict
+        self._held: OrderedDict = OrderedDict()              # trace id -> unsampled spans, kept ~2 min in case a user step claims the trace
+        self._held_n = 0
+        self._force: OrderedDict = OrderedDict()             # trace ids started by a user (browser / mobile): every span of them is kept
         self._last_prune = 0.0
         self.received = 0
         self.kept = 0
@@ -258,18 +262,42 @@ class TraceStore:
         """Rollups for every span with a duration; full rows for sampled traces, slow or failed spans and user / mobile steps."""
         slow = self._cfg("trace_slow_ms", 1000)
         rows = []
+        spans = list(spans)
         with self.lock:
-            for sp in spans:
-                self.received += 1
-                if sp.get("has_duration", True) and sp["kind"] not in ("log",):
+            cut = time.time() - 120
+            while self._held and (self._held_n > 50000 or next(iter(self._held.values()))[0]["_held_at"] < cut):
+                _, old = self._held.popitem(last=False); self._held_n -= len(old)
+            i = 0
+            while i < len(spans):                            # index loop: a claimed trace appends its held spans to this batch
+                sp = spans[i]; i += 1
+                if sp.get("_counted"):
+                    counted = True
+                else:
+                    counted = False; sp["_counted"] = True; self.received += 1
+                if not counted and sp.get("has_duration", True) and sp["kind"] not in ("log",):
                     key = (_minute(sp["start"]), sp["service"], sp["operation"], sp["kind"], sp["env"])
                     a = self._agg.get(key)
                     if a is None:
                         a = self._agg[key] = [0, 0, 0.0, 0.0, [0] * NB]
                     d = sp["duration_ms"]
                     a[0] += 1; a[1] += sp["error"]; a[2] += d; a[3] = max(a[3], d); a[4][bucket(d)] += 1
-                keep = keep_all or sp["error"] or sp["duration_ms"] >= slow or sp["kind"] in ("user", "mobile") or self.sampled(sp.get("trace_id"))
+                tid = sp.get("trace_id")
+                from_user = str(sp.get("ref", "")).startswith("rum:")
+                if from_user and tid:                            # tail sampling for user journeys: claim the trace, release held spans
+                    if tid not in self._force:
+                        self._force[tid] = time.time()
+                        if len(self._force) > 200000:
+                            self._force.popitem(last=False)
+                        claimed = self._held.pop(tid, None)
+                        if claimed:
+                            self._held_n -= len(claimed)
+                            spans = spans + claimed
+                keep = (keep_all or from_user or sp["error"] or sp["duration_ms"] >= slow or sp["kind"] in ("user", "mobile")
+                        or (tid is not None and tid in self._force) or self.sampled(tid))
                 if not keep:
+                    if tid and sp["link"] == "explicit":
+                        sp["_held_at"] = time.time()
+                        self._held.setdefault(tid, []).append(sp); self._held_n += 1
                     continue
                 if not sp.get("trace_id"):
                     sp["trace_id"] = "s-" + hashlib.sha1(f"{sp['ref']}|{sp['start'].isoformat()}|{sp['service']}".encode()).hexdigest()[:24]
@@ -460,9 +488,12 @@ def waterfall(rows: list[dict]) -> dict:
         r["end_ms"] = r["start_ms"] + (r["duration_ms"] or 0)
     t0 = min(r["start_ms"] for r in rows); t1 = max(r["end_ms"] for r in rows)
     by_span = {r["span_id"]: r for r in rows if r.get("span_id")}
-    for i, r in enumerate(rows):
+    for i, r in enumerate(rows):                              # keys first: an explicit parent may sort after its child
         r["key"] = r.get("span_id") or f"#{i}"
+    for i, r in enumerate(rows):
         par = by_span.get(r.get("parent_id")) if r.get("parent_id") else None
+        if par is r:
+            par = None
         r["parent_inferred"] = False
         if par is None:
             best = None

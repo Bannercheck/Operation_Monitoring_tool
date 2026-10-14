@@ -1,7 +1,7 @@
 """The dashboard's half of the Go receiver: publish who may send, then process what was received, in the background.
 
-    auth.json   every few seconds: sha256 of each active agent token -> {id, name, env, site}, the shared key's sha256, and
-                whether open mode applies (no key, no active agent). Written atomically; the receiver reloads it on change.
+    auth.json   every few seconds: sha256 of each active agent token -> {id, name, env, site}, the shared key's sha256,
+                whether open mode applies (no key, no active agent), and the RUM / mobile app keys with their allowed origins. Written atomically; the receiver reloads it on change.
     seg-*.wo    closed spool segments, oldest first: each record goes through the same path a direct POST would
                 (LiveStore.ingest -> history, traces, anomalies) and the agent's last-seen / counters are updated.
 
@@ -24,11 +24,12 @@ def _sha(s: str) -> str:
 
 
 class SpoolConsumer:
-    def __init__(self, spool_dir: str, store, registry=None, key_fn=None, handlers: dict | None = None, interval: float = 0.2):
+    def __init__(self, spool_dir: str, store, registry=None, key_fn=None, handlers: dict | None = None, interval: float = 0.2, apps_fn=None):
         self.dir = Path(spool_dir)
         self.dir.mkdir(parents=True, exist_ok=True)
         self.store, self.registry, self.key_fn = store, registry, key_fn or (lambda: "")
         self.handlers = handlers or {}                      # path -> fn(header, body) for non-/ingest paths (sensors, OTLP)
+        self.apps_fn = apps_fn                              # RUM / mobile apps: key -> name, origins (checked by the Go side too)
         self.interval = interval
         self.stop_evt = threading.Event()
         self.thread: threading.Thread | None = None
@@ -46,7 +47,12 @@ class SpoolConsumer:
                 agents[r["token_hash"]] = {"id": int(r["id"]), "name": r["name"], "env": r["env"] or "", "site": r["site"] or ""}
             n_active = len(agents)
         key = (self.key_fn() or "").strip()
-        return {"agents": agents, "key_sha256": _sha(key) if key else "", "open": not key and n_active == 0}
+        apps = {}
+        if self.apps_fn is not None:
+            for a in self.apps_fn():
+                if a.get("status") == "active":
+                    apps[a["key"]] = {"name": a["name"], "origins": [o.strip().rstrip("/") for o in (a.get("origins") or "").replace("\n", ",").split(",") if o.strip()]}
+        return {"agents": agents, "key_sha256": _sha(key) if key else "", "open": not key and n_active == 0, "apps": apps}
 
     def export_auth(self, force: bool = False) -> bool:
         st = self.auth_state()

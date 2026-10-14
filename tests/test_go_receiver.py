@@ -112,3 +112,37 @@ def _ok(url: str) -> bool:
         return urllib.request.urlopen(url, timeout=1).status == 200
     except Exception:  # noqa: BLE001
         return False
+
+
+def test_rum_through_go_receiver(binary, tmp_path, monkeypatch):
+    """A phone's batch to the Go /mobile endpoint reaches the RUM store through the spool, with the app key and origin rules."""
+    monkeypatch.setenv("WATCHOVER_PSEUDO_KEY", "k")
+    from watchover.db import Database
+    from watchover.live import LiveStore, rum_request
+    from watchover.rum import RumStore
+    from watchover.spool_consumer import SpoolConsumer
+    from watchover.traces import TraceStore
+    db = Database(str(tmp_path / "k.db")); tr = TraceStore(db); store = LiveStore(spool=str(tmp_path / "l.jsonl"))
+    rum = RumStore(db, tr, store); app = rum.create_app("ik-mobil", "android"); web = rum.create_app("ik-portal", "web", origins="https://ik.example")
+    h = lambda hd, body: rum_request(rum, hd.get("app_key", ""), hd.get("origin") or None, hd.get("ua", ""), body)   # noqa: E731
+    spool = tmp_path / "spool"
+    cons = SpoolConsumer(str(spool), store, None, handlers={"/rum": h, "/mobile": h}, apps_fn=rum.apps)
+    cons.export_auth(force=True)
+    port = free_port()
+    proc = subprocess.Popen([str(binary)], env=dict(os.environ, WO_LISTEN=f"127.0.0.1:{port}", WO_SPOOL=str(spool), WO_SEGMENT_MS="100"), stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    base = f"http://127.0.0.1:{port}"
+    try:
+        assert wait(lambda: _ok(base + "/health"))
+        doc = {"session": "m1", "platform": "android", "user": "P1", "events": [{"t": "view", "ts": time.time() * 1000, "name": "Bordro", "dur": 300}]}
+        r = urllib.request.urlopen(urllib.request.Request(f"{base}/mobile?k={app['key']}", data=json.dumps(doc).encode(), headers={"Content-Type": "application/json"}))
+        assert r.status == 202
+        with pytest.raises(urllib.error.HTTPError) as e:
+            urllib.request.urlopen(urllib.request.Request(f"{base}/rum?k={web['key']}", data=b"{}", headers={"Origin": "https://evil.example"}))
+        assert e.value.code == 403
+        assert wait(lambda: cons.pending())
+        cons.run_once()
+        s = rum.sessions(minutes=None)
+        assert len(s) == 1 and s[0]["app"] == "ik-mobil" and s[0]["views"] == 1 and s[0]["user_ref"].startswith("u_")
+    finally:
+        proc.terminate(); proc.wait(10)
+

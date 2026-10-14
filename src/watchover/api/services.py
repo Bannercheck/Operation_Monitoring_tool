@@ -44,6 +44,19 @@ def notify_channels() -> dict:
 
 
 class Services:
+    def _simulate_users(self, rng, incident: bool) -> None:
+        """Simulator extra: web and mobile HR sessions through the RUM path, their backend logs through the live path."""
+        from ..live import simulate_rum
+        apps = {a["name"]: a for a in self.rum.apps()}
+        for name, platform in (("ik-mobil", "android"), ("ik-portal", "web")):
+            if name not in apps:
+                apps[name] = self.rum.create_app(name, platform, note="demo (simulator)")
+        sessions, backend = simulate_rum(rng, incident)
+        if backend:
+            self.live.ingest("hr-api.jsonl", ("\n".join(backend) + "\n").encode(), "simulator")
+        for app, doc in sessions:
+            self.rum.ingest(apps[app], doc, "Mozilla/5.0 (Windows NT 10.0) Chrome/130.0" if doc["platform"] == "web" else "")
+
     def _on_ingest(self, events) -> None:
         """Every accepted live batch: service-level history rollups, then spans / RED metrics (each best effort on its own)."""
         try:
@@ -75,6 +88,8 @@ class Services:
         self.history = History(self.kb, retention_days=int(cfg0.get("history_retention_days", 400) or 400))
         from ..traces import TraceStore
         self.traces = TraceStore(self.kb, settings=wo_settings.load)     # spans and service rollups rebuilt from the same live events
+        from ..rum import RumStore
+        self.rum = RumStore(self.kb, self.traces, self.live, settings=wo_settings.load)   # web and mobile user sessions
         self.live.on_ingest = self._on_ingest
         self.notifier = wo_notify.Notifier(self.kb, notify_channels)
         self.anomalies = wo_anomaly.AnomalyTracker(self.kb, self.live)
@@ -104,12 +119,15 @@ class Services:
             port = int(os.environ.get("LIVE_PORT", c.get("live_port", 8600)) or 8600)
             if os.environ.get("WATCHOVER_RECEIVER", "python") == "go":      # the Go receiver owns :8600 and spools; this process consumes the spool
                 from ..spool_consumer import SpoolConsumer
+                from ..live import rum_request
+                rum_h = lambda h, body: rum_request(self.rum, h.get("app_key", ""), h.get("origin") or None, h.get("ua", ""), body)   # noqa: E731
                 self.spool_consumer = SpoolConsumer(os.environ.get("WATCHOVER_SPOOL", os.path.join(os.environ.get("WATCHOVER_HOME", "data") or "data", "spool")),
-                                                    self.live, self.agents, key_fn=lambda: wo_settings.load().get("live_key") or "").start()
+                                                    self.live, self.agents, key_fn=lambda: wo_settings.load().get("live_key") or "",
+                                                    handlers={"/rum": rum_h, "/mobile": rum_h}, apps_fn=self.rum.apps).start()
                 port = int(os.environ.get("WATCHOVER_INTERNAL_PORT", "8601") or 8601)    # enrolment (proxied by Go) and this machine's own agent
             if os.environ.get("WATCHOVER_API_RECEIVER", "1") == "1":      # the API is the product now: it owns the agent receiver
                 try:
-                    self.receiver = start_receiver(self.live, port, c.get("live_key") or None, self.agents)
+                    self.receiver = start_receiver(self.live, port, c.get("live_key") or None, self.agents, self.rum)
                 except OSError:
                     self.receiver = None
             if os.environ.get("WATCHOVER_SELFMON", "1") != "0" and c.get("self_monitor", True) and self.receiver is not None:
@@ -182,7 +200,7 @@ class Services:
 
     def simulate(self, on: bool) -> bool:
         if on and self.sim_stop is None:
-            self.sim_stop = start_simulator(self.live, interval=1.0)
+            self.sim_stop = start_simulator(self.live, interval=1.0, extra=self._simulate_users)
         elif not on and self.sim_stop is not None:
             self.sim_stop.set(); self.sim_stop = None
             self.live.purge("simulator", tuple(SIM_HOSTS))

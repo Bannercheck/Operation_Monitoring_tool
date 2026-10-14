@@ -17,7 +17,7 @@ from ..security import require, services
 
 SETTING_KEYS = ("self_monitor", "learn_min", "alerts_on", "live_port", "live_key", "public_host", "lang", "workspace", "demo_on_start", "thr_cpu", "thr_memory", "thr_disk", "thr_gpu",
                 "live_retention_h", "live_window_max_events", "live_ring", "live_spool_mb", "history_retention_days",
-                "trace_sample_pct", "trace_slow_ms", "trace_apdex_ms", "trace_retention_h", "trace_rollup_days")
+                "trace_sample_pct", "trace_slow_ms", "trace_apdex_ms", "trace_retention_h", "trace_rollup_days", "rum_retention_days")
 CHANNEL_KEYS = ("smtp_host", "smtp_port", "smtp_security", "smtp_user", "smtp_password", "smtp_from", "smtp_from_name",
                 "sms_preset", "sms_url", "sms_method", "sms_auth", "sms_user", "sms_password", "sms_token", "sms_from", "sms_account", "sms_body", "sms_content_type")
 AUTH_KEYS = ("auth_google", "google_client_id", "google_client_secret", "auth_microsoft", "ms_tenant", "ms_client_id", "ms_client_secret",

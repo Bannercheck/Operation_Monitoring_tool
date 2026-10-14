@@ -93,6 +93,15 @@ Ajanların bağlandığı 8600 portu v1.35'ten itibaren ayrı bir konteynerde, G
 - Durum: `curl http://<sunucu>:8600/health`, Prometheus için `/metrics`; log: `./watchover.sh logs receiver`.
 - Yükseltme `./watchover.sh upgrade` ile kendiliğinden olur: panel 8600'ü bırakır, alıcı servisi devralır. Güvenlik duvarı kuralı değişmez.
 
+## 2c. Web ve mobil uygulamaları izlemek (Kullanıcı deneyimi)
+
+1. **Uygulama ekleyin:** APM › Kullanıcı deneyimi › Uygulamalar. Ad, platform (web, android, ios, flutter, react-native), web için izinli kökenler (`https://ik.sirket.com.tr`), gerekirse örnekleme yüzdesi. Bir anahtar (`pk_…`) üretilir; **Kurulum** düğmesi platforma göre hazır satırları gösterir.
+2. **Web:** sayfanın `<head>` kısmına tek satır: `<script src="https://<watchover>/rum.js" data-key="pk_…" async></script>`. Kullanıcı girişinden sonra `window.watchover.setUser(personelNo)`.
+3. **Mobil:** depodaki `sensors/` altındaki SDK dosyası uygulamaya eklenir ve uygulama açılışında `start(endpoint, key)` çağrılır (Android: OkHttp interceptor; iOS: `urlSession()`; Flutter: `httpClient()` ve `observer`; React Native: `start` ve `onNavigationChange`). Uç adres `https://<watchover>/mobile` (edge açık değilse `http://<sunucu>:8600/mobile`). Uygulama mağaza sürümüne girmeden önce test ortamında denenmelidir; SDK'lar başvuru kodudur ve bu depoda derlenmemiştir.
+4. **Arka uçla birleştirme:** sensörler her çağrıya `traceparent` başlığı ekler. nginx log biçimine `$http_traceparent`, uygulama loglarına gelen `traceparent` başlığı eklenirse kullanıcının dokunuşu ile sunucudaki adımlar aynı izde kimlikle birleşir; eklenmezse oturum ve zaman üzerinden gösterilir.
+5. **Güvenlik duvarı:** telefonlar ve tarayıcılar Watchover'a 443 (edge) ya da 8600 üzerinden ulaşmalıdır. Şirket dışından kullanılan uygulamalar için yalnız `/mobile`, `/rum` ve `/rum.js` yollarını dışarı açan bir ters vekil önerilir.
+6. **KVKK:** sensörler form değeri, ekran içeriği, tuş vuruşu, konum ve sorgu dizesi toplamaz; sunucu kullanıcı kimliğini takma ada çevirir ve saklamaz, metinlerde TCKN / telefon / e-posta / IBAN / kart / parola maskeler, IP saklamaz. Bir kişinin oturumlarını bulmak için kimlik girildiğinde gerekçe istenir ve güvenlik günlüğüne yazılır. Aydınlatma metni ve rıza kararı kurumun hukuk birimindedir.
+
 ## 3. Günlük işletim: watchover.sh
 
 | Komut | Ne yapar |

@@ -28,8 +28,8 @@
 		Referrer-Policy "strict-origin-when-cross-origin"
 		-Server
 	}
-	# agents and pull sources: https://<host>/ingest, enrolment and the agent installer go to the Go receiver
-	@receiver path /ingest* /enroll* /agent.py /agent/*
+	# agents, enrolment, the agent installer and the web / mobile sensors go to the Go receiver
+	@receiver path /ingest* /enroll* /agent.py /agent/* /rum /rum.js /mobile
 	handle @receiver {
 		reverse_proxy receiver:8600
 	}
