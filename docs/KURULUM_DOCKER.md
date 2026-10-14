@@ -83,6 +83,16 @@ unzip -q watchover.zip && mv hackathon watchover && cd watchover
 ./watchover.sh user list
 ```
 
+## 2b. Alıcı servisi (Go, 8600)
+
+Ajanların bağlandığı 8600 portu v1.35'ten itibaren ayrı bir konteynerde, Go ile yazılmış `watchover-receiver` servisindedir. Paketi doğrular, `/data/spool` altına sıralı segment olarak yazar ve milisaniyeler içinde yanıt verir; panel (dashboard) segmentleri arka planda işler. Böylece anomali taraması ya da yoğun ayrıştırma sırasında ajanlar beklemez, zaman aşımına düşmez.
+
+- Kimlik doğrulama aynıdır: ajan token'ları, ortak anahtar ve ilk kurulumdaki açık mod. Panel izinli token'ların özetini (`auth.json`) birkaç saniyede bir alıcıya yayınlar; iptal edilen token en geç birkaç saniye içinde reddedilir.
+- `/enroll`, `/agent.py` ve `/agent/install.sh` de bu servisten sunulur; kayıt isteği panele aktarılır.
+- Kuyruk sınırı `.env` içinde `WATCHOVER_SPOOL_MAX_MB` (varsayılan 2048). Aşılırsa alıcı 503 ve Retry-After döner, ajan paketi kendi diskinde saklar.
+- Durum: `curl http://<sunucu>:8600/health`, Prometheus için `/metrics`; log: `./watchover.sh logs receiver`.
+- Yükseltme `./watchover.sh upgrade` ile kendiliğinden olur: panel 8600'ü bırakır, alıcı servisi devralır. Güvenlik duvarı kuralı değişmez.
+
 ## 3. Günlük işletim: watchover.sh
 
 | Komut | Ne yapar |

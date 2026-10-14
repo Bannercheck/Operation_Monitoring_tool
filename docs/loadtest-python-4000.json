@@ -1,0 +1,388 @@
+{
+ "target_rate": 4000,
+ "agents": 100,
+ "per_batch": 80,
+ "duration_s": 62.3,
+ "sent": 238800,
+ "accepted": 195430,
+ "achieved_rate": 3834.2,
+ "accepted_rate": 3137.9,
+ "batches": 2985,
+ "errors": 0,
+ "last_error": "",
+ "post_latency_ms": {
+  "p50": 22.3,
+  "p95": 924.2,
+  "max": 5000.3
+ },
+ "samples": [
+  {
+   "t": 10,
+   "capacity": {
+    "events_per_s": 3314.91,
+    "events_per_s_5m": 3314.91,
+    "ingest": {
+     "batches": 500,
+     "avg_ms": 43.61,
+     "p95_ms": 118.91
+    },
+    "last_db_window_ms": 0.0,
+    "ring": {
+     "events": 36951,
+     "maxlen": 50000,
+     "fill_pct": 73.9,
+     "span_s": 1942575,
+     "covers_window": true
+    },
+    "window_min": 5,
+    "db": {
+     "enabled": true,
+     "batches": 493,
+     "events": 34056,
+     "oldest": "2026-09-22T09:14:02+00:00",
+     "newest": "2026-10-14T20:50:16+00:00",
+     "bytes": 8945414
+    },
+    "db_served": 0,
+    "last_db_window": null,
+    "spool_bytes": 9805145,
+    "disk": {
+     "total": 270553174016,
+     "free": 30654849024,
+     "free_pct": 11.3
+    },
+    "retention_h": 48.0,
+    "window_max_events": 200000,
+    "warnings": [
+     {
+      "code": "db_growth",
+      "detail": "~70 GB/day of live batches at the current rate; lower live_retention_h"
+     }
+    ],
+    "receiver": {
+     "engine": "python"
+    }
+   },
+   "anomaly_runs": 0,
+   "last_scan_ms": 0.0
+  },
+  {
+   "t": 21,
+   "capacity": {
+    "events_per_s": 3307.63,
+    "events_per_s_5m": 3307.63,
+    "ingest": {
+     "batches": 500,
+     "avg_ms": 23.9,
+     "p95_ms": 64.47
+    },
+    "last_db_window_ms": 0.0,
+    "ring": {
+     "events": 50000,
+     "maxlen": 50000,
+     "fill_pct": 100.0,
+     "span_s": 1942585,
+     "covers_window": true
+    },
+    "window_min": 5,
+    "db": {
+     "enabled": true,
+     "batches": 880,
+     "events": 62918,
+     "oldest": "2026-09-22T09:14:02+00:00",
+     "newest": "2026-10-14T20:50:26+00:00",
+     "bytes": 16350731
+    },
+    "db_served": 0,
+    "last_db_window": null,
+    "spool_bytes": 18484976,
+    "disk": {
+     "total": 270553174016,
+     "free": 30643650560,
+     "free_pct": 11.3
+    },
+    "retention_h": 48.0,
+    "window_max_events": 200000,
+    "warnings": [
+     {
+      "code": "db_growth",
+      "detail": "~69 GB/day of live batches at the current rate; lower live_retention_h"
+     }
+    ],
+    "receiver": {
+     "engine": "python"
+    }
+   },
+   "anomaly_runs": 0,
+   "last_scan_ms": 0.0
+  },
+  {
+   "t": 31,
+   "capacity": {
+    "events_per_s": 3306.56,
+    "events_per_s_5m": 3306.56,
+    "ingest": {
+     "batches": 500,
+     "avg_ms": 24.58,
+     "p95_ms": 66.3
+    },
+    "last_db_window_ms": 0.0,
+    "ring": {
+     "events": 50000,
+     "maxlen": 50000,
+     "fill_pct": 100.0,
+     "span_s": 1942595,
+     "covers_window": true
+    },
+    "window_min": 5,
+    "db": {
+     "enabled": true,
+     "batches": 1309,
+     "events": 93285,
+     "oldest": "2026-09-22T09:14:02+00:00",
+     "newest": "2026-10-14T20:50:36+00:00",
+     "bytes": 24063755
+    },
+    "db_served": 0,
+    "last_db_window": null,
+    "spool_bytes": 27052002,
+    "disk": {
+     "total": 270553174016,
+     "free": 30631845888,
+     "free_pct": 11.3
+    },
+    "retention_h": 48.0,
+    "window_max_events": 200000,
+    "warnings": [
+     {
+      "code": "db_growth",
+      "detail": "~69 GB/day of live batches at the current rate; lower live_retention_h"
+     }
+    ],
+    "receiver": {
+     "engine": "python"
+    }
+   },
+   "anomaly_runs": 0,
+   "last_scan_ms": 0.0
+  },
+  {
+   "t": 41,
+   "capacity": {
+    "events_per_s": 3290.7,
+    "events_per_s_5m": 3290.7,
+    "ingest": {
+     "batches": 500,
+     "avg_ms": 13.51,
+     "p95_ms": 29.94
+    },
+    "last_db_window_ms": 0.0,
+    "ring": {
+     "events": 50000,
+     "maxlen": 50000,
+     "fill_pct": 100.0,
+     "span_s": 1942605,
+     "covers_window": true
+    },
+    "window_min": 5,
+    "db": {
+     "enabled": true,
+     "batches": 1691,
+     "events": 121378,
+     "oldest": "2026-09-22T09:14:02+00:00",
+     "newest": "2026-10-14T20:50:46+00:00",
+     "bytes": 31313704
+    },
+    "db_served": 0,
+    "last_db_window": null,
+    "spool_bytes": 35645598,
+    "disk": {
+     "total": 270553174016,
+     "free": 30621106176,
+     "free_pct": 11.3
+    },
+    "retention_h": 48.0,
+    "window_max_events": 200000,
+    "warnings": [
+     {
+      "code": "db_growth",
+      "detail": "~68 GB/day of live batches at the current rate; lower live_retention_h"
+     }
+    ],
+    "receiver": {
+     "engine": "python"
+    }
+   },
+   "anomaly_runs": 0,
+   "last_scan_ms": 0.0
+  },
+  {
+   "t": 51,
+   "capacity": {
+    "events_per_s": 3280.74,
+    "events_per_s_5m": 3280.74,
+    "ingest": {
+     "batches": 500,
+     "avg_ms": 16.12,
+     "p95_ms": 42.52
+    },
+    "last_db_window_ms": 0.0,
+    "ring": {
+     "events": 50000,
+     "maxlen": 50000,
+     "fill_pct": 100.0,
+     "span_s": 1942615,
+     "covers_window": true
+    },
+    "window_min": 5,
+    "db": {
+     "enabled": true,
+     "batches": 2104,
+     "events": 150717,
+     "oldest": "2026-09-22T09:14:02+00:00",
+     "newest": "2026-10-14T20:50:56+00:00",
+     "bytes": 38790325
+    },
+    "db_served": 0,
+    "last_db_window": null,
+    "spool_bytes": 44114084,
+    "disk": {
+     "total": 270553174016,
+     "free": 30593351680,
+     "free_pct": 11.3
+    },
+    "retention_h": 48.0,
+    "window_max_events": 200000,
+    "warnings": [
+     {
+      "code": "db_growth",
+      "detail": "~68 GB/day of live batches at the current rate; lower live_retention_h"
+     }
+    ],
+    "receiver": {
+     "engine": "python"
+    }
+   },
+   "anomaly_runs": 0,
+   "last_scan_ms": 0.0
+  },
+  {
+   "t": 62,
+   "capacity": {
+    "events_per_s": 3137.27,
+    "events_per_s_5m": 3145.4,
+    "ingest": {
+     "batches": 500,
+     "avg_ms": 581.74,
+     "p95_ms": 2423.75
+    },
+    "last_db_window_ms": 3747.5,
+    "ring": {
+     "events": 50000,
+     "maxlen": 50000,
+     "fill_pct": 100.0,
+     "span_s": 1942623,
+     "covers_window": true
+    },
+    "window_min": 5,
+    "db": {
+     "enabled": true,
+     "batches": 2412,
+     "events": 173491,
+     "oldest": "2026-09-22T09:14:02+00:00",
+     "newest": "2026-10-14T20:51:05+00:00",
+     "bytes": 44612792
+    },
+    "db_served": 1,
+    "last_db_window": [
+     "2026-10-14T20:45:59+00:00",
+     157377
+    ],
+    "spool_bytes": 51067958,
+    "disk": {
+     "total": 270553174016,
+     "free": 30584745984,
+     "free_pct": 11.3
+    },
+    "retention_h": 48.0,
+    "window_max_events": 200000,
+    "warnings": [
+     {
+      "code": "db_growth",
+      "detail": "~65 GB/day of live batches at the current rate; lower live_retention_h"
+     }
+    ],
+    "receiver": {
+     "engine": "python"
+    }
+   },
+   "anomaly_runs": 0,
+   "last_scan_ms": 0.0
+  }
+ ],
+ "final_scan": {
+  "ms": 4230,
+  "found": {
+   "found": [],
+   "stats": {
+    "open": 0,
+    "ack": 0,
+    "resolved": 0,
+    "ignored": 0,
+    "kinds": {},
+    "runs": 2,
+    "last_run": "2026-10-14T20:51:11+00:00",
+    "last_scan_ms": 4212.9,
+    "resolved_today": 0
+   }
+  }
+ },
+ "final_capacity": {
+  "events_per_s": 2893.13,
+  "events_per_s_5m": 2939.82,
+  "ingest": {
+   "batches": 500,
+   "avg_ms": 581.74,
+   "p95_ms": 2423.75
+  },
+  "last_db_window_ms": 2707.6,
+  "ring": {
+   "events": 50000,
+   "maxlen": 50000,
+   "fill_pct": 100.0,
+   "span_s": 1942623,
+   "covers_window": true
+  },
+  "window_min": 5,
+  "db": {
+   "enabled": true,
+   "batches": 2412,
+   "events": 173491,
+   "oldest": "2026-09-22T09:14:02+00:00",
+   "newest": "2026-10-14T20:51:05+00:00",
+   "bytes": 44612792
+  },
+  "db_served": 2,
+  "last_db_window": [
+   "2026-10-14T20:46:07+00:00",
+   172591
+  ],
+  "spool_bytes": 51067958,
+  "disk": {
+   "total": 270553174016,
+   "free": 30584401920,
+   "free_pct": 11.3
+  },
+  "retention_h": 48.0,
+  "window_max_events": 200000,
+  "warnings": [
+   {
+    "code": "db_growth",
+    "detail": "~60 GB/day of live batches at the current rate; lower live_retention_h"
+   }
+  ],
+  "receiver": {
+   "engine": "python"
+  }
+ }
+}

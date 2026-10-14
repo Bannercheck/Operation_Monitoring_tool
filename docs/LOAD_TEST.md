@@ -18,6 +18,21 @@ Olay < satır farkı kayıp değildir: ERP loglarındaki stack trace ve devam sa
 
 **Yorum.** 100 sunucu (≈1.000-2.000 satır/sn) tek düğümde rahat. 4.000 satır/sn'de alım sürer ama dakikalık tarama tek Python sürecinde (GIL) alımı saniyeler boyunca duraklatır; bunun kalıcı çözümü Faz 2'deki ayrı worker sürecidir. Çekirdek sayısı tek sürecin tavanını büyütmez; 32 CPU'lu sunucuda da bu sayılar geçerlidir, fazla çekirdekler LLM ve eğitim servisine gider.
 
+## v1.35: Go alıcısı (aynı 4.000 satır/sn, 100 ajan, PostgreSQL 16, 4 vCPU)
+
+8600 artık Go ile yazılmış ayrı bir servis: paketi doğrular, diske sıralı segment olarak yazar ve hemen yanıt verir; ayrıştırma, geçmiş, iz ve anomali işleri panelin arka planında segmentlerden yürür. İki ölçüm aynı makinede art arda alındı (`docs/loadtest-python-4000.json`, `docs/loadtest-go-4000.json`).
+
+| Ölçüm | Python alıcısı | Go alıcısı |
+|---|---|---|
+| Ajanların bastığı hız | 3.834 satır/sn | 3.907 satır/sn |
+| POST gecikmesi p50 / p95 / en kötü | 22 ms / 924 ms / 5,0 s | 1,0 ms / 3,3 ms / 18,6 ms |
+| Panelde işlenen olay (5 dk ortalaması) | 2.940 olay/sn | 3.051 olay/sn |
+| Paket başına işleme p95 (test sonu) | 2,4 s (tarama sırasında) | 54 ms |
+| Test sonu kuyruk | yok (ajan bekliyordu) | 4 segment, 2,2 MB (birkaç saniyelik iş) |
+| HTTP hata | 0 | 0 |
+
+**Ne değişti.** Anomali taraması ya da büyük bir ayrıştırma artık ajanın isteğini bekletmiyor: istek, verinin diske yazıldığı anda yanıtlanıyor. İşleme anlık geride kalırsa fark kuyrukta birikir ve saniyeler içinde erir; kuyruk `WATCHOVER_SPOOL_MAX_MB` (varsayılan 2 GB) sınırını aşarsa alıcı 503 + Retry-After döner ve ajan paketi kendi diskinde tutar. Kuyruk durumu Sistem › Kapasite'de ve `http://<sunucu>:8600/health` adresinde görünür.
+
 Kendi ortamınızda:
 
 ```

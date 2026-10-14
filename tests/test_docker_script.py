@@ -51,6 +51,7 @@ def test_install_writes_env_builds_and_starts(stage):
         assert f"{k}={v}\n" in env, (k, v)
     calls = (d / "calls.log").read_text()
     assert "compose build" in calls and f"--build-arg VERSION={version}" in calls and "compose up -d --remove-orphans" in calls
+    assert "compose build receiver" in calls                                   # the Go receiver image is built with the dashboard
     assert calls.index("compose build") < calls.index("compose up")
     assert "8501" in r.stdout and "admin@watchover.local" in r.stdout and "Watchover v" in r.stdout
     # second run keeps the secrets, mcp on adds the profile
@@ -162,7 +163,7 @@ def test_bundle_and_offline_install(stage):
     names = subprocess.run(["tar", "tf", str(out)], capture_output=True, text=True, check=True).stdout.split()
     assert "MANIFEST" in names and "images.tar.gz" in names
     log = (d / "calls.log").read_text()
-    assert f"docker save watchover:{version(d)} postgres:16-alpine" in log and "watchover-trainer:" in log and "ollama/ollama:latest" in log
+    assert f"docker save watchover:{version(d)} watchover-receiver:{version(d)} postgres:16-alpine" in log and "watchover-trainer:" in log and "ollama/ollama:latest" in log
     assert "docker run --rm -v watchover_watchover-ollama:/v:ro" in log      # model volume exported
     assert "run --rm --no-deps -T trainer python" in log                      # base weights cached for offline auto-learning
     (d / "calls.log").write_text("")

@@ -75,11 +75,12 @@ offline() { [ "$(env_get WATCHOVER_OFFLINE)" = "1" ]; }
 have_image() { docker image inspect "$1" >/dev/null 2>&1; }
 build() {
   if offline; then   # air-gapped: the images came in with ./watchover.sh unbundle, never build or pull here
-    have_image "watchover:$(version)" || die "offline install and image watchover:$(version) is missing: unbundle the bundle of this version first (./watchover.sh unbundle watchover-bundle-$(version).tar)"
+    have_image "watchover:$(version)" && have_image "watchover-receiver:$(version)" || die "offline install and image watchover:$(version) or watchover-receiver:$(version) is missing: unbundle the bundle of this version first (./watchover.sh unbundle watchover-bundle-$(version).tar)"
     say "offline install: using the loaded image watchover:$(version) (no build)"; return 0
   fi
   say "building image watchover:$(version) from this source tree (first time: a few minutes, needs internet for PyPI)"
   $COMPOSE build --build-arg GIT_REV="$(git_rev)" --build-arg VERSION="$(version)" dashboard
+  say "building the receiver (Go, a few seconds)"; $COMPOSE build receiver
   [ "$(env_get WATCHOVER_LLM)" = "1" ] && $COMPOSE --profile llm build trainer || true
 }
 # compose volume name (project prefix) for a volume declared in docker-compose.yml
@@ -303,13 +304,14 @@ case "${1:-}" in
     rm -rf "$tmp"; up; say "restored from $2"; $COMPOSE ps ;;
   user)    need_docker; shift; $COMPOSE exec dashboard python -m watchover.useradmin "$@" ;;
   migrate) need_docker; shift; [ -d data ] && docker cp data/. watchover:/data/ 2>/dev/null || true; $COMPOSE exec dashboard python -m watchover.migrate --source /data "$@" ;;
-  save)    need_docker; out="${2:-watchover-images-$(version).tgz}"; docker save "watchover:$(version)" postgres:16-alpine | gzip > "$out"; say "images saved to $out (copy it with this folder to the air-gapped server, then: ./watchover.sh load $out && ./watchover.sh install)" ;;
+  save)    need_docker; out="${2:-watchover-images-$(version).tgz}"; docker save "watchover:$(version)" "watchover-receiver:$(version)" postgres:16-alpine | gzip > "$out"; say "images saved to $out (copy it with this folder to the air-gapped server, then: ./watchover.sh load $out && ./watchover.sh install)" ;;
   load)    need_docker; [ -f "${2:-}" ] || die "usage: ./watchover.sh load watchover-images-X.Y.tgz"; gunzip -c "$2" | docker load; say "images loaded; ./watchover.sh install skips the build when the image tag matches" ;;
   bundle)  # one file for the air-gapped server: images + model volumes + source tree; built where there is internet
     need_docker; out="${2:-watchover-bundle-$(version).tar}"; case "$out" in /*) ;; *) out="$PWD/$out" ;; esac
     have_image "watchover:$(version)" || die "image watchover:$(version) is not built yet: ./watchover.sh install first (and 'llm on' if the server should get the local LLM)"
     tmp=$(mktemp -d); mkdir -p "$tmp/volumes" "$tmp/source"
-    imgs="watchover:$(version) postgres:16-alpine"
+    have_image "watchover-receiver:$(version)" || die "image watchover-receiver:$(version) is not built yet: ./watchover.sh update first"
+    imgs="watchover:$(version) watchover-receiver:$(version) postgres:16-alpine"
     for i in "watchover-trainer:$(version)" caddy:2-alpine ollama/ollama:latest alpine:latest; do have_image "$i" && imgs="$imgs $i" || true; done
     have_image alpine:latest || docker pull alpine:latest >/dev/null 2>&1 || true; have_image alpine:latest && case " $imgs " in *" alpine:latest "*) ;; *) imgs="$imgs alpine:latest" ;; esac
     if have_image "watchover-trainer:$(version)" && ! offline; then

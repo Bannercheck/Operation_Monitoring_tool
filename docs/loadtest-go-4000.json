@@ -1,0 +1,448 @@
+{
+ "target_rate": 4000,
+ "agents": 100,
+ "per_batch": 80,
+ "duration_s": 61.4,
+ "sent": 239920,
+ "accepted": 239920,
+ "achieved_rate": 3906.5,
+ "accepted_rate": 3906.5,
+ "batches": 2999,
+ "errors": 0,
+ "last_error": "",
+ "post_latency_ms": {
+  "p50": 1.0,
+  "p95": 3.3,
+  "max": 18.6
+ },
+ "samples": [
+  {
+   "t": 10,
+   "capacity": {
+    "events_per_s": 3449.06,
+    "events_per_s_5m": 3449.06,
+    "ingest": {
+     "batches": 498,
+     "avg_ms": 12.9,
+     "p95_ms": 25.44
+    },
+    "last_db_window_ms": 0.0,
+    "ring": {
+     "events": 32608,
+     "maxlen": 50000,
+     "fill_pct": 65.2,
+     "span_s": 1942653,
+     "covers_window": true
+    },
+    "window_min": 5,
+    "db": {
+     "enabled": true,
+     "batches": 423,
+     "events": 29713,
+     "oldest": "2026-09-22T09:14:02+00:00",
+     "newest": "2026-10-14T20:51:34+00:00",
+     "bytes": 7746934
+    },
+    "db_served": 0,
+    "last_db_window": null,
+    "spool_bytes": 8586170,
+    "disk": {
+     "total": 270553174016,
+     "free": 30587428864,
+     "free_pct": 11.3
+    },
+    "retention_h": 48.0,
+    "window_max_events": 200000,
+    "warnings": [
+     {
+      "code": "db_growth",
+      "detail": "~72 GB/day of live batches at the current rate; lower live_retention_h"
+     }
+    ],
+    "receiver": {
+     "engine": "go",
+     "backlog_segments": 1,
+     "backlog_bytes": 519635,
+     "oldest_s": 2.1,
+     "records": 498,
+     "segments_done": 7,
+     "failed": 0,
+     "torn": 0,
+     "last_lag_s": 0.93
+    }
+   },
+   "anomaly_runs": 0,
+   "last_scan_ms": 0.0
+  },
+  {
+   "t": 21,
+   "capacity": {
+    "events_per_s": 3365.67,
+    "events_per_s_5m": 3365.67,
+    "ingest": {
+     "batches": 500,
+     "avg_ms": 9.7,
+     "p95_ms": 21.29
+    },
+    "last_db_window_ms": 0.0,
+    "ring": {
+     "events": 50000,
+     "maxlen": 50000,
+     "fill_pct": 100.0,
+     "span_s": 1942663,
+     "covers_window": true
+    },
+    "window_min": 5,
+    "db": {
+     "enabled": true,
+     "batches": 810,
+     "events": 58398,
+     "oldest": "2026-10-14T20:51:24+00:00",
+     "newest": "2026-10-14T20:51:44+00:00",
+     "bytes": 15175463
+    },
+    "db_served": 0,
+    "last_db_window": null,
+    "spool_bytes": 17304564,
+    "disk": {
+     "total": 270553174016,
+     "free": 30577090560,
+     "free_pct": 11.3
+    },
+    "retention_h": 48.0,
+    "window_max_events": 200000,
+    "warnings": [
+     {
+      "code": "db_growth",
+      "detail": "~70 GB/day of live batches at the current rate; lower live_retention_h"
+     }
+    ],
+    "receiver": {
+     "engine": "go",
+     "backlog_segments": 0,
+     "backlog_bytes": 0,
+     "oldest_s": 0.0,
+     "records": 1000,
+     "segments_done": 16,
+     "failed": 0,
+     "torn": 0,
+     "last_lag_s": 0.76
+    }
+   },
+   "anomaly_runs": 0,
+   "last_scan_ms": 0.0
+  },
+  {
+   "t": 31,
+   "capacity": {
+    "events_per_s": 3332.55,
+    "events_per_s_5m": 3332.55,
+    "ingest": {
+     "batches": 500,
+     "avg_ms": 10.03,
+     "p95_ms": 22.52
+    },
+    "last_db_window_ms": 0.0,
+    "ring": {
+     "events": 50000,
+     "maxlen": 50000,
+     "fill_pct": 100.0,
+     "span_s": 1942673,
+     "covers_window": true
+    },
+    "window_min": 5,
+    "db": {
+     "enabled": true,
+     "batches": 1236,
+     "events": 88373,
+     "oldest": "2026-09-22T09:14:02+00:00",
+     "newest": "2026-10-14T20:51:54+00:00",
+     "bytes": 22822776
+    },
+    "db_served": 0,
+    "last_db_window": null,
+    "spool_bytes": 25805628,
+    "disk": {
+     "total": 270553174016,
+     "free": 30565453824,
+     "free_pct": 11.3
+    },
+    "retention_h": 48.0,
+    "window_max_events": 200000,
+    "warnings": [
+     {
+      "code": "db_growth",
+      "detail": "~69 GB/day of live batches at the current rate; lower live_retention_h"
+     }
+    ],
+    "receiver": {
+     "engine": "go",
+     "backlog_segments": 0,
+     "backlog_bytes": 0,
+     "oldest_s": 0.0,
+     "records": 1500,
+     "segments_done": 24,
+     "failed": 0,
+     "torn": 0,
+     "last_lag_s": 0.61
+    }
+   },
+   "anomaly_runs": 0,
+   "last_scan_ms": 0.0
+  },
+  {
+   "t": 41,
+   "capacity": {
+    "events_per_s": 3315.3,
+    "events_per_s_5m": 3315.3,
+    "ingest": {
+     "batches": 500,
+     "avg_ms": 8.32,
+     "p95_ms": 15.63
+    },
+    "last_db_window_ms": 0.0,
+    "ring": {
+     "events": 50000,
+     "maxlen": 50000,
+     "fill_pct": 100.0,
+     "span_s": 1942683,
+     "covers_window": true
+    },
+    "window_min": 5,
+    "db": {
+     "enabled": true,
+     "batches": 1615,
+     "events": 116699,
+     "oldest": "2026-10-14T20:51:24+00:00",
+     "newest": "2026-10-14T20:52:04+00:00",
+     "bytes": 30082723
+    },
+    "db_served": 0,
+    "last_db_window": null,
+    "spool_bytes": 34409520,
+    "disk": {
+     "total": 270553174016,
+     "free": 30554570752,
+     "free_pct": 11.3
+    },
+    "retention_h": 48.0,
+    "window_max_events": 200000,
+    "warnings": [
+     {
+      "code": "db_growth",
+      "detail": "~69 GB/day of live batches at the current rate; lower live_retention_h"
+     }
+    ],
+    "receiver": {
+     "engine": "go",
+     "backlog_segments": 0,
+     "backlog_bytes": 0,
+     "oldest_s": 0.0,
+     "records": 2000,
+     "segments_done": 32,
+     "failed": 0,
+     "torn": 0,
+     "last_lag_s": 0.62
+    }
+   },
+   "anomaly_runs": 0,
+   "last_scan_ms": 0.0
+  },
+  {
+   "t": 51,
+   "capacity": {
+    "events_per_s": 3294.7,
+    "events_per_s_5m": 3294.7,
+    "ingest": {
+     "batches": 500,
+     "avg_ms": 8.54,
+     "p95_ms": 16.73
+    },
+    "last_db_window_ms": 0.0,
+    "ring": {
+     "events": 50000,
+     "maxlen": 50000,
+     "fill_pct": 100.0,
+     "span_s": 17,
+     "covers_window": false
+    },
+    "window_min": 5,
+    "db": {
+     "enabled": true,
+     "batches": 2027,
+     "events": 145774,
+     "oldest": "2026-09-22T09:14:02+00:00",
+     "newest": "2026-10-14T20:52:14+00:00",
+     "bytes": 37529558
+    },
+    "db_served": 0,
+    "last_db_window": null,
+    "spool_bytes": 42847649,
+    "disk": {
+     "total": 270553174016,
+     "free": 30543630336,
+     "free_pct": 11.3
+    },
+    "retention_h": 48.0,
+    "window_max_events": 200000,
+    "warnings": [
+     {
+      "code": "ring_short",
+      "detail": "ring holds 17s at this rate, the 5 min window is served from the database"
+     },
+     {
+      "code": "db_growth",
+      "detail": "~68 GB/day of live batches at the current rate; lower live_retention_h"
+     }
+    ],
+    "receiver": {
+     "engine": "go",
+     "backlog_segments": 0,
+     "backlog_bytes": 0,
+     "oldest_s": 0.0,
+     "records": 2500,
+     "segments_done": 40,
+     "failed": 0,
+     "torn": 0,
+     "last_lag_s": 0.53
+    }
+   },
+   "anomaly_runs": 0,
+   "last_scan_ms": 0.0
+  },
+  {
+   "t": 61,
+   "capacity": {
+    "events_per_s": 3064.68,
+    "events_per_s_5m": 3064.68,
+    "ingest": {
+     "batches": 500,
+     "avg_ms": 20.16,
+     "p95_ms": 42.77
+    },
+    "last_db_window_ms": 2509.5,
+    "ring": {
+     "events": 50000,
+     "maxlen": 50000,
+     "fill_pct": 100.0,
+     "span_s": 1942699,
+     "covers_window": true
+    },
+    "window_min": 5,
+    "db": {
+     "enabled": true,
+     "batches": 2247,
+     "events": 162274,
+     "oldest": "2026-10-14T20:51:24+00:00",
+     "newest": "2026-10-14T20:52:20+00:00",
+     "bytes": 41757973
+    },
+    "db_served": 1,
+    "last_db_window": [
+     "2026-10-14T20:47:18+00:00",
+     154300
+    ],
+    "spool_bytes": 48013953,
+    "disk": {
+     "total": 270553174016,
+     "free": 30534828032,
+     "free_pct": 11.3
+    },
+    "retention_h": 48.0,
+    "window_max_events": 200000,
+    "warnings": [
+     {
+      "code": "db_growth",
+      "detail": "~63 GB/day of live batches at the current rate; lower live_retention_h"
+     }
+    ],
+    "receiver": {
+     "engine": "go",
+     "backlog_segments": 4,
+     "backlog_bytes": 2258599,
+     "oldest_s": 6.4,
+     "records": 2804,
+     "segments_done": 44,
+     "failed": 0,
+     "torn": 0,
+     "last_lag_s": 5.25
+    }
+   },
+   "anomaly_runs": 1,
+   "last_scan_ms": 5104.7
+  }
+ ],
+ "final_scan": {
+  "ms": 577,
+  "found": {
+   "found": [],
+   "stats": {
+    "open": 0,
+    "ack": 0,
+    "resolved": 0,
+    "ignored": 0,
+    "kinds": {},
+    "runs": 2,
+    "last_run": "2026-10-14T20:52:26+00:00",
+    "last_scan_ms": 519.6,
+    "resolved_today": 0
+   }
+  }
+ },
+ "final_capacity": {
+  "events_per_s": 3048.35,
+  "events_per_s_5m": 3051.48,
+  "ingest": {
+   "batches": 500,
+   "avg_ms": 21.21,
+   "p95_ms": 53.53
+  },
+  "last_db_window_ms": 2509.5,
+  "ring": {
+   "events": 50000,
+   "maxlen": 50000,
+   "fill_pct": 100.0,
+   "span_s": 1942698,
+   "covers_window": true
+  },
+  "window_min": 5,
+  "db": {
+   "enabled": true,
+   "batches": 2268,
+   "events": 163684,
+   "oldest": "2026-09-22T09:14:02+00:00",
+   "newest": "2026-10-14T20:52:20+00:00",
+   "bytes": 42091617
+  },
+  "db_served": 1,
+  "last_db_window": [
+   "2026-10-14T20:47:18+00:00",
+   154300
+  ],
+  "spool_bytes": 48356095,
+  "disk": {
+   "total": 270553174016,
+   "free": 30534922240,
+   "free_pct": 11.3
+  },
+  "retention_h": 48.0,
+  "window_max_events": 200000,
+  "warnings": [
+   {
+    "code": "db_growth",
+    "detail": "~63 GB/day of live batches at the current rate; lower live_retention_h"
+   }
+  ],
+  "receiver": {
+   "engine": "go",
+   "backlog_segments": 3,
+   "backlog_bytes": 1658266,
+   "oldest_s": 5.8,
+   "records": 2825,
+   "segments_done": 45,
+   "failed": 0,
+   "torn": 0,
+   "last_lag_s": 5.59
+  }
+ }
+}

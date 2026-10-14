@@ -90,6 +90,7 @@ class Services:
         self.alerts = wo_notify.AlertEngine(self.notifier, self.live, self.agents, self.sources); self.alerts.anomalies = self.anomalies
         self.poller = Poller(self.sources, self.live)
         self.receiver = None
+        self.spool_consumer = None
         self.sim_stop = None
         self.selfmon = None
         self._live_an: tuple[int, object] | None = None
@@ -100,15 +101,21 @@ class Services:
         if bg:
             self.history.start(); self.anomalies.start(); self.alerts.start(); self.poller.start(); self.memory.learner.start()
             c = wo_settings.load()
+            port = int(os.environ.get("LIVE_PORT", c.get("live_port", 8600)) or 8600)
+            if os.environ.get("WATCHOVER_RECEIVER", "python") == "go":      # the Go receiver owns :8600 and spools; this process consumes the spool
+                from ..spool_consumer import SpoolConsumer
+                self.spool_consumer = SpoolConsumer(os.environ.get("WATCHOVER_SPOOL", os.path.join(os.environ.get("WATCHOVER_HOME", "data") or "data", "spool")),
+                                                    self.live, self.agents, key_fn=lambda: wo_settings.load().get("live_key") or "").start()
+                port = int(os.environ.get("WATCHOVER_INTERNAL_PORT", "8601") or 8601)    # enrolment (proxied by Go) and this machine's own agent
             if os.environ.get("WATCHOVER_API_RECEIVER", "1") == "1":      # the API is the product now: it owns the agent receiver
                 try:
-                    self.receiver = start_receiver(self.live, int(os.environ.get("LIVE_PORT", c.get("live_port", 8600)) or 8600), c.get("live_key") or None, self.agents)
+                    self.receiver = start_receiver(self.live, port, c.get("live_key") or None, self.agents)
                 except OSError:
                     self.receiver = None
             if os.environ.get("WATCHOVER_SELFMON", "1") != "0" and c.get("self_monitor", True) and self.receiver is not None:
                 try:
                     tok = wo_selfmon.ensure_token(self.agents, wo_settings)
-                    self.selfmon = wo_selfmon.SelfMonitor(int(os.environ.get("LIVE_PORT", c.get("live_port", 8600)) or 8600), tok, log=os.environ.get("WATCHOVER_LOG", "")).start()
+                    self.selfmon = wo_selfmon.SelfMonitor(port, tok, log=os.environ.get("WATCHOVER_LOG", "")).start()
                 except Exception:  # noqa: BLE001 - the host agent is best effort
                     self.selfmon = None
 
@@ -189,7 +196,7 @@ class Services:
                 "llm": {"provider": self.llm_cfg().kind, "model": self.llm_cfg().model, "enabled": self.llm_cfg().enabled},
                 "services": {"history": bool(self.history.thread and self.history.thread.is_alive()) if hasattr(self.history, "thread") else None,
                              "anomalies": bool(self.anomalies.thread and self.anomalies.thread.is_alive()), "alerts": self.alerts.runs, "poller": self.poller.thread.is_alive() if getattr(self.poller, "thread", None) else False},
-                "anomalies": self.anomalies.stats(), "datasets": len(self.datasets.items), "users": self.users.count(), "capacity": self.live.capacity()}
+                "anomalies": self.anomalies.stats(), "datasets": len(self.datasets.items), "users": self.users.count(), "capacity": {**self.live.capacity(), "receiver": self.spool_consumer.stats() if self.spool_consumer else {"engine": "python"}}}
 
     def close(self) -> None:
         for obj in (self.anomalies, self.alerts, self.memory.learner):
@@ -199,6 +206,8 @@ class Services:
                 pass
         if self.receiver is not None:
             self.receiver.shutdown()
+        if self.spool_consumer is not None:
+            self.spool_consumer.stop()
         if self.selfmon is not None:
             try:
                 self.selfmon.stop()

@@ -1,0 +1,16 @@
+# Watchover receiver: the Go front door on :8600 (agents, enrolment proxy, agent files). Static binary on Alpine, non-root,
+# same uid as the dashboard so both share the spool in the data volume (/data/spool).
+FROM golang:1.24-alpine AS build
+WORKDIR /src
+COPY receiver/ ./
+RUN go test ./... && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/wo-receiver .
+
+FROM alpine:3.20
+RUN apk upgrade --no-cache && adduser -D -u 10001 watchover && mkdir -p /app/agent /data && chown watchover /data
+COPY --from=build /out/wo-receiver /usr/local/bin/wo-receiver
+COPY agent.py /app/agent/agent.py
+COPY scripts/agent-install.sh /app/agent/agent-install.sh
+USER watchover
+ENV WO_LISTEN=:8600 WO_SPOOL=/data/spool WO_AGENT_DIR=/app/agent
+EXPOSE 8600
+ENTRYPOINT ["/usr/local/bin/wo-receiver"]

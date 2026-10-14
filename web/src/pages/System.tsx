@@ -171,6 +171,13 @@ function Capacity({ c }: { c: any }) {
       <Kpi value={src} label={`${t("cap_window")} ${c.window_min} ${t("min")}`} sub={db.enabled ? `${t("cap_db")}: ${(db.events ?? 0).toLocaleString()} ${t("ds_events")} · ${gb(db.bytes ?? 0)} · ${c.retention_h} h` : t("cap_db_off")} accent={ring.covers_window ? "#2dd4bf" : "#a78bfa"} />
       <Kpi value={disk ? `${disk.free_pct}%` : "-"} label={t("cap_disk")} sub={disk ? `${gb(disk.free)} ${t("cap_free")} · spool ${mb(c.spool_bytes ?? 0)}` : "-"} accent={disk && disk.free_pct < 10 ? "#f87171" : "#a78bfa"} />
     </div>
+    {c.receiver && <div className="row small" style={{ marginTop: 8, gap: 14 }}>
+      <span><b>{t("cap_recv")}</b>: {c.receiver.engine === "go" ? "Go" : "Python"}</span>
+      {c.receiver.engine === "go" && <>
+        <span>{t("cap_recv_queue")}: <b style={{ color: c.receiver.backlog_segments > 20 ? "#f59e0b" : undefined }}>{c.receiver.backlog_segments}</b> {t("cap_recv_seg")} · {mb(c.receiver.backlog_bytes ?? 0)}</span>
+        <span>{t("cap_recv_lag")}: <b>{c.receiver.last_lag_s ?? 0} s</b></span>
+        <span>{t("cap_recv_done")}: {(c.receiver.records ?? 0).toLocaleString()}{c.receiver.failed ? ` · ${c.receiver.failed} ${t("cap_recv_failed")}` : ""}</span></>}
+    </div>}
     {!!c.warnings?.length && <ul className="small" style={{ marginTop: 8, color: "#f59e0b" }}>{c.warnings.map((w: any) => <li key={w.code}>{t(`cap_w_${w.code}`) || w.code}: {w.detail}</li>)}</ul>}
   </Collapsible>;
 }

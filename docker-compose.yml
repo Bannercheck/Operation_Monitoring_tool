@@ -19,8 +19,7 @@ services:
     command: ["python", "-m", "watchover.api", "--port", "8501"]
     restart: unless-stopped
     ports:
-      - "${WATCHOVER_UI_PORT:-8501}:8501"          # React interface + API (docs at /api/docs)
-      - "${WATCHOVER_LIVE_PORT:-8600}:8600"        # receiver: agents and pull sources
+      - "${WATCHOVER_UI_PORT:-8501}:8501"          # React interface + API (docs at /api/docs); agents use the receiver service (8600)
     env_file:
       - path: .env
         required: false
@@ -30,6 +29,8 @@ services:
       WATCHOVER_SELFMON: ${WATCHOVER_SELFMON:-1}
       WATCHOVER_PARALLEL: ${WATCHOVER_PARALLEL:-}
       WATCHOVER_API_RECEIVER: "1"
+      WATCHOVER_RECEIVER: go                        # the Go receiver owns :8600 and spools to /data/spool; this container consumes it
+      WATCHOVER_INTERNAL_PORT: "8601"               # enrolment (proxied by the receiver) and this machine's own agent
       WATCHOVER_CORS: ${WATCHOVER_CORS:-}
     depends_on:
       postgres:
@@ -55,6 +56,39 @@ services:
       timeout: 5s
       retries: 3
       start_period: 40s
+
+  receiver:                                       # Go: answers agents in milliseconds whatever the dashboard is doing
+    image: ${WATCHOVER_IMAGE:-watchover}-receiver:${WATCHOVER_TAG:-local}
+    build:
+      context: .
+      dockerfile: Dockerfile.receiver
+    container_name: watchover-receiver
+    restart: unless-stopped
+    ports:
+      - "${WATCHOVER_LIVE_PORT:-8600}:8600"        # agents, pull sources, agent installer
+    environment:
+      TZ: ${TZ:-Europe/Istanbul}
+      WO_UPSTREAM: http://dashboard:8601
+      WO_MAX_BACKLOG_MB: ${WATCHOVER_SPOOL_MAX_MB:-2048}
+    depends_on:
+      dashboard:
+        condition: service_started
+    volumes:
+      - watchover-data:/data                        # /data/spool: segments for the dashboard, auth.json from the dashboard
+    deploy:
+      resources:
+        limits:
+          cpus: "${WATCHOVER_RECEIVER_CPUS:-2}"
+          memory: ${WATCHOVER_RECEIVER_MEMORY:-512m}
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8600/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   mcp:
     profiles: [mcp]
