@@ -5,7 +5,7 @@ import { get } from "../api";
 import { useT } from "../i18n";
 import { Empty, Kpi } from "../components/ui";
 
-export default function MapPage() {
+export function FailureMap() {
   const { t, lang } = useT();
   const ds = useQuery({ queryKey: ["datasets"], queryFn: () => get("/datasets") });
   const [sp] = useSearchParams();
@@ -15,7 +15,6 @@ export default function MapPage() {
   const m = useQuery({ queryKey: ["map", q.toString()], queryFn: () => get(`/map?${q}`), refetchInterval: source === "live" ? 10000 : false });
   const d = m.data;
   return <div className="stack">
-    <div><h2>🕸 {t("map_title")}</h2><span className="muted small">{t("map_sub")}</span></div>
     <div className="row">
       <select className="input" style={{ width: 240 }} value={source} onChange={(e) => { setSrc(e.target.value); setInc(""); setEnv(""); setHost(""); }}>{(ds.data ?? []).map((x: any) => <option key={x.id} value={x.id}>{x.name}</option>)}<option value="live">{t("map_live")}</option></select>
       <select className="input" style={{ width: 300 }} value={inc} onChange={(e) => setInc(e.target.value)}><option value="">{t("map_all_inc")}</option>{(d?.incidents ?? []).map((i: any) => <option key={i.id} value={i.id}>{i.id} · {i.title}</option>)}</select>

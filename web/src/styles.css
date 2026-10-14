@@ -172,4 +172,7 @@ pre.code { background: #0b1220; border: 1px solid var(--line); border-radius: 10
 .tl-t { color: var(--dim); font-size: 11px; } .tl-i { font-size: 15px; text-align: center; } .tl-n { min-width: 0; overflow-wrap: anywhere; }
 .tl-d { display: flex; align-items: center; gap: 6px; } .tl-b { text-align: right; }
 @media (max-width: 900px) { .tl-row { grid-template-columns: 60px 22px minmax(0, 1fr); } .tl-d, .tl-b { grid-column: 3; } }
+.topo text { fill: var(--fg); } .topo .topo-nl { font-size: 12px; font-weight: 600; } .topo .topo-ns { font-size: 10.5px; fill: var(--muted); } .topo .topo-el { font-size: 10px; fill: var(--muted); text-anchor: middle; paint-order: stroke; stroke: var(--bg); stroke-width: 3px; }
+.hostrow { display: block; width: 100%; text-align: left; padding: 7px 10px; border-radius: 8px; border: 1px solid transparent; background: transparent; color: var(--fg); cursor: pointer; font: inherit; }
+.hostrow:hover { background: rgba(148, 163, 184, 0.08); } .hostrow.on { background: linear-gradient(90deg, rgba(45, 212, 191, 0.16), rgba(96, 165, 250, 0.05)); border-color: rgba(45, 212, 191, 0.4); }
 

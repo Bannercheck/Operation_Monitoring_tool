@@ -127,10 +127,37 @@ def _attr(a: dict, keys) -> object:
     return None
 
 
+SSO_TYPES = re.compile(r"^(LOGIN|LOGOUT|CODE_TO_TOKEN|REFRESH_TOKEN|LOGIN_ERROR|IMPERSONATE|CLIENT_LOGIN)$", re.I)
+
+
+def sso_span(o: Observation, low: dict) -> dict | None:
+    """Identity provider events (Keycloak / OIDC: type, clientId, sessionId, userId / username) as user steps: one SSO session
+    links the applications a person opens, whatever each application logs itself."""
+    typ = str(low.get("type") or low.get("event") or "")
+    if not SSO_TYPES.match(typ) and SSO_TYPES.match((o.message or "").strip()):    # a parser took "type" as the message column
+        typ = o.message.strip()
+    client = low.get("clientid") or low.get("client_id") or low.get("client")
+    sess = low.get("sessionid") or low.get("session_id") or low.get("session_state")
+    if not (client and sess and SSO_TYPES.match(typ)):
+        return None
+    start = o.timestamp if o.timestamp.tzinfo else o.timestamp.replace(tzinfo=UTC)
+    err = int(typ.upper().endswith("_ERROR"))
+    user = low.get("userid") or low.get("user_id") or low.get("username") or ""
+    return {"trace_id": None, "span_id": None, "parent_id": None, "start": start, "duration_ms": 0.0, "has_duration": False,
+            "service": str(low.get("realmid") or o.service or "sso")[:120], "operation": f"sso {typ.lower()} → {str(client)[:60]}", "kind": "user",
+            "status": 0, "error": err, "env": o.environment or "", "host": (o.host or "")[:120], "user_ref": pseudonym(str(user)) if user else "",
+            "session_id": "sso:" + str(sess)[:120], "link": "session", "confidence": 0.7, "ref": o.ref, "message": scrub(o.message or "")[:300],
+            "severity": o.severity, "attrs": {"step": "sso", "app": str(client)[:80], "sso.type": typ.upper()}}
+
+
 def span_of(o: Observation) -> dict | None:
     """The span an observation describes, or None when it carries neither a duration nor a trace / request id."""
     a = o.attributes or {}
     low = {str(k).lower(): v for k, v in a.items()}
+    if "clientid" in low or "client_id" in low:
+        sso = sso_span(o, low)
+        if sso:
+            return sso
     ids: dict[str, str] = {}
     for k, v in low.items():
         role = ID_KEYS.get(k)
@@ -282,7 +309,7 @@ class TraceStore:
                     d = sp["duration_ms"]
                     a[0] += 1; a[1] += sp["error"]; a[2] += d; a[3] = max(a[3], d); a[4][bucket(d)] += 1
                 tid = sp.get("trace_id")
-                from_user = str(sp.get("ref", "")).startswith("rum:")
+                from_user = str(sp.get("ref", "")).startswith("rum:") or str(sp.get("session_id", "")).startswith("sso:")
                 if from_user and tid:                            # tail sampling for user journeys: claim the trace, release held spans
                     if tid not in self._force:
                         self._force[tid] = time.time()
@@ -472,6 +499,67 @@ class TraceStore:
                         "error": int(any(r["error"] for r in sp)), "links": sorted({r["link"] for r in sp}), "user_ref": next((r["user_ref"] for r in sp if r["user_ref"]), ""),
                         "session_id": next((r["session_id"] for r in sp if r["session_id"]), ""), "env": next((r["env"] for r in sp if r["env"]), "")})
         return out
+
+    def topology(self, minutes: int | None = 60, env: str | None = None, max_traces: int = 3000) -> dict:
+        """Service map from stored traces: an edge for every parent -> child step that crosses a service (or goes to a database /
+        external peer), with calls, errors, latency and how it is known (explicit parent id vs inferred). Node health comes from
+        the rollups, so rates cover every request even though edges come from the sampled traces."""
+        where, p = [], []
+        if minutes:
+            where.append("ts >= ?"); p.append((datetime.now(UTC) - timedelta(minutes=minutes)).isoformat())
+        if env:
+            where.append("env = ?"); p.append(env)
+        cond = (" WHERE " + " AND ".join(where)) if where else ""
+        ids = [r["trace_id"] for r in self.db._exec(f"SELECT trace_id, MAX(start_ms) AS s FROM spans{cond} GROUP BY trace_id ORDER BY s DESC LIMIT {int(max_traces)}", tuple(p))]
+        rows: list[dict] = []
+        for i in range(0, len(ids), 300):
+            chunk = ids[i:i + 300]
+            rows += self.db._exec(f"SELECT * FROM spans WHERE trace_id IN ({','.join('?' * len(chunk))}) ORDER BY start_ms, duration_ms DESC", tuple(chunk))
+        by = defaultdict(list)
+        for r in rows:
+            by[r["trace_id"]].append(r)
+        edges: dict[tuple, dict] = {}
+        kinds: dict[str, str] = {}
+        for tid, rs in by.items():
+            w = waterfall([dict(r) for r in rs])
+            keyed = {s["key"]: s for s in w["spans"]}
+            for s in w["spans"]:
+                if s["kind"] in ("user", "mobile"):
+                    kinds[s["service"]] = "app"
+                if s["kind"] == "log" or not s["parent_key"]:
+                    continue
+                par = keyed.get(s["parent_key"])
+                if par is None:
+                    continue
+                if s["kind"] == "db":
+                    tgt = s["host"] or f"{s['service']} db"
+                    kinds.setdefault(tgt, "db")
+                elif s["kind"] in ("client", "external") and (s.get("attrs") or {}).get("peer") and s["service"] == par["service"]:
+                    continue                                       # the app's own call record: the server span below is the edge
+                else:
+                    tgt = s["service"]
+                src = par["service"]
+                if src == tgt:
+                    continue
+                kinds.setdefault(src, "service"); kinds.setdefault(tgt, "service")
+                e = edges.setdefault((src, tgt), {"source": src, "target": tgt, "calls": 0, "errors": 0, "durs": [], "explicit": 0, "inferred": 0})
+                e["calls"] += 1; e["errors"] += int(s["error"]); e["durs"].append(s["duration_ms"])
+                if s["parent_inferred"] or s["link"] != "explicit":
+                    e["inferred"] += 1
+                else:
+                    e["explicit"] += 1
+        health = {x["service"]: x for x in self.services(minutes, env)}
+        out_edges = []
+        for e in edges.values():
+            d = sorted(e.pop("durs"))
+            out_edges.append({**e, "error_rate": round(e["errors"] / e["calls"], 4) if e["calls"] else 0, "p50_ms": d[len(d) // 2] if d else None,
+                              "p95_ms": d[min(len(d) - 1, int(len(d) * 0.95))] if d else None, "evidence": "explicit" if e["explicit"] >= e["inferred"] else "inferred"})
+        nodes = []
+        for name, kind in kinds.items():
+            h = health.get(name, {})
+            nodes.append({"id": name, "kind": kind, "rps": h.get("rps"), "calls": h.get("calls"), "error_rate": h.get("error_rate"), "p95_ms": h.get("p95_ms"),
+                          "apdex": h.get("apdex")})
+        return {"nodes": nodes, "edges": out_edges, "traces": len(by)}
 
     def trace(self, trace_id: str) -> dict | None:
         rows = self.db._exec("SELECT * FROM spans WHERE trace_id = ? ORDER BY start_ms, duration_ms DESC", (trace_id,))

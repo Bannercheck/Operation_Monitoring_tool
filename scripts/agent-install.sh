@@ -5,13 +5,13 @@
 #   curl -fsSL http://<dashboard>:8600/agent/install.sh | sudo bash -s -- --url http://<dashboard>:8600/ingest --token wo_... --logs "/var/log/syslog,/var/log/app/*.log"
 #   … or let the server enrol itself with the fleet key (Agents panel › bulk install); its own token is issued and stored here:
 #   curl -fsSL http://<dashboard>:8600/agent/install.sh | sudo bash -s -- --url http://<dashboard>:8600/ingest --enroll-key wk_... --env prod --site IST-DC1
-# Options: --url U  --token T | --enroll-key K [--name N --site S --tags "a,b"]  --logs "a,b"  --interval 10  --env prod  --dir /opt/watchover-agent  --no-service  --no-test  --uninstall
+# Options: --url U  --token T | --enroll-key K [--name N --site S --tags "a,b"]  --logs "a,b"  --interval 10  --env prod  --dir /opt/watchover-agent  --no-service  --no-flows  --no-test  --uninstall
 set -euo pipefail
-URL=""; TOKEN=""; LOGS=""; INTERVAL=10; ENV_=""; DIR=""; SERVICE=1; TEST=1; UNINSTALL=0; EKEY=""; NAME=""; SITE=""; TAGS=""
+URL=""; TOKEN=""; LOGS=""; INTERVAL=10; ENV_=""; DIR=""; FLOWS=1; SERVICE=1; TEST=1; UNINSTALL=0; EKEY=""; NAME=""; SITE=""; TAGS=""
 while [[ $# -gt 0 ]]; do case "$1" in
   --url) URL="$2"; shift;; --token) TOKEN="$2"; shift;; --logs) LOGS="$2"; shift;; --interval) INTERVAL="$2"; shift;; --env) ENV_="$2"; shift;;
   --enroll-key) EKEY="$2"; shift;; --name) NAME="$2"; shift;; --site) SITE="$2"; shift;; --tags) TAGS="$2"; shift;;
-  --dir) DIR="$2"; shift;; --no-service) SERVICE=0;; --no-test) TEST=0;; --uninstall) UNINSTALL=1;; *) echo "unknown option: $1"; exit 1;; esac; shift; done
+  --dir) DIR="$2"; shift;; --no-service) SERVICE=0;; --no-flows) FLOWS=0;; --no-test) TEST=0;; --uninstall) UNINSTALL=1;; *) echo "unknown option: $1"; exit 1;; esac; shift; done
 log(){ printf '\033[1;36m▶ %s\033[0m\n' "$*"; }
 die(){ printf '\033[1;31m✖ %s\033[0m\n' "$*"; exit 1; }
 OS="$(uname -s)"; ROOT=0; [[ "$(id -u)" == "0" ]] && ROOT=1
@@ -75,6 +75,7 @@ WATCHOVER_URL='$URL'
 WATCHOVER_TOKEN='$TOKEN'
 WATCHOVER_LOGS='$LOGS'
 WATCHOVER_METRICS=1
+WATCHOVER_FLOWS=$FLOWS
 WATCHOVER_INTERVAL='$INTERVAL'
 WATCHOVER_SPOOL='$DIR/spool'
 AGENT_ENV='$ENV_'

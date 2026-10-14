@@ -102,6 +102,22 @@ Ajanların bağlandığı 8600 portu v1.35'ten itibaren ayrı bir konteynerde, G
 5. **Güvenlik duvarı:** telefonlar ve tarayıcılar Watchover'a 443 (edge) ya da 8600 üzerinden ulaşmalıdır. Şirket dışından kullanılan uygulamalar için yalnız `/mobile`, `/rum` ve `/rum.js` yollarını dışarı açan bir ters vekil önerilir.
 6. **KVKK:** sensörler form değeri, ekran içeriği, tuş vuruşu, konum ve sorgu dizesi toplamaz; sunucu kullanıcı kimliğini takma ada çevirir ve saklamaz, metinlerde TCKN / telefon / e-posta / IBAN / kart / parola maskeler, IP saklamaz. Bir kişinin oturumlarını bulmak için kimlik girildiğinde gerekçe istenir ve güvenlik günlüğüne yazılır. Aydınlatma metni ve rıza kararı kurumun hukuk birimindedir.
 
+## 2d. Servis haritası ve sunucu bazında entegrasyonlar
+
+- **Trafik (izler):** APM › Servis haritası. Kim kimi çağırıyor, çağrı sayısı, P95 gecikme ve hata oranı izlerden ölçülür; düz çizgi loglarda üst adım kimliğiyle, kesikli çizgi zaman örtüşmesinden bilinir.
+- **Ağ (ajan bağlantıları):** ajan `--flows` ile (kurulum betiği bunu varsayılan açar, `--no-flows` kapatır) dakikada bir sunucunun açık TCP bağlantılarını gönderir. Hiçbir logun söylemediği bağımlılıklar görünür: uygulama sunucusundan veritabanına, Kafka'ya, SAP RFC'ye, dış API'ye. Süreç adlarını görmek için ajan root çalışmalıdır (systemd servisi öyle çalışır).
+- **Entegrasyonlar menüsü:** her sunucu için tek ekran: ona bağlananlar, üzerinde çalışan süreçler ve dinlenen portlar, izlerde görülen servisler, gittiği sistemler tür türüne (veritabanı, mesajlaşma, HTTP API, SAP, kimlik, e-posta, dosya aktarımı). Hedefler envanterdeki IP'lerle adlandırılır; envanterde olmayan adres IP olarak ve kesikli çerçeveyle görünür, envantere eklenince adıyla görünür.
+- **Gateway / nginx'te istek kimliği:** izlerin kimlikle birleşmesi için önerilen log biçimi:
+
+```nginx
+log_format watchover '$remote_addr - $remote_user [$time_local] "$request" $status $body_bytes_sent "$http_referer" "$http_user_agent" '
+                     '$request_time $upstream_response_time request_id=$request_id traceparent=$http_traceparent';
+proxy_set_header X-Request-ID $request_id;          # arka uç bu kimliği kendi loguna yazarsa aynı iz kimlikle birleşir
+access_log /var/log/nginx/access.log watchover;
+```
+
+- **Okunan biçimler:** nginx / Apache (süre, upstream süresi, istek kimliği, Apache `%D`), IIS `time-taken`, Envoy / Istio erişim logu (`x-request-id`), AWS ALB, uygulama loglarında `traceparent` / `trace_id` / `request_id` / `correlation_id`, SharePoint ULS (Correlation ve Execution Time), Keycloak olayları (SSO oturumu uygulamalar arası yolculuk olarak).
+
 ## 3. Günlük işletim: watchover.sh
 
 | Komut | Ne yapar |

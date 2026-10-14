@@ -66,12 +66,39 @@ def _parse_one(fname: str, text: str, mapping: dict | None, progress=None, base:
             wo_profiles.remember(fmt, keys, {k: v for k, v in roles.items() if v}, name=fname, source="user" if (mapping and not learned) else "auto")
         except Exception:  # noqa: BLE001 - remembering is a convenience, never a parse failure
             pass
+    if fmt == "csv" and {"EventID", "Correlation", "Area"} <= {k.strip() for k in keys}:
+        _sharepoint_uls(rows)
     family = FAMILY_SEEN.get()
     if tok_hint is not None:
         FAMILY_HINT.reset(tok_hint)
     FAMILY_SEEN.reset(tok_seen)
     return rows, {"file": fname, "format": fmt, "confidence": conf, "rows": len(rows), "family": family or "",
                   "kind": rows[0].kind if rows else "-", "keys": keys, "roles": roles, "profile": (learned or {}).get("id", ""), "sha": stamp.file_id(fname, text)}
+
+
+ULS_LEVELS = {"critical": "CRITICAL", "unexpected": "ERROR", "monitorable": "WARN", "high": "INFO", "medium": "INFO", "verbose": "DEBUG", "verboseex": "DEBUG"}
+
+
+def _sharepoint_uls(rows: list[Observation]) -> None:
+    """SharePoint ULS logs: their own level scale ("High" is routine, "Unexpected" is the error), Area / Category as the service,
+    "Execution Time=245.12" (ms) as the request duration. The Correlation column already reaches the trace model as an id."""
+    import re as _re
+    for o in rows:
+        cols = [c.strip() for c in (o.raw or "").split("\t")]
+        lvl = next((c for c in cols if c.lower() in ULS_LEVELS), "")
+        if lvl:
+            o.severity = ULS_LEVELS[lvl.lower()]
+        area = str(o.attributes.get("Area", "")).strip()
+        cat = next((cols[i] for i in range(len(cols)) if i > 0 and cols[i - 1] == area), "") if area else ""
+        if area:
+            o.service = (f"sharepoint:{cat}" if cat else "sharepoint")[:80]
+        for k in list(o.attributes):
+            if isinstance(o.attributes[k], str):
+                o.attributes[k] = o.attributes[k].strip()
+        if m := _re.search(r"Execution Time=(\d+(?:\.\d+)?)", o.message or ""):
+            o.attributes["duration_ms"] = float(m[1])
+        if m := _re.search(r"Request \((GET|POST|PUT|DELETE|PATCH|HEAD):(\S+?)\)", o.message or ""):
+            o.attributes["http.method"], o.attributes["url"] = m[1], m[2]
 
 
 def _workers(items: list[tuple[str, str]]) -> int:

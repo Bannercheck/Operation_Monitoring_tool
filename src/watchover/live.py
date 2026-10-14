@@ -52,6 +52,7 @@ class LiveStore:
         self.received = 0
         self.agents: dict[str, float] = {}      # agent name -> last seen epoch
         self.on_ingest = None                    # optional hook(events): service-level history rollups
+        self.on_flows = None                     # optional hook(flow observations): network edges from agents (--flows)
         self.enricher = None                     # optional hook(observation) -> bool: inventory match (IP → hostname, dc, criticality)
         self.metric_hosts: dict[str, set] = {}   # sender -> hosts it reported metrics for (purge on simulation off)
         self.matched = 0                         # events matched to the inventory
@@ -231,6 +232,7 @@ class LiveStore:
         now = datetime.now(UTC)
         metric_rows: list[tuple] = []
         events: list[Observation] = []
+        flows: list[Observation] = []
         horizon = now + timedelta(days=1)
         for o in obs:
             ts = o.timestamp if o.timestamp.tzinfo else o.timestamp.replace(tzinfo=UTC)
@@ -249,6 +251,9 @@ class LiveStore:
                 o.attributes["site"] = site
             if agent_id is not None:
                 o.attributes["agent_id"] = agent_id
+            if "flow.dir" in o.attributes:                  # agent --flows: network edges, not log events
+                flows.append(o)
+                continue
             m = metric_of(o)
             if m:
                 metric_rows.extend(m)
@@ -263,6 +268,11 @@ class LiveStore:
             self.agents[agent] = time.time()
             self._rate.append((time.time(), len(obs)))
         obs = events
+        if flows and self.on_flows is not None:
+            try:
+                self.on_flows(flows)
+            except Exception:  # noqa: BLE001
+                pass
         self._persist(events, agent, env)
         if self.on_ingest and events:
             try:
@@ -901,6 +911,20 @@ def simulate_rum(rng, incident: bool = False) -> tuple[list[tuple[str, dict]], l
     return sessions, backend
 
 
+SIM_FLOWS_MAP = [("prd-api-01", "java", "172.16.1.55:5432"), ("prd-api-02", "java", "172.16.1.55:5432"), ("prd-api-03", "node", "172.16.1.60:6379"),
+                 ("prd-api-01", "java", "172.16.1.70:9092"), ("worker-01", "python3", "172.16.1.70:9092"), ("worker-01", "python3", "172.16.1.55:5432"),
+                 ("hr-app-01", "java", "172.16.2.10:1521"), ("hr-app-01", "java", "10.20.0.5:443"), ("prd-api-02", "java", "10.20.0.9:443")]
+
+
+def simulate_flows(rng) -> bytes:
+    """What `agent.py --flows` would send from the simulated hosts: outbound connections and the database's listening port."""
+    now = datetime.now(UTC).isoformat()
+    lines = [json.dumps({"ts": now, "host": h, "env": "prod", "msg": f"flow out {p} {r}", "kind": "flow", "flow.dir": "out", "flow.process": p, "flow.remote": r, "flow.count": rng.randint(2, 40)})
+             for h, p, r in SIM_FLOWS_MAP]
+    lines.append(json.dumps({"ts": now, "host": "db-01", "env": "prod", "msg": "flow in postgres 5432", "kind": "flow", "flow.dir": "in", "flow.process": "postgres", "flow.port": "5432", "flow.count": rng.randint(20, 90)}))
+    return ("\n".join(lines) + "\n").encode()
+
+
 def start_simulator(store: LiveStore, interval: float = 1.0, agent: str = "simulator", extra=None) -> threading.Event:
     """Feed the store every `interval` seconds until the returned Event is set. Bursts every ~2 minutes."""
     import random
@@ -916,6 +940,8 @@ def start_simulator(store: LiveStore, interval: float = 1.0, agent: str = "simul
             store.ingest("sim.jsonl", simulate_batch(rng, rng.randint(4, 12), incident, traces=True), agent)
             if tick % 5 == 1:
                 store.ingest("metrics.jsonl", simulate_metrics(rng, mstate, incident), agent)
+            if tick % 30 == 2:
+                store.ingest("flows.jsonl", simulate_flows(rng), agent)
             if extra is not None and tick % 3 == 0:
                 try:
                     extra(rng, incident)

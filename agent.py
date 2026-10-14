@@ -247,6 +247,94 @@ def metrics_loop(sender: Sender, interval: float, env: str, stop: threading.Even
         stop.wait(max(interval, 1.0))
 
 
+# ---------------------------------------------------------------- network flows: who talks to whom (Linux /proc/net, no extra tool)
+def _hexaddr(h: str) -> str:
+    """'0100007F:1F90' -> '127.0.0.1:8080'; IPv6 (32 hex digits) and v4-mapped v6 handled."""
+    ip, port = h.split(":")
+    if len(ip) == 8:
+        addr = ".".join(str(int(ip[i:i + 2], 16)) for i in (6, 4, 2, 0))
+    else:
+        words = [ip[i:i + 8] for i in range(0, 32, 8)]
+        raw = b"".join(bytes.fromhex(w)[::-1] for w in words)
+        if raw[:12] == b"\x00" * 10 + b"\xff\xff":
+            addr = ".".join(str(b) for b in raw[12:])
+        else:
+            addr = ":".join(raw[i:i + 2].hex() for i in range(0, 16, 2))
+    return f"{addr}:{int(port, 16)}"
+
+
+def _inode_process() -> dict:
+    """socket inode -> process name (needs read access to /proc/<pid>/fd: root, or the same user)."""
+    out = {}
+    for pid in os.listdir("/proc"):
+        if not pid.isdigit():
+            continue
+        try:
+            name = Path(f"/proc/{pid}/comm").read_text().strip()
+            for fd in os.listdir(f"/proc/{pid}/fd"):
+                try:
+                    link = os.readlink(f"/proc/{pid}/fd/{fd}")
+                except OSError:
+                    continue
+                if link.startswith("socket:["):
+                    out[link[8:-1]] = name
+        except OSError:
+            continue
+    return out
+
+
+def tcp_flows() -> list[dict]:
+    """Established TCP connections grouped as (direction, process, remote endpoint): outbound calls to a remote ip:port and
+    inbound use of each listening port. Loopback is skipped. Returns [] where /proc/net/tcp does not exist (macOS, Windows)."""
+    rows = []
+    for f in ("/proc/net/tcp", "/proc/net/tcp6"):
+        try:
+            rows += Path(f).read_text().splitlines()[1:]
+        except OSError:
+            continue
+    if not rows:
+        return []
+    listen, est = set(), []
+    for r in rows:
+        p = r.split()
+        if len(p) < 10:
+            continue
+        local, remote, st, inode = p[1], p[2], p[3], p[9]
+        if st == "0A":
+            listen.add(int(local.split(":")[1], 16))
+        elif st == "01":
+            est.append((_hexaddr(local), _hexaddr(remote), inode))
+    procs = _inode_process()
+    agg: dict = {}
+    for local, remote, inode in est:
+        rip = remote.rsplit(":", 1)[0]
+        if rip.startswith("127.") or rip in ("::1", "0000:0000:0000:0000:0000:0000:0000:0001"):
+            continue
+        lport = int(local.rsplit(":", 1)[1])
+        proc = procs.get(inode, "")
+        if lport in listen:
+            key = ("in", proc, str(lport))
+        else:
+            key = ("out", proc, remote)
+        agg[key] = agg.get(key, 0) + 1
+    return [{"msg": f"flow {d} {pr or '?'} {ep}", "kind": "flow", "flow.dir": d, "flow.process": pr or "?", ("flow.port" if d == "in" else "flow.remote"): ep, "flow.count": n}
+            for (d, pr, ep), n in sorted(agg.items(), key=lambda x: -x[1])[:400]]
+
+
+def flows_loop(sender: "Sender", interval: float, env: str, stop: threading.Event) -> None:
+    host = socket.gethostname()
+    while not stop.is_set():
+        try:
+            fl = tcp_flows()
+            if fl:
+                now = datetime.now(timezone.utc).isoformat()
+                lines = [json.dumps({"ts": now, "host": host, **({"env": env} if env else {}), **f}) for f in fl]
+                sender.send(("\n".join(lines) + "\n").encode(), "flows.jsonl")
+        except Exception as e:  # noqa: BLE001
+            print(f"flows failed: {e}", file=sys.stderr)
+        stop.wait(max(interval, 15.0))
+
+
 # ---------------------------------------------------------------- automatic log discovery (Linux / macOS / Windows / Kubernetes nodes)
 PROFILES = [
     # name, detector (any path exists), log globs
@@ -412,6 +500,7 @@ def main(argv=None) -> int:
     ap.add_argument("--journal", action="store_true", help="also stream the systemd journal (Linux)")
     ap.add_argument("--windows-events", action="store_true", help="also poll the Windows Event Log (System, Application)")
     ap.add_argument("--metrics", action="store_true", help="ship this host's CPU / memory / disk / GPU every --interval seconds")
+    ap.add_argument("--flows", action="store_true", help="ship this host's TCP connections every 60 s (who talks to whom: the service map's traffic edges; Linux)")
     ap.add_argument("--file", help="send a file once and exit")
     ap.add_argument("--simulate", action="store_true", help="generate synthetic traffic (needs the dashboard checkout)")
     ap.add_argument("--test", action="store_true", help="send one hello event, print the receiver's answer, exit")
@@ -445,6 +534,8 @@ def main(argv=None) -> int:
             args.journal = True
     if os.environ.get("WATCHOVER_METRICS", "").lower() in ("1", "true", "yes"):
         args.metrics = True
+    if os.environ.get("WATCHOVER_FLOWS", "").lower() in ("1", "true", "yes"):
+        args.flows = True
     sender = Sender(args.url, args.key, args.agent, args.spool or None, ca=args.ca, insecure=args.insecure)
     if args.test:
         out = hello(sender, args.env)
@@ -472,6 +563,8 @@ def main(argv=None) -> int:
     stop = threading.Event()
     threads = [threading.Thread(target=metrics_loop, args=(sender, args.interval, args.env, stop), daemon=True)] if args.metrics else []
     threads += [threading.Thread(target=tail_loop, args=(p, sender, 1.0, stop), daemon=True) for p in args.tail]
+    if args.flows:
+        threads.append(threading.Thread(target=flows_loop, args=(sender, 60.0, args.env, stop), daemon=True))
     if args.journal:
         threads.append(threading.Thread(target=journal_loop, args=(sender, 1.0, stop), daemon=True))
     if args.windows_events:

@@ -25,5 +25,7 @@ class KvParser(Parser):
                 rec["service"], rest = m[1], rest[m.end():]
             pairs = KV_RE.findall(rest)
             if len(pairs) >= 2 or (pairs and rec):
-                rec.update({k: v[1:-1].replace('\\"', '"') if v.startswith('"') else v for k, v in pairs})
+                rec.update({k: v[1:-1].replace('\\"', '"') if v.startswith('"') else v.rstrip(",;") for k, v in pairs})   # "type=LOGIN, realmId=..." (Keycloak)
+                if "message" not in rec and "msg" not in rec and "type" in rec and ("clientId" in rec or "client_id" in rec):
+                    rec["message"] = f"{rec['type']} client={rec.get('clientId') or rec.get('client_id')}"   # identity events: a readable message, ids stay attributes
                 yield i, rec

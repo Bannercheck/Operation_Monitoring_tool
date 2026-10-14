@@ -47,6 +47,14 @@ class Services:
     def _simulate_users(self, rng, incident: bool) -> None:
         """Simulator extra: web and mobile HR sessions through the RUM path, their backend logs through the live path."""
         from ..live import simulate_rum
+        if not getattr(self, "_sim_inventory", False):          # name the simulated peers once (only when they are not in the inventory yet)
+            self._sim_inventory = True
+            for h, ip, role in (("db-01", "172.16.1.55", "PostgreSQL"), ("cache-01", "172.16.1.60", "Redis"), ("kafka-01", "172.16.1.70", "Kafka"), ("hr-db", "172.16.2.10", "Oracle")):
+                try:
+                    if self.inventory.get(h) is None:
+                        self.inventory.upsert({"hostname": h, "ip": ip, "env": "prod", "role": role, "owner": "demo (simulator)"})
+                except Exception:  # noqa: BLE001
+                    pass
         apps = {a["name"]: a for a in self.rum.apps()}
         for name, platform in (("ik-mobil", "android"), ("ik-portal", "web")):
             if name not in apps:
@@ -88,6 +96,8 @@ class Services:
         self.history = History(self.kb, retention_days=int(cfg0.get("history_retention_days", 400) or 400))
         from ..traces import TraceStore
         self.traces = TraceStore(self.kb, settings=wo_settings.load)     # spans and service rollups rebuilt from the same live events
+        from ..flows import FlowStore
+        self.flows = FlowStore(self.kb); self.live.on_flows = self.flows.add
         from ..rum import RumStore
         self.rum = RumStore(self.kb, self.traces, self.live, settings=wo_settings.load)   # web and mobile user sessions
         self.live.on_ingest = self._on_ingest

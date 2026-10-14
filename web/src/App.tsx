@@ -17,7 +17,7 @@ import Knowledge from "./pages/Knowledge";
 import Notify from "./pages/Notify";
 import Users from "./pages/Users";
 import System from "./pages/System";
-import MapPage from "./pages/Map";
+import MapPage from "./pages/apm/Topology";
 import Assist from "./pages/Assist";
 import Llm from "./pages/Llm";
 import Itsm from "./pages/Itsm";
@@ -28,6 +28,7 @@ import Traces from "./pages/apm/Traces";
 import TraceDetail from "./pages/apm/TraceDetail";
 import Rum from "./pages/rum/Rum";
 import RumSession from "./pages/rum/Session";
+import Integrations from "./pages/apm/Integrations";
 
 export default function App() {
   const { user, ready, acceptToken } = useAuth();
@@ -64,6 +65,7 @@ export default function App() {
         <Route path="/traces" element={<Traces />} />
         <Route path="/traces/:id" element={<TraceDetail />} />
         <Route path="/rum" element={<Rum />} />
+        <Route path="/integrations" element={<Integrations />} />
         <Route path="/rum/sessions/:id" element={<RumSession />} />
         <Route path="/assist" element={<Assist />} />
         <Route path="/llm" element={<Llm />} />

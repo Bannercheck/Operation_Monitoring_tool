@@ -40,6 +40,31 @@ def services_list(minutes: int | None = None, env: str | None = None, dataset: s
     return {"services": st.services(_minutes(minutes, dflt), env or None), "received": getattr(st, "received", 0), "kept": getattr(st, "kept", 0)}
 
 
+@router.get("/apm/topology")
+def topology(minutes: int | None = None, env: str | None = None, dataset: str | None = None, user=Depends(require("page.apm")), svc=Depends(services)):
+    """Service map: trace edges (calls, errors, latency, explicit / inferred) and, for the live feed, the agents' network flows."""
+    st, dflt = _store(svc, dataset)
+    m = _minutes(minutes, dflt)
+    net = svc.flows.graph(m, env or None) if (not dataset or dataset == "live") and getattr(svc, "flows", None) is not None else {"nodes": [], "edges": []}
+    return {"services": st.topology(m, env or None), "network": net}
+
+
+@router.get("/apm/hosts")
+def integration_hosts(minutes: int = 1440, env: str | None = None, user=Depends(require("page.apm")), svc=Depends(services)):
+    """Hosts with integrations (from agent network flows): how many inbound and outbound, which protocols."""
+    return svc.flows.hosts(minutes or None, env or None)
+
+
+@router.get("/apm/hosts/{host}/integrations")
+def host_integrations(host: str, minutes: int = 1440, user=Depends(require("page.apm")), svc=Depends(services)):
+    """One host's integration map: callers, listening ports with processes, outbound integrations by category, and the
+    services seen on that host in the traces."""
+    m = svc.flows.host_map(host, minutes or None)
+    rows = svc.kb._exec("SELECT DISTINCT service FROM spans WHERE host = ? AND kind NOT IN ('user','mobile','log') LIMIT 50", (host,))
+    m["services"] = sorted(r["service"] for r in rows)
+    return m
+
+
 @router.get("/apm/services/{name:path}")
 def service_detail(name: str, minutes: int | None = None, env: str | None = None, dataset: str | None = None, user=Depends(require("page.apm")), svc=Depends(services)):
     st, dflt = _store(svc, dataset)
