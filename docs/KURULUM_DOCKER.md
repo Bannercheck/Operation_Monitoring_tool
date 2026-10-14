@@ -91,6 +91,7 @@ unzip -q watchover.zip && mv hackathon watchover && cd watchover
 | `./watchover.sh logs [dashboard\|postgres\|mcp]` | Canlı log |
 | `./watchover.sh stop` / `start` / `restart` | Durdur / başlat / yeniden başlat (veri kalır) |
 | `./watchover.sh update` | Yeni paket klasörün üstüne açıldıktan sonra: imajı yeniden derler, konteynerleri yeniler, eski imajı temizler |
+| `./watchover.sh upgrade` | **Yeni sürüme geçmenin tek komutu**: `git fetch` + ileri sarma + `update`. Klasörde elle değiştirilmiş dosya varsa kenara alır (`git stash`) ve sonra geri koyar; düz `git pull`'un "unstaged changes" diye durduğu yerde durmaz. Kendi commit'i olan klasörü elle birleştirmeye bırakır |
 | `./watchover.sh backup` | PostgreSQL dökümü + veri birimi + `.env` → `backups/watchover-YYYYMMDD-HHMM.tgz` |
 | `./watchover.sh restore DOSYA` | Yedeği geri yükler (veritabanı ve veri birimi; konteynerler bu sırada durur) |
 | `./watchover.sh user …` | `list`, `add EMAIL [--admin]`, `promote`, `password EMAIL`, `unlock`, `enable`, `disable`, `delete` |

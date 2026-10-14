@@ -3,6 +3,7 @@
 #
 #   ./watchover.sh install          first start: writes .env (random passwords / keys), builds the image, starts PostgreSQL + dashboard
 #   ./watchover.sh update           new source tree copied over this folder: rebuild the image, recreate the containers, keep the data
+#   ./watchover.sh upgrade          git pull of this folder (local edits set aside and put back) + update: the one-line way to a new version
 #   ./watchover.sh start|stop|restart|status|logs [service]
 #   ./watchover.sh mcp on|off       our MCP server as a third container (MCP_API_KEY from .env)
 #   ./watchover.sh legacy on|off    the former Streamlit interface as an extra container (:8502) while teams move over
@@ -130,6 +131,25 @@ case "${1:-}" in
     $COMPOSE ps; banner ;;
   update)
     need_docker; write_env; build; up; docker image prune -f >/dev/null; say "updated to v$(version); data volumes untouched"; $COMPOSE ps ;;
+  upgrade)   # fetch the new version into this folder, then update. Local edits to tracked files (the reason a plain 'git pull' refuses) are
+             # stashed and re-applied; a folder with its own commits is left for a manual merge.
+    need_docker
+    command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1 || die "not a git checkout: copy the new source tree (or ./watchover.sh unbundle) over this folder and run ./watchover.sh update"
+    offline && die "offline install: ./watchover.sh unbundle <new bundle>, then ./watchover.sh update"
+    branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)"; [ -n "$branch" ] && [ "$branch" != "HEAD" ] || branch=main
+    say "fetching origin/$branch"; git fetch -q origin "$branch" || die "git fetch failed (network, proxy or credentials)"
+    stashed=0
+    if ! git diff --quiet || ! git diff --cached --quiet; then
+      say "local edits to tracked files are set aside (git stash) and put back after the pull:"; git status --short | sed 's/^/      /'
+      git -c user.name=watchover -c user.email=watchover@localhost stash push -q -m "watchover upgrade $(date +%Y%m%d-%H%M)" && stashed=1
+    fi
+    if ! git merge -q --ff-only "origin/$branch" 2>/dev/null; then
+      [ "$stashed" = 1 ] && git stash pop -q 2>/dev/null || true
+      die "this folder has commits of its own (or diverged); merge by hand:  git pull origin $branch   then  ./watchover.sh update"
+    fi
+    if [ "$stashed" = 1 ]; then git stash pop -q 2>/dev/null || say "WARNING: a local edit conflicts with the new version; it stays in 'git stash list' (git stash show -p)"; fi
+    say "source tree now v$(version) ($(git_rev)); rebuilding"
+    exec bash "$0" update ;;
   start)   need_docker; write_env; up; $COMPOSE ps ;;
   stop)    need_docker; $COMPOSE $(profiles) stop ;;
   restart) need_docker; $COMPOSE $(profiles) restart "${2:-}" ;;

@@ -193,3 +193,21 @@ def test_rhel_prepare_check_mode(tmp_path):
     assert "host:" in r.stdout and "would run:" in r.stdout and "done." in r.stdout
     assert subprocess.run(["bash", "-n", str(ROOT / "scripts" / "rhel-prepare.sh")]).returncode == 0
 
+
+def test_upgrade_pulls_over_local_edits(stage):
+    """upgrade = git fetch + fast-forward + update; a local edit to a tracked file (what makes 'git pull' refuse) is stashed and put back."""
+    d, env = stage
+    def g(*a, cwd=d):
+        return subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", *a], cwd=cwd, check=True, capture_output=True, text=True)
+    g("init", "-q", "-b", "main"); g("add", "."); g("commit", "-q", "-m", "v1")
+    remote = d.parent / "remote.git"; g("clone", "-q", "--bare", str(d), str(remote)); g("remote", "add", "origin", str(remote))
+    work = d.parent / "work"; g("clone", "-q", str(remote), str(work))
+    (work / "NEWFILE").write_text("x"); g("add", ".", cwd=work); g("commit", "-q", "-m", "v2", cwd=work); g("push", "-q", "origin", "main", cwd=work)
+    (d / "docker-compose.yml").write_text((d / "docker-compose.yml").read_text() + "\n# local tweak\n")
+    r = run(stage, "upgrade")
+    assert r.returncode == 0, r.stderr + r.stdout
+    assert (d / "NEWFILE").exists() and "# local tweak" in (d / "docker-compose.yml").read_text()
+    log = (d / "calls.log").read_text()
+    assert "compose build" in log and "compose up -d" in log
+    assert "set aside" in r.stdout and "docker-compose.yml" in r.stdout
+

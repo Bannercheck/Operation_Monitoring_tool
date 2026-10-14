@@ -146,6 +146,10 @@ unzip -q watchover.zip &amp;&amp; mv hackathon watchover &amp;&amp; cd watchover
 <td>Yeni paket klasörün üstüne açıldıktan sonra: imajı yeniden derler, konteynerleri yeniler, eski imajı temizler</td>
 </tr>
 <tr>
+<td><code>./watchover.sh upgrade</code></td>
+<td><strong>Yeni sürüme geçmenin tek komutu</strong>: <code>git fetch</code> + ileri sarma + <code>update</code>. Klasörde elle değiştirilmiş dosya varsa kenara alır (<code>git stash</code>) ve sonra geri koyar; düz <code>git pull</code>'un "unstaged changes" diye durduğu yerde durmaz. Kendi commit'i olan klasörü elle birleştirmeye bırakır</td>
+</tr>
+<tr>
 <td><code>./watchover.sh backup</code></td>
 <td>PostgreSQL dökümü + veri birimi + <code>.env</code> → <code>backups/watchover-YYYYMMDD-HHMM.tgz</code></td>
 </tr>
