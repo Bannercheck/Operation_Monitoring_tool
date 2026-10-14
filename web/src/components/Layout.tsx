@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
-import { Activity, AlertTriangle, BellRing, BookOpen, Bot, Brain, ClipboardList, Database, FileText, LogOut, Menu, MessageSquare, Network, PanelLeftClose, PanelLeftOpen, Plug, Radar, Server, ShieldAlert, Settings2, Ticket, Users } from "lucide-react";
+import { AlertTriangle, BellRing, BookOpen, Bot, Brain, ChevronDown, ChevronRight, ClipboardList, Database, FileText, LayoutDashboard, LogOut, Menu, Network, PanelLeftClose, PanelLeftOpen, Plug, Radar, Server, ShieldAlert, Settings2, Ticket, Users } from "lucide-react";
 import { useAuth } from "../auth";
 import { useT } from "../i18n";
 import { Btn, Modal, Field, Err, LangTheme } from "./ui";
@@ -10,16 +10,36 @@ import { ChatWidget } from "./ChatWidget";
 import { Wordmark } from "./Logo";
 import { post } from "../api";
 
-const NAV = [
-  { group: "nav_group_ops", items: [
-    { to: "/ops", k: "nav_ops", icon: Activity, perm: "page.ops" }, { to: "/anomalies", k: "nav_anom", icon: AlertTriangle, perm: "page.ops" },
-    { to: "/datasets", k: "nav_data", icon: Database, perm: "page.data" }, { to: "/map", k: "nav_map", icon: Network, perm: "page.map" }, { to: "/actions", k: "nav_actions", icon: ClipboardList, perm: "page.data" },
-    { to: "/playbook", k: "nav_pb", icon: BookOpen, perm: "page.pb" }, { to: "/knowledge", k: "nav_kb", icon: Brain, perm: "page.assist" }, { to: "/itsm", k: "nav_itsm", icon: Ticket, perm: "page.itsm" } ] },
-  { group: "nav_group_admin", items: [
-    { to: "/connections", k: "nav_conn", icon: Plug, perm: "page.conn" }, { to: "/sources", k: "nav_sources", icon: Radar, perm: "page.src" }, { to: "/inventory", k: "nav_inv", icon: Server, perm: "page.inv" }, { to: "/scan", k: "nav_scan", icon: ShieldAlert, perm: "page.scan" }, { to: "/llm", k: "nav_llm", icon: Bot, perm: "page.llm" },
-    { to: "/users", k: "nav_users", icon: Users, perm: "page.users" }, { to: "/system", k: "nav_sys", icon: Settings2, perm: "sys.status" },
-    { to: "/alerts", k: "nav_ntf", icon: BellRing, perm: "sys.notify", unless: "sys.status" }, { to: "/readme", k: "nav_readme", icon: FileText, perm: "page.readme", unless: "sys.status" } ] },
+/** SigNoz-style navigation: a home row, then signal-oriented sections (APM, signals, response, intelligence, security), each
+ *  collapsible and remembered; settings and administration are pinned to the bottom, as in SigNoz. Items only show with their
+ *  permission; `unless` hides an item for users who reach the same page another way (System holds Alerts and README). */
+type Item = { to: string; k: string; icon: any; perm: string; unless?: string };
+type Section = { id: string; group?: string; items: Item[] };
+export const NAV: Section[] = [
+  { id: "home", items: [{ to: "/ops", k: "nav_home", icon: LayoutDashboard, perm: "page.ops" }] },
+  { id: "apm", group: "nav_group_apm", items: [
+    { to: "/map", k: "nav_map", icon: Network, perm: "page.map" } ] },
+  { id: "signals", group: "nav_group_signals", items: [
+    { to: "/datasets", k: "nav_data", icon: Database, perm: "page.data" }, { to: "/inventory", k: "nav_inv", icon: Server, perm: "page.inv" },
+    { to: "/anomalies", k: "nav_anom", icon: AlertTriangle, perm: "page.ops" } ] },
+  { id: "respond", group: "nav_group_respond", items: [
+    { to: "/actions", k: "nav_actions", icon: ClipboardList, perm: "page.data" }, { to: "/playbook", k: "nav_pb", icon: BookOpen, perm: "page.pb" },
+    { to: "/itsm", k: "nav_itsm", icon: Ticket, perm: "page.itsm" }, { to: "/alerts", k: "nav_ntf", icon: BellRing, perm: "sys.notify", unless: "sys.status" } ] },
+  { id: "intel", group: "nav_group_intel", items: [
+    { to: "/knowledge", k: "nav_kb", icon: Brain, perm: "page.assist" }, { to: "/llm", k: "nav_llm", icon: Bot, perm: "page.llm" } ] },
+  { id: "security", group: "nav_group_security", items: [{ to: "/scan", k: "nav_scan", icon: ShieldAlert, perm: "page.scan" }] },
 ];
+export const NAV_SETTINGS: Item[] = [
+  { to: "/connections", k: "nav_conn", icon: Plug, perm: "page.conn" }, { to: "/sources", k: "nav_sources", icon: Radar, perm: "page.src" },
+  { to: "/users", k: "nav_users", icon: Users, perm: "page.users" }, { to: "/system", k: "nav_sys", icon: Settings2, perm: "sys.status" },
+  { to: "/readme", k: "nav_readme", icon: FileText, perm: "page.readme", unless: "sys.status" },
+];
+
+function useFolded(key: string): [Record<string, boolean>, (id: string) => void] {
+  const [f, setF] = useState<Record<string, boolean>>(() => { try { return JSON.parse(localStorage.getItem(key) || "{}"); } catch { return {}; } });
+  const flip = (id: string) => setF((o) => { const n = { ...o, [id]: !o[id] }; try { localStorage.setItem(key, JSON.stringify(n)); } catch { /* ignore */ } return n; });
+  return [f, flip];
+}
 
 export default function Layout() {
   const { user, logout, can, reload } = useAuth();
@@ -27,18 +47,27 @@ export default function Layout() {
   const [collapsed, setCollapsed] = useState(() => { try { return localStorage.getItem("wo_side") === "1"; } catch { return false; } });
   const [open, setOpen] = useState(false);
   const [pw, setPw] = useState(!!user?.must_change);
+  const [folded, fold] = useFolded("wo_nav_fold");
+  const visible = (i: Item) => can(i.perm) && !(i.unless && can(i.unless));
+  const settings = NAV_SETTINGS.filter(visible);
+  const link = (i: Item) => <NavLink key={i.to} to={i.to} className={({ isActive }) => `tile ${isActive ? "active" : ""}`} onClick={() => setOpen(false)} title={t(i.k)}><i.icon size={15} /><span>{t(i.k)}</span></NavLink>;
   const toggle = () => { setCollapsed((c) => { try { localStorage.setItem("wo_side", c ? "0" : "1"); } catch { /* ignore */ } return !c; }); };
   return (
     <div className="shell">
       <aside className={`side ${collapsed ? "collapsed" : ""} ${open ? "open" : ""}`}>
         <button className="collapse" onClick={toggle} title={collapsed ? t("expand") : t("collapse")}>{collapsed ? <PanelLeftOpen size={14} /> : <PanelLeftClose size={14} />}</button>
         <div className="brand"><Wordmark size={40} /></div>
-        {NAV.map((g) => (
-          <div key={g.group}><div className="group">{t(g.group)}</div>
-            <div className="stack" style={{ gap: 6 }}>{g.items.filter((i: any) => can(i.perm) && !(i.unless && can(i.unless))).map((i) => (
-              <NavLink key={i.to} to={i.to} className={({ isActive }) => `tile ${isActive ? "active" : ""}`} onClick={() => setOpen(false)} title={t(i.k)}><i.icon size={16} /><span>{t(i.k)}</span></NavLink>))}</div>
-          </div>))}
-        <div className="spacer" />
+        <nav className="nav-scroll">
+          {NAV.map((g) => { const items = g.items.filter(visible); if (!items.length) return null; const shut = !!g.group && !!folded[g.id] && !collapsed;
+            return <div key={g.id} className="nav-sec">
+              {g.group && <button className="group" onClick={() => fold(g.id)} title={t(g.group)}>{shut ? <ChevronRight size={11} /> : <ChevronDown size={11} />}<span>{t(g.group)}</span></button>}
+              {!shut && items.map(link)}
+            </div>; })}
+        </nav>
+        {settings.length > 0 && <div className="nav-sec nav-bottom">
+          <button className="group" onClick={() => fold("settings")} title={t("nav_group_settings")}>{folded.settings && !collapsed ? <ChevronRight size={11} /> : <ChevronDown size={11} />}<span>{t("nav_group_settings")}</span></button>
+          {!(folded.settings && !collapsed) && settings.map(link)}
+        </div>}
         <div className="user"><div className="av">{(user?.name || user?.email || "?")[0].toUpperCase()}</div><div className="info"><b>{user?.name || user?.email}</b><span className="small muted">{user?.role}</span></div>
           <Btn kind="ghost" sm onClick={logout} title={t("signout")}><LogOut size={14} /></Btn></div>
       </aside>

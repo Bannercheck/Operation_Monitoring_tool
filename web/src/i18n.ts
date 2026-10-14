@@ -6,7 +6,7 @@ const S: Record<string, [string, string]> = {
   brand_tag: ["OPERASYON SİNYAL MASASI", "OPERATIONS SIGNAL DESK"],
   nav_ops: ["Operasyon", "Operations"], nav_anom: ["Anomaliler", "Anomalies"], nav_data: ["Veri setleri", "Datasets"], nav_actions: ["Aksiyonlar", "Actions"],
   nav_pb: ["Playbook", "Playbook"], nav_conn: ["Bağlantılar", "Connections"], nav_kb: ["Hafıza", "Memory"], nav_ntf: ["Bildirimler", "Alerts"],
-  nav_users: ["Kullanıcılar", "Users"], nav_sys: ["Sistem", "System"], nav_map: ["Hata haritası", "Failure map"], nav_assist: ["Watchover'a sor", "Ask Watchover"], nav_llm: ["LLM", "LLM"], nav_scan: ["Zafiyet taraması", "Vulnerability scan"], nav_itsm: ["ITSM", "ITSM"], nav_group_ops: ["İZLEME", "MONITORING"], nav_group_admin: ["YÖNETİM", "ADMIN"],
+  nav_users: ["Kullanıcılar", "Users"], nav_sys: ["Sistem", "System"], nav_map: ["Servis haritası", "Service map"], nav_assist: ["Watchover'a sor", "Ask Watchover"], nav_llm: ["LLM", "LLM"], nav_scan: ["Zafiyet taraması", "Vulnerability scan"], nav_itsm: ["ITSM", "ITSM"], nav_group_ops: ["İZLEME", "MONITORING"], nav_group_admin: ["YÖNETİM", "ADMIN"], nav_home: ["Ana sayfa", "Home"], nav_group_apm: ["APM", "APM"], nav_group_signals: ["SİNYALLER", "SIGNALS"], nav_group_respond: ["MÜDAHALE", "RESPONSE"], nav_group_intel: ["ZEKÂ", "INTELLIGENCE"], nav_group_security: ["GÜVENLİK", "SECURITY"], nav_group_settings: ["AYARLAR", "SETTINGS"],
   signout: ["Çıkış", "Sign out"], collapse: ["Menüyü daralt", "Collapse"], expand: ["Menüyü aç", "Expand"],
   login_title: ["Watchover'a giriş", "Sign in to Watchover"], login_lead: ["Operasyon sinyal masası", "Operations signal desk"], email: ["E-posta", "E-mail"], password: ["Parola", "Password"],
   login_btn: ["Devam et", "Continue"], login_or: ["veya", "or"], login_with: ["{p} ile giriş", "Sign in with {p}"], mfa_title: ["Doğrulama kodu", "Verification code"],
@@ -18,7 +18,7 @@ const S: Record<string, [string, string]> = {
   reg_title: ["Hesap oluştur", "Create an account"], reg_btn: ["Kayıt ol", "Register"], reg_have: ["Hesabım var, giriş yap", "I have an account, sign in"], reg_new: ["Hesabın yok mu? Kayıt ol", "No account? Register"],
   reg_sent: ["Doğrulama kodu e-postanıza gönderildi ({m} dk geçerli).", "A verification code was sent to your e-mail (valid {m} min)."], reg_verify: ["Doğrula ve giriş yap", "Verify and sign in"], reg_pw2: ["Parola (tekrar)", "Password (again)"], reg_mismatch: ["Parolalar eşleşmiyor", "Passwords do not match"],
   // map
-  map_title: ["Hata haritası", "Failure map"], map_sub: ["servisler, bağımlılık hataları ve korelasyonlar; kök nedenler işaretli", "services, dependency errors and correlations; root causes flagged"], map_source: ["Kaynak", "Source"], map_live: ["Canlı akış", "Live feed"],
+  map_title: ["Servis haritası", "Service map"], map_sub: ["servisler, bağımlılık hataları ve korelasyonlar; kök nedenler işaretli", "services, dependency errors and correlations; root causes flagged"], map_source: ["Kaynak", "Source"], map_live: ["Canlı akış", "Live feed"],
   map_incident: ["Incident", "Incident"], map_all_inc: ["Bütün incident'lar", "All incidents"], map_hosts_toggle: ["Sunucuları çiz", "Draw hosts"], map_empty: ["Bu kapsamda çizilecek servis yok.", "Nothing to draw in this scope."],
   map_k_services: ["servis", "services"], map_k_deps: ["bağımlılık kenarı", "dependency edges"], map_k_corr: ["korelasyon", "correlations"], map_k_root: ["kök neden", "root cause"], map_k_errors: ["ERROR+", "ERROR+"], map_k_affected: ["etkilenen", "affected"],
   // assist
