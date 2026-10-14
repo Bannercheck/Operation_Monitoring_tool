@@ -86,22 +86,58 @@ build() {
 vol_name() { $COMPOSE config --format json 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin)['volumes']['$1']['name'])" 2>/dev/null || echo "watchover_$1"; }
 
 profiles() { local p=""; [ "$(env_get WATCHOVER_MCP)" = "1" ] && p="$p --profile mcp"; [ "$(env_get WATCHOVER_LEGACY)" = "1" ] && p="$p --profile legacy"; [ "$(env_get WATCHOVER_EDGE)" = "1" ] && p="$p --profile edge"; [ "$(env_get WATCHOVER_LLM)" = "1" ] && p="$p --profile llm"; echo "$p"; }
-# a *.local name on macOS: announce it on the LAN with Bonjour (dns-sd proxy record) so colleagues' Macs, iPhones and Windows 10+ resolve it
+# a *.local name on macOS: announce it on the LAN with Bonjour (dns-sd proxy record) so colleagues' Macs, iPhones and Windows 10+ resolve it.
+# With launchd available the record is a LaunchAgent (KeepAlive: survives logout, reboot and 'update'); otherwise a nohup process
+# whose pid is kept in .edge-mdns.pid and re-created by up() when it is gone.
+mdns_label() { echo "local.watchover.mdns.$(echo "$1" | tr -c 'A-Za-z0-9\n' '-')"; }
 mdns_start() {
   mdns_stop
   command -v dns-sd >/dev/null 2>&1 || return 0
   local n ip; ip=$(host_ip)
   for n in $(echo "$1" | tr ',' ' '); do
     case "$n" in *.local)
-      nohup dns-sd -P "$n" _https._tcp local 443 "$n" "$ip" >/dev/null 2>&1 &
-      echo $! >> .edge-mdns.pid
-      say "Bonjour: $n -> $ip announced (dns-sd, stops with edge off or reboot; run 'edge on' again after a reboot)" ;;
+      if command -v launchctl >/dev/null 2>&1 && [ -n "${HOME:-}" ]; then
+        local plist="$HOME/Library/LaunchAgents/$(mdns_label "$n").plist"; mkdir -p "$HOME/Library/LaunchAgents"
+        cat > "$plist" <<PL
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>$(mdns_label "$n")</string>
+  <key>ProgramArguments</key><array><string>$(command -v dns-sd)</string><string>-P</string><string>$n</string><string>_https._tcp</string><string>local</string><string>443</string><string>$n</string><string>$ip</string></array>
+  <key>RunAtLoad</key><true/><key>KeepAlive</key><true/>
+</dict></plist>
+PL
+        launchctl unload "$plist" >/dev/null 2>&1 || true; launchctl load "$plist" >/dev/null 2>&1 || true
+        say "Bonjour: $n -> $ip announced by a LaunchAgent ($plist): stays after reboot and update; run 'edge on' again if this Mac's IP changes"
+      else
+        nohup dns-sd -P "$n" _https._tcp local 443 "$n" "$ip" >/dev/null 2>&1 &
+        echo $! >> .edge-mdns.pid
+        say "Bonjour: $n -> $ip announced (dns-sd; re-created by install/update/start, lost on reboot: run 'edge on' again)"
+      fi ;;
     esac
   done
 }
-mdns_stop() { if [ -f .edge-mdns.pid ]; then while read -r pid; do kill "$pid" 2>/dev/null || true; done < .edge-mdns.pid; rm -f .edge-mdns.pid; fi; }
+# the announcement is missing (reboot, killed) while the edge is on with a .local name: bring it back. Called by up().
+mdns_ensure() {
+  [ "$(env_get WATCHOVER_EDGE)" = "1" ] || return 0
+  command -v dns-sd >/dev/null 2>&1 || return 0
+  local hosts n alive=1; hosts="$(env_get WATCHOVER_EDGE_HOSTS | tr -d ' ')"; hosts="${hosts:-$(env_get WATCHOVER_EDGE_HOST)}"
+  case "$hosts" in *.local*) ;; *) return 0 ;; esac
+  if command -v launchctl >/dev/null 2>&1 && [ -n "${HOME:-}" ]; then
+    for n in $(echo "$hosts" | tr ',' ' '); do case "$n" in *.local) [ -f "$HOME/Library/LaunchAgents/$(mdns_label "$n").plist" ] || alive=0 ;; esac; done
+  else
+    alive=0; if [ -f .edge-mdns.pid ]; then alive=1; while read -r pid; do kill -0 "$pid" 2>/dev/null || alive=0; done < .edge-mdns.pid; fi
+  fi
+  [ "$alive" = 1 ] || mdns_start "$hosts"
+}
+mdns_stop() {
+  if [ -f .edge-mdns.pid ]; then while read -r pid; do kill "$pid" 2>/dev/null || true; done < .edge-mdns.pid; rm -f .edge-mdns.pid; fi
+  if command -v launchctl >/dev/null 2>&1 && [ -n "${HOME:-}" ]; then
+    local f; for f in "$HOME"/Library/LaunchAgents/local.watchover.mdns.*.plist; do [ -f "$f" ] || continue; launchctl unload "$f" >/dev/null 2>&1 || true; rm -f "$f"; done
+  fi
+}
 edge_url() { local h p; h=$(env_get WATCHOVER_EDGE_HOST); p=$(env_get WATCHOVER_EDGE_HTTPS_PORT || echo 443); [ "$p" = "443" ] && echo "https://$h" || echo "https://$h:$p"; }
-up() { $COMPOSE $(profiles) up -d --remove-orphans; }
+up() { $COMPOSE $(profiles) up -d --remove-orphans; mdns_ensure; }
 
 banner() {
   local ip; ip=$(host_ip)

@@ -200,7 +200,7 @@ cd ~/watchover-docker
 ./watchover.sh status
 ```
 
-Meslektaşlar `https://watchover.local` yazar. `.local` adları Mac, iPhone / iPad ve Windows 10+ makinelerde ek kurulum olmadan çözülür (mDNS / Bonjour); Linux'ta `avahi-daemon` gerekir. Ad yerine ya da adla birlikte IP de verilebilir: `edge on watchover.local,192.168.1.107`; IP her durumda sertifikaya eklenir, `https://192.168.1.107` de çalışır. Duyuru Mac yeniden başlayınca durur; `./watchover.sh edge on` bir kez daha çalıştırılır (ayarlar `.env`'de durur).
+Meslektaşlar `https://watchover.local` yazar. `.local` adları Mac, iPhone / iPad ve Windows 10+ makinelerde ek kurulum olmadan çözülür (mDNS / Bonjour); Linux'ta `avahi-daemon` gerekir. Ad yerine ya da adla birlikte IP de verilebilir: `edge on watchover.local,192.168.1.107`; IP her durumda sertifikaya eklenir, `https://192.168.1.107` de çalışır. Duyuru bir LaunchAgent olarak kurulur (`~/Library/LaunchAgents/local.watchover.mdns.*.plist`): Mac yeniden başlasa, oturum kapansa ya da `update` çalışsa da sürer; `edge off` kaldırır. Mac'in IP'si değişirse (DHCP) `./watchover.sh edge on watchover.local` bir kez daha çalıştırılır. launchd olmayan sistemlerde duyuru arka plan süreci olarak çalışır ve `install` / `update` / `start` kaybolduysa yeniden açar.
 
 Sonra:
 

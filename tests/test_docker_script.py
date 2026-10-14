@@ -211,3 +211,24 @@ def test_upgrade_pulls_over_local_edits(stage):
     assert "compose build" in log and "compose up -d" in log
     assert "set aside" in r.stdout and "docker-compose.yml" in r.stdout
 
+
+def test_edge_mdns_launchagent_and_reannounce(stage):
+    """edge on watchover.local: with launchctl + dns-sd on PATH a LaunchAgent plist is written (survives reboot); without launchctl a dns-sd
+    process is kept in .edge-mdns.pid and up() (install/update/start) re-announces when that process is gone; edge off removes both."""
+    d, env = stage
+    home = d / "home"; (home / "Library" / "LaunchAgents").mkdir(parents=True); env = dict(env, HOME=str(home))
+    for tool in ("dns-sd", "launchctl"):
+        f = d / "bin" / tool; f.write_text("#!/usr/bin/env bash\necho \"$0 $*\" >> \"$FAKE_LOG\"\n[ \"$(basename $0)\" = dns-sd ] && sleep 30\nexit 0\n"); f.chmod(0o755)
+    r = subprocess.run(["bash", str(d / "watchover.sh"), "edge", "on", "watchover.local"], cwd=d, env=env, capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stderr
+    plist = home / "Library" / "LaunchAgents" / "local.watchover.mdns.watchover-local.plist"
+    assert plist.exists() and "<string>watchover.local</string>" in plist.read_text() and "launchctl load" in (d / "calls.log").read_text()
+    assert "LaunchAgent" in r.stdout
+    # no launchd (Linux): a background dns-sd whose pid is remembered, re-created by up() when it died
+    (d / "bin" / "launchctl").unlink(); plist.unlink(); (d / ".edge-mdns.pid").write_text("999999\n")
+    r = subprocess.run(["bash", str(d / "watchover.sh"), "start"], cwd=d, env=env, capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stderr
+    assert "Bonjour: watchover.local" in r.stdout and (d / ".edge-mdns.pid").read_text().strip() != "999999"
+    r = subprocess.run(["bash", str(d / "watchover.sh"), "edge", "off"], cwd=d, env=env, capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0 and not (d / ".edge-mdns.pid").exists()
+
