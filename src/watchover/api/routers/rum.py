@@ -9,7 +9,7 @@ from pydantic import BaseModel
 
 from ... import settings as wo_settings
 from ...privacy import pseudonym
-from ..security import require, services
+from ..security import require, services, user_scope
 
 router = APIRouter(prefix="/rum", tags=["rum"])
 
@@ -34,20 +34,43 @@ class LookupIn(BaseModel):
     reason: str = ""
 
 
+def _apps_ok(svc, sc):
+    return None if sc is None else {a["name"] for a in svc.rum.apps() if sc.allows_service(a["name"])}
+
+
 @router.get("/overview")
-def overview(minutes: int = 1440, app: str | None = None, user=Depends(require("page.rum")), svc=Depends(services)):
-    return svc.rum.overview(minutes or None, app or None)
+def overview(minutes: int = 1440, app: str | None = None, user=Depends(require("page.rum")), svc=Depends(services), sc=Depends(user_scope)):
+    ok = _apps_ok(svc, sc)
+    if ok is None:
+        return svc.rum.overview(minutes or None, app or None)
+    if app and app not in ok:
+        raise HTTPException(404, "app not found")
+    if app:
+        return svc.rum.overview(minutes or None, app)
+    parts = [svc.rum.overview(minutes or None, a) for a in sorted(ok)]
+    merged = {"apps": [], "vitals": {}, "app_start": {}, "slow_steps": [], "errors": [], "thresholds": parts[0]["thresholds"] if parts else {}}
+    for p_ in parts:
+        merged["apps"] += p_["apps"]; merged["vitals"].update(p_["vitals"]); merged["app_start"].update(p_["app_start"])
+        merged["slow_steps"] += p_["slow_steps"]; merged["errors"] += p_["errors"]
+    merged["slow_steps"] = sorted(merged["slow_steps"], key=lambda x: -(x["p75"] or 0))[:15]
+    merged["errors"] = sorted(merged["errors"], key=lambda x: -x["n"])[:15]
+    return merged
 
 
 @router.get("/sessions")
 def sessions(app: str | None = None, platform: str | None = None, user_ref: str | None = None, errors: bool = False, minutes: int = 1440,
-             version: str | None = None, limit: int = 100, user=Depends(require("page.rum")), svc=Depends(services)):
-    return svc.rum.sessions(app or None, platform or None, user_ref or None, errors, minutes or None, version or None, limit)
+             version: str | None = None, limit: int = 100, user=Depends(require("page.rum")), svc=Depends(services), sc=Depends(user_scope)):
+    ok = _apps_ok(svc, sc)
+    rows = svc.rum.sessions(app or None, platform or None, user_ref or None, errors, minutes or None, version or None, limit if ok is None else 500)
+    return rows if ok is None else [r for r in rows if r["app"] in ok][:limit]
 
 
 @router.get("/sessions/{sid}")
-def session(sid: str, user=Depends(require("page.rum")), svc=Depends(services)):
+def session(sid: str, user=Depends(require("page.rum")), svc=Depends(services), sc=Depends(user_scope)):
     s = svc.rum.session(sid)
+    ok = _apps_ok(svc, sc)
+    if s is not None and ok is not None and s["app"] not in ok:
+        s = None
     if s is None:
         raise HTTPException(404, "session not found")
     return s
@@ -62,9 +85,10 @@ def _receiver_base(request: Request) -> str:
 
 
 @router.get("/apps")
-def apps(request: Request, user=Depends(require("page.rum")), svc=Depends(services)):
+def apps(request: Request, user=Depends(require("page.rum")), svc=Depends(services), sc=Depends(user_scope)):
     base = _receiver_base(request)
-    return {"apps": svc.rum.apps(), "receiver": base}
+    ok = _apps_ok(svc, sc)
+    return {"apps": [a for a in svc.rum.apps() if ok is None or a["name"] in ok], "receiver": base}
 
 
 @router.post("/apps", status_code=201)

@@ -118,6 +118,18 @@ access_log /var/log/nginx/access.log watchover;
 
 - **Okunan biçimler:** nginx / Apache (süre, upstream süresi, istek kimliği, Apache `%D`), IIS `time-taken`, Envoy / Istio erişim logu (`x-request-id`), AWS ALB, uygulama loglarında `traceparent` / `trace_id` / `request_id` / `correlation_id`, SharePoint ULS (Correlation ve Execution Time), Keycloak olayları (SSO oturumu uygulamalar arası yolculuk olarak).
 
+## 2e. Birden fazla ekip: sunucu bazında görünürlük
+
+Kullanıcılar › Ekipler sekmesinde her ekip için kurallar tanımlanır; ekibe eklenen kullanıcı yalnız o ekibin sunucularını ve onlarda çalışan servisleri görür. Örnekler:
+
+| Ekip | Kural |
+|---|---|
+| EA | Sunucu adı desen `ea-*`, ya da envanter uygulaması `SAP*` |
+| İK | Envanter uygulaması `HR*`, servis / uygulama adı `ik-*` (İK mobil ve web uygulamaları) |
+| Veritabanı | Ajan etiketi `dba`, ya da IP ağı `10.40.0.0/16` |
+
+Merkezi NOC ekibine "Tüm sunucuları gör" yetkili bir rol verilir. Ekibe girmemiş kullanıcılar her şeyi görmeye devam eder; kurumda herkesin bir ekibe bağlı olması isteniyorsa Sistem › Ayarlar'da `teams_strict` açılır.
+
 ## 3. Günlük işletim: watchover.sh
 
 | Komut | Ne yapar |

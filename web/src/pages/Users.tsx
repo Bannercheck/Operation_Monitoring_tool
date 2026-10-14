@@ -4,9 +4,10 @@ import { del, get, patch, post, put } from "../api";
 import { useAuth } from "../auth";
 import { useT } from "../i18n";
 import { Badge, Btn, Card, Confirm, Err, Field, Modal, Table, Tabs, fmtTs } from "../components/ui";
+import { TeamsPanel } from "./Teams";
 
 export default function Users() {
-  const { t } = useT(); const { user: me } = useAuth(); const qc = useQueryClient(); const [tab, setTab] = useState<"list" | "roles" | "events">("list"); const [add, setAdd] = useState(false); const [pw, setPw] = useState<any>(null);
+  const { t } = useT(); const { user: me, can } = useAuth(); const qc = useQueryClient(); const [tab, setTab] = useState<"list" | "roles" | "teams" | "events">("list"); const [add, setAdd] = useState(false); const [pw, setPw] = useState<any>(null);
   const users = useQuery({ queryKey: ["users"], queryFn: () => get("/users") });
   const roles = useQuery({ queryKey: ["roles"], queryFn: () => get("/roles") });
   const events = useQuery({ queryKey: ["user-events"], queryFn: () => get("/users/events?n=100"), enabled: tab === "events" });
@@ -17,7 +18,8 @@ export default function Users() {
   const names = (roles.data?.roles ?? []).map((r: any) => r.name);
   return <div className="stack">
     <div className="row between"><h2>👥 {t("us_title")}</h2><Btn kind="primary" onClick={() => setAdd(true)}>{t("us_add")}</Btn></div>
-    <Tabs value={tab} onChange={setTab} tabs={[{ k: "list", label: `${t("nav_users")} · ${users.data?.length ?? 0}` }, { k: "roles", label: t("us_roles") }, { k: "events", label: t("us_events") }]} />
+    <Tabs value={tab} onChange={setTab} tabs={[{ k: "list", label: `${t("nav_users")} · ${users.data?.length ?? 0}` }, { k: "roles", label: t("us_roles") }, ...(can("page.teams") ? [{ k: "teams" as const, label: t("tm_tab") }] : []), { k: "events", label: t("us_events") }]} />
+    {tab === "teams" && <TeamsPanel />}
     {tab === "list" && <Card><Table cols={[{ k: "email", label: t("email"), render: (r) => <div><b>{r.name || r.email}</b><div className="muted small">{r.email} · {r.provider}</div></div> },
       { k: "role", label: t("us_role"), render: (r) => <select className="input" style={{ width: 130, padding: "4px 8px" }} value={r.role} onChange={(e) => upd.mutate({ id: r.id, body: { role: e.target.value } })}>{names.map((n: string) => <option key={n}>{n}</option>)}</select> },
       { k: "status", label: t("status"), render: (r) => <Badge v={r.status} /> }, { k: "last_login", label: t("us_last"), render: (r) => <span className="muted small">{fmtTs(r.last_login)}</span> },

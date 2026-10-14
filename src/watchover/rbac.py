@@ -18,18 +18,19 @@ PERMISSIONS: dict[str, tuple[str, str, str]] = {   # key: (group, Turkish label,
     "act.parser": ("act", "Parser deseni ekleme ve düzenleme", "Add and edit parser patterns"),
     "act.scan": ("act", "Zafiyet taraması çalıştırma (ağ kontrolü dahil)", "Run vulnerability scans (including network probe)"),
     "act.itsm": ("act", "ITSM entegrasyon ayarları", "ITSM integration settings"),
+    "scope.all": ("scope", "Tüm sunucuları gör (ekip kısıtını aşar)", "See every host (overrides team scope)"), "page.teams": ("page", "Ekipler ve sunucu grupları", "Teams and host groups"),
     "act.rum": ("act", "Web / mobil uygulama anahtarları ve kullanıcı arama (denetim kaydıyla)", "Web / mobile app keys and user lookup (audited)"),
     "sys.status": ("sys", "Sistem › Durum", "System › Status"), "sys.maint": ("sys", "Sistem › Bakım", "System › Maintenance"), "sys.update": ("sys", "Sistem › Güncelleme ve sürüm geçmişi", "System › Update and version history"),
     "sys.auth": ("sys", "Sistem › Giriş sağlayıcıları", "System › Sign-in providers"),
     "sys.notify": ("sys", "Sistem › Bildirimler", "System › Alerts"), "sys.security": ("sys", "Sistem › Güvenlik günlüğü", "System › Security log"),
 }
-GROUPS = {"page": ("Sayfalar", "Pages"), "act": ("İşlemler", "Actions"), "sys": ("Sistem sekmeleri", "System tabs")}
+GROUPS = {"page": ("Sayfalar", "Pages"), "act": ("İşlemler", "Actions"), "sys": ("Sistem sekmeleri", "System tabs"), "scope": ("Görünürlük", "Visibility")}
 ALL = frozenset(PERMISSIONS)
-NEW_PERMS = frozenset({"page.parser", "act.parser", "page.scan", "act.scan", "act.itsm", "page.apm", "page.rum", "act.rum"})          # added after roles started being stored in the database
+NEW_PERMS = frozenset({"page.parser", "act.parser", "page.scan", "act.scan", "act.itsm", "page.apm", "page.rum", "act.rum", "page.teams"})          # added after roles started being stored in the database
 BUILTIN: dict[str, dict] = {
     "admin": {"label": ("Yönetici", "Administrator"), "desc": ("Her yetki; daraltılamaz.", "Every permission; cannot be narrowed."), "perms": set(ALL)},
     "operator": {"label": ("Operatör", "Operator"), "desc": ("Operasyon, veri, kaynak, envanter, playbook ve ITSM işleri; sistem yönetimi yok.", "Operations, data, sources, inventory, playbook and ITSM work; no system administration."),
-                 "perms": {k for k in ALL if k.startswith("page.") and k not in ("page.sys", "page.users")} | {"act.sim", "act.connect", "act.report", "act.export", "act.sources", "act.inventory", "act.anomaly", "act.parser", "act.scan", "act.itsm", "act.rum"}},
+                 "perms": {k for k in ALL if k.startswith("page.") and k not in ("page.sys", "page.users", "page.teams")} | {"act.sim", "act.connect", "act.report", "act.export", "act.sources", "act.inventory", "act.anomaly", "act.parser", "act.scan", "act.itsm", "act.rum"}},
     "viewer": {"label": ("İzleyici", "Viewer"), "desc": ("Yalnız izleme: operasyon, veri setleri, harita, playbook, ITSM ve README.", "Read-only: operations, datasets, map, playbook, ITSM and README."),
                "perms": {"page.ops", "page.data", "page.map", "page.pb", "page.itsm", "page.readme", "act.report", "page.apm", "page.rum"}},
 }

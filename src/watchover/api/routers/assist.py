@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from ... import assistant as wo_assistant
-from ..security import require, services
+from ..security import require, services, user_scope
 
 router = APIRouter(prefix="/assist", tags=["assist"])
 
@@ -28,9 +28,9 @@ class SaveIn(BaseModel):
     answer: str
 
 
-def _analysis(svc, dataset: str | None):
+def _analysis(svc, dataset: str | None, sc=None):
     if dataset == "live":
-        return svc.live_analysis()
+        return svc.live_analysis(sc)
     if dataset:
         return svc.datasets.get(dataset)["analysis"]
     items = list(svc.datasets.items.values())
@@ -38,9 +38,9 @@ def _analysis(svc, dataset: str | None):
 
 
 @router.post("/ask")
-def ask(body: AskIn, user=Depends(require("page.assist")), svc=Depends(services)):
+def ask(body: AskIn, user=Depends(require("page.assist")), svc=Depends(services), sc=Depends(user_scope)):
     cfg = svc.llm_cfg("ops")
-    res = wo_assistant.answer(cfg, body.question, body.history[-6:], _analysis(svc, body.dataset), svc.kb, body.lang)
+    res = wo_assistant.answer(cfg, body.question, body.history[-6:], _analysis(svc, body.dataset, sc), svc.kb, body.lang)
     return {**res, "model": cfg.model if cfg.enabled else ""}
 
 

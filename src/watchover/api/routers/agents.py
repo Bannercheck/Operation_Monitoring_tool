@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
-from ..security import require, services
+from ..security import require, services, user_scope
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 
@@ -17,8 +17,9 @@ class EnrollIn(BaseModel):
 
 
 @router.get("")
-def list_agents(user=Depends(require("page.conn")), svc=Depends(services)):
-    return svc.agents.list()
+def list_agents(user=Depends(require("page.conn")), svc=Depends(services), sc=Depends(user_scope)):
+    rows = svc.agents.list()
+    return rows if sc is None else [r for r in rows if sc.allows(r["name"])]
 
 
 @router.post("", status_code=201)

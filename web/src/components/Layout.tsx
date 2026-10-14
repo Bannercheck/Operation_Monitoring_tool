@@ -8,7 +8,8 @@ import { NotifyBell } from "./NotifyBell";
 import { TokenMeter } from "./TokenMeter";
 import { ChatWidget } from "./ChatWidget";
 import { Wordmark } from "./Logo";
-import { post } from "../api";
+import { get, post } from "../api";
+import { useQuery } from "@tanstack/react-query";
 
 /** SigNoz-style navigation: a home row, then signal-oriented sections (APM, signals, response, intelligence, security), each
  *  collapsible and remembered; settings and administration are pinned to the bottom, as in SigNoz. Items only show with their
@@ -77,6 +78,7 @@ export default function Layout() {
         <div className="topbar">
           <Btn kind="ghost menu-btn" sm onClick={() => setOpen((o) => !o)}><Menu size={18} /></Btn>
           <div className="grow" />
+          <ScopeBadge />
           {(can("page.assist") || can("page.llm")) && <TokenMeter />}
           {can("page.ops") && <NotifyBell />}
           <LangTheme />
@@ -87,6 +89,14 @@ export default function Layout() {
       {pw && <ChangePassword onDone={async () => { setPw(false); await reload(); }} />}
     </div>
   );
+}
+
+/** A team member sees only the team's hosts: say so in the top bar, so nobody mistakes the view for the whole estate. */
+function ScopeBadge() {
+  const { t } = useT();
+  const q = useQuery({ queryKey: ["scope-mine"], queryFn: () => get("/teams/mine"), staleTime: 60000 });
+  if (!q.data || q.data.all) return null;
+  return <span className="badge blue" style={{ textTransform: "none" }} title={t("tm_scope_hint")}>👥 {q.data.teams.join(", ") || t("tm_scope_none")} · {q.data.hosts ?? 0} {t("tm_hosts").toLowerCase()}</span>;
 }
 
 function ChangePassword({ onDone }: { onDone: () => void }) {

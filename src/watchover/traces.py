@@ -561,6 +561,17 @@ class TraceStore:
                           "apdex": h.get("apdex")})
         return {"nodes": nodes, "edges": out_edges, "traces": len(by)}
 
+    def service_hosts(self, minutes: int | None = 1440) -> dict[str, set]:
+        """service -> hosts it ran on (stored spans), for team scoping of services."""
+        where, p = "", ()
+        if minutes:
+            where, p = " WHERE ts >= ?", ((datetime.now(UTC) - timedelta(minutes=minutes)).isoformat(),)
+        out: dict[str, set] = defaultdict(set)
+        for r in self.db._exec(f"SELECT DISTINCT service, host FROM spans{where}", p):
+            if r["host"]:
+                out[r["service"]].add(r["host"])
+        return out
+
     def trace(self, trace_id: str) -> dict | None:
         rows = self.db._exec("SELECT * FROM spans WHERE trace_id = ? ORDER BY start_ms, duration_ms DESC", (trace_id,))
         if not rows:

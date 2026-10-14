@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Query
 
 from ...graph import build_map, to_html
 from ...i18n import t as _tr
-from ..security import require, services
+from ..security import require, services, user_scope
 
 router = APIRouter(prefix="/map", tags=["map"])
 SEV_COLORS = {"CRITICAL": "#f87171", "ERROR": "#fb923c", "WARN": "#fbbf24", "INFO": "#60a5fa", "DEBUG": "#64748b"}
@@ -21,8 +21,8 @@ def _labels(lang: str) -> dict:
 
 @router.get("")
 def failure_map(dataset: str = Query("live", description="dataset id or 'live'"), incident: str | None = None, env: str | None = None, host: str | None = None,
-                hosts: bool = True, lang: str = "tr", user=Depends(require("page.map")), svc=Depends(services)):
-    a = svc.live_analysis() if dataset == "live" else svc.datasets.get(dataset)["analysis"]
+                hosts: bool = True, lang: str = "tr", user=Depends(require("page.map")), svc=Depends(services), sc=Depends(user_scope)):
+    a = svc.live_analysis(sc) if dataset == "live" else svc.datasets.get(dataset)["analysis"]
     if a is None or not a.observations:
         return {"empty": True, "nodes": 0}
     m = build_map(a, incident or None, env=env or None, host=host or None, with_hosts=hosts)

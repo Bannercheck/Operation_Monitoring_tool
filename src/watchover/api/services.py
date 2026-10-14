@@ -84,6 +84,8 @@ class Services:
         self.kb.apply_rules()
         self.users = Users(self.kb); self.users.bootstrap()
         self.roles = Roles(self.kb)
+        from ..teams import Teams
+        self.teams = Teams(self.kb, self)                    # several teams, each sees only its own hosts
         self.actions = ActionStore(self.kb if self.kb.pg else os.environ.get("ACTIONS_DB", "actions.db"))
         self.playbook = Playbook(self.kb if self.kb.pg else os.environ.get("PLAYBOOK_DB", "playbook.db"))
         cfg0 = wo_settings.load()
@@ -199,10 +201,17 @@ class Services:
         self.kb.embed_name = cfg.embed_model if self.kb.embedder else ""
         return cfg
 
-    def live_analysis(self):
+    def scope_of(self, user: dict):
+        """None (everything) or the Scope of hosts / services this user may see."""
+        return self.teams.scope(user, self.roles.can(user.get("role", ""), "scope.all"), bool(wo_settings.load().get("teams_strict")))
+
+    def live_analysis(self, scope=None):
         """Analysis over the live buffer, recomputed only when new events arrived."""
         from ..analysis import Analysis
         n = self.live.received
+        if scope is not None:                                 # a team's view: its own hosts only (not cached, it is per user)
+            obs = [o for o in self.live.snapshot() if scope.allows(o.host)]
+            return Analysis(obs, []) if obs else None
         if self._live_an is None or self._live_an[0] != n:
             obs = self.live.snapshot()
             self._live_an = (n, Analysis(list(obs), []) if obs else None)

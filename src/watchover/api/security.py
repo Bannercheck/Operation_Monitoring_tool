@@ -95,6 +95,11 @@ def current_user(request: Request) -> dict:
     return {"id": u["id"], "email": u["email"], "name": u.get("name", ""), "role": u.get("role", ""), "must_change": bool(u.get("must_change"))}
 
 
+def user_scope(request: Request, user: dict = Depends(current_user)):
+    """Dependency: None when the user sees every host, else the Scope (team hosts / services) to filter by."""
+    return request.app.state.services.scope_of(user)
+
+
 def require(perm: str):
     """Dependency: the signed-in account must hold `perm` (administrators hold everything)."""
     def dep(request: Request, user: dict = Depends(current_user)) -> dict:

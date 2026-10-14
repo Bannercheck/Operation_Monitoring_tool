@@ -3,14 +3,15 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, File, UploadFile
 from fastapi.responses import PlainTextResponse
 
-from ..security import require, services
+from ..security import require, services, user_scope
 
 router = APIRouter(prefix="/inventory", tags=["inventory"])
 
 
 @router.get("")
-def list_hosts(q: str = "", user=Depends(require("page.inv")), svc=Depends(services)):
-    return svc.inventory.list(q)
+def list_hosts(q: str = "", user=Depends(require("page.inv")), svc=Depends(services), sc=Depends(user_scope)):
+    rows = svc.inventory.list(q)
+    return rows if sc is None else [r for r in rows if sc.allows(r["hostname"])]
 
 
 @router.get("/stats")
