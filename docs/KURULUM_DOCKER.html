@@ -120,6 +120,68 @@ unzip -q watchover.zip &amp;&amp; mv hackathon watchover &amp;&amp; cd watchover
 <pre><code class="language-bash">./watchover.sh user add ops@sirket.com --admin
 ./watchover.sh user list
 </code></pre>
+<h2>2b. Alıcı servisi (Go, 8600)</h2>
+<p>Ajanların bağlandığı 8600 portu v1.35'ten itibaren ayrı bir konteynerde, Go ile yazılmış <code>watchover-receiver</code> servisindedir. Paketi doğrular, <code>/data/spool</code> altına sıralı segment olarak yazar ve milisaniyeler içinde yanıt verir; panel (dashboard) segmentleri arka planda işler. Böylece anomali taraması ya da yoğun ayrıştırma sırasında ajanlar beklemez, zaman aşımına düşmez.</p>
+<ul>
+<li>Kimlik doğrulama aynıdır: ajan token'ları, ortak anahtar ve ilk kurulumdaki açık mod. Panel izinli token'ların özetini (<code>auth.json</code>) birkaç saniyede bir alıcıya yayınlar; iptal edilen token en geç birkaç saniye içinde reddedilir.</li>
+<li><code>/enroll</code>, <code>/agent.py</code> ve <code>/agent/install.sh</code> de bu servisten sunulur; kayıt isteği panele aktarılır.</li>
+<li>Kuyruk sınırı <code>.env</code> içinde <code>WATCHOVER_SPOOL_MAX_MB</code> (varsayılan 2048). Aşılırsa alıcı 503 ve Retry-After döner, ajan paketi kendi diskinde saklar.</li>
+<li>Durum: <code>curl http://&lt;sunucu&gt;:8600/health</code>, Prometheus için <code>/metrics</code>; log: <code>./watchover.sh logs receiver</code>.</li>
+<li>Yükseltme <code>./watchover.sh upgrade</code> ile kendiliğinden olur: panel 8600'ü bırakır, alıcı servisi devralır. Güvenlik duvarı kuralı değişmez.</li>
+</ul>
+<h2>2c. Web ve mobil uygulamaları izlemek (Kullanıcı deneyimi)</h2>
+<ol>
+<li><strong>Uygulama ekleyin:</strong> APM › Kullanıcı deneyimi › Uygulamalar. Ad, platform (web, android, ios, flutter, react-native), web için izinli kökenler (<code>https://ik.sirket.com.tr</code>), gerekirse örnekleme yüzdesi. Bir anahtar (<code>pk_…</code>) üretilir; <strong>Kurulum</strong> düğmesi platforma göre hazır satırları gösterir.</li>
+<li><strong>Web:</strong> sayfanın <code>&lt;head&gt;</code> kısmına tek satır: <code>&lt;script src="https://&lt;watchover&gt;/rum.js" data-key="pk_…" async&gt;&lt;/script&gt;</code>. Kullanıcı girişinden sonra <code>window.watchover.setUser(personelNo)</code>.</li>
+<li><strong>Mobil:</strong> depodaki <code>sensors/</code> altındaki SDK dosyası uygulamaya eklenir ve uygulama açılışında <code>start(endpoint, key)</code> çağrılır (Android: OkHttp interceptor; iOS: <code>urlSession()</code>; Flutter: <code>httpClient()</code> ve <code>observer</code>; React Native: <code>start</code> ve <code>onNavigationChange</code>). Uç adres <code>https://&lt;watchover&gt;/mobile</code> (edge açık değilse <code>http://&lt;sunucu&gt;:8600/mobile</code>). Uygulama mağaza sürümüne girmeden önce test ortamında denenmelidir; SDK'lar başvuru kodudur ve bu depoda derlenmemiştir.</li>
+<li><strong>Arka uçla birleştirme:</strong> sensörler her çağrıya <code>traceparent</code> başlığı ekler. nginx log biçimine <code>$http_traceparent</code>, uygulama loglarına gelen <code>traceparent</code> başlığı eklenirse kullanıcının dokunuşu ile sunucudaki adımlar aynı izde kimlikle birleşir; eklenmezse oturum ve zaman üzerinden gösterilir.</li>
+<li><strong>Güvenlik duvarı:</strong> telefonlar ve tarayıcılar Watchover'a 443 (edge) ya da 8600 üzerinden ulaşmalıdır. Şirket dışından kullanılan uygulamalar için yalnız <code>/mobile</code>, <code>/rum</code> ve <code>/rum.js</code> yollarını dışarı açan bir ters vekil önerilir.</li>
+<li><strong>KVKK:</strong> sensörler form değeri, ekran içeriği, tuş vuruşu, konum ve sorgu dizesi toplamaz; sunucu kullanıcı kimliğini takma ada çevirir ve saklamaz, metinlerde TCKN / telefon / e-posta / IBAN / kart / parola maskeler, IP saklamaz. Bir kişinin oturumlarını bulmak için kimlik girildiğinde gerekçe istenir ve güvenlik günlüğüne yazılır. Aydınlatma metni ve rıza kararı kurumun hukuk birimindedir.</li>
+</ol>
+<h2>2d. Servis haritası ve sunucu bazında entegrasyonlar</h2>
+<ul>
+<li><strong>Trafik (izler):</strong> APM › Servis haritası. Kim kimi çağırıyor, çağrı sayısı, P95 gecikme ve hata oranı izlerden ölçülür; düz çizgi loglarda üst adım kimliğiyle, kesikli çizgi zaman örtüşmesinden bilinir.</li>
+<li><strong>Ağ (ajan bağlantıları):</strong> ajan <code>--flows</code> ile (kurulum betiği bunu varsayılan açar, <code>--no-flows</code> kapatır) dakikada bir sunucunun açık TCP bağlantılarını gönderir. Hiçbir logun söylemediği bağımlılıklar görünür: uygulama sunucusundan veritabanına, Kafka'ya, SAP RFC'ye, dış API'ye. Süreç adlarını görmek için ajan root çalışmalıdır (systemd servisi öyle çalışır).</li>
+<li><strong>Entegrasyonlar menüsü:</strong> her sunucu için tek ekran: ona bağlananlar, üzerinde çalışan süreçler ve dinlenen portlar, izlerde görülen servisler, gittiği sistemler tür türüne (veritabanı, mesajlaşma, HTTP API, SAP, kimlik, e-posta, dosya aktarımı). Hedefler envanterdeki IP'lerle adlandırılır; envanterde olmayan adres IP olarak ve kesikli çerçeveyle görünür, envantere eklenince adıyla görünür.</li>
+<li><strong>Gateway / nginx'te istek kimliği:</strong> izlerin kimlikle birleşmesi için önerilen log biçimi:</li>
+</ul>
+<pre><code class="language-nginx">log_format watchover '$remote_addr - $remote_user [$time_local] &quot;$request&quot; $status $body_bytes_sent &quot;$http_referer&quot; &quot;$http_user_agent&quot; '
+                     '$request_time $upstream_response_time request_id=$request_id traceparent=$http_traceparent';
+proxy_set_header X-Request-ID $request_id;          # arka uç bu kimliği kendi loguna yazarsa aynı iz kimlikle birleşir
+access_log /var/log/nginx/access.log watchover;
+</code></pre>
+<ul>
+<li><strong>Okunan biçimler:</strong> nginx / Apache (süre, upstream süresi, istek kimliği, Apache <code>%D</code>), IIS <code>time-taken</code>, Envoy / Istio erişim logu (<code>x-request-id</code>), AWS ALB, uygulama loglarında <code>traceparent</code> / <code>trace_id</code> / <code>request_id</code> / <code>correlation_id</code>, SharePoint ULS (Correlation ve Execution Time), Keycloak olayları (SSO oturumu uygulamalar arası yolculuk olarak).</li>
+</ul>
+<h2>2e. Birden fazla ekip: sunucu bazında görünürlük</h2>
+<p>Kullanıcılar › Ekipler sekmesinde her ekip için kurallar tanımlanır; ekibe eklenen kullanıcı yalnız o ekibin sunucularını ve onlarda çalışan servisleri görür. Örnekler:</p>
+<table>
+<thead>
+<tr>
+<th>Ekip</th>
+<th>Kural</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>EA</td>
+<td>Sunucu adı desen <code>ea-*</code>, ya da envanter uygulaması <code>SAP*</code></td>
+</tr>
+<tr>
+<td>İK</td>
+<td>Envanter uygulaması <code>HR*</code>, servis / uygulama adı <code>ik-*</code> (İK mobil ve web uygulamaları)</td>
+</tr>
+<tr>
+<td>Veritabanı</td>
+<td>Ajan etiketi <code>dba</code>, ya da IP ağı <code>10.40.0.0/16</code></td>
+</tr>
+</tbody>
+</table>
+<p>Merkezi NOC ekibine "Tüm sunucuları gör" yetkili bir rol verilir. Ekibe girmemiş kullanıcılar her şeyi görmeye devam eder; kurumda herkesin bir ekibe bağlı olması isteniyorsa Sistem › Ayarlar'da <code>teams_strict</code> açılır.</p>
+<h2>2f. İş akışları ve hatalar</h2>
+<p>APM › İş akışları: "Yeni akış" → anahtar deseni (ör. <code>sipariş\s+(\d{7})</code>, parantez içi anahtar) → "Öner" ile adımlar loglardan gelir → Kaydet. Ek ajan veya kod değişikliği gerekmez; anahtar hangi sunucunun logunda geçiyorsa oradan izlenir. Kişisel veri taşıyan anahtarlar (TCKN, sicil) için "Anahtarı maskele" işaretlenir. APM › Hatalar ek ayar istemez.</p>
+<h2>2g. 200+ sunucu: pool'lar ve kapasite</h2>
+<p>Pool'lar envanterdeki <strong>küme</strong> alanından gelir (Envanter › CSV içe aktarma, <code>cluster</code> sütunu); boş bırakılan sunucular adlarının numarasız köküyle gruplanır (<code>prd-sap-app-01</code> → <code>prd-sap-app</code>). Ek ayar gerekmez. Operasyon ekranında üstteki zaman seçiciyle (ya da zaman çizelgesinde sürükleyerek) herhangi bir aralık seçilir; son 48 saatin logları satır satır, daha eskisi sayı olarak görünür (<code>live_retention_h</code>, <code>history_retention_days</code> Sistem ayarlarından). Ölçülen kapasite (4 vCPU, PostgreSQL, Go alıcısı): 300 sunucu ve dakikada 100 bin satır rahat, dakikada ~290 bin satır sınırda; daha yüksek hacimde CPU sayısını değil düğüm / işçi sayısını artırmak gerekir. Ayrıntı ve kendi ortamınızda yük testi: <code>docs/LOAD_TEST.md</code>.</p>
 <h2>3. Günlük işletim: watchover.sh</h2>
 <table>
 <thead>
