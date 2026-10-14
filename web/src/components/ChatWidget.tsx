@@ -19,7 +19,7 @@ export function ChatWidget() {
   useEffect(() => { try { sessionStorage.setItem("wo_chat", JSON.stringify(hist.slice(-40))); } catch { /* ignore */ } endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [hist, open]);
   useEffect(() => { if (open) setTimeout(() => inputRef.current?.focus(), 50); }, [open]);
   const ask = useMutation({ mutationFn: (question: string) => post("/assist/ask", { question, history: hist.map((m) => ({ role: m.role, content: m.content })), dataset: dataset || (ds.data?.[0]?.id ?? null), lang }),
-    onSuccess: (r: any) => setHist((h) => [...h, { role: "assistant", content: r.text, meta: r }]) });
+    onSuccess: (r: any) => { setHist((h) => [...h, { role: "assistant", content: r.text, meta: r }]); window.dispatchEvent(new Event("wo:llm")); } });
   const send = (question: string) => { if (!question.trim()) return; setHist((h) => [...h, { role: "user", content: question }]); setQ(""); ask.mutate(question); };
   const rate = async (i: number, verdict: string) => { const m = hist[i]; await post("/assist/rate", { question: hist[i - 1]?.content ?? "", answer: m.content, verdict }); setHist((h) => h.map((x, n) => (n === i ? { ...x, rated: verdict } : x))); };
   return <>
@@ -38,7 +38,7 @@ export function ChatWidget() {
         {!hist.length && <div className="chat-msg bot"><div>{t("as_hello")}</div><div className="row" style={{ marginTop: 8, flexWrap: "wrap" }}>{["as_ex1", "as_ex2", "as_ex3"].map((k) => <Btn key={k} sm onClick={() => send(t(k))}>{t(k)}</Btn>)}</div></div>}
         {hist.map((m, i) => <div key={i} className={`chat-msg ${m.role === "user" ? "me" : "bot"}`}>
           <div style={{ whiteSpace: "pre-wrap" }}>{m.content}</div>
-          {m.role === "assistant" && <div className="row between" style={{ marginTop: 6 }}><span className="dim small">{m.meta?.used_llm ? t("as_via_llm", { m: m.meta.model }) : t("as_via_ctx")}{m.meta?.sources?.length ? ` · 📎 ${m.meta.sources.length}` : ""}</span>
+          {m.role === "assistant" && <div className="row between" style={{ marginTop: 6 }}><span className="dim small">{m.meta?.used_llm ? t("as_via_llm", { m: m.meta.model }) : t("as_via_ctx")}{m.meta?.sources?.length ? ` · 📎 ${m.meta.sources.length}` : ""}{m.meta?.tokens ? ` · 🪙 ${m.meta.tokens.total}${m.meta.tokens.estimated ? "≈" : ""}` : ""}</span>
             {!m.rated ? <span className="row" style={{ gap: 2 }}><Btn sm onClick={() => rate(i, "up")}>👍</Btn><Btn sm onClick={() => rate(i, "down")}>👎</Btn></span> : <span className="dim small">{m.rated === "up" ? "👍" : "👎"}</span>}</div>}
         </div>)}
         {ask.isPending && <div className="chat-msg bot dim">{t("as_thinking")}</div>}

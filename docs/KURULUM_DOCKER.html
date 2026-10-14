@@ -27,7 +27,7 @@ th{background:#f8fafc}
 <tbody>
 <tr>
 <td>İşletim sistemi</td>
-<td>Ubuntu 22.04 / 24.04, Debian 12, RHEL / Rocky 9 (Linux sunucu). Deneme için macOS / Windows'ta Docker Desktop da çalışır</td>
+<td>Ubuntu 22.04 / 24.04, Debian 12, RHEL 8.8 / 9 ve Rocky / Alma (Linux sunucu; RHEL için bölüm 1b). Deneme için macOS / Windows'ta Docker Desktop da çalışır</td>
 </tr>
 <tr>
 <td>Kaynak</td>
@@ -44,6 +44,64 @@ th{background:#f8fafc}
 sudo usermod -aG docker $USER      # sonra oturumu kapatıp açın
 docker compose version             # v2.x görünmeli
 </code></pre>
+<h2>1b. Red Hat Enterprise Linux 8.8 üretim sunucusu</h2>
+<p>Red Hat, Docker yerine Podman ile gelir; Watchover betikleri <code>docker compose</code> kullandığı için sunucuya <strong>Docker CE + Compose v2</strong> kurulur (Docker'ın kendi RHEL deposundan, x86_64). Bunun dışında ana makineye hiçbir şey kurulmaz: Python, PostgreSQL, Ollama, Caddy imajların içindedir. Kurulması gerekenler:</p>
+<table>
+<thead>
+<tr>
+<th>Bileşen</th>
+<th>Neden</th>
+<th>Komut</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>docker-ce</code>, <code>docker-ce-cli</code>, <code>containerd.io</code>, <code>docker-buildx-plugin</code>, <code>docker-compose-plugin</code></td>
+<td>Konteyner motoru ve Compose v2 (Podman/buildah/runc kaldırılır, çakışır)</td>
+<td><code>scripts/rhel-prepare.sh</code> kurar</td>
+</tr>
+<tr>
+<td><code>git</code> (ya da paket dosyası)</td>
+<td>Kaynak ağacını almak; internetsiz sunucuda <code>bundle</code> dosyası yeterlidir</td>
+<td><code>dnf install git</code></td>
+</tr>
+<tr>
+<td><code>python3</code>, <code>tar</code>, <code>gzip</code>, <code>openssl</code>, <code>curl</code></td>
+<td><code>watchover.sh</code> yardımcıları (gizli anahtar üretimi, hacim adı, yedek) — RHEL 8.8 tabanında vardır</td>
+<td><code>dnf install python3 tar gzip openssl curl</code></td>
+</tr>
+<tr>
+<td><code>firewalld</code> kuralları</td>
+<td>8501/tcp arayüz, 8600/tcp ajanlar, 443/tcp edge TLS</td>
+<td>betik açar</td>
+</tr>
+<tr>
+<td><code>chrony</code></td>
+<td>Zaman damgaları ve TLS için saat eşitleme</td>
+<td>betik açar</td>
+</tr>
+</tbody>
+</table>
+<pre><code class="language-bash">sudo dnf -y install git
+sudo git clone https://github.com/Bannercheck/Operation_Monitoring_tool.git /opt/watchover-docker   # internetsiz: bundle'ı açın (bölüm &quot;İnternetsiz sunucu&quot;)
+cd /opt/watchover-docker
+sudo bash scripts/rhel-prepare.sh --check          # ne yapacağını gösterir, değişiklik yapmaz
+sudo bash scripts/rhel-prepare.sh --user ops       # Docker CE + Compose, docker grubu, firewalld, chrony, daemon.json (log sınırı, live-restore)
+# oturumu kapatıp açın (docker grubu), sonra:
+./watchover.sh install
+./watchover.sh edge on watchover.sirket.local      # TLS: ./certs/watchover.crt + watchover.key şirket sertifikası ya da iç CA
+./watchover.sh llm on                              # yerel LLM istenirse (internetli: modeller iner; internetsiz: paketten gelir)
+</code></pre>
+<p><strong>Üretim notları (RHEL)</strong></p>
+<ul>
+<li><strong>SELinux</strong> <code>enforcing</code> kalabilir: Docker CE varsayılanı konteynerleri SELinux'tan muaf çalıştırır, bind mount'lar (<code>./certs</code>, <code>./docker/Caddyfile</code>) olduğu gibi çalışır. <code>daemon.json</code>'da <code>selinux-enabled</code> açılırsa bu iki mount'a <code>:z</code> eklenir.</li>
+<li><strong>Disk</strong>: imajlar, PostgreSQL, canlı spool ve Ollama modelleri <code>/var/lib/docker</code> altındadır. 100+ sunucu için ayrı bir LVM hacmi (≥ 200 GB, LLM ile ≥ 300 GB) <code>/var/lib/docker</code>'a bağlanır ya da <code>daemon.json</code> <code>data-root</code> ile taşınır; betik 40 GB'ın altında uyarır.</li>
+<li><strong>Kaynak</strong>: <code>watchover.sh</code> gördüğü tüm CPU'yu LLM ve eğiticiye, belleğin %80'ini LLM'e tavan olarak yazar; 100+ sunucu / 2.000 olay/sn için 16–32 CPU, 64 GB öneri (bkz. "Ölçek").</li>
+<li><strong>Abonelik / depo</strong>: <code>dnf</code> için RHEL aboneliği ya da Satellite gerekir; Docker deposu <code>download.docker.com/linux/rhel</code> (erişim yoksa RPM'ler internetli makinede <code>dnf download --resolve …</code> ile indirilip <code>dnf install ./*.rpm</code> ile kurulur, betik <code>--no-docker</code> ile çalıştırılır).</li>
+<li><strong>Yeniden başlatma</strong>: Docker servisi <code>enable</code> edilir, konteynerler <code>restart: unless-stopped</code> ile kendiliğinden kalkar; <code>live-restore</code> ile Docker güncellemesi konteynerleri düşürmez.</li>
+<li><strong>Yedek</strong>: <code>./watchover.sh backup --keep 14</code> günlük cron'a (<code>0 2 * * * /opt/watchover-docker/watchover.sh backup</code>) konur; <code>backups/</code> dizini merkezi yedeğe alınır.</li>
+<li><strong>İzlenen RHEL sunucular</strong>: ajan yalnız <code>python3</code> ister (<code>dnf install python3</code>), <code>curl -fsSL http://&lt;watchover&gt;:8600/agent/install.sh | sudo bash -s -- --url … --enroll-key …</code> systemd servisini kurar; SELinux'ta <code>/opt/watchover-agent</code> altında çalışır, ek etiket gerekmez.</li>
+</ul>
 <h2>2. Kurulum (on dakika)</h2>
 <p>Paketi sunucuya kopyalayın (scp / WinSCP), açın ve tek komutu çalıştırın:</p>
 <pre><code class="language-bash">scp watchover.zip kullanici@sunucu:~/

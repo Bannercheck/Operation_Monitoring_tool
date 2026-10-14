@@ -12,7 +12,7 @@ from ... import llm as wo_llm
 from ... import llm_eval as wo_eval
 from ... import ollama as wo_ollama
 from ... import settings as wo_settings
-from ..security import require, services
+from ..security import require, services, current_user
 
 router = APIRouter(prefix="/llm", tags=["llm"])
 KEYS = ("llm_provider", "llm_base", "llm_model", "llm_key", "llm_embed")
@@ -108,6 +108,12 @@ def remove(name: str, user=Depends(require("page.llm")), svc=Depends(services)):
 @router.get("/quality")
 def quality(user=Depends(require("page.llm")), svc=Depends(services)):
     return {"stats": svc.kb.llm_stats(), "calls": svc.kb.llm_calls(200), "evals": svc.kb.eval_runs(20)}
+
+
+@router.get("/tokens")
+def tokens(user=Depends(current_user), svc=Depends(services)):
+    """The token meter in the top bar: every signed-in user sees what the LLM calls cost (no secrets in here)."""
+    return svc.kb.token_usage()
 
 
 @router.post("/benchmark")

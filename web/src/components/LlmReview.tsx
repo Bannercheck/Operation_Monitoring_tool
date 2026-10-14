@@ -9,7 +9,7 @@ import { Btn, Card, Err, Field } from "../components/ui";
 export function LlmReview({ dataset, incident, compact }: { dataset: string; incident?: string; compact?: boolean }) {
   const { t } = useT(); const [scope, setScope] = useState(incident ? "incident" : "dataset"); const [query, setQuery] = useState(""); const [question, setQuestion] = useState(""); const [hist, setHist] = useState<any[]>([]);
   const llm = useQuery({ queryKey: ["llm-settings"], queryFn: () => get("/llm/settings"), staleTime: 60000 });
-  const run = useMutation({ mutationFn: () => post(`/datasets/${dataset}/review`, { scope, incident: incident ?? "", query, question }), onSuccess: (r: any) => setHist((h) => [{ ...r, at: new Date().toLocaleTimeString(), question, query }, ...h].slice(0, 8)) });
+  const run = useMutation({ mutationFn: () => post(`/datasets/${dataset}/review`, { scope, incident: incident ?? "", query, question }), onSuccess: (r: any) => { setHist((h) => [{ ...r, at: new Date().toLocaleTimeString(), question, query }, ...h].slice(0, 8)); window.dispatchEvent(new Event("wo:llm")); } });
   const enabled = llm.data?.enabled ?? llm.data?.configured ?? true; const model = llm.data?.model ?? "";
   const body = (txt: string) => txt.split("\n").map((ln, i) => { const b = ln.match(/^\*\*(.+?)\*\*:?\s*(.*)$/); return b ? <div key={i} style={{ marginTop: 8 }}><b>{b[1]}</b>{b[2] ? ` ${b[2]}` : ""}</div> : ln.trim().startsWith("-") || ln.trim().startsWith("•") ? <div key={i} style={{ paddingLeft: 14 }}>{ln.trim()}</div> : <div key={i}>{ln}</div>; });
   return <Card title={<span>🤖 {t("rv_title")}{model && <span className="muted small"> · {model}</span>}</span>}>
@@ -23,7 +23,7 @@ export function LlmReview({ dataset, incident, compact }: { dataset: string; inc
     </div>
     <Err e={run.error} />
     {hist.map((r, i) => <div key={i} className="card" style={{ marginTop: 10, borderLeft: "3px solid var(--accent)" }}>
-      <div className="row between"><span className="muted small">{r.at} · {t("rv_model")}: {r.model} · {t("rv_scope")}: {r.scope}{r.query ? ` "${r.query}"` : ""} · {(r.evidence_chars / 1000).toFixed(1)}k {t("rv_evidence")}{r.grounding ? ` · ${t("rv_grounded")} ${Math.round((r.grounding.grounded ?? 0) * 100)}%` : ""}</span><Btn sm onClick={() => navigator.clipboard?.writeText(r.text)}>{t("rv_copy")}</Btn></div>
+      <div className="row between"><span className="muted small">{r.at} · {t("rv_model")}: {r.model} · {t("rv_scope")}: {r.scope}{r.query ? ` "${r.query}"` : ""} · {(r.evidence_chars / 1000).toFixed(1)}k {t("rv_evidence")}{r.grounding ? ` · ${t("rv_grounded")} ${Math.round((r.grounding.grounded ?? 0) * 100)}%` : ""}{r.tokens ? ` · 🪙 ${r.tokens.total}${r.tokens.estimated ? "≈" : ""}` : ""}</span><Btn sm onClick={() => navigator.clipboard?.writeText(r.text)}>{t("rv_copy")}</Btn></div>
       <div className="small" style={{ marginTop: 6, lineHeight: 1.5 }}>{body(r.text)}</div></div>)}
   </Card>;
 }

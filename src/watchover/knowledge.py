@@ -18,7 +18,7 @@ import json
 import re
 import struct
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Callable
 
 from . import scenario
@@ -107,7 +107,13 @@ class Knowledge(Database):
             self._exec("ALTER TABLE lessons ADD COLUMN embed_model TEXT DEFAULT ''")
         self._exec(f"""CREATE TABLE IF NOT EXISTS llm_calls (
             id {pk}, ts TEXT, provider TEXT, model TEXT, kind TEXT, ok INTEGER, latency_ms INTEGER, prompt_chars INTEGER, answer_chars INTEGER,
-            citations INTEGER DEFAULT 0, grounded INTEGER DEFAULT 0, invalid INTEGER DEFAULT 0, error TEXT DEFAULT '')""")
+            citations INTEGER DEFAULT 0, grounded INTEGER DEFAULT 0, invalid INTEGER DEFAULT 0, error TEXT DEFAULT '',
+            tokens_in INTEGER DEFAULT 0, tokens_out INTEGER DEFAULT 0, tokens_est INTEGER DEFAULT 0)""")
+        cols = self.columns("llm_calls")
+        for c in ("tokens_in", "tokens_out", "tokens_est"):
+            if c not in cols:
+                self._exec(f"ALTER TABLE llm_calls ADD COLUMN {c} INTEGER DEFAULT 0")
+        self._exec("CREATE INDEX IF NOT EXISTS llm_calls_ts ON llm_calls(ts)")
         self._exec(f"""CREATE TABLE IF NOT EXISTS answer_feedback (
             id {pk}, ts TEXT, model TEXT, question TEXT, verdict TEXT, note TEXT DEFAULT '')""")
         self._exec(f"""CREATE TABLE IF NOT EXISTS eval_runs (
@@ -400,10 +406,36 @@ class Knowledge(Database):
 
     # ---------------------------------------------------------------- LLM quality: every call, every verdict, every benchmark run
     def log_call(self, rec: dict) -> None:
-        self._exec("INSERT INTO llm_calls (ts, provider, model, kind, ok, latency_ms, prompt_chars, answer_chars, citations, grounded, invalid, error) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+        self._exec("INSERT INTO llm_calls (ts, provider, model, kind, ok, latency_ms, prompt_chars, answer_chars, citations, grounded, invalid, error, tokens_in, tokens_out, tokens_est) "
+                   "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                    (_now(), rec.get("provider", ""), rec.get("model", ""), rec.get("kind", ""), int(rec.get("ok", 1)), int(rec.get("latency_ms", 0)),
                     int(rec.get("prompt_chars", 0)), int(rec.get("answer_chars", 0)), int(rec.get("citations", 0)), int(rec.get("grounded", 0)),
-                    int(rec.get("invalid", 0)), str(rec.get("error", ""))[:300]))
+                    int(rec.get("invalid", 0)), str(rec.get("error", ""))[:300], int(rec.get("tokens_in", 0) or 0), int(rec.get("tokens_out", 0) or 0),
+                    int(rec.get("tokens_est", 0) or 0)))
+
+    def token_usage(self) -> dict:
+        """The token meter: in / out / total and call count for today, the last 7 and 30 days and all time (UTC), the latest
+        call, today's split by purpose and by model, and how much of today's total is an estimate (provider gave no counts)."""
+        now = datetime.now(UTC)
+        day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        windows = {"today": day, "week": now - timedelta(days=7), "month": now - timedelta(days=30)}
+        out: dict = {}
+        for name, since in windows.items():
+            r = self._exec("SELECT COUNT(*) AS n, COALESCE(SUM(tokens_in),0) AS i, COALESCE(SUM(tokens_out),0) AS o, "
+                           "COALESCE(SUM(CASE WHEN tokens_est=1 THEN tokens_in+tokens_out ELSE 0 END),0) AS e FROM llm_calls WHERE ts >= ?",
+                           (since.isoformat(timespec="seconds"),))[0]
+            out[name] = {"calls": int(r["n"]), "in": int(r["i"]), "out": int(r["o"]), "total": int(r["i"]) + int(r["o"]), "estimated": int(r["e"])}
+        r = self._exec("SELECT COUNT(*) AS n, COALESCE(SUM(tokens_in),0) AS i, COALESCE(SUM(tokens_out),0) AS o, "
+                       "COALESCE(SUM(CASE WHEN tokens_est=1 THEN tokens_in+tokens_out ELSE 0 END),0) AS e FROM llm_calls")[0]
+        out["all"] = {"calls": int(r["n"]), "in": int(r["i"]), "out": int(r["o"]), "total": int(r["i"]) + int(r["o"]), "estimated": int(r["e"])}
+        last = self._exec("SELECT ts, kind, model, provider, ok, latency_ms, tokens_in, tokens_out, tokens_est FROM llm_calls ORDER BY id DESC LIMIT 1")
+        out["last"] = ({**last[0], "total": int(last[0]["tokens_in"] or 0) + int(last[0]["tokens_out"] or 0)} if last else None)
+        since = day.isoformat(timespec="seconds")
+        out["by_kind"] = [{"kind": r["kind"] or "-", "calls": int(r["n"]), "total": int(r["t"])} for r in self._exec(
+            "SELECT kind, COUNT(*) AS n, COALESCE(SUM(tokens_in+tokens_out),0) AS t FROM llm_calls WHERE ts >= ? GROUP BY kind ORDER BY t DESC", (since,))]
+        out["by_model"] = [{"model": r["model"] or "-", "calls": int(r["n"]), "total": int(r["t"])} for r in self._exec(
+            "SELECT model, COUNT(*) AS n, COALESCE(SUM(tokens_in+tokens_out),0) AS t FROM llm_calls WHERE ts >= ? GROUP BY model ORDER BY t DESC LIMIT 8", (since,))]
+        return out
 
     def annotate_last_call(self, kind: str, citations: int, grounded: int, invalid: int) -> None:
         rows = self._exec("SELECT id FROM llm_calls WHERE kind=? ORDER BY id DESC LIMIT 1", (kind,))

@@ -243,6 +243,8 @@ def test_phase3_map_assist_llm_itsm_search_settings(client, monkeypatch):
     assert client.get("/api/llm", headers=h).json()["llm_model"] == "qwen2.5:7b-instruct"
     assert client.post("/api/llm/test", headers=h).json()["ok"] is False
     assert client.get("/api/llm/quality", headers=h).json()["stats"]["calls"] >= 0
+    tok = client.get("/api/llm/tokens", headers=h).json()
+    assert set(tok) >= {"today", "week", "month", "all", "last", "by_kind", "by_model"} and tok["today"]["total"] >= 0
     client.put("/api/llm", json={"llm_base": "", "llm_model": "", "llm_key": ""}, headers=h)
     # itsm demo tickets correlated with the dataset's incidents
     assert client.get("/api/itsm/config", headers=h).json()["system"] == "demo"

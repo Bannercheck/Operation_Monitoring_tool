@@ -11,7 +11,7 @@ import json
 import re
 from datetime import datetime
 
-from .llm import LLMConfig, chat_messages
+from .llm import LLMConfig, chat_messages, last_call
 
 INC_RE = re.compile(r"\bINC-\d+\b", re.I)
 SYSTEM = {
@@ -103,7 +103,10 @@ def answer(cfg: LLMConfig | None, question: str, history: list[dict], analysis, 
             g = grounding(text, ctx)
             if kb is not None and hasattr(kb, "annotate_last_call"):
                 kb.annotate_last_call("chat", g["citations"], g["grounded"], g["invalid"])
-            return {"text": text, "sources": sources, "context": ctx, "used_llm": True, "error": "", "grounding": g}
+            lc = last_call() or {}
+            tokens = {"in": lc.get("tokens_in", 0), "out": lc.get("tokens_out", 0), "total": (lc.get("tokens_in", 0) or 0) + (lc.get("tokens_out", 0) or 0),
+                      "estimated": bool(lc.get("tokens_est")), "latency_ms": lc.get("latency_ms", 0)}
+            return {"text": text, "sources": sources, "context": ctx, "used_llm": True, "error": "", "grounding": g, "tokens": tokens}
         except Exception as e:  # noqa: BLE001 - fall back, never break the chat
             return {"text": fallback_answer(question, analysis, kb, lang), "sources": sources, "context": ctx, "used_llm": False, "error": str(e)}
     return {"text": fallback_answer(question, analysis, kb, lang), "sources": sources, "context": ctx, "used_llm": False, "error": ""}

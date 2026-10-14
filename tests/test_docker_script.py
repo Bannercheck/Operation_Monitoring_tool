@@ -185,3 +185,11 @@ def version(d):
     import re
     return re.search(r'^version = "(.*)"', (d / "pyproject.toml").read_text(), re.M).group(1)
 
+
+def test_rhel_prepare_check_mode(tmp_path):
+    """--check never changes the host and needs no root: it prints the plan (would run: …) and the host facts."""
+    r = subprocess.run(["bash", str(ROOT / "scripts" / "rhel-prepare.sh"), "--check", "--user", "ops"], capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stderr
+    assert "host:" in r.stdout and "would run:" in r.stdout and "done." in r.stdout
+    assert subprocess.run(["bash", "-n", str(ROOT / "scripts" / "rhel-prepare.sh")]).returncode == 0
+

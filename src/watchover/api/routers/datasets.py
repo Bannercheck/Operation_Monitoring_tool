@@ -361,7 +361,7 @@ def _review_bundle(a, scope: str, incident: str, query: str, lang: str, kb=None)
 def review(key: str, body: ReviewIn, user=Depends(require("page.data")), svc=Depends(services)):
     """Ask the configured LLM (Ollama or an API) to review an incident, the whole dataset or searched log lines.
     The deterministic verdicts are never changed by the answer; it is an opinion with citations."""
-    from ...llm import chat_messages
+    from ...llm import chat_messages, last_call
     a = svc.datasets.get(key)["analysis"]
     cfg = svc.llm_cfg("ops")
     if not cfg.enabled:
@@ -379,7 +379,10 @@ def review(key: str, body: ReviewIn, user=Depends(require("page.data")), svc=Dep
         g = grounding(text, bundle)
     except Exception:  # noqa: BLE001
         g = None
-    return {"text": text, "model": cfg.model, "provider": cfg.kind, "scope": body.scope, "evidence_chars": len(bundle), "grounding": g}
+    lc = last_call() or {}
+    tokens = {"in": lc.get("tokens_in", 0), "out": lc.get("tokens_out", 0), "total": (lc.get("tokens_in", 0) or 0) + (lc.get("tokens_out", 0) or 0),
+              "estimated": bool(lc.get("tokens_est")), "latency_ms": lc.get("latency_ms", 0)}
+    return {"text": text, "model": cfg.model, "provider": cfg.kind, "scope": body.scope, "evidence_chars": len(bundle), "grounding": g, "tokens": tokens}
 
 
 @router.get("/{key}/incidents/{iid}/postmortem", response_class=PlainTextResponse)

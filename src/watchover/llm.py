@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import ssl
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -33,7 +34,40 @@ def set_sink(fn: Callable[[dict], None] | None) -> None:
     _sink = fn
 
 
+_last = threading.local()
+
+
+def last_call() -> dict | None:
+    """The record of the latest call made on this thread (tokens, latency); the chat endpoints return it with the answer."""
+    return getattr(_last, "rec", None)
+
+
+def _usage(doc: dict) -> dict:
+    """Token counts from a provider response, whichever shape it uses: Ollama (prompt_eval_count / eval_count), OpenAI-compatible
+    (usage.prompt_tokens / completion_tokens), Anthropic (usage.input_tokens / output_tokens), Gemini (usageMetadata.*TokenCount).
+    Missing counts stay None; the caller estimates them from the text and flags the record as estimated."""
+    u = doc.get("usage") if isinstance(doc.get("usage"), dict) else {}
+    g = doc.get("usageMetadata") if isinstance(doc.get("usageMetadata"), dict) else {}
+    tin = doc.get("prompt_eval_count", u.get("prompt_tokens", u.get("input_tokens", g.get("promptTokenCount"))))
+    tout = doc.get("eval_count", u.get("completion_tokens", u.get("output_tokens", g.get("candidatesTokenCount"))))
+    return {"tokens_in": int(tin) if isinstance(tin, (int, float)) else None, "tokens_out": int(tout) if isinstance(tout, (int, float)) else None}
+
+
+def estimate_tokens(text: str) -> int:
+    """Rough count when the provider reports none: about four characters per token for log-heavy, mixed-language text."""
+    return (len(text) + 3) // 4
+
+
+def _finish_tokens(rec: dict, usage: dict | None, prompt_chars: int, answer_chars: int) -> None:
+    u = usage or {}
+    est = u.get("tokens_in") is None or u.get("tokens_out") is None
+    rec["tokens_in"] = u.get("tokens_in") if u.get("tokens_in") is not None else (prompt_chars + 3) // 4
+    rec["tokens_out"] = u.get("tokens_out") if u.get("tokens_out") is not None else (answer_chars + 3) // 4
+    rec["tokens_est"] = int(est)
+
+
 def _report(rec: dict) -> None:
+    _last.rec = dict(rec)
     if _sink:
         try:
             _sink(rec)
@@ -122,38 +156,40 @@ def list_models(cfg: LLMConfig) -> list[str]:
 
 
 # ---------------------------------------------------------------- chat
-def _chat_raw(cfg: LLMConfig, messages: list[dict], temperature: float, max_tokens: int) -> str:
+def _chat_raw(cfg: LLMConfig, messages: list[dict], temperature: float, max_tokens: int) -> tuple[str, dict]:
+    """-> (answer text, token usage as reported by the provider)"""
     k = cfg.kind
     system = "\n\n".join(m["content"] for m in messages if m["role"] == "system")
     turns = [m for m in messages if m["role"] != "system"]
     if k == "ollama":
         doc = _http(cfg.root + "/api/chat", {"model": cfg.model, "messages": messages, "stream": False,
                                                "options": {"temperature": temperature, "num_predict": max_tokens}}, _headers(cfg), cfg.timeout)
-        return doc["message"]["content"].strip()
+        return doc["message"]["content"].strip(), _usage(doc)
     if k == "anthropic":
         doc = _http(cfg.root + "/v1/messages", {"model": cfg.model, "system": system or None, "max_tokens": max_tokens, "temperature": temperature,
                                                   "messages": [{"role": m["role"], "content": m["content"]} for m in turns]}, _headers(cfg), cfg.timeout)
-        return "".join(b.get("text", "") for b in doc.get("content", []) if b.get("type") == "text").strip()
+        return "".join(b.get("text", "") for b in doc.get("content", []) if b.get("type") == "text").strip(), _usage(doc)
     if k == "gemini":
         body = {"contents": [{"role": "user" if m["role"] == "user" else "model", "parts": [{"text": m["content"]}]} for m in turns],
                 "generationConfig": {"temperature": temperature, "maxOutputTokens": max_tokens}}
         if system:
             body["systemInstruction"] = {"parts": [{"text": system}]}
         doc = _http(f"{cfg.root}/v1beta/models/{cfg.model}:generateContent", body, _headers(cfg), cfg.timeout)
-        return "".join(p.get("text", "") for p in doc["candidates"][0]["content"]["parts"]).strip()
+        return "".join(p.get("text", "") for p in doc["candidates"][0]["content"]["parts"]).strip(), _usage(doc)
     url = _openai_root(cfg) + "/chat/completions"
     if cfg.extra.get("api_version"):
         url += f"?api-version={cfg.extra['api_version']}"
     doc = _http(url, {"model": cfg.model, "messages": messages, "temperature": temperature, "stream": False, "max_tokens": max_tokens}, _headers(cfg), cfg.timeout)
-    return doc["choices"][0]["message"]["content"].strip()
+    return doc["choices"][0]["message"]["content"].strip(), _usage(doc)
 
 
 def chat_messages(cfg: LLMConfig, messages: list[dict], temperature: float = 0.2, max_tokens: int = 900, kind: str = "chat") -> str:
     """Full conversation through the configured provider; timed and reported to the sink."""
     t0 = time.perf_counter()
     rec = {"provider": cfg.kind, "model": cfg.model, "kind": kind, "prompt_chars": sum(len(m.get("content", "")) for m in messages), "answer_chars": 0, "ok": 1, "error": ""}
+    usage = None
     try:
-        out = _chat_raw(cfg, messages, temperature, max_tokens)
+        out, usage = _chat_raw(cfg, messages, temperature, max_tokens)
         rec["answer_chars"] = len(out)
         return out
     except Exception as e:  # noqa: BLE001
@@ -161,6 +197,7 @@ def chat_messages(cfg: LLMConfig, messages: list[dict], temperature: float = 0.2
         raise
     finally:
         rec["latency_ms"] = round((time.perf_counter() - t0) * 1000)
+        _finish_tokens(rec, usage, rec["prompt_chars"], rec["answer_chars"])
         _report(rec)
 
 
@@ -175,12 +212,16 @@ def embed(cfg: LLMConfig, texts: list[str]) -> list[list[float]]:
     k = cfg.kind
     t0 = time.perf_counter()
     rec = {"provider": k, "model": cfg.embed_model, "kind": "embed", "prompt_chars": sum(len(x) for x in texts), "answer_chars": 0, "ok": 1, "error": ""}
+    usage: dict | None = None
     try:
         if k == "ollama":
             out = []
             for x in texts:
                 doc = _http(cfg.root + "/api/embeddings", {"model": cfg.embed_model, "prompt": x}, _headers(cfg), cfg.timeout)
                 out.append(doc["embedding"])
+                u = _usage(doc)
+                if u["tokens_in"] is not None:
+                    usage = {"tokens_in": (usage or {}).get("tokens_in", 0) + u["tokens_in"], "tokens_out": 0}
             return out
         if k == "gemini":
             out = []
@@ -191,12 +232,16 @@ def embed(cfg: LLMConfig, texts: list[str]) -> list[list[float]]:
         if k == "anthropic":
             raise RuntimeError("Anthropic has no embeddings endpoint; use an OpenAI-compatible or Ollama embedding model")
         doc = _http(_openai_root(cfg) + "/embeddings", {"model": cfg.embed_model, "input": texts}, _headers(cfg), cfg.timeout)
+        u = _usage(doc)
+        if u["tokens_in"] is not None:
+            usage = {"tokens_in": u["tokens_in"], "tokens_out": 0}
         return [d["embedding"] for d in sorted(doc["data"], key=lambda d: d.get("index", 0))]
     except Exception as e:  # noqa: BLE001
         rec.update(ok=0, error=str(e)[:300])
         raise
     finally:
         rec["latency_ms"] = round((time.perf_counter() - t0) * 1000)
+        _finish_tokens(rec, usage, rec["prompt_chars"], 0)
         _report(rec)
 
 

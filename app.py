@@ -767,7 +767,7 @@ def activate_dataset(key: str) -> None:
     """Mirror the selected dataset into the legacy single-dataset keys used by the analysis views."""
     d = st.session_state["datasets"][key]
     st.session_state.update({"analysis": d["analysis"], "profile": d["profile"], "dataset": key, "source": d["source"],
-                             "mapping": d["mapping"], "elapsed": d["elapsed"], "active": key})
+                             "mapping": d["mapping"], "elapsed": d["elapsed"], "active": key, "_ds_follow": key})
     st.session_state.pop("cursor", None)
     st.session_state.pop("detail", None)
 
@@ -3542,6 +3542,9 @@ def datasets_controls() -> None:
     reg = st.session_state.get("datasets", {})
     if reg:
         keys = list(reg)
+        follow = st.session_state.pop("_ds_follow", None)              # a newly activated dataset: the selectbox follows it (newer
+        if follow in keys:                                              # Streamlit keeps a keyed widget's old value when options change)
+            st.session_state["ds_select"] = follow
         s1, s2 = st.columns([4, 1])
         chosen = s1.selectbox(t("ds_active"), keys, index=keys.index(st.session_state.get("active", keys[-1])) if st.session_state.get("active") in keys else len(keys) - 1,
                               key="ds_select", format_func=lambda k: f"{k} · {reg[k]['analysis'].funnel()['raw_events']:,} {t('raw_events')} · {reg[k]['analysis'].funnel()['incidents']} {t('incidents')} · {reg[k]['loaded_at']:%H:%M}")

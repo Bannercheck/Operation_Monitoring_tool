@@ -5,6 +5,7 @@ import { useAuth } from "../auth";
 import { useT } from "../i18n";
 import { Btn, Modal, Field, Err, LangTheme } from "./ui";
 import { NotifyBell } from "./NotifyBell";
+import { TokenMeter } from "./TokenMeter";
 import { ChatWidget } from "./ChatWidget";
 import { Wordmark } from "./Logo";
 import { post } from "../api";
@@ -45,6 +46,7 @@ export default function Layout() {
         <div className="topbar">
           <Btn kind="ghost menu-btn" sm onClick={() => setOpen((o) => !o)}><Menu size={18} /></Btn>
           <div className="grow" />
+          {(can("page.assist") || can("page.llm")) && <TokenMeter />}
           {can("page.ops") && <NotifyBell />}
           <LangTheme />
         </div>

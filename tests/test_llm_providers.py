@@ -40,7 +40,7 @@ class Multi(BaseHTTPRequestHandler):
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])) or b"{}")
         Multi.seen.append(("POST", self.path, body))
         if self.path == "/api/chat":
-            self._send({"message": {"role": "assistant", "content": "ollama says [INC-1]"}})
+            self._send({"message": {"role": "assistant", "content": "ollama says [INC-1]"}, "prompt_eval_count": 12, "eval_count": 5})
         elif self.path == "/api/embeddings":
             self._send({"embedding": [0.1, 0.2, 0.3]})
         elif self.path == "/api/pull":
@@ -48,13 +48,13 @@ class Multi(BaseHTTPRequestHandler):
             for ev in ({"status": "pulling manifest"}, {"status": "downloading", "total": 100, "completed": 50}, {"status": "success"}):
                 self.wfile.write((json.dumps(ev) + "\n").encode())
         elif self.path == "/v1/messages":
-            self._send({"content": [{"type": "text", "text": "claude says [L1]"}]})
+            self._send({"content": [{"type": "text", "text": "claude says [L1]"}], "usage": {"input_tokens": 7, "output_tokens": 3}})
         elif self.path.endswith(":generateContent"):
-            self._send({"candidates": [{"content": {"parts": [{"text": "gemini says [S1]"}]}}]})
+            self._send({"candidates": [{"content": {"parts": [{"text": "gemini says [S1]"}]}}], "usageMetadata": {"promptTokenCount": 6, "candidatesTokenCount": 2, "totalTokenCount": 8}})
         elif self.path == "/v1/chat/completions":
-            self._send({"choices": [{"message": {"role": "assistant", "content": "openai says S1"}}]})
+            self._send({"choices": [{"message": {"role": "assistant", "content": "openai says S1"}}], "usage": {"prompt_tokens": 10, "completion_tokens": 4, "total_tokens": 14}})
         elif self.path == "/v1/embeddings":
-            self._send({"data": [{"index": 0, "embedding": [1.0, 0.0]}]})
+            self._send({"data": [{"index": 0, "embedding": [1.0, 0.0]}], "usage": {"prompt_tokens": 3}})
         else:
             self._send({"error": "nf"}, 404)
 
@@ -93,8 +93,25 @@ def test_providers_and_metrics_sink():
         assert len(recs) == 7 and all("latency_ms" in r for r in recs)
         assert [r["provider"] for r in recs[:4]] == ["ollama", "anthropic", "gemini", "openai"] and recs[-1]["ok"] == 0 and recs[-1]["error"]
         assert {r["kind"] for r in recs} == {"chat", "embed"}
+        # token counts, whatever shape the provider uses; estimated (chars / 4) and flagged when a provider reports none
+        assert [(r["tokens_in"], r["tokens_out"], r["tokens_est"]) for r in recs[:4]] == [(12, 5, 0), (7, 3, 0), (6, 2, 0), (10, 4, 0)]
+        emb = [r for r in recs if r["kind"] == "embed"]
+        assert emb[0]["tokens_est"] == 1 and emb[0]["tokens_in"] == 1 and emb[1] == {**emb[1], "tokens_in": 3, "tokens_out": 0, "tokens_est": 0}
+        assert recs[-1]["tokens_est"] == 1 and recs[-1]["tokens_out"] == 0 and llm.last_call()["ok"] == 0
     finally:
         llm.set_sink(None); srv.shutdown()
+
+
+def test_token_usage_meter(tmp_path):
+    kb = Knowledge(str(tmp_path / "k.db"))
+    kb.log_call({"provider": "ollama", "model": "qwen", "kind": "chat", "latency_ms": 50, "tokens_in": 100, "tokens_out": 20})
+    kb.log_call({"provider": "ollama", "model": "qwen", "kind": "embed", "latency_ms": 5, "tokens_in": 30, "tokens_out": 0, "tokens_est": 1})
+    kb.log_call({"provider": "openai", "model": "gpt", "kind": "review", "latency_ms": 900, "tokens_in": 400, "tokens_out": 60})
+    u = kb.token_usage()
+    assert u["today"] == {"calls": 3, "in": 530, "out": 80, "total": 610, "estimated": 30} and u["all"]["total"] == 610 and u["week"]["calls"] == 3
+    assert u["last"]["kind"] == "review" and u["last"]["total"] == 460
+    assert u["by_kind"][0] == {"kind": "review", "calls": 1, "total": 460} and {m["model"] for m in u["by_model"]} == {"qwen", "gpt"}
+    assert "tokens_in" in kb.columns("llm_calls")
 
 
 def test_ollama_manager():
