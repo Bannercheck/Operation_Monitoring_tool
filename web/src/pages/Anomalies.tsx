@@ -7,7 +7,7 @@ import { useT } from "../i18n";
 import { Btn, Card, Empty, Err, Field, Kpi, Spark, fmtTs, hhmm } from "../components/ui";
 
 const ICON: Record<string, any> = { errors: Flame, rate: Waves, silence: VolumeX, pattern: Sparkles, metric: Radar };
-const COLOR: Record<string, string> = { open: "#f87171", ack: "#fbbf24", resolved: "#2dd4bf", ignored: "#64748b" };
+const COLOR: Record<string, string> = { open: "#f87171", ack: "#fbbf24", resolved: "#2dd4bf", ignored: "#64748b", learning: "#a78bfa" };
 
 export function anomalyTitle(t: (k: string, kw?: any) => string, a: any): string {
   const v = Math.round(a.observed), b = Math.round(a.baseline);
@@ -33,11 +33,31 @@ export default function Anomalies() {
         <Kpi value={st?.resolved_today ?? 0} label={t("an_resolved_today")} accent="#2dd4bf" sub={`${st?.resolved ?? 0} ${t("an_st_resolved").toLowerCase()}`} />
         <Kpi value={st?.runs ?? 0} label={t("an_scans")} accent="#a78bfa" sub={hhmm(st?.last_run)} />
       </div>
-      <div className="row"><select className="input" style={{ width: 260 }} value={status} onChange={(e) => setStatus(e.target.value)}>{["active", "open", "ack", "resolved", "ignored", "all"].map((k) => <option key={k} value={k}>{t("an_st_" + k)}</option>)}</select></div>
+      <Learning st={st?.learning} editable={editable} onShow={() => setStatus("learning")} />
+      <div className="row"><select className="input" style={{ width: 260 }} value={status} onChange={(e) => setStatus(e.target.value)}>{["active", "open", "ack", "learning", "resolved", "ignored", "all"].map((k) => <option key={k} value={k}>{t("an_st_" + k)}</option>)}</select></div>
       <Err e={scan.error} />
       {!list.data?.length ? <Empty>{t("an_none")}</Empty> : list.data.map((a: any) => <AnomalyCard key={a.id} a={a} editable={editable} />)}
     </div>
   );
+}
+
+/** Learning mode: which hosts are still learning their normal (first week), how far along, what was found meanwhile. */
+function Learning({ st, editable, onShow }: { st: any; editable: boolean; onShow: () => void }) {
+  const { t } = useT(); const qc = useQueryClient();
+  const grad = useMutation({ mutationFn: (h: any) => post("/anomalies/learning/graduate", { host: h.host, env: h.env }), onSuccess: () => qc.invalidateQueries() });
+  if (!st || !st.days) return <div className="dim small">{t("an_learn_off")}</div>;
+  const hosts: any[] = st.learning ?? [];
+  return <Card title={`🎓 ${t("an_learn_title", { d: st.days })}`} right={st.shadow ? <Btn sm onClick={onShow}>{t("an_learn_shadow", { n: st.shadow })}</Btn> : null}>
+    <div className="muted small" style={{ marginBottom: 8 }}>{t("an_learn_lead", { d: st.days })}</div>
+    {!hosts.length ? <div className="small"><span className="badge green">{t("an_learn_done")}</span> {t("an_learn_done_n", { n: st.learned })}</div> :
+      <div className="stack" style={{ gap: 6 }}>{hosts.slice(0, 12).map((h) => <div key={h.host + h.env} className="row" style={{ gap: 10, flexWrap: "nowrap" }}>
+        <b style={{ width: 180, overflow: "hidden", textOverflow: "ellipsis" }}>{h.host}</b><span className="dim small" style={{ width: 60 }}>{h.env}</span>
+        <div className="durbar" style={{ flex: 1 }}><div style={{ width: `${h.pct}%`, background: "var(--accent)" }} /></div>
+        <span className="small" style={{ width: 140 }}>%{Math.round(h.pct)} · {t("an_learn_until")} {h.ends.slice(5, 16).replace("T", " ")}</span>
+        {editable && <Btn sm onClick={() => grad.mutate(h)}>{t("an_learn_graduate")}</Btn>}</div>)}
+        {hosts.length > 12 && <div className="dim small">+{hosts.length - 12}</div>}
+        <div className="dim small">{t("an_learn_done_n", { n: st.learned })}</div></div>}
+  </Card>;
 }
 
 function AnomalyCard({ a, editable }: { a: any; editable: boolean }) {

@@ -34,6 +34,25 @@ def scan(user=Depends(require("act.anomaly")), svc=Depends(services)):
     return {"found": svc.anomalies.scan(), "stats": svc.anomalies.stats()}
 
 
+class LearnIn(BaseModel):
+    host: str | None = None
+    env: str = ""
+
+
+@router.post("/learning/graduate")
+def graduate(body: LearnIn, user=Depends(require("act.anomaly")), svc=Depends(services)):
+    """End a host's learning week now: from the next scan its anomalies open and notify."""
+    if not body.host:
+        raise ValueError("host required")
+    return svc.anomalies.graduate(body.host, body.env)
+
+
+@router.post("/learning/restart")
+def restart_learning(body: LearnIn, user=Depends(require("act.anomaly")), svc=Depends(services)):
+    """One host (or all, without host) learns again from now, e.g. after a release that changed what normal looks like."""
+    return {"restarted": svc.anomalies.restart_learning(body.host, body.env)}
+
+
 @router.get("/{aid}")
 def get(aid: int, user=Depends(require("page.ops")), svc=Depends(services)):
     return svc.anomalies.get(aid)

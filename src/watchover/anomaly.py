@@ -9,6 +9,12 @@ baseline (median and MAD of per-minute values), so a busy host and a quiet host 
     tracker.set_status(id, "ack" | "resolved" | "ignored", owner=..., note=...)
     tracker.set_step(id, "verify", True)
 
+Learning mode: every host first spends `anomaly_learning_days` (System › Settings, default 7) learning what normal looks like.
+What the statistical detectors find in that week is kept as a `learning` record (visible, never notified, never in the bell);
+after it, errors / rate are judged against the same hour of the same weekday over the past weeks as well as the last 24 h, so a
+Monday-morning surge or a nightly batch is normal, not an incident. Hard thresholds (CPU / memory / disk / GPU limits) and the
+operations views never wait: they act from the first minute. An operator can end a host's learning early from the page.
+
 Kinds:  errors   ERROR+ per 5 min on a host far above its baseline (from the slo_minute rollups: 24 h of history)
         rate     event volume on a host far above its baseline (traffic surge / log storm)
         silence  a host that normally logs went quiet (agent alive or not: the steps say what to check)
@@ -48,7 +54,7 @@ def threshold_settings() -> dict[str, float]:
     except Exception:  # noqa: BLE001
         pass
     return out
-STATUSES = ("open", "ack", "resolved", "ignored")
+STATUSES = ("open", "ack", "resolved", "ignored")                # plus "learning": found while the host was still learning (never notified)
 WINDOW_MIN = 5                                    # what "now" means
 BASELINE_MIN = 24 * 60                            # how far back the baseline looks (rollups)
 STEPS: dict[str, list[str]] = {                   # the operational checklist per kind (labels in i18n: an_step_<id>)
@@ -82,8 +88,11 @@ def zscore(value: float, med: float, mad: float) -> float:
 
 
 class AnomalyTracker:
-    def __init__(self, kb, live=None, every: float = 60.0):
+    def __init__(self, kb, live=None, every: float = 60.0, learning_days: float | None = None):
         self.kb, self.live, self.every = kb, live, every
+        self._learning_days = learning_days                 # None: from settings (anomaly_learning_days); 0 switches learning off
+        self._learn_memo: dict = {}
+        self._season: dict = {}
         self.stop = threading.Event()
         self.thread = None
         self.runs = 0
@@ -99,6 +108,90 @@ class AnomalyTracker:
             action_id INTEGER DEFAULT 0, updated_at TEXT, resolved_at TEXT DEFAULT '')""")
         kb._exec("CREATE INDEX IF NOT EXISTS anomalies_status ON anomalies(status, last_seen)")
         kb._exec("CREATE TABLE IF NOT EXISTS anomaly_templates (key TEXT PRIMARY KEY, first_seen TEXT, last_seen TEXT, count INTEGER DEFAULT 0)")
+        kb._exec("CREATE TABLE IF NOT EXISTS anomaly_learning (host TEXT NOT NULL, env TEXT NOT NULL, started TEXT, graduated_at TEXT DEFAULT '', PRIMARY KEY (host, env))")
+
+    # ---------------------------------------------------------------- learning mode
+    def learning_days(self) -> float:
+        if self._learning_days is not None:
+            return float(self._learning_days)
+        try:
+            from . import settings
+            return float(settings.load().get("anomaly_learning_days", 7) or 0)
+        except Exception:  # noqa: BLE001
+            return 7.0
+
+    def learning(self, host: str, env: str, now: datetime | None = None) -> dict:
+        """{learning: bool, started, ends, pct} for one host. The start is the first minute the host appears in the rollups
+        (so hosts that already have a week of history are not sent back to school after an upgrade)."""
+        now = now or datetime.now(UTC)
+        days = self.learning_days()
+        key = (host, env)
+        memo = self._learn_memo.get(key)
+        if memo is None or memo["at"] < time.time() - 300:
+            rows = self.kb._exec("SELECT started, graduated_at FROM anomaly_learning WHERE host=? AND env=?", (host, env))
+            if rows:
+                started, grad = rows[0]["started"], rows[0]["graduated_at"] or ""
+            else:
+                first = self.kb._exec("SELECT MIN(minute) AS m FROM slo_minute WHERE host=? AND env=?", (host, env))[0]["m"] if self._has_rollups() else None
+                started = (datetime.fromisoformat(first + ":00").replace(tzinfo=UTC) if first else now).isoformat(timespec="seconds")
+                grad = ""
+                self.kb._exec("INSERT INTO anomaly_learning (host, env, started, graduated_at) VALUES (?,?,?,'')" + self.kb.upsert_suffix("host, env", "started=anomaly_learning.started"), (host, env, started))
+            memo = self._learn_memo[key] = {"started": started, "grad": grad, "at": time.time()}
+        started = datetime.fromisoformat(memo["started"])
+        ends = started + timedelta(days=days)
+        done = bool(memo["grad"]) or days <= 0 or now >= ends
+        pct = 100.0 if done else round(100 * (now - started).total_seconds() / max(1.0, days * 86400), 1)
+        return {"host": host, "env": env, "learning": not done, "started": memo["started"], "ends": ends.isoformat(timespec="seconds"), "pct": pct,
+                "graduated_at": memo["grad"]}
+
+    def _has_rollups(self) -> bool:
+        if not hasattr(self, "_rollups_ok"):
+            self._rollups_ok = "slo_minute" in self.kb.tables()
+        return self._rollups_ok
+
+    def graduate(self, host: str, env: str) -> dict:
+        """End a host's learning now (operator decision)."""
+        self.learning(host, env)
+        self.kb._exec("UPDATE anomaly_learning SET graduated_at=? WHERE host=? AND env=?", (_now(), host, env))
+        self._learn_memo.pop((host, env), None)
+        return self.learning(host, env)
+
+    def restart_learning(self, host: str | None = None, env: str | None = None) -> int:
+        """Send one host (or every host) back to learning from now, e.g. after a big release changed what normal is."""
+        now = _now()
+        if host:
+            self.kb._exec("UPDATE anomaly_learning SET started=?, graduated_at='' WHERE host=? AND env=?", (now, host, env or ""))
+        else:
+            self.kb._exec("UPDATE anomaly_learning SET started=?, graduated_at=''", (now,))
+        self._learn_memo.clear()
+        return int(self.kb._exec("SELECT COUNT(*) AS n FROM anomaly_learning WHERE started=?", (now,))[0]["n"])
+
+    def learning_overview(self) -> dict:
+        days = self.learning_days()
+        hosts = [self.learning(r["host"], r["env"]) for r in self.kb._exec("SELECT host, env FROM anomaly_learning ORDER BY started DESC LIMIT 2000")]
+        since = (datetime.now(UTC) - timedelta(days=max(days, 1))).isoformat(timespec="seconds")
+        shadow = int(self.kb._exec("SELECT COUNT(*) AS n FROM anomalies WHERE status='learning' AND last_seen >= ?", (since,))[0]["n"])
+        return {"days": days, "learning": [h for h in hosts if h["learning"]], "learned": sum(1 for h in hosts if not h["learning"]), "shadow": shadow}
+
+    def _seasonal(self, host: str, env: str, now: datetime) -> dict | None:
+        """Per-minute totals and errors of this host at the same weekday and hour (± 1 h) over the last 4 weeks, cached per hour."""
+        key = (host, env, now.strftime("%Y-%m-%dT%H"))
+        if key in self._season:
+            return self._season[key]
+        if len(self._season) > 5000:
+            self._season.clear()
+        start = (now - timedelta(days=28)).strftime("%Y-%m-%dT%H:%M")
+        cut = (now - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M")
+        rows = self.kb._exec("SELECT minute, SUM(total) AS t, SUM(errors) AS e FROM slo_minute WHERE host=? AND env=? AND minute >= ? AND minute < ? GROUP BY minute",
+                             (host, env, start, cut))
+        tot, err = [], []
+        for r in rows:
+            m = datetime.fromisoformat(r["minute"] + ":00")
+            if m.weekday() == now.weekday() and abs(m.hour - now.hour) <= 1:
+                tot.append(float(r["t"])); err.append(float(r["e"]))
+        out = {"rate": tot, "errors": err} if len(tot) >= 60 else None
+        self._season[key] = out
+        return out
 
     # ---------------------------------------------------------------- background
     def start(self) -> "AnomalyTracker":
@@ -188,15 +281,20 @@ class AnomalyTracker:
             base = self._rollup_baseline(host, env, now)
             if base["minutes"] < 30:                                   # not enough history to say what normal is
                 continue
+            learn = self.learning(host, env, now)["learning"]
+            season = None if learn else self._seasonal(host, env, now)
             for kind, value, series in (("errors", errors, base["errors"]), ("rate", total, base["total"])):
                 med, mad = robust(series)
+                if season:                                             # learned: the same hour of the same weekday is normal too
+                    smed, smad = robust(season[kind])
+                    med, mad = max(med, smed), max(mad, smad)
                 med5, mad5 = med * WINDOW_MIN, mad * (WINDOW_MIN ** 0.5)
                 z = zscore(value, med5, mad5)
                 if value >= MIN_EVENTS[kind] and z >= Z_LIMIT and value >= 2 * med5:
                     top = sorted(services.get((host, env), {}).items(), key=lambda kv: -kv[1])[:3]
                     detail = (f"{value:.0f} {'ERROR+' if kind == 'errors' else 'events'} in {WINDOW_MIN} min; normal for this host is {med5:.0f} ± {mad5:.0f}"
                               + (f"; top services: " + ", ".join(f"{s} ({n})" for s, n in top) if top else ""))
-                    out.append(self._upsert(kind, f"{kind}:{env}:{host}", env=env, host=host, service=top[0][0] if top else "",
+                    out.append(self._upsert(kind, f"{kind}:{env}:{host}", env=env, host=host, service=top[0][0] if top else "", learning=learn,
                                             title=f"{host}: {value:.0f} {'ERROR+' if kind == 'errors' else 'events'} / {WINDOW_MIN} min (normal {med5:.0f})",
                                             detail=detail, observed=value, baseline=med5, spread=mad5, score=z, series=series[-60:] + [value / WINDOW_MIN]))
         # silence: hosts that logged steadily over the baseline window but sent nothing in this one
@@ -212,7 +310,7 @@ class AnomalyTracker:
             if quiet < WINDOW_MIN * 2:
                 continue
             per_min = float(r["t"]) / max(int(r["m"]), 1)
-            out.append(self._upsert("silence", f"silence:{env}:{host}", env=env, host=host, title=f"{host}: silent for {quiet:.0f} min (normally {per_min:.1f} events / min)",
+            out.append(self._upsert("silence", f"silence:{env}:{host}", env=env, host=host, learning=self.learning(host, env, now)["learning"], title=f"{host}: silent for {quiet:.0f} min (normally {per_min:.1f} events / min)",
                                     detail=f"No events since {last.replace('T', ' ')}; the host logged in {int(r['m'])} of the last {BASELINE_MIN} minutes",
                                     observed=quiet, baseline=0.0, spread=0.0, score=min(quiet / WINDOW_MIN, 10.0), series=[]))
         return out
@@ -250,6 +348,7 @@ class AnomalyTracker:
             self.kb._exec("INSERT INTO anomaly_templates (key, first_seen, last_seen, count) VALUES (?,?,?,?)", (tpl, ts, ts, c["n"]))
             if warm and c["n"] >= MIN_EVENTS["pattern"]:
                 out.append(self._upsert("pattern", f"pattern:{tpl[:160]}", env=c["env"], host=c["host"], service=c["service"], metric=c["sev"],   # metric column carries the severity
+                                        learning=self.learning(c["host"], c["env"], now)["learning"] if c["host"] else False,
                                         title=f"New {c['sev']} pattern × {c['n']}: {tpl[:90]}",
                                         detail=f"First seen {ts.replace('T', ' ')} on {c['host'] or '-'} / {c['service'] or '-'}; never seen in the last days",
                                         observed=c["n"], baseline=0.0, spread=0.0, score=min(c["n"] / MIN_EVENTS["pattern"] * 2, 10.0), series=[]))
@@ -272,7 +371,7 @@ class AnomalyTracker:
             z = zscore(value, med, mad)
             if z >= Z_LIMIT and value - med >= METRIC_DELTA:
                 env = rows[-1][2]
-                out.append(self._upsert("metric", f"metric:{env}:{host}:{metric}", env=env, host=host, metric=metric,
+                out.append(self._upsert("metric", f"metric:{env}:{host}:{metric}", env=env, host=host, metric=metric, learning=self.learning(host, env, now)["learning"],
                                         title=f"{host}: {metric} {value:.0f}% (last hours {med:.0f}%)",
                                         detail=f"{metric} averaged {value:.0f}% over the last {WINDOW_MIN} min; this host's normal is {med:.0f} ± {mad:.0f}%",
                                         observed=value, baseline=med, spread=mad, score=z, series=hist[-60:] + [value]))
@@ -314,9 +413,10 @@ class AnomalyTracker:
 
     # ---------------------------------------------------------------- store
     def _upsert(self, kind: str, key: str, *, env: str, host: str, title: str, detail: str, observed: float, baseline: float, spread: float,
-                score: float, series: list, service: str = "", metric: str = "") -> dict:
+                score: float, series: list, service: str = "", metric: str = "", learning: bool = False) -> dict:
         now = _now()
-        rows = self.kb._exec("SELECT id, hits FROM anomalies WHERE key=? AND status IN ('open', 'ack') ORDER BY id DESC LIMIT 1", (key,))
+        live_states = "('learning')" if learning else "('open', 'ack')"
+        rows = self.kb._exec(f"SELECT id, hits FROM anomalies WHERE key=? AND status IN {live_states} ORDER BY id DESC LIMIT 1", (key,))
         ser = json.dumps([round(float(v), 2) for v in series][-61:])
         if rows:
             self.kb._exec("UPDATE anomalies SET title=?, detail=?, observed=?, baseline=?, spread=?, score=?, hits=hits+1, last_seen=?, cleared_at='', series=?, updated_at=? WHERE id=?",
@@ -324,9 +424,16 @@ class AnomalyTracker:
             return self.get(rows[0]["id"])
         steps = json.dumps([{"id": s, "done": False, "ts": ""} for s in STEPS[kind]])
         aid = self.kb._insert("INSERT INTO anomalies (kind, key, env, host, service, metric, title, detail, observed, baseline, spread, score, hits, first_seen, last_seen, status, steps, series, updated_at) "
-                              "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,'open',?,?,?)",
-                              (kind, key, env, host, service, metric, title, detail, float(observed), float(baseline), float(spread), round(float(score), 2), now, now, steps, ser, now))
-        return self.get(aid)
+                              "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?,?,?,?)",
+                              (kind, key, env, host, service, metric, title, detail, float(observed), float(baseline), float(spread), round(float(score), 2), now, now,
+                               "learning" if learning else "open", steps, ser, now))
+        row = self.get(aid)
+        if not learning and self.on_open is not None:            # the company memory learns from every anomaly that really opened
+            try:
+                self.on_open(row)
+            except Exception:  # noqa: BLE001
+                pass
+        return row
 
     def _clear_recovered(self, active_keys: set[str]) -> None:
         """Open anomalies whose key no longer trips are marked recovered (cleared_at) but stay open until an operator closes them."""
@@ -401,4 +508,8 @@ class AnomalyTracker:
                 out["kinds"][r["kind"]] = out["kinds"].get(r["kind"], 0) + int(r["n"])
         today = datetime.now(UTC).strftime("%Y-%m-%d")
         out["resolved_today"] = int(self.kb._exec("SELECT COUNT(*) AS n FROM anomalies WHERE status='resolved' AND resolved_at >= ?", (today,))[0]["n"])
+        try:
+            out["learning"] = self.learning_overview()
+        except Exception:  # noqa: BLE001
+            out["learning"] = {"days": self.learning_days(), "learning": [], "learned": 0, "shadow": 0}
         return out

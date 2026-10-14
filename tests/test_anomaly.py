@@ -20,9 +20,8 @@ def _obs(ts, msg, sev="ERROR", host="web-01", service="api", env="prod", attrs=N
 def _seed_rollups(kb, host="web-01", env="prod", minutes=600, per_min=4, err_per_min=1, until=None):
     """A steady host: `minutes` of history at per_min events / err_per_min errors, ending WINDOW_MIN before now."""
     until = until or datetime.now(UTC)
-    for i in range(wo_an.WINDOW_MIN, wo_an.WINDOW_MIN + minutes):
-        m = (until - timedelta(minutes=i)).strftime("%Y-%m-%dT%H:%M")
-        kb._exec("INSERT INTO slo_minute (minute, env, host, sender, total, errors) VALUES (?,?,?,?,?,?)", (m, env, host, "agent-1", per_min, err_per_min))
+    kb.executemany("INSERT INTO slo_minute (minute, env, host, sender, total, errors) VALUES (?,?,?,?,?,?)",
+                   [((until - timedelta(minutes=i)).strftime("%Y-%m-%dT%H:%M"), env, host, "agent-1", per_min, err_per_min) for i in range(wo_an.WINDOW_MIN, wo_an.WINDOW_MIN + minutes)])
 
 
 def test_robust_baseline_and_zscore():
@@ -36,7 +35,7 @@ def test_error_storm_detected_once_with_steps(tmp_path):
     _seed_rollups(kb)
     now = datetime.now(UTC)
     ls.buf.extend(_obs(now - timedelta(seconds=5 * i), f"db timeout for order {i}", "ERROR") for i in range(40))   # 40 errors in 5 min, normal is ~5
-    tr = wo_an.AnomalyTracker(kb, ls)
+    tr = wo_an.AnomalyTracker(kb, ls, learning_days=0)
     found = tr.scan(now)
     kinds = {f["kind"] for f in found}
     assert "errors" in kinds                                                # 40 errors in 5 min against a normal of 5
@@ -66,7 +65,7 @@ def test_silence_pattern_and_metric(tmp_path):
     kb = Knowledge(str(tmp_path / "k.db")); History(kb); ls = LiveStore()
     now = datetime.now(UTC)
     _seed_rollups(kb, host="db-01", minutes=1200, until=now - timedelta(minutes=30))        # steady host that stopped 35 min ago
-    tr = wo_an.AnomalyTracker(kb, ls)
+    tr = wo_an.AnomalyTracker(kb, ls, learning_days=0)
     s = [f for f in tr.scan(now) if f["kind"] == "silence"]
     assert len(s) == 1 and s[0]["host"] == "db-01" and s[0]["observed"] >= 30 and [x["id"] for x in s[0]["steps"]] == wo_an.STEPS["silence"]
     # patterns: the first pass only learns (warm-up); a template first seen after that, repeating, is an anomaly
@@ -97,7 +96,7 @@ def test_threshold_alert_without_history(tmp_path, monkeypatch):
     now = datetime.now(UTC)
     ls.metrics.append((now - timedelta(seconds=40), "db-02", "memory", 91.0, "prod"))
     ls.metrics.append((now - timedelta(seconds=40), "db-02", "cpu", 40.0, "prod"))
-    tr = wo_an.AnomalyTracker(kb, ls)
+    tr = wo_an.AnomalyTracker(kb, ls, learning_days=0)
     found = tr.scan(now)
     keys = {f["key"] for f in found}
     assert "threshold:prod:db-02:memory" in keys and "threshold:prod:db-02:cpu" not in keys
@@ -113,7 +112,7 @@ def test_alert_rule_on_new_anomalies(tmp_path, monkeypatch):
     _seed_rollups(kb)
     now = datetime.now(UTC)
     ls.buf.extend(_obs(now - timedelta(seconds=5 * i), f"timeout {i}") for i in range(40))
-    tr = wo_an.AnomalyTracker(kb, ls); tr.scan(now)
+    tr = wo_an.AnomalyTracker(kb, ls, learning_days=0); tr.scan(now)
     n = wo_notify.Notifier(kb, {})
     n.add_rule("anomalies", "anomaly", 0, "", "P2", "email", "ops", 30)
     sent = []
@@ -146,3 +145,44 @@ def test_ops_page_shows_anomaly_section(tmp_path, monkeypatch):
     kb2 = Knowledge(str(tmp_path / "k.db"))
     row = wo_an.AnomalyTracker(kb2).get(a["id"])
     assert row["status"] == "ack" and row["done"] == 1
+
+
+def test_learning_week_then_seasonal_baseline(tmp_path):
+    """A new host learns for a week: its storms are kept as 'learning' records (no bell, no alert, no memory); hard thresholds act
+    at once; after the week (or an operator's 'learned') the same storm opens. A storm that happens every Monday 09:00 is normal."""
+    kb = Knowledge(str(tmp_path / "k.db")); History(kb); ls = LiveStore()
+    now = datetime.now(UTC).replace(second=0, microsecond=0)
+    _seed_rollups(kb, minutes=600, until=now)                                          # 10 h of history: still learning
+    ls.buf.extend(_obs(now - timedelta(seconds=5 * i), f"db timeout {i}", "ERROR") for i in range(40))
+    opened = []
+    tr = wo_an.AnomalyTracker(kb, ls, learning_days=7); tr.on_open = opened.append
+    found = [f for f in tr.scan(now) if f["kind"] == "errors"]
+    assert found and found[0]["status"] == "learning" and tr.list("active") == [] and opened == []
+    st = tr.stats()["learning"]
+    assert st["days"] == 7 and st["learning"][0]["host"] == "web-01" and 0 < st["learning"][0]["pct"] < 100 and st["shadow"] == 1
+    # thresholds never wait for learning
+    ls.metrics.append((now - timedelta(seconds=30), "web-01", "cpu", 97.0, "prod"))
+    thr = [f for f in tr.scan(now) if f["key"].startswith("threshold:")]
+    assert thr and thr[0]["status"] == "open"
+    # the operator ends learning: the same storm now opens and reaches the memory hook
+    g = tr.graduate("web-01", "prod")
+    assert g["learning"] is False and g["graduated_at"]
+    found = [f for f in tr.scan(now) if f["kind"] == "errors"]
+    assert found[0]["status"] == "open" and any(o["kind"] == "errors" for o in opened)
+    assert tr.restart_learning() >= 1 and tr.learning("web-01", "prod", now)["learning"] is True
+
+
+def test_weekly_pattern_is_normal_after_learning(tmp_path):
+    kb = Knowledge(str(tmp_path / "k.db")); History(kb); ls = LiveStore()
+    now = datetime.now(UTC).replace(second=0, microsecond=0)
+    _seed_rollups(kb, minutes=24 * 60 * 21, per_min=4, err_per_min=1, until=now)      # three quiet weeks
+    kb.executemany("UPDATE slo_minute SET errors=10, total=14 WHERE minute=? AND host='web-01'",   # ... except this weekday-hour, every week: 10 errors / min
+                   [((now - timedelta(days=7 * w, minutes=i)).strftime("%Y-%m-%dT%H:%M"),) for w in (1, 2, 3) for i in range(-45, 46)])
+    ls.buf.extend(_obs(now - timedelta(seconds=6 * i), f"batch warning {i}", "ERROR") for i in range(45))   # 45 errors / 5 min: usual for this hour
+    tr = wo_an.AnomalyTracker(kb, ls, learning_days=7)
+    assert tr.learning("web-01", "prod", now)["learning"] is False                     # three weeks of history: learned already
+    assert not [f for f in tr.scan(now) if f["kind"] == "errors"]                       # the weekly batch is normal
+    tr0 = wo_an.AnomalyTracker(kb, ls, learning_days=0)                                 # same data, 24 h baseline only: would alert
+    tr0._season = {k: None for k in []}
+    tr0._seasonal = lambda *a, **k: None
+    assert [f for f in tr0.scan(now) if f["kind"] == "errors"]
