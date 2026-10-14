@@ -136,7 +136,7 @@ APM › İş akışları: "Yeni akış" → anahtar deseni (ör. `sipariş\s+(\d
 
 ## 2g. 200+ sunucu: pool'lar ve kapasite
 
-Pool'lar envanterdeki **küme** alanından gelir (Envanter › CSV içe aktarma, `cluster` sütunu); boş bırakılan sunucular adlarının numarasız köküyle gruplanır (`prd-sap-app-01` → `prd-sap-app`). Ek ayar gerekmez. Ölçülen kapasite (4 vCPU, PostgreSQL, Go alıcısı): 300 sunucu ve dakikada 100 bin satır rahat, dakikada ~290 bin satır sınırda; daha yüksek hacimde CPU sayısını değil düğüm / işçi sayısını artırmak gerekir. Ayrıntı ve kendi ortamınızda yük testi: `docs/LOAD_TEST.md`.
+Pool'lar envanterdeki **küme** alanından gelir (Envanter › CSV içe aktarma, `cluster` sütunu); boş bırakılan sunucular adlarının numarasız köküyle gruplanır (`prd-sap-app-01` → `prd-sap-app`). Ek ayar gerekmez. Operasyon ekranında üstteki zaman seçiciyle (ya da zaman çizelgesinde sürükleyerek) herhangi bir aralık seçilir; son 48 saatin logları satır satır, daha eskisi sayı olarak görünür (`live_retention_h`, `history_retention_days` Sistem ayarlarından). Ölçülen kapasite (4 vCPU, PostgreSQL, Go alıcısı): 300 sunucu ve dakikada 100 bin satır rahat, dakikada ~290 bin satır sınırda; daha yüksek hacimde CPU sayısını değil düğüm / işçi sayısını artırmak gerekir. Ayrıntı ve kendi ortamınızda yük testi: `docs/LOAD_TEST.md`.
 
 ## 3. Günlük işletim: watchover.sh
 

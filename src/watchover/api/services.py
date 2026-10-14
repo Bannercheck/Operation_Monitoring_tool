@@ -121,6 +121,8 @@ class Services:
         self._pools = (0.0, {})
         self.live.rollup.pool_fn = self._pool_of                 # pools: inventory cluster, else the name stem
         self.history = History(self.kb, retention_days=int(cfg0.get("history_retention_days", 400) or 400))
+        from ..timerange import RangeView
+        self.ranges = RangeView(self.live, self.history)      # any time range for the operations screen
         from ..traces import TraceStore
         self.traces = TraceStore(self.kb, settings=wo_settings.load)     # spans and service rollups rebuilt from the same live events
         from ..bizflow import BizFlows

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hmac
 import itertools
+import math
 import json
 import re
 import shutil
@@ -163,6 +164,78 @@ class LiveStore:
         self.db_served += 1
         self.last_db_window = (self._utc_iso(since), len(out))
         return out
+
+    def _ring_covers(self, s: datetime) -> bool:
+        with self.lock:
+            if not self.buf:
+                return not self.db
+            oldest = self.buf[0].timestamp
+        oldest = oldest if oldest.tzinfo else oldest.replace(tzinfo=UTC)
+        return oldest <= s or not self.db
+
+    def events_between(self, s: datetime, e: datetime, cap: int = 250_000) -> tuple[list[Observation], int]:
+        """Events stamped in [s, e) and the sampling factor k: a range holding more than `cap` events is read as every k-th stored batch."""
+        if self._ring_covers(s):
+            with self.lock:
+                return [o for o in self.buf if s <= o.timestamp < e], 1
+        rows = self.db._exec("SELECT id, n FROM live_batches WHERE ts_max >= ? AND ts_min < ? ORDER BY id", (self._utc_iso(s), self._utc_iso(e)))
+        total = sum(int(r["n"] or 0) for r in rows)
+        k = max(1, math.ceil(total / cap)) if total > cap else 1
+        ids = [r["id"] for r in rows][::k]
+        out: list[Observation] = []
+        for i in range(0, len(ids), 400):
+            chunk = ids[i:i + 400]
+            for r in self.db._exec(f"SELECT payload FROM live_batches WHERE id IN ({', '.join('?' * len(chunk))})", tuple(chunk)):
+                for line in (r["payload"] or "").split("\n"):
+                    if line:
+                        try:
+                            o = self._unpack(json.loads(line))
+                        except (ValueError, KeyError):
+                            continue
+                        if s <= o.timestamp < e:
+                            out.append(o)
+        return out, k
+
+    def lines_between(self, s: datetime, e: datetime, ok, limit: int = 200, max_batches: int = 4000) -> tuple[list[Observation], int, bool]:
+        """Newest-first lines stamped in [s, e) passing ok(o): (lines, events scanned, more available)."""
+        found: list[Observation] = []
+        scanned = 0
+        if self._ring_covers(s):
+            with self.lock:
+                ring = list(self.buf)
+            for o in reversed(ring):
+                if s <= o.timestamp < e:
+                    scanned += 1
+                    if ok(o):
+                        found.append(o)
+            found.sort(key=lambda o: o.timestamp, reverse=True)
+            return found[:limit], scanned, len(found) > limit
+        off, more = 0, False
+        while off < max_batches:
+            rows = self.db._exec("SELECT payload FROM live_batches WHERE ts_min < ? AND ts_max >= ? ORDER BY id DESC LIMIT 200 OFFSET ?",
+                                 (self._utc_iso(e), self._utc_iso(s), off))
+            if not rows:
+                break
+            for r in rows:
+                for line in (r["payload"] or "").split("\n"):
+                    if not line:
+                        continue
+                    try:
+                        o = self._unpack(json.loads(line))
+                    except (ValueError, KeyError):
+                        continue
+                    if s <= o.timestamp < e:
+                        scanned += 1
+                        if ok(o):
+                            found.append(o)
+            off += len(rows)
+            if len(found) > limit * 2:                      # batches arrive roughly in time order: a margin is enough to sort
+                more = True
+                break
+        else:
+            more = True
+        found.sort(key=lambda o: o.timestamp, reverse=True)
+        return found[:limit], scanned, more or len(found) > limit
 
     def db_stats(self) -> dict:
         if not self.db:

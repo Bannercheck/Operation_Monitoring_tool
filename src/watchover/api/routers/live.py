@@ -189,3 +189,47 @@ def groups(window: int = 15, env: str | None = None, host: str | None = None, po
     if isinstance(h, str) and "," in h:
         h = tuple(h.split(","))
     return svc.live.rollup.groups(window, env or None, h, severity or "INFO", q or "", service or "", limit)
+
+
+# ---------------------------------------------------------------- any time range (the operations screen's time picker)
+def _rng(last, start, end):
+    from ...timerange import parse_range
+    return parse_range(last, start, end)
+
+
+def _hx(svc, sc, host, pool):
+    h = _hp(svc, sc, host, pool)
+    if isinstance(h, str) and "," in h:
+        h = tuple(h.split(","))
+    return h
+
+
+@router.get("/range/summary")
+def range_summary(last: int | None = None, start: str | None = None, end: str | None = None, env: str | None = None, host: str | None = None, pool: str | None = None,
+                  user=Depends(require("page.ops")), svc=Depends(services), sc=Depends(user_scope)):
+    """Timeline and headline numbers (with the previous range for deltas) for `last` minutes or an absolute start / end."""
+    s, e, live = _rng(last, start, end)
+    out = svc.ranges.summary(s, e, env or None, _hx(svc, sc, host, pool))
+    return {**out, "live": live}
+
+
+@router.get("/range/fleet")
+def range_fleet(last: int | None = None, start: str | None = None, end: str | None = None, env: str | None = None,
+                user=Depends(require("page.ops")), svc=Depends(services), sc=Depends(user_scope)):
+    s, e, _ = _rng(last, start, end)
+    return svc.ranges.fleet(s, e, env or None, None if sc is None else sc.allows)
+
+
+@router.get("/range/groups")
+def range_groups(last: int | None = None, start: str | None = None, end: str | None = None, env: str | None = None, host: str | None = None, pool: str | None = None,
+                 severity: str = "INFO", q: str = "", service: str = "", limit: int = Query(100, le=500), user=Depends(require("page.ops")), svc=Depends(services), sc=Depends(user_scope)):
+    s, e, _ = _rng(last, start, end)
+    return svc.ranges.groups(s, e, env or None, _hx(svc, sc, host, pool), severity or "INFO", q or "", service or "", limit)
+
+
+@router.get("/range/logs")
+def range_logs(last: int | None = None, start: str | None = None, end: str | None = None, env: str | None = None, host: str | None = None, pool: str | None = None,
+               severity: str = "INFO", q: str = "", service: str = "", limit: int = Query(200, le=1000), before: str | None = None,
+               user=Depends(require("page.ops")), svc=Depends(services), sc=Depends(user_scope)):
+    s, e, _ = _rng(last, start, end)
+    return svc.ranges.logs(s, e, env or None, _hx(svc, sc, host, pool), severity or "INFO", q or "", service or "", limit, before)

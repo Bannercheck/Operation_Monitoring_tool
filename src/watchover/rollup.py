@@ -21,9 +21,11 @@ import threading
 import time
 from bisect import bisect_left
 from collections import Counter, deque
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from .models import SEV_RANK
+
+UTC = timezone.utc
 
 KEEP = 61                          # minutes of minute buckets (windows up to 60 minutes answer from here)
 LATENCY_RE = re.compile(r"(\d+(?:\.\d+)?)\s?ms\b")
@@ -60,8 +62,9 @@ def _q(hist: list[int], q: float) -> float | None:
 
 
 class Rollup:
-    def __init__(self, pool_fn=None):
+    def __init__(self, pool_fn=None, keep: int | None = KEEP):
         from .analysis import template_of
+        self.keep = keep                            # minutes kept (None: a one-off rollup over a past range, nothing expires)
         self._tpl = template_of
         self.lock = threading.Lock()
         self.pool_fn = pool_fn                      # host -> pool from the inventory (cluster); None = name stem only
@@ -80,6 +83,7 @@ class Rollup:
         self.last_seen: dict[str, float] = {}
         self.errors: deque = deque(maxlen=2000)     # newest ERROR+ events for the detail card
         self.added = 0
+        self.started = time.time()                 # "new" message groups only mean something once the counters predate the range
         self.add_ms: deque = deque(maxlen=500)
 
     # ---------------------------------------------------------------- ingest
@@ -108,12 +112,12 @@ class Rollup:
     def add(self, events) -> None:
         t0 = time.perf_counter()
         now_min = int(time.time() // 60)
-        lo = now_min - KEEP
+        lo = now_min - (self.keep or 10 ** 9)
         with self.lock:
             for o in events:
                 ts = o.timestamp if o.timestamp.tzinfo else o.timestamp.replace(tzinfo=UTC)
                 m = _min(ts)
-                if m < lo or m > now_min + 2:
+                if self.keep and (m < lo or m > now_min + 2):
                     continue
                 host = o.host or "-"
                 h = self._h(host)
@@ -152,7 +156,7 @@ class Rollup:
                 if SEV_RANK[sev] >= 3:
                     self.errors.append((ts, sev, o.service or "-", host, msg[:400]))
             self.added += len(events)
-            if self.added % 50 < len(events) or len(self.cnt) > KEEP + 3:
+            if self.keep and (self.added % 50 < len(events) or len(self.cnt) > self.keep + 3):
                 self._expire(lo)
         self.add_ms.append((time.perf_counter() - t0) * 1000)
 
@@ -178,8 +182,11 @@ class Rollup:
             self.g5[b] = Counter({((k >> 20) << 20) | remap[k & 0xFFFFF]: n for k, n in c.items() if (k & 0xFFFFF) in remap})
 
     # ---------------------------------------------------------------- queries
-    def covers(self, window_min: int) -> bool:
-        return 0 < window_min <= KEEP - 1
+    def covers(self, window) -> bool:
+        """window: minutes back from now, or (first, last) epoch minutes."""
+        if isinstance(window, tuple):
+            return self.keep is None or window[0] >= int(time.time() // 60) - self.keep + 1
+        return 0 < window <= (self.keep or 10 ** 9) - 1
 
     def _scope(self, env: str | None, host) -> set[int] | None:
         """None = every host; else the host ids in scope (host is a name or a collection of names)."""
@@ -190,9 +197,30 @@ class Rollup:
             names = {n for n in names if (self.host_env.get(n) or "unknown") == env}
         return {self.hid[n] for n in names if n in self.hid}
 
-    def _mins(self, window_min: int) -> range:
+    def _mins(self, window) -> range:
+        if isinstance(window, tuple):
+            return range(window[0], window[1] + 1)
         now = int(time.time() // 60)
-        return range(now - window_min + 1, now + 1)
+        return range(now - window + 1, now + 1)
+
+    def series(self, window, env=None, host=None, step: int = 1) -> list[dict]:
+        """Timeline buckets of `step` minutes: total, errors (ERROR+), warnings."""
+        scope = self._scope(env, host)
+        mins = self._mins(window)
+        out = []
+        with self.lock:
+            for b0 in range(mins[0], mins[-1] + 1, step):
+                t = e = w = 0
+                for m in range(b0, min(b0 + step, mins[-1] + 1)):
+                    for (h, sev), n in self.cnt.get(m, {}).items():
+                        if scope is None or h in scope:
+                            t += n
+                            if SEV_RANK[sev] >= 3:
+                                e += n
+                            elif sev == "WARN":
+                                w += n
+                out.append({"t": b0 * 60, "total": t, "errors": e, "warn": w})
+        return out
 
     def stats(self, window_min: int, env=None, host=None) -> dict:
         scope = self._scope(env, host)
@@ -291,7 +319,7 @@ class Rollup:
     def host_table(self, window_min: int, env=None, allow=None) -> list[dict]:
         """One row per host: events, warnings, errors, rate, last seen, pool, environment, top service."""
         mins = self._mins(window_min)
-        now = time.time()
+        now = min(time.time(), (mins[-1] + 1) * 60)       # a past range: "silent" means silent at its end
         acc: dict[int, Counter] = {}
         svc: dict[int, Counter] = {}
         with self.lock:
@@ -312,31 +340,15 @@ class Rollup:
             tot = sum(c.values())
             err = c.get("ERROR", 0) + c.get("CRITICAL", 0)
             age = now - self.last_seen.get(name, 0)
+            if not tot and isinstance(window_min, tuple) and self.keep:
+                continue                                   # a past range: only the hosts that sent something in it
             out.append({"host": name, "pool": self.pool_of(name), "env": e, "events": tot, "errors": err, "warnings": c.get("WARN", 0), "critical": c.get("CRITICAL", 0),
-                        "per_min": round(tot / window_min, 1), "error_rate": round(err / tot, 4) if tot else 0, "last_seen_s": round(age),
+                        "per_min": round(tot / len(mins), 1), "error_rate": round(err / tot, 4) if tot else 0, "last_seen_s": round(age),
                         "silent": age > 300, "service": (svc.get(h) or Counter()).most_common(1)[0][0] if svc.get(h) else ""})
         return out
 
-    def pools(self, window_min: int, env=None, allow=None) -> list[dict]:
-        rows = self.host_table(window_min, env, allow)
-        by: dict[str, dict] = {}
-        for r in rows:
-            p = by.setdefault(r["pool"], {"pool": r["pool"], "hosts": [], "events": 0, "errors": 0, "warnings": 0, "critical": 0, "silent": 0, "envs": set()})
-            p["hosts"].append(r)
-            for k in ("events", "errors", "warnings", "critical"):
-                p[k] += r[k]
-            p["silent"] += r["silent"]
-            p["envs"].add(r["env"])
-        out = []
-        for p in by.values():
-            hs = sorted(p["hosts"], key=lambda r: (-r["errors"], -r["events"]))
-            ev = [r["events"] for r in hs if not r["silent"]]
-            mean = (sum(ev) / len(ev)) if ev else 0
-            out.append({**p, "envs": sorted(p["envs"]), "hosts": hs, "host_count": len(hs), "per_min": round(p["events"] / window_min, 1),
-                        "error_rate": round(p["errors"] / p["events"], 4) if p["events"] else 0, "worst": hs[0]["host"] if hs and hs[0]["errors"] else None,
-                        # a host far off its pool's volume (5x more or 5x less than the pool mean) is worth a look
-                        "outliers": [r["host"] for r in hs if mean and len(ev) >= 3 and not r["silent"] and (r["events"] > 5 * mean or r["events"] < mean / 5)]})
-        return sorted(out, key=lambda p: (-p["errors"], -p["events"]))
+    def pools(self, window_min, env=None, allow=None) -> list[dict]:
+        return pools_of(self.host_table(window_min, env, allow), len(self._mins(window_min)))
 
     def groups(self, window_min: int, env=None, host=None, min_sev: str = "INFO", q: str = "", service: str = "", limit: int = 100) -> dict:
         """Deduplicated log groups in scope: template × service with count, severity, hosts, pools, first / last, trend."""
@@ -361,12 +373,14 @@ class Rollup:
                         hosts_of.setdefault(g, Counter())[h] += n
                         if scope is not None:
                             counts[g] += n
-            if scope is None:              # exact per-minute counts when nothing narrows the hosts
+            if scope is None:              # exact per-minute counts when nothing narrows the hosts (trend: at most 60 points)
+                step = -(-len(mins) // 60)
+                width = -(-len(mins) // step)
                 for i, m in enumerate(mins):
                     for g, n in self.g1.get(m, {}).items():
                         if g in hosts_of:
                             counts[g] += n
-                            trend.setdefault(g, [0] * len(mins))[i] += n
+                            trend.setdefault(g, [0] * width)[i // step] += n
             else:                          # narrowed to some hosts: the trend is in 5-minute steps
                 for b in range(b_lo, b_hi + 1):
                     for k, n in self.g5.get(b, {}).items():
@@ -392,3 +406,25 @@ class Rollup:
         a = sorted(self.add_ms)
         return {"hosts": len(self.hosts), "groups": len(self.ginfo), "minutes": len(self.cnt), "added": self.added,
                 "add_ms_p95": round(a[int(len(a) * 0.95) - 1], 2) if len(a) >= 20 else None}
+
+
+def pools_of(rows: list[dict], minutes: int) -> list[dict]:
+    """Host rows (host, pool, env, events, errors, warnings, critical, silent) grouped into pools."""
+    by: dict[str, dict] = {}
+    for r in rows:
+        p = by.setdefault(r["pool"], {"pool": r["pool"], "hosts": [], "events": 0, "errors": 0, "warnings": 0, "critical": 0, "silent": 0, "envs": set()})
+        p["hosts"].append(r)
+        for k in ("events", "errors", "warnings", "critical"):
+            p[k] += r[k]
+        p["silent"] += r["silent"]
+        p["envs"].add(r["env"])
+    out = []
+    for p in by.values():
+        hs = sorted(p["hosts"], key=lambda r: (-r["errors"], -r["events"]))
+        ev = [r["events"] for r in hs if not r["silent"]]
+        mean = (sum(ev) / len(ev)) if ev else 0
+        out.append({**p, "envs": sorted(p["envs"]), "hosts": hs, "host_count": len(hs), "per_min": round(p["events"] / minutes, 1),
+                    "error_rate": round(p["errors"] / p["events"], 4) if p["events"] else 0, "worst": hs[0]["host"] if hs and hs[0]["errors"] else None,
+                    # a host far off its pool's volume (5x more or 5x less than the pool mean) is worth a look
+                    "outliers": [r["host"] for r in hs if mean and len(ev) >= 3 and not r["silent"] and (r["events"] > 5 * mean or r["events"] < mean / 5)]})
+    return sorted(out, key=lambda p: (-p["errors"], -p["events"]))
