@@ -3,7 +3,14 @@
 receiver, the database window and the anomaly scan actually did.
 
   python scripts/loadtest.py --url http://localhost:8600 --api http://localhost:8501 --rate 2000 --agents 100 --duration 60 \\
-      --user admin@watchover.local --password '…' [--key LIVE_KEY]
+      --user <admin e-mail> --password '…' [--key LIVE_KEY]
+
+  # 300 servers, 100 of them chatty (85 % of the lines), the operations screen polled while it runs:
+  python scripts/loadtest.py --rate 1700 --agents 300 --heavy 100 --heavy-share 0.85 --probe …
+
+Each virtual agent is one server (`prd-<pool>-NN`, pools of 10-30 hosts) and stamps its own host name on the lines, as the
+real agent does. `--probe` times the calls the operations screen makes every few seconds (stats, hosts, pools, deduplicated
+groups, tail) while the load runs; the Go receiver's backlog is sampled from its /health.
 
 Lines come from the corpus (SAP, Oracle EBS, Dynamics AX / 365 / NAV, syslog, JSON) with fresh timestamps and ids, so the
 parsers work as hard as they would on real traffic. Nothing is exploited or flooded beyond the rate you ask for; run it
@@ -61,12 +68,22 @@ def freshen(line: str, now: datetime, rng: random.Random) -> str:
     return line
 
 
+POOLS = ["sap-app", "sap-db", "ebs", "d365", "web", "api", "mq", "batch", "ik", "crm", "dwh", "file", "ad", "mail", "sso"]
+SYSLOG_HOST = re.compile(r"^([A-Z][a-z]{2} {1,2}\d{1,2} \d{2}:\d{2}:\d{2}) (\S+)")
+JSON_HOST = re.compile(r'"(host|hostname|host\.name)"\s*:\s*"[^"]*"')
+
+
+def host_of(idx: int) -> str:
+    """Server name of virtual agent idx: pools of 20 consecutive agents, numbered inside the pool."""
+    return f"prd-{POOLS[(idx // 20) % len(POOLS)]}-{idx % 20 + 1:02d}"
+
+
 class Agent(threading.Thread):
     def __init__(self, idx: int, url: str, key: str | None, templates, per_batch: int, interval: float, until: float, stats: dict, lock: threading.Lock):
         super().__init__(daemon=True)
         self.idx, self.url, self.key, self.templates, self.per_batch, self.interval, self.until, self.stats, self.lock = idx, url, key, templates, per_batch, interval, until, stats, lock
         self.rng = random.Random(1000 + idx)
-        self.name_ = f"load-{idx:03d}"
+        self.name_ = host_of(idx)
         weights = [w for _, _, w in templates]
         self.pick = lambda: self.rng.choices(templates, weights=weights)[0]
 
@@ -79,7 +96,9 @@ class Agent(threading.Thread):
             next_at += self.interval
             send_as, lines, _ = self.pick()
             stamp = datetime.now(UTC)
-            body = "\n".join(freshen(self.rng.choice(lines), stamp, self.rng) for _ in range(self.per_batch)).encode()
+            out = (freshen(self.rng.choice(lines), stamp, self.rng) for _ in range(self.per_batch))
+            out = (JSON_HOST.sub(f'"\\1": "{self.name_}"', SYSLOG_HOST.sub(f"\\1 {self.name_}", ln, count=1), count=1) for ln in out)   # this server's own lines
+            body = "\n".join(out).encode()
             hdr = {"Content-Type": "text/plain", "X-Agent": self.name_, "X-File-Name": send_as}
             if self.key:
                 hdr["X-API-Key"] = self.key
@@ -109,11 +128,19 @@ def main(argv=None) -> int:
     ap.add_argument("--rate", type=int, default=2000, help="target events/s across all agents"); ap.add_argument("--agents", type=int, default=100)
     ap.add_argument("--duration", type=int, default=60); ap.add_argument("--interval", type=float, default=2.0, help="seconds between two batches of one agent")
     ap.add_argument("--key", default=None); ap.add_argument("--user", default=None); ap.add_argument("--password", default=None)
+    ap.add_argument("--heavy", type=int, default=0, help="how many of the agents are chatty servers"); ap.add_argument("--heavy-share", type=float, default=0.85, help="share of the lines the chatty servers send")
+    ap.add_argument("--probe", action="store_true", help="time the operations-screen API calls every 5 s while the load runs")
     ap.add_argument("--out", default="loadtest-report.json")
     a = ap.parse_args(argv)
     templates = load_templates()
     per_batch = max(1, round(a.rate * a.interval / a.agents))
-    print(f"{a.agents} agents · {per_batch} lines every {a.interval}s each -> target {a.agents * per_batch / a.interval:.0f} events/s for {a.duration}s · mix: {', '.join(t[0] for t in templates)}", flush=True)
+    heavy = min(a.heavy, a.agents)
+    if heavy:
+        pb_heavy = max(1, round(a.rate * a.heavy_share * a.interval / heavy))
+        pb_light = max(1, round(a.rate * (1 - a.heavy_share) * a.interval / max(1, a.agents - heavy)))
+    total = (heavy * pb_heavy + (a.agents - heavy) * pb_light) if heavy else a.agents * per_batch
+    print(f"{a.agents} agents ({heavy} chatty: {pb_heavy if heavy else per_batch} lines / {a.interval}s, others {pb_light if heavy else per_batch}) -> target {total / a.interval:.0f} lines/s "
+          f"({total / a.interval * 60:,.0f} / min) for {a.duration}s · mix: {', '.join(t[0] for t in templates)}", flush=True)
     tok = None
     if a.user and a.password:
         try:
@@ -122,11 +149,38 @@ def main(argv=None) -> int:
             print(f"api login failed ({e}); capacity polling off", flush=True)
     stats = {"sent": 0, "accepted": 0, "batches": 0, "errors": 0, "lat": [], "last_error": ""}
     lock = threading.Lock(); until = time.time() + a.duration
-    agents = [Agent(i, a.url, a.key, templates, per_batch, a.interval, until, stats, lock) for i in range(a.agents)]
+    # chatty servers spread over the pools (every third agent), the rest are quiet
+    chatty = set(sorted(range(a.agents), key=lambda i: (i % 3 != 0, i))[:heavy]) if heavy else set()
+    agents = [Agent(i, a.url, a.key, templates, (pb_heavy if i in chatty else pb_light) if heavy else per_batch, a.interval, until, stats, lock) for i in range(a.agents)]
     t_start = time.time()
     for ag in agents:
         ag.start()
     samples = []
+    probes: dict[str, list[float]] = {}
+    backlog = []
+    stop = threading.Event()
+
+    def prober():
+        calls = ["/api/live/stats?window=15", "/api/live/hosts", "/api/live/events?n=25", "/api/live/slo?window=15", "/api/live/pools?window=15",
+                 "/api/live/groups?window=15&limit=50", f"/api/live/stats?window=15&pool=prd-{POOLS[1]}", f"/api/live/groups?window=15&host={host_of(0)}"]
+        while not stop.is_set():
+            for c in calls:
+                t0 = time.perf_counter()
+                try:
+                    api(a.api, c, tok)
+                    probes.setdefault(c, []).append((time.perf_counter() - t0) * 1000)
+                except Exception:  # noqa: BLE001
+                    probes.setdefault(c + " (error)", []).append(0)
+            try:
+                with urllib.request.urlopen(a.url.rstrip("/") + "/health", timeout=5) as r:
+                    h = json.loads(r.read())
+                    if "backlog_bytes" in h:
+                        backlog.append({"t": round(time.time() - t_start), "mb": round(h["backlog_bytes"] / 1e6, 1), "segments": h["backlog_segments"]})
+            except Exception:  # noqa: BLE001
+                pass
+            stop.wait(5)
+    if a.probe and tok:
+        threading.Thread(target=prober, daemon=True).start()
     while time.time() < until:
         time.sleep(10)
         with lock:
@@ -146,12 +200,15 @@ def main(argv=None) -> int:
         print(line, flush=True)
     for ag in agents:
         ag.join(timeout=35)
+    stop.set()
     elapsed = time.time() - t_start
     lat = sorted(stats["lat"])
     rep = {"target_rate": a.rate, "agents": a.agents, "per_batch": per_batch, "duration_s": round(elapsed, 1), "sent": stats["sent"], "accepted": stats["accepted"],
            "achieved_rate": round(stats["sent"] / elapsed, 1), "accepted_rate": round(stats["accepted"] / elapsed, 1), "batches": stats["batches"], "errors": stats["errors"], "last_error": stats["last_error"],
            "post_latency_ms": {"p50": round(statistics.median(lat), 1) if lat else 0, "p95": round(lat[int(len(lat) * 0.95) - 1], 1) if len(lat) >= 20 else 0, "max": round(lat[-1], 1) if lat else 0},
-           "samples": samples}
+           "samples": samples, "lines_per_min": round(stats["sent"] / elapsed * 60),
+           "probe_ms": {k: {"n": len(v), "p50": round(statistics.median(v), 1), "p95": round(sorted(v)[max(0, int(len(v) * 0.95) - 1)], 1), "max": round(max(v), 1)} for k, v in probes.items() if v},
+           "backlog": backlog}
     if tok:
         try:
             t0 = time.perf_counter(); found = api(a.api, "/api/anomalies/scan", tok, data={}, method="POST"); scan_ms = (time.perf_counter() - t0) * 1000
@@ -162,6 +219,10 @@ def main(argv=None) -> int:
     Path(a.out).write_text(json.dumps(rep, indent=1, ensure_ascii=False), encoding="utf-8")
     print("\nRESULT", json.dumps({k: v for k, v in rep.items() if k not in ("samples", "final_capacity")}, ensure_ascii=False), flush=True)
     fc = rep.get("final_capacity", {})
+    for k, v in rep["probe_ms"].items():
+        print(f"PROBE {k:55s} p50 {v['p50']:7.1f} ms  p95 {v['p95']:7.1f} ms  max {v['max']:7.1f} ms  (n={v['n']})")
+    if backlog:
+        print("BACKLOG max", max(b["mb"] for b in backlog), "MB · last", backlog[-1])
     if fc:
         print("FINAL CAPACITY", json.dumps({"events_per_s_5m": fc.get("events_per_s_5m"), "ring": fc.get("ring"), "db": fc.get("db"), "ingest": fc.get("ingest"), "last_db_window_ms": fc.get("last_db_window_ms"), "warnings": fc.get("warnings")}, ensure_ascii=False))
     return 0 if stats["errors"] == 0 else 1

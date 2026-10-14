@@ -37,5 +37,34 @@ Kendi ortamınızda:
 
 ```
 python scripts/loadtest.py --url http://<sunucu>:8600 --api http://<sunucu>:8501 --rate 2000 --agents 100 --duration 90 \
-    --user admin@watchover.local --password '…' [--key <LIVE_KEY>]
+    --user <yönetici e-posta> --password '…' [--key <LIVE_KEY>]
+```
+
+## v1.41: 300 sunucu, dakikada 100 bin ve 300 bin satır, operasyon ekranı yük altında
+
+Senaryo: 300 sanal sunucu (15 pool × 20 sunucu, `prd-<pool>-NN`), bunlardan 100'ü "konuşkan" ve satırların %85'ini gönderiyor; her ajan kendi sunucu adını basıyor. Test boyunca operasyon ekranının 5 sn'de bir yaptığı çağrılar ölçüldü (`--probe`). Ortam önceki ölçümlerle aynı: 4 vCPU, PostgreSQL 16, Go alıcısı + tek panel süreci. Sonuç dosyaları: `docs/loadtest-300srv-100k-before.json`, `docs/loadtest-300srv-100k-after.json`, `docs/loadtest-300srv-300k.json`.
+
+| Ölçüm | v1.40, ~98 bin satır/dk | v1.41, ~103 bin satır/dk | v1.41, ~291 bin satır/dk |
+|---|---|---|---|
+| Alıcı POST p50 / p95 / en kötü | 0,9 / 2,7 / 77 ms | 0,9 / 2,4 / 37 ms | 1,0 / 4,8 / 38 ms |
+| Panelde işlenen olay (5 dk ort.) | 1.293 olay/sn | 1.420 olay/sn | 3.950 olay/sn |
+| Kuyruk en çok (Go alıcısı) | 3,4 MB | 0,8 MB | 7,5 MB (eriyor) |
+| `/live/stats` (15 dk) p50 / p95 | 1.048 / 2.378 ms | 18 / 29 ms | 31 / 73 ms |
+| `/live/slo` p50 / p95 | 633 / 2.175 ms | 9 / 14 ms | 16 / 32 ms |
+| `/live/hosts` p50 / p95 | 78 / 118 ms | 68 / 386 ms | 51 / 84 ms |
+| `/live/pools` (yeni) p50 / p95 | — | 31 / 50 ms | 43 / 61 ms |
+| `/live/groups` (yeni, tekilleştirilmiş) p50 / p95 | — | 40 / 54 ms | 53 / 85 ms |
+| HTTP hata | 0 | 0 | 0 |
+
+Olay < satır farkı kayıp değildir: çok satırlı ERP kayıtları ve stack trace'ler tek olaya katlanır.
+
+**Ne değişti.** Operasyon ekranı her yenilemede son 15 dakikanın olaylarını (dakikada 100 bin satırda 1,5 milyon) yeniden okuyordu; ring tampon bu hızda yalnız ~30 sn tuttuğu için okuma veritabanına düşüyor ve 1-3 sn sürüyordu. Artık her olay geldiği anda bir kez sayılıyor (`rollup.py`: dakika × sunucu × önem, sunucu × servis, gecikme histogramı, mesaj kalıbı × servis, 5 dakikalık sunucu × kalıp); ekran sayaçlardan yanıtlanıyor. Anomali taramasının sunucu sayımları da aynı sayaçlardan geliyor; pool çözümü envanteri dakikada bir okuyor.
+
+**Yorum ve sınırlar.** 200+ sunucu ve dakikada 100 bin satır tek düğümde rahat (işleme kapasitesinin ~%35'i). Dakikada ~290 bin satırda işleme yetişiyor ama tavana yakın (~%85); bunun üstü için sıradaki adım ayrıştırma işçilerini Go'ya taşımak ya da işçi süreç sayısını artırmaktır (alıcı zaten Go, kuyruk diskte). Desen taraması (anomali) hâlâ olay penceresini okuyor ve 300 bin/dk'da 10 sn sürüyor; bu sırada ekran çağrılarında tek tük 0,2-0,5 sn gecikme görülür.
+
+Kendi ortamınızda (yönetici e-postası ve parolanızla):
+
+```
+python scripts/loadtest.py --url http://<sunucu>:8600 --api http://<sunucu>:8501 --rate 1700 --agents 300 --heavy 100 --heavy-share 0.85 \
+    --duration 150 --probe --user <yönetici e-posta> --password '…'
 ```

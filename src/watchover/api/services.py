@@ -73,6 +73,17 @@ class Services:
         for app, doc in sessions:
             self.rum.ingest(apps[app], doc, "Mozilla/5.0 (Windows NT 10.0) Chrome/130.0" if doc["platform"] == "web" else "")
 
+    def _pool_of(self, host: str):
+        """The inventory cluster of a host, from one inventory read per minute (not one query per host)."""
+        t, m = self._pools
+        if time.time() - t > 60:
+            try:
+                m = {str(r.get("hostname") or "").lower(): r.get("cluster") or None for r in self.inventory.list()}
+            except Exception:  # noqa: BLE001
+                m = {}
+            self._pools = (time.time(), m)
+        return m.get((host or "").lower())
+
     def _on_ingest(self, events) -> None:
         """Every accepted live batch: service-level history rollups, then spans / RED metrics (each best effort on its own)."""
         try:
@@ -107,6 +118,8 @@ class Services:
         self.agents = AgentRegistry(self.kb)
         self.sources = SourceStore(self.kb)
         self.inventory = Inventory(self.kb); self.live.enricher = self.inventory.enrich
+        self._pools = (0.0, {})
+        self.live.rollup.pool_fn = self._pool_of                 # pools: inventory cluster, else the name stem
         self.history = History(self.kb, retention_days=int(cfg0.get("history_retention_days", 400) or 400))
         from ..traces import TraceStore
         self.traces = TraceStore(self.kb, settings=wo_settings.load)     # spans and service rollups rebuilt from the same live events

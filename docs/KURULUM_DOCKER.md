@@ -134,6 +134,10 @@ Merkezi NOC ekibine "Tüm sunucuları gör" yetkili bir rol verilir. Ekibe girme
 
 APM › İş akışları: "Yeni akış" → anahtar deseni (ör. `sipariş\s+(\d{7})`, parantez içi anahtar) → "Öner" ile adımlar loglardan gelir → Kaydet. Ek ajan veya kod değişikliği gerekmez; anahtar hangi sunucunun logunda geçiyorsa oradan izlenir. Kişisel veri taşıyan anahtarlar (TCKN, sicil) için "Anahtarı maskele" işaretlenir. APM › Hatalar ek ayar istemez.
 
+## 2g. 200+ sunucu: pool'lar ve kapasite
+
+Pool'lar envanterdeki **küme** alanından gelir (Envanter › CSV içe aktarma, `cluster` sütunu); boş bırakılan sunucular adlarının numarasız köküyle gruplanır (`prd-sap-app-01` → `prd-sap-app`). Ek ayar gerekmez. Ölçülen kapasite (4 vCPU, PostgreSQL, Go alıcısı): 300 sunucu ve dakikada 100 bin satır rahat, dakikada ~290 bin satır sınırda; daha yüksek hacimde CPU sayısını değil düğüm / işçi sayısını artırmak gerekir. Ayrıntı ve kendi ortamınızda yük testi: `docs/LOAD_TEST.md`.
+
 ## 3. Günlük işletim: watchover.sh
 
 | Komut | Ne yapar |

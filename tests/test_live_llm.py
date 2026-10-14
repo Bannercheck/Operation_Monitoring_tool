@@ -34,7 +34,7 @@ def test_receiver_auth_formats_and_stats(tmp_path):
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/health") as r:
             assert json.loads(r.read())["received"] == 6
         s = store.stats(15)
-        assert s["total"] == 6 and set(s["agents"]) == {"host-a", "127.0.0.1"} and len(s["rows"]) == 15 * 5
+        assert s["total"] == 5 and set(s["agents"]) == {"host-a", "127.0.0.1"} and len(s["rows"]) == 15 * 5   # the syslog line is stamped Sep 16: outside the 15-minute window
         assert all(o.timestamp.year >= 2026 for o in store.snapshot())   # syslog line without year got a sane time
         name, data = store.to_dataset()
         assert name.endswith(".jsonl") and data.count(b"\n") == 6

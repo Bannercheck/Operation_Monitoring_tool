@@ -27,6 +27,21 @@ def _h(sc, h: str | None):
     return host_(h) if sc is None else sc.host_filter(host_(h))
 
 
+def _hp(svc, sc, host: str | None, pool: str | None):
+    """Host filter with an optional pool (one name or a comma list): the pool's hosts, narrowed by host and by the team."""
+    if not pool:
+        return _h(sc, host)
+    want = {p.strip() for p in pool.split(",") if p.strip()}
+    r = svc.live.rollup
+    hs = tuple(sorted(h for h in list(r.hosts) if r.pool_of(h) in want))
+    asked = host_(host)
+    if asked is not None:
+        asked = (asked,) if isinstance(asked, str) else asked
+        hs = tuple(h for h in hs if h in asked)
+    hs = hs or ("\x00no-host",)
+    return _h(sc, hs[0] if len(hs) == 1 else ",".join(hs)) if sc is not None else (hs[0] if len(hs) == 1 else hs)
+
+
 def _accepts_host(svc) -> bool:
     import inspect
     return "host" in inspect.signature(svc.live.env_summary).parameters
@@ -44,23 +59,23 @@ def _iso(rows):
 
 
 @router.get("/stats")
-def stats(window: int = 15, env: str | None = None, host: str | None = None, user=Depends(require("page.ops")), svc=Depends(services), sc=Depends(user_scope)):
-    s = svc.live.stats(window, env or None, _h(sc, host))
+def stats(window: int = 15, env: str | None = None, host: str | None = None, pool: str | None = None, user=Depends(require("page.ops")), svc=Depends(services), sc=Depends(user_scope)):
+    s = svc.live.stats(window, env or None, _hp(svc, sc, host, pool))
     s["rows"] = _iso(s.get("rows", []))
     return s
 
 
 @router.get("/metrics")
-def metrics(window: int = 15, env: str | None = None, host: str | None = None, user=Depends(require("page.ops")), svc=Depends(services), sc=Depends(user_scope)):
-    m = svc.live.metric_stats(window, env or None, _h(sc, host))
+def metrics(window: int = 15, env: str | None = None, host: str | None = None, pool: str | None = None, user=Depends(require("page.ops")), svc=Depends(services), sc=Depends(user_scope)):
+    m = svc.live.metric_stats(window, env or None, _hp(svc, sc, host, pool))
     m["per_minute"] = _iso(m.get("per_minute", []))
     m["latest"] = [{"metric": k[0], "host": k[1], "value": v} for k, v in m.get("latest", {}).items()]
     return m
 
 
 @router.get("/slo")
-def slo(window: int = 15, env: str | None = None, host: str | None = None, detail: bool = False, user=Depends(require("page.ops")), svc=Depends(services), sc=Depends(user_scope)):
-    return svc.live.slo_detail(window, env or None, _h(sc, host)) if detail else svc.live.slo(window, env or None, _h(sc, host))
+def slo(window: int = 15, env: str | None = None, host: str | None = None, pool: str | None = None, detail: bool = False, user=Depends(require("page.ops")), svc=Depends(services), sc=Depends(user_scope)):
+    return svc.live.slo_detail(window, env or None, _hp(svc, sc, host, pool)) if detail else svc.live.slo(window, env or None, _hp(svc, sc, host, pool))
 
 
 @router.get("/hosts")
@@ -77,22 +92,22 @@ def hosts(user=Depends(require("page.ops")), svc=Depends(services), sc=Depends(u
 
 
 @router.get("/events")
-def events(n: int = Query(50, le=2000), env: str | None = None, host: str | None = None, user=Depends(require("page.ops")), svc=Depends(services), sc=Depends(user_scope)):
+def events(n: int = Query(50, le=2000), env: str | None = None, host: str | None = None, pool: str | None = None, user=Depends(require("page.ops")), svc=Depends(services), sc=Depends(user_scope)):
     return [{"timestamp": o.timestamp.isoformat(), "severity": o.severity, "service": o.service, "host": o.host, "environment": o.environment,
-             "message": o.message, "source": o.source, "agent": o.attributes.get("agent", "")} for o in svc.live.tail(n, env or None, _h(sc, host))]
+             "message": o.message, "source": o.source, "agent": o.attributes.get("agent", "")} for o in svc.live.tail(n, env or None, _hp(svc, sc, host, pool))]
 
 
 @router.get("/files")
-def files(window: int = 15, env: str | None = None, host: str | None = None, user=Depends(require("page.ops")), svc=Depends(services), sc=Depends(user_scope)):
-    return svc.live.files(window, env or None, _h(sc, host))
+def files(window: int = 15, env: str | None = None, host: str | None = None, pool: str | None = None, user=Depends(require("page.ops")), svc=Depends(services), sc=Depends(user_scope)):
+    return svc.live.files(window, env or None, _hp(svc, sc, host, pool))
 
 
 @router.get("/history")
-def history(hours: int = 24, env: str | None = None, host: str | None = None, bucket: str = Query("hour", pattern="^(hour|day)$"),
+def history(hours: int = 24, env: str | None = None, host: str | None = None, pool: str | None = None, bucket: str = Query("hour", pattern="^(hour|day)$"),
             user=Depends(require("page.ops")), svc=Depends(services), sc=Depends(user_scope)):
     """SLO figures from the minute rollups (weekly / monthly reports use the same call)."""
     end = datetime.now(UTC)
-    fig = svc.history.figures(end - timedelta(hours=hours), end, env or None, _h(sc, host), bucket)
+    fig = svc.history.figures(end - timedelta(hours=hours), end, env or None, _hp(svc, sc, host, pool), bucket)
     fig["coverage"] = svc.history.coverage()
     return fig
 
@@ -135,15 +150,15 @@ def lines(agent: str, source: str, n: int = Query(400, le=5000), errors: bool = 
 
 
 @router.get("/report", response_class=HTMLResponse)
-def slo_report(window: int = 60, env: str | None = None, host: str | None = None, lang: str = "tr", dataset: str | None = None,
+def slo_report(window: int = 60, env: str | None = None, host: str | None = None, pool: str | None = None, lang: str = "tr", dataset: str | None = None,
                user=Depends(require("act.report")), svc=Depends(services), sc=Depends(user_scope)):
     """The SLO report (availability, error budget, p95, worst services) as a self-contained HTML page; windows above a day come from the rollups."""
     from pathlib import Path
     if window <= 1440:
-        fig = wo_report.figures_live(svc.live, env or None, _h(sc, host), int(window))
+        fig = wo_report.figures_live(svc.live, env or None, _hp(svc, sc, host, pool), int(window))
     else:
         now = datetime.now(UTC)
-        fig = svc.history.figures(now - timedelta(minutes=int(window)), now, env or None, _h(sc, host), "day" if window > 7 * 1440 else "hour")
+        fig = svc.history.figures(now - timedelta(minutes=int(window)), now, env or None, _hp(svc, sc, host, pool), "day" if window > 7 * 1440 else "hour")
     a = svc.datasets.get(dataset)["analysis"] if dataset else None
     scope = " · ".join(x for x in (env, host) if x) or ("all" if lang == "en" else "tümü")
     logo = Path(__file__).resolve().parents[4] / "assets" / "logo.svg"
@@ -154,3 +169,23 @@ def slo_report(window: int = 60, env: str | None = None, host: str | None = None
 def wo_settings_workspace() -> str:
     from ... import settings as wo_settings
     return wo_settings.load().get("workspace", "") or ""
+
+
+@router.get("/pools")
+def pools(window: int = 15, env: str | None = None, user=Depends(require("page.ops")), svc=Depends(services), sc=Depends(user_scope)):
+    """Server pools (inventory cluster, else the host name without its number) with every host's volume, errors and silence."""
+    window = max(1, min(int(window or 15), 60))
+    allow = None if sc is None else sc.allows
+    rows = svc.live.rollup.pools(window, env or None, allow)
+    return {"window": window, "pools": rows, "hosts": sum(p["host_count"] for p in rows), "silent": sum(p["silent"] for p in rows)}
+
+
+@router.get("/groups")
+def groups(window: int = 15, env: str | None = None, host: str | None = None, pool: str | None = None, severity: str = "INFO", q: str = "", service: str = "",
+           limit: int = Query(100, le=500), user=Depends(require("page.ops")), svc=Depends(services), sc=Depends(user_scope)):
+    """Deduplicated logs: one row per message template and service, with count, hosts, pools and trend."""
+    window = max(1, min(int(window or 15), 60))
+    h = _hp(svc, sc, host, pool)
+    if isinstance(h, str) and "," in h:
+        h = tuple(h.split(","))
+    return svc.live.rollup.groups(window, env or None, h, severity or "INFO", q or "", service or "", limit)

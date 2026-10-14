@@ -7,6 +7,7 @@ import { api, get, post } from "../api";
 import { useAuth } from "../auth";
 import { useT } from "../i18n";
 import { Badge, Btn, Card, Empty, Kpi, Modal, Table, Spark, hhmm } from "../components/ui";
+import { FleetCard, GroupsCard } from "../components/Fleet";
 
 const SEV = ["CRITICAL", "ERROR", "WARN", "INFO", "DEBUG"] as const;
 const SEV_COLOR: Record<string, string> = { CRITICAL: "#f87171", ERROR: "#fb923c", WARN: "#fbbf24", INFO: "#60a5fa", DEBUG: "#64748b" };
@@ -24,8 +25,8 @@ type Kind = "rate" | "errors" | "availability" | "sla" | "budget" | "p95" | "cpu
 
 export default function Ops() {
   const { t, lang } = useT(); const { can } = useAuth(); const qc = useQueryClient();
-  const [env, setEnv] = useState(""); const [hostPick, setHostPick] = useState<string[]>([]); const [detail, setDetail] = useState<Kind | null>(null); const [win, setWin] = useState(60);
-  const scope = new URLSearchParams(); if (env) scope.set("env", env); if (hostPick.length) scope.set("host", hostPick.join(","));
+  const [env, setEnv] = useState(""); const [hostPick, setHostPick] = useState<string[]>([]); const [detail, setDetail] = useState<Kind | null>(null); const [win, setWin] = useState(60); const [pool, setPool] = useState("");
+  const scope = new URLSearchParams(); if (env) scope.set("env", env); if (pool) scope.set("pool", pool); if (hostPick.length) scope.set("host", hostPick.join(","));
   const sq = scope.toString() ? `&${scope}` : "";
   const stats = useQuery({ queryKey: ["live-stats", sq], queryFn: () => get(`/live/stats?window=15${sq}`), refetchInterval: 5000 });
   const slo = useQuery({ queryKey: ["live-slo", sq], queryFn: () => get(`/live/slo?window=15${sq}`), refetchInterval: 5000 });
@@ -49,7 +50,7 @@ export default function Ops() {
   const clickable = (k: Kind) => ({ onClick: () => pick(k), style: { cursor: "pointer", outline: detail === k ? "2px solid rgba(45,212,191,0.6)" : undefined, borderRadius: 14 } });
   return (
     <div className="stack">
-      <div className="row between"><div><h2>{t("ops_title")}</h2><span className="muted small">{(hosts.data?.agents ?? []).join(", ") || "-"}</span></div>
+      <div className="row between"><div><h2>{t("ops_title")}</h2><span className="muted small">{t("ops_connected", { a: (hosts.data?.agents ?? []).length, h: Object.keys(hosts.data?.hosts ?? {}).length })}</span></div>
         <div className="row">{can("act.report") && <><select className="input" style={{ width: 120 }} value={win} onChange={(e) => setWin(Number(e.target.value))}>{[15, 60, 240, 1440, 10080, 43200].map((w) => <option key={w} value={w}>{w < 60 ? `${w} min` : w < 1440 ? `${w / 60} h` : `${w / 1440} d`}</option>)}</select><Btn onClick={report}>📄 {t("ops_report")}</Btn></>}
           {can("act.connect") && <Link className="btn" to="/connections">🔗 {t("ops_connect")}</Link>}
           {can("act.sim") && <Btn kind={simOn ? "primary" : ""} onClick={toggleSim} title={t("ops_sim_help")}>🧪 {t("ops_sim")} {simOn ? "ON" : "OFF"}</Btn>}
@@ -58,9 +59,10 @@ export default function Ops() {
       <div className="row">
         <select className="input" style={{ width: 170 }} value={env} onChange={(e) => { setEnv(e.target.value); setHostPick([]); }}><option value="">{t("ops_scope_env")}: {t("ops_all")}</option>{Object.keys(hosts.data?.environments ?? {}).map((e) => <option key={e} value={e}>{e}</option>)}</select>
         <select className="input" style={{ width: 200 }} value="" onChange={(e) => { const h = e.target.value; if (h && !hostPick.includes(h)) setHostPick([...hostPick, h]); }} title={t("ops_scope_host")}><option value="">{t("ops_scope_host")}: {hostPick.length ? hostPick.length : t("ops_all")}</option>{hostNames.filter((h) => !hostPick.includes(h)).map((h) => <option key={h} value={h}>{h}</option>)}</select>
+        {pool && <span className="chip" style={{ cursor: "pointer" }} onClick={() => setPool("")}><span className="d" style={{ background: "#a78bfa" }} />pool: {pool} ✕</span>}
         {hostPick.map((h) => <span key={h} className="chip" style={{ cursor: "pointer" }} onClick={() => setHostPick(hostPick.filter((x) => x !== h))}><span className="d" style={{ background: "#60a5fa" }} />{h} ✕</span>)}
         {hostPick.length > 1 && <span className="muted small">{t("ops_multi", { n: hostPick.length })}</span>}
-        {(env || hostPick.length > 0) && <Btn sm onClick={() => { setEnv(""); setHostPick([]); }}>✕ {t("ops_scope_reset")}</Btn>}
+        {(env || pool || hostPick.length > 0) && <Btn sm onClick={() => { setEnv(""); setPool(""); setHostPick([]); }}>✕ {t("ops_scope_reset")}</Btn>}
         <div className="grow" />
         <div className="row">{(hosts.data?.summary ?? []).map((e: any) => <span key={e.environment} className="chip" onClick={() => setEnv(e.environment === env ? "" : e.environment)} style={{ cursor: "pointer" }} title={`${t("ops_avail")} ${e.availability != null ? `${(e.availability * 100).toFixed(2)}%` : "-"}`}><span className="d" style={{ background: e.errors ? "#f87171" : "#34d399" }} />{e.environment} · {e.hosts} {t("host").toLowerCase()} · {e.events ?? 0} / {e.errors ?? 0}</span>)}</div>
       </div>
@@ -75,6 +77,8 @@ export default function Ops() {
         {["cpu", "memory", "disk", "gpu"].map((k, i) => { const sm = m.summary[k] ?? {}; const worst = sm.max != null && sm.max >= THR[k]; return <div key={k} {...clickable(k as Kind)}><div className="card kpi" style={{ ["--acc" as any]: worst ? "#f87171" : PALETTE[i], padding: "10px 12px" }}><div className="lb">{k}</div><div className="row between"><div className="v" style={{ fontSize: 19 }}>{sm.avg != null ? `${Math.round(sm.avg)}%` : "-"}</div><div style={{ width: 120 }}><Spark data={metricSeries(k)} color={worst ? "#f87171" : PALETTE[i]} /></div></div><div className="sub">{sm.max != null ? `${t("od_max")} ${Math.round(sm.max)}% · ${sm.worst ?? ""} · ${sm.hosts} ${t("host").toLowerCase()}` : "-"}</div></div></div>; })}
         <div {...clickable("files")}><div className="card kpi" style={{ ["--acc" as any]: badFiles ? "#fb923c" : "#8b98ad", padding: "10px 12px" }}><div className="lb">{t("od_files")}</div><div className="v" style={{ fontSize: 19 }}>{files.data?.length ? `${badFiles}/${files.data.length}` : "-"}</div><div className="sub">{t("ops_files_tile")} · {t("ops_detail")} ▾</div></div></div>
       </div>}
+      <FleetCard env={env} pool={pool} hosts={hostPick} onPool={(p) => { setPool(p); setHostPick([]); }} onHost={(h) => setHostPick(hostPick.includes(h) ? hostPick.filter((x) => x !== h) : [...hostPick, h])} />
+      <GroupsCard sq={sq} onHost={(h) => { if (!hostPick.includes(h)) setHostPick([...hostPick, h]); }} />
       {detail && <DetailPanel kind={detail} sq={sq} env={env} host={hostPick.join(", ")} sl={sl} m={m} s={s} files={files.data ?? []} onClose={() => setDetail(null)} />}
       {empty ? <Empty>{t("ops_no_data")}</Empty> : (
         <div className="grid k2">

@@ -263,9 +263,13 @@ class AnomalyTracker:
     def _scan_counts(self, now: datetime) -> list[dict]:
         out = []
         start = now - timedelta(minutes=WINDOW_MIN)
-        obs = self._window(start)
         per_host: dict[tuple[str, str], list[int]] = {}
         services: dict[tuple[str, str], dict] = {}
+        ru = getattr(self.live, "rollup", None)
+        live_now = abs((datetime.now(UTC) - now).total_seconds()) < 90
+        obs = [] if (ru is not None and live_now and ru.added) else self._window(start)
+        if not obs and ru is not None and live_now and ru.added:      # counted at ingest: no pass over 100k+ events
+            per_host, services = ru.host_counts(WINDOW_MIN)
         for o in obs:
             if o.timestamp < start:
                 continue

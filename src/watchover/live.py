@@ -11,6 +11,7 @@ Any format the pipeline parses is accepted, so the agent can ship raw log lines.
 from __future__ import annotations
 
 import hmac
+import itertools
 import json
 import re
 import shutil
@@ -38,6 +39,7 @@ METRIC_KEYS = {"cpu": "cpu", "cpu_percent": "cpu", "cpu_pct": "cpu", "memory": "
 METRICS = ("cpu", "gpu", "memory", "disk")
 ENV_ORDER = ["prod", "staging", "test", "qa", "dev", "unknown"]   # stable tile order on the operations page
 LATENCY_RE = re.compile(r"(\d+(?:\.\d+)?)\s?ms\b")
+BAD_HOST = re.compile(r"^\[.*\]$|:$|\s|^-$")
 
 
 class LiveStore:
@@ -68,6 +70,8 @@ class LiveStore:
         self.last_db_window_ms = 0.0
         self._ingest_ms: deque[float] = deque(maxlen=500)   # per-batch ingest time (parse + ring + hooks + db)
         self._detect: dict[tuple[str, str], dict] = {}       # (agent, file) -> format/family decided once; re-checked every 200 batches
+        from .rollup import Rollup
+        self.rollup = Rollup()                               # per-minute counters for the operations screen (100k+ lines / min)
         if self.spool:
             self.spool.parent.mkdir(parents=True, exist_ok=True)
 
@@ -242,6 +246,11 @@ class LiveStore:
             if o.attributes.pop("_no_ts", False) or o.timestamp.year < 2000 or ts > horizon:   # missing, ancient or absurdly future stamp: arrival time
                 o.timestamp = now
             o.attributes["agent"] = agent
+            if o.host and BAD_HOST.search(o.host):           # "Ax32Serv:", "[NavServer]": a process or component taken for a host
+                o.attributes.setdefault("component", o.host.strip("[]:"))
+                o.host = ""
+            if not o.host and agent and agent != "unknown":  # a line without a host name came from the server the agent runs on
+                o.host = agent
             if self.enricher is not None:
                 try:
                     if self.enricher(o):
@@ -271,6 +280,10 @@ class LiveStore:
             self.agents[agent] = time.time()
             self._rate.append((time.time(), len(obs)))
         obs = events
+        try:
+            self.rollup.add(events)
+        except Exception:  # noqa: BLE001 - counters are best effort, ingestion is not
+            pass
         if flows and self.on_flows is not None:
             try:
                 self.on_flows(flows)
@@ -356,14 +369,24 @@ class LiveStore:
         return out
 
     def environments(self) -> dict[str, int]:
-        return dict(Counter((o.environment or "unknown") for o in self.snapshot()).most_common())
+        c = Counter()
+        for r in self.rollup.host_table(15):                   # events per environment, last 15 minutes, from the counters
+            c[r["env"]] += r["events"]
+        if not c:
+            c = Counter((o.environment or "unknown") for o in self.snapshot())
+        return dict(c.most_common())
 
     def hosts(self) -> dict[str, str]:
         """host -> environment for every host seen in events or metrics."""
         out: dict[str, str] = {}
-        for o in self.snapshot():
+        with self.lock:
+            recent = list(itertools.islice(reversed(self.buf), 5000))    # the newest events; the rollup knows every host of the last hour
+        for o in recent:
             if o.host:
                 out.setdefault(o.host, o.environment or "unknown")
+        for h in list(self.rollup.last_seen):                  # the ring is seconds of data at high volume: hosts of the last hour
+            if h != "-":
+                out.setdefault(h, self.rollup.host_env.get(h) or "unknown")
         with self.lock:
             for r in self.metrics:
                 out.setdefault(r[1], r[4] or "unknown")
@@ -409,6 +432,11 @@ class LiveStore:
 
     def stats(self, window_min: int = 15, env: str | None = None, host: str | None = None) -> dict:
         """Per-minute counts by severity for the last window, top services, totals (optionally one env / host)."""
+        if self.rollup.covers(window_min):
+            r = self.rollup.stats(window_min, env, host)
+            total = r["window_total"]                      # the window's events (the ring is seconds of data at this volume)
+            return {"rows": r["rows"], "services": r["services"], "total": total, "received": self.received, "errors": r["errors"],
+                    "per_minute_now": r["per_minute_now"], "agents": {k: round(time.time() - v) for k, v in self.agents.items()}, "last": r["last"]}
         now = datetime.now(UTC).replace(second=0, microsecond=0)
         start = now - timedelta(minutes=window_min - 1)
         per_min: Counter = Counter()
@@ -445,6 +473,8 @@ class LiveStore:
         with self.lock:
             self.buf.clear()
             self.metrics.clear()
+        from .rollup import Rollup
+        self.rollup = Rollup(self.rollup.pool_fn)
 
     def purge(self, agent: str, hosts: tuple = ()) -> int:
         """Drop everything one sender shipped (simulation mode off): its events, its metrics rows (by host) and its presence."""
@@ -452,6 +482,10 @@ class LiveStore:
             keep = [o for o in self.buf if o.attributes.get("agent") != agent]
             n = len(self.buf) - len(keep)
             self.buf.clear(); self.buf.extend(keep)
+        from .rollup import Rollup                            # counters rebuilt from what stays: the sender's hosts vanish from them too
+        self.rollup = Rollup(self.rollup.pool_fn)
+        self.rollup.add(keep)
+        with self.lock:
             gone = set(hosts) | self.metric_hosts.pop(agent, set())
             if gone:
                 mk = [r for r in self.metrics if r[1] not in gone]
@@ -487,14 +521,18 @@ class LiveStore:
     # ---- service levels
     def slo(self, window_min: int = 15, env: str | None = None, host: str | None = None) -> dict:
         """Availability = 1 - ERROR+/total, p95 latency from '<n>ms' in messages, error budget vs scenario.SLO / SLA."""
-        start = datetime.now(UTC) - timedelta(minutes=window_min)
-        obs = self.snapshot(env, host, since=start)
-        total = len(obs)
-        errors = sum(1 for o in obs if SEV_RANK[o.severity] >= 3)
+        if self.rollup.covers(window_min):
+            total, errors, hist, _per = self.rollup.slo_counts(window_min, env, host)
+            p95 = self.rollup.p95(hist)
+        else:
+            start = datetime.now(UTC) - timedelta(minutes=window_min)
+            obs = self.snapshot(env, host, since=start)
+            total = len(obs)
+            errors = sum(1 for o in obs if SEV_RANK[o.severity] >= 3)
+            lat = [float(m[1]) for o in obs for m in [LATENCY_RE.search(o.message)] if m]
+            lat.sort()
+            p95 = lat[int(len(lat) * 0.95) - 1] if len(lat) >= 20 else (lat[-1] if lat else None)
         avail = 1 - errors / total if total else None
-        lat = [float(m[1]) for o in obs for m in [LATENCY_RE.search(o.message)] if m]
-        lat.sort()
-        p95 = lat[int(len(lat) * 0.95) - 1] if len(lat) >= 20 else (lat[-1] if lat else None)
         slo, sla = scenario.SLO, scenario.SLA
         budget = None
         if avail is not None:
@@ -509,6 +547,8 @@ class LiveStore:
         per-minute availability, error-budget burn and the most recent ERROR+ events (same scope as slo())."""
         from .analysis import template_of
         now = datetime.now(UTC)
+        if self.rollup.covers(window_min):
+            return self._slo_detail_rollup(window_min, env, host)
         start = now - timedelta(minutes=window_min)
         obs = [o for o in self.snapshot(env, host) if o.timestamp >= start]
         errs = [o for o in obs if SEV_RANK[o.severity] >= 3]
@@ -556,8 +596,36 @@ class LiveStore:
                 "per_minute": per_minute, "recent": recent, "errors": len(errs), "total": len(obs),
                 "allowed_errors": int(allowed * len(obs)), "breach_minutes": sum(1 for r in per_minute if r["availability"] is not None and r["availability"] < target)}
 
+    def _slo_detail_rollup(self, window_min: int, env, host) -> dict:
+        r = self.rollup
+        total, errors, _hist, per = r.slo_counts(window_min, env, host)
+        d = r.detail(window_min, env, host)
+        g = r.groups(window_min, env, host, min_sev="ERROR", limit=10)["groups"]
+        templates = [{"template": x["template"], "count": x["count"], "severity": x["severity"], "first": x["first"], "last": x["last"], "services": [x["service"]],
+                      "hosts": [h["host"] for h in x["hosts"]], "sample": x["sample"]} for x in g]
+        target = scenario.SLO["availability"]
+        allowed = 1 - target
+        per_minute, cum_err, cum_tot = [], 0, 0
+        for m, n, e in per:
+            cum_err += e; cum_tot += n
+            per_minute.append({"minute": datetime.fromtimestamp(m * 60, UTC), "total": n, "errors": e, "availability": (1 - e / n) if n else None,
+                               "budget_left": max(0.0, 1 - (cum_err / cum_tot) / allowed) if cum_tot and allowed > 0 else None})
+        recent = [{"ts": e[0], "severity": e[1], "service": e[2], "host": e[3], "message": e[4]} for e in d["errors_recent"]]
+        return {"by_service": d["by_service"], "by_host": d["by_host"], "templates": templates, "latency": d["latency"], "slowest": d["slowest"],
+                "per_minute": per_minute, "recent": recent, "errors": errors, "total": total, "allowed_errors": int(allowed * total),
+                "breach_minutes": sum(1 for x in per_minute if x["availability"] is not None and x["availability"] < target)}
+
     def env_summary(self, window_min: int = 15) -> list[dict]:
         """Per-environment events, errors, availability and host count for the last window."""
+        if self.rollup.covers(window_min):
+            hosts = self.hosts()
+            acc: dict[str, list[int]] = {}
+            for r in self.rollup.host_table(window_min):
+                a = acc.setdefault(r["env"], [0, 0])
+                a[0] += r["events"]; a[1] += r["errors"]
+            return [{"environment": e, "events": acc.get(e, [0, 0])[0], "errors": acc.get(e, [0, 0])[1],
+                     "availability": round(1 - acc[e][1] / acc[e][0], 4) if acc.get(e, [0])[0] else None, "hosts": sum(1 for h, x in hosts.items() if x == e)}
+                    for e in sorted(set(acc) | set(hosts.values()), key=lambda e: (ENV_ORDER.index(e) if e in ENV_ORDER else len(ENV_ORDER), e))]
         start = datetime.now(UTC) - timedelta(minutes=window_min)
         obs = [o for o in self.snapshot() if o.timestamp >= start]
         hosts = self.hosts()

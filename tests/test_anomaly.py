@@ -175,7 +175,7 @@ def test_learning_week_then_seasonal_baseline(tmp_path):
 def test_weekly_pattern_is_normal_after_learning(tmp_path):
     kb = Knowledge(str(tmp_path / "k.db")); History(kb); ls = LiveStore()
     now = datetime.now(UTC).replace(second=0, microsecond=0)
-    _seed_rollups(kb, minutes=24 * 60 * 21, per_min=4, err_per_min=1, until=now)      # three quiet weeks
+    _seed_rollups(kb, minutes=24 * 60 * 22, per_min=4, err_per_min=1, until=now)      # three quiet weeks (+1 day: week 3 fully covered)
     kb.executemany("UPDATE slo_minute SET errors=10, total=14 WHERE minute=? AND host='web-01'",   # ... except this weekday-hour, every week: 10 errors / min
                    [((now - timedelta(days=7 * w, minutes=i)).strftime("%Y-%m-%dT%H:%M"),) for w in (1, 2, 3) for i in range(-45, 46)])
     ls.buf.extend(_obs(now - timedelta(seconds=6 * i), f"batch warning {i}", "ERROR") for i in range(45))   # 45 errors / 5 min: usual for this hour
