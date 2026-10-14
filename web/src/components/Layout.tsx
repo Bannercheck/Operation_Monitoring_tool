@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
-import { AlertTriangle, BellRing, BookOpen, Bot, Brain, ChevronDown, ChevronRight, ClipboardList, Database, FileText, GitBranch, Layers, LayoutDashboard, LogOut, Menu, Network, PanelLeftClose, PanelLeftOpen, Plug, Radar, Server, ShieldAlert, Settings2, Smartphone, Ticket, Users, Workflow } from "lucide-react";
+import { AlertTriangle, BellRing, BookOpen, Bot, Brain, Bug, Route, ChevronDown, ChevronRight, ClipboardList, Database, FileText, GitBranch, Layers, LayoutDashboard, LogOut, Menu, Network, PanelLeftClose, PanelLeftOpen, Plug, Radar, Server, ShieldAlert, Settings2, Smartphone, Ticket, Users, Workflow } from "lucide-react";
 import { useAuth } from "../auth";
 import { useT } from "../i18n";
 import { Btn, Modal, Field, Err, LangTheme } from "./ui";
@@ -21,7 +21,8 @@ export const NAV: Section[] = [
   { id: "apm", group: "nav_group_apm", items: [
     { to: "/services", k: "nav_services", icon: Layers, perm: "page.apm" }, { to: "/traces", k: "nav_traces", icon: GitBranch, perm: "page.apm" },
     { to: "/rum", k: "nav_rum", icon: Smartphone, perm: "page.rum" }, { to: "/map", k: "nav_map", icon: Network, perm: "page.map" },
-    { to: "/integrations", k: "nav_integ", icon: Workflow, perm: "page.apm" } ] },
+    { to: "/integrations", k: "nav_integ", icon: Workflow, perm: "page.apm" }, { to: "/flows", k: "nav_flows", icon: Route, perm: "page.apm" },
+    { to: "/exceptions", k: "nav_exc", icon: Bug, perm: "page.apm" } ] },
   { id: "signals", group: "nav_group_signals", items: [
     { to: "/datasets", k: "nav_data", icon: Database, perm: "page.data" }, { to: "/inventory", k: "nav_inv", icon: Server, perm: "page.inv" },
     { to: "/anomalies", k: "nav_anom", icon: AlertTriangle, perm: "page.ops" } ] },

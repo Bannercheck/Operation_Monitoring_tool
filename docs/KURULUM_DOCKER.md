@@ -130,6 +130,10 @@ Kullanıcılar › Ekipler sekmesinde her ekip için kurallar tanımlanır; ekib
 
 Merkezi NOC ekibine "Tüm sunucuları gör" yetkili bir rol verilir. Ekibe girmemiş kullanıcılar her şeyi görmeye devam eder; kurumda herkesin bir ekibe bağlı olması isteniyorsa Sistem › Ayarlar'da `teams_strict` açılır.
 
+## 2f. İş akışları ve hatalar
+
+APM › İş akışları: "Yeni akış" → anahtar deseni (ör. `sipariş\s+(\d{7})`, parantez içi anahtar) → "Öner" ile adımlar loglardan gelir → Kaydet. Ek ajan veya kod değişikliği gerekmez; anahtar hangi sunucunun logunda geçiyorsa oradan izlenir. Kişisel veri taşıyan anahtarlar (TCKN, sicil) için "Anahtarı maskele" işaretlenir. APM › Hatalar ek ayar istemez.
+
 ## 3. Günlük işletim: watchover.sh
 
 | Komut | Ne yapar |

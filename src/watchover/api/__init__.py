@@ -24,7 +24,7 @@ from .. import __version__
 
 def create_app(services=None) -> FastAPI:
     from .services import Services
-    from .routers import actions, agents, apm, rum, teams, anomalies, assist, auth, datasets, grok, inventory, itsm, knowledge, live, llm, map as map_, memory, notify, scan, playbook, sources, system, users
+    from .routers import actions, agents, apm, rum, teams, bizflow, anomalies, assist, auth, datasets, grok, inventory, itsm, knowledge, live, llm, map as map_, memory, notify, scan, playbook, sources, system, users
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -50,7 +50,7 @@ def create_app(services=None) -> FastAPI:
                                     "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
                                     "script-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'")
         return resp
-    for r in (auth, datasets, live, actions, anomalies, playbook, agents, sources, inventory, knowledge, notify, users, system, map_, assist, llm, itsm, grok, memory, scan, apm, rum, teams):
+    for r in (auth, datasets, live, actions, anomalies, playbook, agents, sources, inventory, knowledge, notify, users, system, map_, assist, llm, itsm, grok, memory, scan, apm, rum, teams, bizflow):
         app.include_router(r.router, prefix="/api")
 
     @app.exception_handler(KeyError)

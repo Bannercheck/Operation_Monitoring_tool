@@ -55,6 +55,14 @@ class Services:
                         self.inventory.upsert({"hostname": h, "ip": ip, "env": "prod", "role": role, "owner": "demo (simulator)"})
                 except Exception:  # noqa: BLE001
                     pass
+        if not getattr(self, "_sim_flow", False):
+            self._sim_flow = True
+            if not any(f["name"] == "Sipariş → Fatura" for f in self.bizflows.list()):
+                try:
+                    self.bizflows.save("Sipariş → Fatura", r"sipariş\s+(\d{7})", [{"name": "Oluşturuldu", "match": "oluşturuldu"}, {"name": "Kredi onayı", "match": "kredi kontrolü onaylandı"},
+                                                                                 {"name": "Sevkiyat", "match": "sevkiyat"}, {"name": "Fatura", "match": "fatura"}])
+                except Exception:  # noqa: BLE001
+                    pass
         apps = {a["name"]: a for a in self.rum.apps()}
         for name, platform in (("ik-mobil", "android"), ("ik-portal", "web")):
             if name not in apps:
@@ -73,6 +81,10 @@ class Services:
             pass
         try:
             self.traces.add_events(events)
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            self.bizflows.add_events(events)
         except Exception:  # noqa: BLE001
             pass
 
@@ -98,6 +110,8 @@ class Services:
         self.history = History(self.kb, retention_days=int(cfg0.get("history_retention_days", 400) or 400))
         from ..traces import TraceStore
         self.traces = TraceStore(self.kb, settings=wo_settings.load)     # spans and service rollups rebuilt from the same live events
+        from ..bizflow import BizFlows
+        self.bizflows = BizFlows(self.kb)                    # business keys followed across systems (funnels, stuck items)
         from ..flows import FlowStore
         self.flows = FlowStore(self.kb); self.live.on_flows = self.flows.add
         from ..rum import RumStore

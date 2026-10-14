@@ -176,3 +176,7 @@ pre.code { background: #0b1220; border: 1px solid var(--line); border-radius: 10
 .hostrow { display: block; width: 100%; text-align: left; padding: 7px 10px; border-radius: 8px; border: 1px solid transparent; background: transparent; color: var(--fg); cursor: pointer; font: inherit; }
 .hostrow:hover { background: rgba(148, 163, 184, 0.08); } .hostrow.on { background: linear-gradient(90deg, rgba(45, 212, 191, 0.16), rgba(96, 165, 250, 0.05)); border-color: rgba(45, 212, 191, 0.4); }
 
+.funnel-row { display: flex; align-items: center; gap: 12px; padding: 4px 0; }
+.bf-row { display: flex; gap: 12px; padding: 8px 4px; border-bottom: 1px solid var(--line); } .bf-row.dim { opacity: .55; }
+tr.clickable { cursor: pointer; } tr.clickable:hover td { background: rgba(148, 163, 184, 0.06); }
+@media (max-width: 900px) { .funnel-row { flex-wrap: wrap; } }

@@ -127,3 +127,15 @@ def trace_detail(trace_id: str, dataset: str | None = None, user=Depends(require
     if t is None:
         raise HTTPException(404, "trace not found (outside the retention window or not sampled)")
     return t
+
+
+@router.get("/apm/exceptions")
+def exceptions(minutes: int = 60, service: str | None = None, env: str | None = None, user=Depends(require("page.apm")), svc=Depends(services), sc=Depends(user_scope)):
+    """Error lines of the live window grouped by exception type and service."""
+    from datetime import datetime, timedelta, timezone
+
+    from ...exceptions import group
+    minutes = max(5, min(int(minutes or 60), 1440))
+    obs = svc.live.snapshot(env=env or None, since=datetime.now(timezone.utc) - timedelta(minutes=minutes))
+    obs = [o for o in obs if (sc is None or sc.allows(o.host)) and (not service or o.service == service)]
+    return {"minutes": minutes, "groups": group(obs, minutes)}

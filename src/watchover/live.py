@@ -226,7 +226,10 @@ class LiveStore:
                 hint = None
         obs, rep = ingest_bytes(name, data, hint=hint)
         if rep and rep[0].get("format") not in (None, "table") and (hint is None or hint.get("n", 0) % 200 == 0):
-            self._detect[key] = {"format": rep[0]["format"], "confidence": rep[0].get("confidence", 0.9), "family": rep[0].get("family", ""), "n": 1}
+            fmt = rep[0]["format"]
+            if fmt == "json" and data.strip().count(b"\n") == 0 and data.lstrip()[:1] == b"{":
+                fmt = "jsonl"           # one object in the first batch of a stream is one JSON line: later batches carry many
+            self._detect[key] = {"format": fmt, "confidence": rep[0].get("confidence", 0.9), "family": rep[0].get("family", ""), "n": 1}
             if len(self._detect) > 5000:
                 self._detect.clear()
         now = datetime.now(UTC)
@@ -787,6 +790,7 @@ def simulate_batch(rng, n: int = 8, incident: bool = False, traces: bool = False
         out.append(json.dumps({"ts": now.isoformat(), "level": lvl, "service": svc, "host": host, "env": SIM_ENV.get(host, "prod"), "msg": msg}))
     if traces:
         out.extend(simulate_traces(rng, now, n=max(1, n // 3), incident=incident))
+        out.extend(simulate_orders(rng, now, incident))
     return ("\n".join(out) + "\n").encode()
 
 
@@ -909,6 +913,40 @@ def simulate_rum(rng, incident: bool = False) -> tuple[list[tuple[str, dict]], l
                                                      "net": rng.choice(["wifi", "cellular"]), "carrier": "Turkcell"}, "events": ev}
         sessions.append((app, doc))
     return sessions, backend
+
+
+_ORDERS: dict[str, dict] = {}
+ORDER_STEPS = [("checkout-api", "Sipariş {k} oluşturuldu", 0), ("payment-api", "Sipariş {k} kredi kontrolü onaylandı", 4), ("worker", "Sipariş {k} sevkiyat planlandı", 8),
+               ("billing-api", "Sipariş {k} faturası kesildi", 6)]
+
+
+def simulate_orders(rng, now: datetime, incident: bool = False) -> list[str]:
+    """An order-to-invoice flow as the systems would log it: each order moves through four services seconds apart; during an
+    incident credit checks time out and those orders stay stuck before approval."""
+    out = []
+    for _ in range(rng.randint(1, 3)):
+        k = str(rng.randint(1000000, 9999999))
+        _ORDERS[k] = {"step": 0, "due": now, "stuck": False}
+    for k, st in list(_ORDERS.items()):
+        if st["stuck"] or st["due"] > now:
+            continue
+        svc, msg, gap = ORDER_STEPS[st["step"]]
+        if st["step"] == 1 and incident and rng.random() < 0.5:
+            out.append(json.dumps({"ts": now.isoformat(), "level": "error", "service": "payment-api", "host": "prd-api-02", "env": "prod",
+                                   "msg": f"Sipariş {k} kredi kontrolü zaman aşımı (credit-bureau 5000 ms)"}))
+            st["stuck"] = True
+            continue
+        out.append(json.dumps({"ts": now.isoformat(), "level": "info", "service": svc, "host": "worker-01" if svc in ("worker", "billing-api") else "prd-api-01",
+                               "env": "prod", "msg": msg.format(k=k)}))
+        st["step"] += 1
+        if st["step"] >= len(ORDER_STEPS):
+            del _ORDERS[k]
+        else:
+            st["due"] = now + timedelta(seconds=ORDER_STEPS[st["step"]][2] * rng.uniform(0.5, 1.6))
+    if len(_ORDERS) > 400:
+        for k in list(_ORDERS)[:100]:
+            del _ORDERS[k]
+    return out
 
 
 SIM_FLOWS_MAP = [("prd-api-01", "java", "172.16.1.55:5432"), ("prd-api-02", "java", "172.16.1.55:5432"), ("prd-api-03", "node", "172.16.1.60:6379"),
