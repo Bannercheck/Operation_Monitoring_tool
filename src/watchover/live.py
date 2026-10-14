@@ -695,8 +695,8 @@ SIM_GPU_HOSTS = ["ml-01", "ml-02"]
 SIM_ENV = {"prd-api-01": "prod", "prd-api-02": "prod", "prd-api-03": "prod", "db-01": "prod", "worker-01": "staging", "ml-01": "dev", "ml-02": "qa"}
 
 
-def simulate_batch(rng, n: int = 8, incident: bool = False) -> bytes:
-    """A small batch of realistic JSONL events; `incident` injects an error burst."""
+def simulate_batch(rng, n: int = 8, incident: bool = False, traces: bool = False) -> bytes:
+    """A small batch of realistic JSONL events; `incident` injects an error burst, `traces` adds multi-tier requests (APM demo)."""
     now = datetime.now(UTC)
     out = []
     for _ in range(n):
@@ -712,7 +712,49 @@ def simulate_batch(rng, n: int = 8, incident: bool = False) -> bytes:
                    "warn": f"cache miss ratio 0.{rng.randint(30, 45)} above 0.30",
                    "error": f"HTTP 500 upstream {rng.choice(SIM_SERVICES)} req={rng.randint(100000, 999999)}"}[lvl]
         out.append(json.dumps({"ts": now.isoformat(), "level": lvl, "service": svc, "host": host, "env": SIM_ENV.get(host, "prod"), "msg": msg}))
+    if traces:
+        out.extend(simulate_traces(rng, now, n=max(1, n // 3), incident=incident))
     return ("\n".join(out) + "\n").encode()
+
+
+SIM_FLOWS = [("POST", "/api/v1/checkout", ["checkout-api", "payment-api"]), ("GET", "/api/v1/search", ["search-api"]),
+             ("POST", "/api/v1/login", ["auth-api"]), ("GET", "/api/v1/orders/{n}", ["checkout-api"])]
+
+
+def simulate_traces(rng, now: datetime, n: int = 2, incident: bool = False) -> list[str]:
+    """Requests as their tiers would log them: gateway access line, each service's log with the same trace id and its own
+    duration, the database call; during an incident the database is slow and some calls fail."""
+    out = []
+    for _ in range(n):
+        method, path, chain = rng.choice(SIM_FLOWS)
+        path = path.replace("{n}", str(rng.randint(1000, 99999)))
+        tid = "%032x" % rng.getrandbits(128); root = "%016x" % rng.getrandbits(64)
+        slow_db = incident and rng.random() < 0.6
+        d_db = rng.uniform(800, 4000) if slow_db else rng.uniform(2, 25)
+        fail = slow_db and rng.random() < 0.4
+        durs, parent, t = [], root, now
+        inner = d_db
+        for svc in reversed(chain):
+            inner = inner + rng.uniform(3, 40)
+            durs.append((svc, inner))
+        durs.reverse()
+        gw = durs[0][1] + rng.uniform(1, 6)
+        host = rng.choice(SIM_HOSTS[:3])
+        st = 500 if fail else (201 if method == "POST" else 200)
+        out.append(json.dumps({"ts": t.isoformat(), "level": "error" if fail else "info", "service": "api-gateway", "host": host, "env": "prod",
+                               "msg": f"{method} {path} {st}", "trace_id": tid, "span_id": root, "duration_ms": round(gw, 1), "http.method": method,
+                               "http.status_code": st, "session_id": f"s{rng.randint(1, 40)}", "user.id": f"user{rng.randint(1, 60)}"}))
+        for i, (svc, d) in enumerate(durs):
+            sid = "%016x" % rng.getrandbits(64)
+            out.append(json.dumps({"ts": (t + timedelta(milliseconds=1 + i)).isoformat(), "level": "error" if fail and i == len(durs) - 1 else "info",
+                                   "service": svc, "host": host, "env": "prod", "msg": f"handled {method} {path}", "trace_id": tid, "span_id": sid,
+                                   "parent_span_id": parent, "duration_ms": round(d, 1), "span.kind": "server", "http.method": method, "http.route": path}))
+            parent = sid
+        last = durs[-1][0]
+        out.append(json.dumps({"ts": (t + timedelta(milliseconds=2 + len(durs))).isoformat(), "level": "error" if fail else ("warn" if slow_db else "info"),
+                               "service": last, "host": "db-01", "env": "prod", "msg": "Connection timeout to db-01 after 5000ms" if fail else "SELECT ... FROM orders WHERE id = ?",
+                               "trace_id": tid, "parent_span_id": parent, "duration_ms": round(d_db, 1), "db.system": "postgresql", "span.kind": "db"}))
+    return out
 
 
 def simulate_metrics(rng, state: dict, incident: bool = False) -> bytes:
@@ -746,7 +788,7 @@ def start_simulator(store: LiveStore, interval: float = 1.0, agent: str = "simul
         while not stop.is_set():
             tick += 1
             incident = 90 <= tick % 150 < 110
-            store.ingest("sim.jsonl", simulate_batch(rng, rng.randint(4, 12), incident), agent)
+            store.ingest("sim.jsonl", simulate_batch(rng, rng.randint(4, 12), incident, traces=True), agent)
             if tick % 5 == 1:
                 store.ingest("metrics.jsonl", simulate_metrics(rng, mstate, incident), agent)
             stop.wait(interval)

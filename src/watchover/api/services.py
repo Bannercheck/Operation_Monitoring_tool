@@ -44,6 +44,17 @@ def notify_channels() -> dict:
 
 
 class Services:
+    def _on_ingest(self, events) -> None:
+        """Every accepted live batch: service-level history rollups, then spans / RED metrics (each best effort on its own)."""
+        try:
+            self.history.add(events)
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            self.traces.add_events(events)
+        except Exception:  # noqa: BLE001
+            pass
+
     def __init__(self, background: bool | None = None):
         bg = (os.environ.get("WATCHOVER_API_BACKGROUND", "1") != "0") if background is None else background
         self.lang = wo_settings.load().get("lang", "tr") or "tr"
@@ -61,7 +72,10 @@ class Services:
         self.agents = AgentRegistry(self.kb)
         self.sources = SourceStore(self.kb)
         self.inventory = Inventory(self.kb); self.live.enricher = self.inventory.enrich
-        self.history = History(self.kb, retention_days=int(cfg0.get("history_retention_days", 400) or 400)); self.live.on_ingest = self.history.add
+        self.history = History(self.kb, retention_days=int(cfg0.get("history_retention_days", 400) or 400))
+        from ..traces import TraceStore
+        self.traces = TraceStore(self.kb, settings=wo_settings.load)     # spans and service rollups rebuilt from the same live events
+        self.live.on_ingest = self._on_ingest
         self.notifier = wo_notify.Notifier(self.kb, notify_channels)
         self.anomalies = wo_anomaly.AnomalyTracker(self.kb, self.live)
         from ..drain import TemplateStore

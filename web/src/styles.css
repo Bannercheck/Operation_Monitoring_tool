@@ -150,3 +150,18 @@ pre.code { background: #0b1220; border: 1px solid var(--line); border-radius: 10
 .chat-input { display: flex; gap: 6px; padding: 10px; border-top: 1px solid var(--line); background: var(--glass); }
 .light .chat-msg.bot { background: rgba(255, 255, 255, 0.8); } .light .chat-panel { background: #f6f8fb; }
 @media (max-width: 700px) { .chat-fab span { display: none; } .chat-fab { padding: 12px; } }
+/* APM: service dots, duration bars, stacked service-time bar, trace waterfall */
+.dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; vertical-align: middle; }
+.durbar { flex: 1; height: 8px; border-radius: 4px; background: rgba(148, 163, 184, 0.12); overflow: hidden; min-width: 60px; } .durbar > div { height: 100%; border-radius: 4px; }
+.stackbar { display: flex; height: 12px; border-radius: 6px; overflow: hidden; background: rgba(148, 163, 184, 0.12); } .stackbar > div { height: 100%; }
+.wf { display: flex; flex-direction: column; font-size: 12.5px; }
+.wf-axis { display: flex; justify-content: space-between; margin-left: 42%; padding: 0 64px 4px 0; color: var(--dim); font-size: 11px; border-bottom: 1px solid var(--line); }
+.wf-row { display: grid; grid-template-columns: 42% 1fr; align-items: center; min-height: 28px; border-bottom: 1px solid var(--line); cursor: pointer; }
+.wf-row:hover, .wf-row.on { background: rgba(96, 165, 250, 0.08); } .wf-row.err .wf-name b { color: var(--red); }
+.wf-name { display: flex; align-items: center; gap: 6px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; padding-right: 8px; } .wf-name .mono { overflow: hidden; text-overflow: ellipsis; }
+.wf-inf { color: var(--amber); font-weight: 800; margin-left: 2px; }
+.wf-track { position: relative; height: 28px; margin-right: 64px; }
+.wf-bar { position: absolute; top: 8px; height: 12px; border-radius: 3px; opacity: 0.9; } .wf-mark { position: absolute; top: 9px; width: 10px; height: 10px; border-radius: 50%; margin-left: -5px; }
+.wf-dur { position: absolute; right: -62px; top: 6px; width: 58px; text-align: right; color: var(--muted); font-size: 11px; }
+.kv { width: 100%; border-collapse: collapse; } .kv td { padding: 4px 6px; border-bottom: 1px solid var(--line); vertical-align: top; word-break: break-all; } .kv td:first-child { color: var(--muted); white-space: nowrap; width: 38%; word-break: normal; }
+.badge.blue { background: rgba(96, 165, 250, 0.18); color: #bfdbfe; }

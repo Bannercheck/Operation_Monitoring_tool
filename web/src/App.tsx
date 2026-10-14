@@ -22,6 +22,10 @@ import Assist from "./pages/Assist";
 import Llm from "./pages/Llm";
 import Itsm from "./pages/Itsm";
 import Readme from "./pages/Readme";
+import Services from "./pages/apm/Services";
+import ServiceDetail from "./pages/apm/ServiceDetail";
+import Traces from "./pages/apm/Traces";
+import TraceDetail from "./pages/apm/TraceDetail";
 
 export default function App() {
   const { user, ready, acceptToken } = useAuth();
@@ -53,6 +57,10 @@ export default function App() {
         <Route path="/users" element={<Users />} />
         <Route path="/system" element={<System />} />
         <Route path="/map" element={<MapPage />} />
+        <Route path="/services" element={<Services />} />
+        <Route path="/services/:name" element={<ServiceDetail />} />
+        <Route path="/traces" element={<Traces />} />
+        <Route path="/traces/:id" element={<TraceDetail />} />
         <Route path="/assist" element={<Assist />} />
         <Route path="/llm" element={<Llm />} />
         <Route path="/itsm" element={<Itsm />} />

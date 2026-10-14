@@ -31,6 +31,8 @@ Thumbs.db
 data/config.json
 data/versions/
 data/.vault.key
+data/.pseudo.key
+.pseudo.key
 data/self-agent.pid
 backups/
 datasets/

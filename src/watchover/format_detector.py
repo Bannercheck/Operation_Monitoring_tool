@@ -13,6 +13,7 @@ RFC5424_RE = re.compile(r"^<(?P<pri>\d+)>1 (?P<ts>\S+) (?P<host>\S+) (?P<app>\S+
 CEF_RE = re.compile(r"^(?:.*?\s)?(?:CEF:\d+\||LEEF:\d+(?:\.\d+)?\|)")
 CLF_RE = re.compile(r'^\S+ \S+ \S+ \[\d{2}/[A-Z][a-z]{2}/\d{4}:\d{2}:\d{2}:\d{2} [+\-]\d{4}\] "')
 ALB_RE = re.compile(r"^(?:https?|h2|ws|wss|tls|tcp) \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z \S+ ")
+ENVOY_RE = re.compile(r'^\[\d{4}-\d{2}-\d{2}T[\d:.]+Z?\] "[A-Z]+ \S+ [^"]*" (?:\d{3}|-) \S+ ')   # Envoy / Istio default access log
 WINEVT_RE = re.compile(r"^\s*<Event\b[^>]*xmlns=")
 W3C_RE = re.compile(r"^#Fields:\s")
 CRI_LINE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z (?:stdout|stderr) [FP] ")
@@ -61,7 +62,7 @@ def detect_format(text: str) -> tuple[str, float]:
     cef = sum(1 for ln in lines if CEF_RE.match(ln))
     if cef / len(lines) > 0.6:
         return "cef", round(cef / len(lines), 2)
-    acc = sum(1 for ln in lines if CLF_RE.match(ln) or ALB_RE.match(ln))
+    acc = sum(1 for ln in lines if CLF_RE.match(ln) or ALB_RE.match(ln) or ENVOY_RE.match(ln))
     if acc / len(lines) > 0.6:
         return "access", round(acc / len(lines), 2)
     if sum(1 for ln in lines if CRI_LINE_RE.match(ln)) / len(lines) > 0.6:                 # kubernetes container runtime: "ts stream F line"

@@ -128,6 +128,18 @@ class Database:
             self.conn.commit()
             return int(cur.lastrowid)
 
+    def executemany(self, sql: str, rows: list[tuple]) -> None:
+        """Bulk insert / update in one round trip per batch (spans, rollups): one statement, many parameter rows."""
+        if not rows:
+            return
+        with self._lock:
+            if self.pg:
+                with self.conn.cursor() as cur:
+                    cur.executemany(self._q(sql, rows[0]), rows)
+            else:
+                self.conn.executemany(sql, rows)
+                self.conn.commit()
+
     def upsert_suffix(self, conflict_cols: str, updates: str) -> str:
         """ON CONFLICT clause for INSERT ... (same syntax in both engines, SQLite needs the conflict target too)."""
         return f" ON CONFLICT({conflict_cols}) DO UPDATE SET {updates}"
