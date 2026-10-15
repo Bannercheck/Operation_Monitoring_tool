@@ -233,3 +233,106 @@ def test_edge_mdns_launchagent_and_reannounce(stage):
     r = subprocess.run(["bash", str(d / "watchover.sh"), "edge", "off"], cwd=d, env=env, capture_output=True, text=True, timeout=60)
     assert r.returncode == 0 and not (d / ".edge-mdns.pid").exists()
 
+
+
+
+def _tools(d, names, body):
+    for n in names:
+        f = d / "bin" / n; f.write_text("#!/usr/bin/env bash\n" + body); f.chmod(0o755)
+
+
+def test_mdns_follower_reannounces_when_the_address_changes(stage, tmp_path):
+    """The LaunchAgent runs a follower, not dns-sd with a fixed address: when the Mac moves to another network it announces the new
+    address within one poll (here 0.2 s) and writes it to the state file that doctor reads."""
+    d, env = stage
+    home = d / "home"; (home / "Library" / "LaunchAgents").mkdir(parents=True)
+    env = dict(env, HOME=str(home), WATCHOVER_MDNS_EVERY="0.2", IPFILE=str(d / "ip"))
+    (d / "ip").write_text("192.168.1.20")
+    _tools(d, ["dns-sd"], 'echo "dns-sd $*" >> "$FAKE_LOG"; sleep 30\n')
+    _tools(d, ["launchctl"], 'echo "launchctl $*" >> "$FAKE_LOG"; exit 0\n')
+    _tools(d, ["route"], 'echo "   interface: en7"\n')
+    _tools(d, ["ipconfig"], '[ "$2" = en7 ] && cat "$IPFILE"\n')
+    _tools(d, ["hostname"], 'exit 1\n')                                        # macOS: no 'hostname -I'
+    r = subprocess.run(["bash", str(d / "watchover.sh"), "edge", "on", "watchover.local"], cwd=d, env=env, capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stderr
+    plist = (home / "Library" / "LaunchAgents" / "local.watchover.mdns.watchover-local.plist").read_text()
+    follow = home / "Library" / "Application Support" / "Watchover" / "mdns-follow.sh"
+    assert "mdns-follow.sh" in plist and "<string>watchover.local</string>" in plist and follow.exists() and "192.168.1.20" in r.stdout   # en7 = USB-C Ethernet
+    state = home / "Library" / "Application Support" / "Watchover" / "local.watchover.mdns.watchover-local.ip"
+    p = subprocess.Popen(["bash", str(follow), "watchover.local", "443", str(state), str(d / "bin" / "dns-sd")], env=env, stdout=subprocess.PIPE, text=True)
+    try:
+        import time
+        for _ in range(50):
+            if state.exists() and state.read_text().strip() == "192.168.1.20":
+                break
+            time.sleep(0.1)
+        (d / "ip").write_text("10.20.30.40")                                    # the Mac joined another network
+        for _ in range(50):
+            if state.read_text().strip() == "10.20.30.40":
+                break
+            time.sleep(0.1)
+        assert state.read_text().strip() == "10.20.30.40"
+        log = (d / "calls.log").read_text()
+        assert "dns-sd -P watchover.local _https._tcp local 443 watchover.local 192.168.1.20" in log and "watchover.local 10.20.30.40" in log
+    finally:
+        p.terminate(); p.wait(timeout=5)
+
+
+def test_old_fixed_address_agent_is_replaced_on_start(stage):
+    """Installs from before the follower have a plist that runs dns-sd with a fixed address; start / update / upgrade replace it."""
+    d, env = stage
+    home = d / "home"; la = home / "Library" / "LaunchAgents"; la.mkdir(parents=True); env = dict(env, HOME=str(home))
+    _tools(d, ["dns-sd"], 'sleep 30\n'); _tools(d, ["launchctl"], 'echo "launchctl $*" >> "$FAKE_LOG"; exit 0\n')
+    (d / ".env").write_text("WATCHOVER_EDGE=1\nWATCHOVER_EDGE_HOST=watchover.local\nWATCHOVER_EDGE_HOSTS=watchover.local, 192.168.1.20\n")
+    old = la / "local.watchover.mdns.watchover-local.plist"
+    old.write_text("<plist><dict><key>ProgramArguments</key><array><string>/usr/bin/dns-sd</string><string>-P</string><string>192.168.1.20</string></array></dict></plist>")
+    r = run((d, env), "start")
+    assert r.returncode == 0, r.stderr
+    assert "mdns-follow.sh" in old.read_text() and "Bonjour: watchover.local" in r.stdout
+
+
+def test_linux_announcement_follows_the_address(stage):
+    d, env = stage
+    _tools(d, ["dns-sd"], 'sleep 30\n')
+    (d / ".env").write_text("WATCHOVER_EDGE=1\nWATCHOVER_EDGE_HOST=watchover.local\n")
+    p = subprocess.Popen(["sleep", "30"]); (d / ".edge-mdns.pid").write_text(f"{p.pid}\n"); (d / ".edge-mdns.ip").write_text("10.9.9.9\n")
+    try:
+        r = run(stage, "start")
+        assert r.returncode == 0 and "Bonjour: watchover.local" in r.stdout                  # alive but on an old address: re-announced
+        assert (d / ".edge-mdns.ip").read_text().strip() != "10.9.9.9"
+    finally:
+        p.kill()
+    subprocess.run(["bash", str(d / "watchover.sh"), "edge", "off"], cwd=d, env=env, capture_output=True, text=True, timeout=60)
+
+
+DOCTOR_DOCKER = r"""echo "docker $*" >> "$FAKE_LOG"
+case "$1 $2" in
+  "compose version") echo "Docker Compose version v2.29" ;;
+  "info --format") case "$3" in *NCPU*) echo 10 ;; *MemTotal*) echo 17179869184 ;; esac ;;
+esac
+[[ "$*" == *" ps --format"* ]] && printf 'dashboard running healthy\npostgres running healthy\nreceiver running \nedge running \n'
+case "" in
+  "info --format") case "$3" in *NCPU*) echo 10 ;; *MemTotal*) echo 17179869184 ;; esac ;;
+esac
+exit 0
+"""
+
+
+def test_doctor_checks_and_repairs(stage):
+    d, env = stage
+    (d / "bin" / "docker").write_text("#!/usr/bin/env bash\n" + DOCTOR_DOCKER)
+    ip = subprocess.run(["bash", "-c", "hostname -I | awk '{print $1}'"], capture_output=True, text=True).stdout.strip() or "localhost"
+    _tools(d, ["dns-sd"], 'sleep 30\n')
+    _tools(d, ["curl"], 'echo "curl $*" >> "$FAKE_LOG"; [[ "$*" == *--resolve* ]] && printf 200 || printf 000\n')
+    (d / ".env").write_text("WATCHOVER_EDGE=1\nWATCHOVER_EDGE_HOST=watchover.local\nWATCHOVER_EDGE_HTTPS_PORT=443\n")
+    _tools(d, ["getent"], 'exit 2\n')                                          # the name does not resolve
+    r = run(stage, "doctor")
+    assert r.returncode == 1 and "container receiver is up" in r.stdout and "container dashboard is up" in r.stdout and "edge answers https://watchover.local:443" in r.stdout
+    assert "watchover.local resolves to nothing" in r.stdout and "Bonjour: watchover.local" in r.stdout and "mDNSResponder" in r.stdout   # re-announced + hint
+    _tools(d, ["getent"], f'echo "{ip} watchover.local"\n')
+    r = run(stage, "doctor", "--check")
+    assert r.returncode == 0, r.stdout
+    assert f"watchover.local resolves to {ip} (this machine)" in r.stdout and "all good: https://watchover.local" in r.stdout
+    r = run(stage, "help-me")
+    assert "doctor [--check]" in r.stdout and "unbundle FILE" in r.stdout                  # usage lists every command
+    subprocess.run(["bash", str(d / "watchover.sh"), "edge", "off"], cwd=d, env=env, capture_output=True, text=True, timeout=60)

@@ -379,7 +379,7 @@ curl -s http://&lt;sunucu&gt;:8000/api/anomalies -H &quot;Authorization: Bearer 
 ./watchover.sh edge cert                  # Caddy'nin kök sertifikası -&gt; ./certs/watchover-root.crt (meslektaşlar bir kez kurar)
 ./watchover.sh status
 </code></pre>
-<p>Meslektaşlar <code>https://watchover.local</code> yazar. <code>.local</code> adları Mac, iPhone / iPad ve Windows 10+ makinelerde ek kurulum olmadan çözülür (mDNS / Bonjour); Linux'ta <code>avahi-daemon</code> gerekir. Ad yerine ya da adla birlikte IP de verilebilir: <code>edge on watchover.local,192.168.1.107</code>; IP her durumda sertifikaya eklenir, <code>https://192.168.1.107</code> de çalışır. Duyuru bir LaunchAgent olarak kurulur (<code>~/Library/LaunchAgents/local.watchover.mdns.*.plist</code>): Mac yeniden başlasa, oturum kapansa ya da <code>update</code> çalışsa da sürer; <code>edge off</code> kaldırır. Mac'in IP'si değişirse (DHCP) <code>./watchover.sh edge on watchover.local</code> bir kez daha çalıştırılır. launchd olmayan sistemlerde duyuru arka plan süreci olarak çalışır ve <code>install</code> / <code>update</code> / <code>start</code> kaybolduysa yeniden açar.</p>
+<p>Meslektaşlar <code>https://watchover.local</code> yazar. <code>.local</code> adları Mac, iPhone / iPad ve Windows 10+ makinelerde ek kurulum olmadan çözülür (mDNS / Bonjour); Linux'ta <code>avahi-daemon</code> gerekir. Ad yerine ya da adla birlikte IP de verilebilir: <code>edge on watchover.local,192.168.1.107</code>; IP her durumda sertifikaya eklenir, <code>https://192.168.1.107</code> de çalışır. Duyuru bir LaunchAgent olarak kurulur (<code>~/Library/LaunchAgents/local.watchover.mdns.*.plist</code>): Mac yeniden başlasa, oturum kapansa ya da <code>update</code> çalışsa da sürer; <code>edge off</code> kaldırır. v1.42.1'den beri duyuruyu küçük bir izleyici yapar: Mac başka bir ağa geçtiğinde (Wi-Fi değişimi, yeni DHCP adresi, uykudan uyanma, USB-C Ethernet) 15 saniye içinde yeni adresi duyurur; elle bir şey yapmak gerekmez. Eski kurulumlardaki sabit adresli kayıt <code>upgrade</code> / <code>start</code> ile kendiliğinden yenilenir. launchd olmayan sistemlerde duyuru arka plan süreci olarak çalışır ve <code>install</code> / <code>update</code> / <code>start</code> kaybolduysa yeniden açar.</p>
 <p>Sonra:</p>
 <ol>
 <li><strong>Sabit adres.</strong> Şirket DNS'i varsa BT'den <code>watchover.sirket.com</code> gibi bir A kaydı isteyip <code>./watchover.sh edge on watchover.sirket.com</code> demek en kalıcısıdır (Google girişi de yalnız gerçek alan adıyla çalışır). Bonjour adı yoksa ve IP ile giriliyorsa yönlendiricide Mac'e sabit IP ayırın.</li>
@@ -438,6 +438,10 @@ unzip -q watchover.zip &amp;&amp; mv hackathon watchover &amp;&amp; cd watchover
 <tr>
 <td>Tarayıcı bağlanamıyor</td>
 <td><code>./watchover.sh status</code> (healthy?), <code>ss -ltnp \| grep 8501</code>, güvenlik duvarı; uzak sunucuda <code>localhost</code> değil sunucu IP'si</td>
+</tr>
+<tr>
+<td><code>https://watchover.local</code> açılmıyor</td>
+<td><code>./watchover.sh doctor</code>: konteynerleri, edge'in bu makinede yanıt verip vermediğini ve adın bu makinenin IP'sine çözülüp çözülmediğini sırayla dener, kapalı konteyneri açar, eski adresli Bonjour kaydını yeniler (<code>--check</code> yalnız rapor). Hâlâ açılmıyorsa Mac'in DNS önbelleği: <code>sudo dscacheutil -flushcache; sudo killall -HUP mDNSResponder</code>; ağda adı başka bir cihaz duyuruyorsa <code>dns-sd -G v4 watchover.local</code> kimin yanıt verdiğini gösterir</td>
 </tr>
 <tr>
 <td>Port çakışması</td>

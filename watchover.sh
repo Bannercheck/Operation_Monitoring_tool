@@ -10,6 +10,7 @@
 #   ./watchover.sh edge on NAME     Caddy in front: https://NAME for the company network (TLS from Caddy's CA, or ./certs/watchover.crt+key);
 #                                   NAME may be a DNS name, an IP or a Bonjour name like watchover.local (announced by the Mac itself)
 #   ./watchover.sh edge off|cert    stop it | export the CA root certificate colleagues install once (./certs/watchover-root.crt)
+#   ./watchover.sh doctor [--check] the address does not open? checks containers, the edge, the name (Bonjour) and repairs what it can
 #   ./watchover.sh backup [--keep N] PostgreSQL dump + data volume -> ./backups/watchover-YYYYMMDD-HHMM.tgz (oldest beyond N=14 removed)
 #   ./watchover.sh restore FILE     bring a backup back (containers are stopped meanwhile)
 #   ./watchover.sh user ...         account management, e.g.  user list | user add ops@firma.com --admin | user password EMAIL | user unlock EMAIL
@@ -36,7 +37,16 @@ version() { sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml | head -1; }
 git_rev() { (git rev-parse --short HEAD 2>/dev/null) || echo "-"; }
 env_get() { sed -n "s/^$1=//p" "$ENV_FILE" 2>/dev/null | head -1 | sed 's/[[:space:]]*#.*$//; s/[[:space:]]*$//'; }   # inline comments and trailing blanks dropped
 env_set() { if grep -q "^$1=" "$ENV_FILE" 2>/dev/null; then sed -i.bak "s|^$1=.*|$1=$2|" "$ENV_FILE" && rm -f "$ENV_FILE.bak"; else printf '%s=%s\n' "$1" "$2" >> "$ENV_FILE"; fi; }
-host_ip() { local ip; ip=$(hostname -I 2>/dev/null | awk '{print $1}'); [ -n "$ip" ] || ip=$(ipconfig getifaddr en0 2>/dev/null); [ -n "$ip" ] || ip=$(ipconfig getifaddr en1 2>/dev/null); echo "${ip:-localhost}"; }   # Linux, then macOS (Wi-Fi / Ethernet)
+# this machine's LAN address: Linux 'hostname -I'; macOS the interface of the default route (Wi-Fi, Ethernet or a USB-C adapter), never a
+# VPN tunnel (colleagues on the LAN cannot reach a utun address), then en0 / en1
+host_ip() {
+  local ip if_; ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+  if [ -z "$ip" ] && command -v route >/dev/null 2>&1; then
+    if_=$(route -n get default 2>/dev/null | awk '/interface:/{print $2}')
+    case "$if_" in utun*|ppp*|ipsec*|gif*|"") ;; *) ip=$(ipconfig getifaddr "$if_" 2>/dev/null) ;; esac
+  fi
+  [ -n "$ip" ] || ip=$(ipconfig getifaddr en0 2>/dev/null); [ -n "$ip" ] || ip=$(ipconfig getifaddr en1 2>/dev/null); echo "${ip:-localhost}"
+}
 
 # sizing follows the machine: every CPU Docker can see and most of its memory, as caps (not reservations) - 10 on a laptop,
 # 32 or 64 on a server. Written on every install/update/start unless WATCHOVER_SIZING=manual keeps your own numbers.
@@ -91,51 +101,150 @@ profiles() { local p=""; [ "$(env_get WATCHOVER_MCP)" = "1" ] && p="$p --profile
 # With launchd available the record is a LaunchAgent (KeepAlive: survives logout, reboot and 'update'); otherwise a nohup process
 # whose pid is kept in .edge-mdns.pid and re-created by up() when it is gone.
 mdns_label() { echo "local.watchover.mdns.$(echo "$1" | tr -c 'A-Za-z0-9\n' '-')"; }
+mdns_dir() { echo "$HOME/Library/Application Support/Watchover"; }
+# The follower the LaunchAgent runs: announces NAME with the Mac's current LAN address and re-announces within 15 s when that address
+# changes (another Wi-Fi, a new DHCP lease, waking from sleep, a dock / USB-C Ethernet). A fixed address in the plist was why
+# watchover.local stopped resolving after the Mac moved networks. The address in use is kept in <dir>/<label>.ip for 'doctor'.
+mdns_follower() {
+  cat <<'SH'
+#!/bin/bash
+# watchover mdns-follow: keep NAME announced on Bonjour with this Mac's current LAN address
+NAME="$1"; PORT="${2:-443}"; STATE="$3"; DNSSD="${4:-dns-sd}"
+ip_now() {
+  local if_ ip; if_=$(route -n get default 2>/dev/null | awk '/interface:/{print $2}')
+  case "$if_" in utun*|ppp*|ipsec*|gif*|"") ;; *) ip=$(ipconfig getifaddr "$if_" 2>/dev/null) ;; esac
+  [ -n "$ip" ] || ip=$(ipconfig getifaddr en0 2>/dev/null); [ -n "$ip" ] || ip=$(ipconfig getifaddr en1 2>/dev/null); echo "$ip"
+}
+pid=""; cur=""
+trap '[ -n "$pid" ] && kill "$pid" 2>/dev/null; exit 0' TERM INT
+while :; do
+  ip=$(ip_now)
+  if [ -n "$ip" ] && { [ "$ip" != "$cur" ] || [ -z "$pid" ] || ! kill -0 "$pid" 2>/dev/null; }; then
+    [ -n "$pid" ] && kill "$pid" 2>/dev/null && sleep 1
+    "$DNSSD" -P "$NAME" _https._tcp local "$PORT" "$NAME" "$ip" >/dev/null 2>&1 &
+    pid=$!; cur="$ip"; [ -n "$STATE" ] && echo "$ip" > "$STATE"
+    echo "$(date '+%F %T') $NAME -> $ip"
+  fi
+  sleep "${WATCHOVER_MDNS_EVERY:-15}"
+done
+SH
+}
 mdns_start() {
   mdns_stop
   command -v dns-sd >/dev/null 2>&1 || return 0
-  local n ip; ip=$(host_ip)
+  local n ip port; ip=$(host_ip); port=$(env_get WATCHOVER_EDGE_HTTPS_PORT); port="${port:-443}"
   for n in $(echo "$1" | tr ',' ' '); do
     case "$n" in *.local)
       if command -v launchctl >/dev/null 2>&1 && [ -n "${HOME:-}" ]; then
-        local plist="$HOME/Library/LaunchAgents/$(mdns_label "$n").plist"; mkdir -p "$HOME/Library/LaunchAgents"
+        local label dir plist; label=$(mdns_label "$n"); dir=$(mdns_dir); plist="$HOME/Library/LaunchAgents/$label.plist"
+        mkdir -p "$HOME/Library/LaunchAgents" "$dir" "$HOME/Library/Logs"
+        mdns_follower > "$dir/mdns-follow.sh"; chmod 755 "$dir/mdns-follow.sh"
         cat > "$plist" <<PL
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-  <key>Label</key><string>$(mdns_label "$n")</string>
-  <key>ProgramArguments</key><array><string>$(command -v dns-sd)</string><string>-P</string><string>$n</string><string>_https._tcp</string><string>local</string><string>443</string><string>$n</string><string>$ip</string></array>
+  <key>Label</key><string>$label</string>
+  <key>ProgramArguments</key><array><string>/bin/bash</string><string>$dir/mdns-follow.sh</string><string>$n</string><string>$port</string><string>$dir/$label.ip</string><string>$(command -v dns-sd)</string></array>
   <key>RunAtLoad</key><true/><key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>$HOME/Library/Logs/watchover-mdns.log</string><key>StandardErrorPath</key><string>$HOME/Library/Logs/watchover-mdns.log</string>
 </dict></plist>
 PL
-        launchctl unload "$plist" >/dev/null 2>&1 || true; launchctl load "$plist" >/dev/null 2>&1 || true
-        say "Bonjour: $n -> $ip announced by a LaunchAgent ($plist): stays after reboot and update; run 'edge on' again if this Mac's IP changes"
+        launchctl unload "$plist" >/dev/null 2>&1 || true; launchctl load -w "$plist" >/dev/null 2>&1 || true
+        say "Bonjour: $n -> $ip announced by a LaunchAgent ($plist); it follows this Mac's address when the network changes and stays after reboot and update"
       else
-        nohup dns-sd -P "$n" _https._tcp local 443 "$n" "$ip" >/dev/null 2>&1 &
+        nohup dns-sd -P "$n" _https._tcp local "$port" "$n" "$ip" >/dev/null 2>&1 &
         echo $! >> .edge-mdns.pid
-        say "Bonjour: $n -> $ip announced (dns-sd; re-created by install/update/start, lost on reboot: run 'edge on' again)"
+        echo "$ip" > .edge-mdns.ip
+        say "Bonjour: $n -> $ip announced (dns-sd; re-created by install/update/start and when the address changes, lost on reboot: run 'edge on' again)"
       fi ;;
     esac
   done
 }
-# the announcement is missing (reboot, killed) while the edge is on with a .local name: bring it back. Called by up().
+mdns_hosts() { local h; h="$(env_get WATCHOVER_EDGE_HOSTS | tr -d ' ')"; echo "${h:-$(env_get WATCHOVER_EDGE_HOST)}"; }
+# the announcement is missing, old (a fixed address from before v1.43), not loaded, or (no launchd) dead / on a stale address while the
+# edge is on with a .local name: bring it back. Called by up(), so install, update, upgrade and start all heal it.
 mdns_ensure() {
   [ "$(env_get WATCHOVER_EDGE)" = "1" ] || return 0
   command -v dns-sd >/dev/null 2>&1 || return 0
-  local hosts n alive=1; hosts="$(env_get WATCHOVER_EDGE_HOSTS | tr -d ' ')"; hosts="${hosts:-$(env_get WATCHOVER_EDGE_HOST)}"
+  local hosts n alive=1 plist; hosts="$(mdns_hosts)"
   case "$hosts" in *.local*) ;; *) return 0 ;; esac
   if command -v launchctl >/dev/null 2>&1 && [ -n "${HOME:-}" ]; then
-    for n in $(echo "$hosts" | tr ',' ' '); do case "$n" in *.local) [ -f "$HOME/Library/LaunchAgents/$(mdns_label "$n").plist" ] || alive=0 ;; esac; done
+    for n in $(echo "$hosts" | tr ',' ' '); do case "$n" in *.local)
+      plist="$HOME/Library/LaunchAgents/$(mdns_label "$n").plist"
+      if [ ! -f "$plist" ] || ! grep -q "mdns-follow.sh" "$plist" || [ ! -f "$(mdns_dir)/mdns-follow.sh" ]; then alive=0
+      elif ! launchctl list "$(mdns_label "$n")" >/dev/null 2>&1; then launchctl load -w "$plist" >/dev/null 2>&1 || alive=0; fi ;;
+    esac; done
   else
     alive=0; if [ -f .edge-mdns.pid ]; then alive=1; while read -r pid; do kill -0 "$pid" 2>/dev/null || alive=0; done < .edge-mdns.pid; fi
+    [ "$(cat .edge-mdns.ip 2>/dev/null)" = "$(host_ip)" ] || alive=0
   fi
   [ "$alive" = 1 ] || mdns_start "$hosts"
 }
 mdns_stop() {
-  if [ -f .edge-mdns.pid ]; then while read -r pid; do kill "$pid" 2>/dev/null || true; done < .edge-mdns.pid; rm -f .edge-mdns.pid; fi
+  if [ -f .edge-mdns.pid ]; then while read -r pid; do kill "$pid" 2>/dev/null || true; done < .edge-mdns.pid; rm -f .edge-mdns.pid .edge-mdns.ip; fi
   if command -v launchctl >/dev/null 2>&1 && [ -n "${HOME:-}" ]; then
     local f; for f in "$HOME"/Library/LaunchAgents/local.watchover.mdns.*.plist; do [ -f "$f" ] || continue; launchctl unload "$f" >/dev/null 2>&1 || true; rm -f "$f"; done
   fi
+}
+# the address a .local name resolves to right now (macOS: the system resolver, which asks mDNS; Linux: getent / avahi)
+resolve_ip() {
+  local ip=""
+  if command -v dscacheutil >/dev/null 2>&1; then ip=$(dscacheutil -q host -a name "$1" 2>/dev/null | awk '/ip_address:/{print $2; exit}' || true); fi
+  [ -n "$ip" ] || ip=$(getent hosts "$1" 2>/dev/null | awk '{print $1; exit}' || true)
+  [ -n "$ip" ] || { command -v avahi-resolve >/dev/null 2>&1 && ip=$(avahi-resolve -4 -n "$1" 2>/dev/null | awk '{print $2; exit}' || true); }
+  echo "$ip"; return 0
+}
+# doctor: walk the path a browser takes to https://NAME and repair what is safe to repair (containers, Bonjour, the edge);
+# --check only reports. Exit status 0 when the address answers at the end.
+doctor() {
+  local fix=1 bad=0 host port ip ann res svc st code; [ "${1:-}" = "--check" ] && fix=0
+  ok() { printf '  \033[32m✓\033[0m %s\n' "$*"; }
+  no() { printf '  \033[31m✗\033[0m %s\n' "$*"; bad=1; }
+  hint() { printf '      → %s\n' "$*"; }
+  say "Watchover v$(version) doctor$( [ $fix = 0 ] && echo ' (check only)')"
+  ip=$(host_ip); ok "this machine's LAN address: $ip"
+  # 1. containers
+  local want missing=""; want="dashboard postgres receiver$( [ "$(env_get WATCHOVER_EDGE)" = "1" ] && echo ' edge')"
+  svc_up() { echo "$st" | grep -Eq "^$1 running( healthy| starting)? *\$"; }      # running and not unhealthy
+  st=$($COMPOSE $(profiles) ps --format '{{.Service}} {{.State}} {{.Health}}' 2>/dev/null || true)
+  for svc in $want; do svc_up "$svc" || missing="$missing $svc"; done
+  if [ -n "$missing" ] && [ $fix = 1 ]; then
+    up >/dev/null 2>&1 || true; sleep 8; st=$($COMPOSE $(profiles) ps --format '{{.Service}} {{.State}} {{.Health}}' 2>/dev/null || true)
+  fi
+  for svc in $want; do
+    if svc_up "$svc"; then case " $missing " in *" $svc "*) ok "container $svc was down: started again" ;; *) ok "container $svc is up" ;; esac
+    else no "container $svc is not running ($(echo "$st" | awk -v s="$svc" '$1 == s { $1 = ""; print; f = 1 } END { if (!f) print "missing" }' | sed 's/^ //'))"
+         hint "./watchover.sh logs $svc   shows why"; fi
+  done
+  if [ "$(env_get WATCHOVER_EDGE)" != "1" ]; then
+    hint "the edge is off: the address is http://$ip:$(env_get WATCHOVER_UI_PORT || echo 8501)   (for https://watchover.local: ./watchover.sh edge on watchover.local)"
+    return $bad
+  fi
+  host=$(env_get WATCHOVER_EDGE_HOST); port=$(env_get WATCHOVER_EDGE_HTTPS_PORT); port="${port:-443}"
+  # 2. the edge answers on this machine (name pinned to 127.0.0.1, so DNS / Bonjour play no part)
+  code=$(curl -sk -o /dev/null -w '%{http_code}' --max-time 6 --resolve "$host:$port:127.0.0.1" "https://$host:$port/api/health" 2>/dev/null || true)
+  if [ "$code" = "200" ]; then ok "the edge answers https://$host:$port on this machine"
+  else
+    no "the edge does not answer on this machine (HTTP ${code:-none})"
+    if [ $fix = 1 ]; then $COMPOSE $(profiles) up -d --force-recreate dashboard edge >/dev/null 2>&1 || true; sleep 5
+      code=$(curl -sk -o /dev/null -w '%{http_code}' --max-time 6 --resolve "$host:$port:127.0.0.1" "https://$host:$port/api/health" 2>/dev/null || true)
+      [ "$code" = "200" ] && ok "after recreating dashboard + edge it answers" || hint "still not answering: ./watchover.sh logs edge   and   ./watchover.sh logs dashboard"; fi
+  fi
+  # 3. the name resolves to this machine
+  case "$host" in *.local)
+    ann=$(cat "$(mdns_dir)/$(mdns_label "$host").ip" 2>/dev/null || cat .edge-mdns.ip 2>/dev/null || true)
+    res=$(resolve_ip "$host")
+    if [ -n "$res" ] && [ "$res" = "$ip" ]; then ok "$host resolves to $res (this machine)"
+    else
+      no "$host resolves to ${res:-nothing}, this machine is $ip${ann:+ (announced: $ann)}"
+      if [ $fix = 1 ]; then mdns_start "$(mdns_hosts)" || true; sleep 3; res=$(resolve_ip "$host")
+        if [ "$res" = "$ip" ]; then ok "re-announced: $host -> $ip"; bad=0
+        else hint "announced again; if the browser still fails, clear the Mac's DNS cache: sudo dscacheutil -flushcache; sudo killall -HUP mDNSResponder"
+             hint "another device on the network may claim $host: dns-sd -G v4 $host   lists who answers"; fi; fi
+    fi ;;
+  esac
+  [ $bad = 0 ] && say "all good: $(edge_url)" || say "problems remain (see above); run './watchover.sh doctor' again after the hints"
+  return $bad
 }
 edge_url() { local h p; h=$(env_get WATCHOVER_EDGE_HOST); p=$(env_get WATCHOVER_EDGE_HTTPS_PORT || echo 443); [ "$p" = "443" ] && echo "https://$h" || echo "https://$h:$p"; }
 up() { $COMPOSE $(profiles) up -d --remove-orphans; mdns_ensure; }
@@ -188,6 +297,7 @@ case "${1:-}" in
     say "source tree now v$(version) ($(git_rev)); rebuilding"
     exec bash "$0" update ;;
   start)   need_docker; write_env; up; $COMPOSE ps ;;
+  doctor)  need_docker; doctor "${2:-}" ;;
   stop)    need_docker; $COMPOSE $(profiles) stop ;;
   restart) need_docker; $COMPOSE $(profiles) restart "${2:-}" ;;
   status)  need_docker; $COMPOSE $(profiles) ps; docker stats --no-stream $($COMPOSE $(profiles) ps -q) 2>/dev/null || true ;;
@@ -343,5 +453,5 @@ case "${1:-}" in
     say "offline install marked (.env WATCHOVER_OFFLINE=1: install/update never build, llm on never downloads). Next:  ./watchover.sh install   then  ./watchover.sh llm on  if the bundle carried Ollama models" ;;
   shell)   need_docker; $COMPOSE exec dashboard bash ;;
   version) echo "Watchover v$(version) ($(git_rev))" ;;
-  *) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+  *) awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0"; exit 1 ;;
 esac

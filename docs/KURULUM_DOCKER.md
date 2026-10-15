@@ -255,7 +255,7 @@ cd ~/watchover-docker
 ./watchover.sh status
 ```
 
-Meslektaşlar `https://watchover.local` yazar. `.local` adları Mac, iPhone / iPad ve Windows 10+ makinelerde ek kurulum olmadan çözülür (mDNS / Bonjour); Linux'ta `avahi-daemon` gerekir. Ad yerine ya da adla birlikte IP de verilebilir: `edge on watchover.local,192.168.1.107`; IP her durumda sertifikaya eklenir, `https://192.168.1.107` de çalışır. Duyuru bir LaunchAgent olarak kurulur (`~/Library/LaunchAgents/local.watchover.mdns.*.plist`): Mac yeniden başlasa, oturum kapansa ya da `update` çalışsa da sürer; `edge off` kaldırır. Mac'in IP'si değişirse (DHCP) `./watchover.sh edge on watchover.local` bir kez daha çalıştırılır. launchd olmayan sistemlerde duyuru arka plan süreci olarak çalışır ve `install` / `update` / `start` kaybolduysa yeniden açar.
+Meslektaşlar `https://watchover.local` yazar. `.local` adları Mac, iPhone / iPad ve Windows 10+ makinelerde ek kurulum olmadan çözülür (mDNS / Bonjour); Linux'ta `avahi-daemon` gerekir. Ad yerine ya da adla birlikte IP de verilebilir: `edge on watchover.local,192.168.1.107`; IP her durumda sertifikaya eklenir, `https://192.168.1.107` de çalışır. Duyuru bir LaunchAgent olarak kurulur (`~/Library/LaunchAgents/local.watchover.mdns.*.plist`): Mac yeniden başlasa, oturum kapansa ya da `update` çalışsa da sürer; `edge off` kaldırır. v1.42.1'den beri duyuruyu küçük bir izleyici yapar: Mac başka bir ağa geçtiğinde (Wi-Fi değişimi, yeni DHCP adresi, uykudan uyanma, USB-C Ethernet) 15 saniye içinde yeni adresi duyurur; elle bir şey yapmak gerekmez. Eski kurulumlardaki sabit adresli kayıt `upgrade` / `start` ile kendiliğinden yenilenir. launchd olmayan sistemlerde duyuru arka plan süreci olarak çalışır ve `install` / `update` / `start` kaybolduysa yeniden açar.
 
 Sonra:
 
@@ -326,6 +326,7 @@ Gecelik yedek: `crontab -e` → `0 2 * * * cd /home/kullanici/watchover && ./wat
 | `Docker is not installed / not reachable` | Bölüm 1; `sudo systemctl start docker`; kullanıcı `docker` grubunda mı (`groups`) |
 | Derleme `pip` adımında takılıyor | Sunucunun PyPI'ye çıkışı yok: bölüm 9 (imajı başka makinede derleyip taşıyın) ya da şirket proxy'sini Docker'a tanıtın |
 | Tarayıcı bağlanamıyor | `./watchover.sh status` (healthy?), `ss -ltnp \| grep 8501`, güvenlik duvarı; uzak sunucuda `localhost` değil sunucu IP'si |
+| `https://watchover.local` açılmıyor | `./watchover.sh doctor`: konteynerleri, edge'in bu makinede yanıt verip vermediğini ve adın bu makinenin IP'sine çözülüp çözülmediğini sırayla dener, kapalı konteyneri açar, eski adresli Bonjour kaydını yeniler (`--check` yalnız rapor). Hâlâ açılmıyorsa Mac'in DNS önbelleği: `sudo dscacheutil -flushcache; sudo killall -HUP mDNSResponder`; ağda adı başka bir cihaz duyuruyorsa `dns-sd -G v4 watchover.local` kimin yanıt verdiğini gösterir |
 | Port çakışması | `.env` içinde `WATCHOVER_UI_PORT` / `WATCHOVER_LIVE_PORT` / `WATCHOVER_PG_PORT` |
 | `unhealthy` | `./watchover.sh logs dashboard`; bellek sınırı düşükse `WATCHOVER_MEMORY` |
 | `password authentication failed` | `.env` parolası birim oluşturulduktan sonra değişti: bölüm 6'daki `ALTER USER` |
