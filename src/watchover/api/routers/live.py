@@ -33,7 +33,8 @@ def _hp(svc, sc, host: str | None, pool: str | None):
         return _h(sc, host)
     want = {p.strip() for p in pool.split(",") if p.strip()}
     r = svc.live.rollup
-    hs = tuple(sorted(h for h in list(r.hosts) if r.pool_of(h) in want))
+    known = set(r.hosts) | set(svc.live.hosts())                 # hosts that send only metrics (no log lines yet) belong to their pool too
+    hs = tuple(sorted(h for h in known if r.pool_of(h) in want))
     asked = host_(host)
     if asked is not None:
         asked = (asked,) if isinstance(asked, str) else asked

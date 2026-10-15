@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
-import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
-import { LogOut, Menu, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { ArrowLeft, LogOut, Menu, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { HubTabs, inHub, useNav, type Hub } from "./HubTabs";
 import { useAuth } from "../auth";
 import { useT } from "../i18n";
@@ -38,6 +38,7 @@ export default function Layout() {
       <main className="main">
         <div className="topbar">
           <Btn kind="ghost menu-btn" sm onClick={() => setOpen((o) => !o)}><Menu size={18} /></Btn>
+          <BackButton />
           <HubTabs />
           <div className="grow" />
           <ScopeBadge />
@@ -95,4 +96,18 @@ function VersionTag() {
   if (v && first.current === null) first.current = v;
   if (v && first.current && v !== first.current) return <button className="btn sm primary ver-new" onClick={() => window.location.reload()}>{t("ver_new", { v })}</button>;
   return v ? <div className="ver dim small" title={t("ver_tip")}>Watchover v{v}</div> : null;
+}
+
+/** "Geri" on every page: the previous screen inside the app (browser history), or, when the page was opened directly (a shared
+ *  link, a new tab), its parent: a detail page goes to its list (/services/x -> /services), a list goes to the dashboards. */
+function BackButton() {
+  const { t } = useT(); const nav = useNavigate(); const { pathname } = useLocation();
+  const idx = (window.history.state as any)?.idx ?? 0;
+  if (pathname === "/ops" && idx === 0) return null;
+  const back = () => {
+    if (idx > 0) { nav(-1); return; }
+    const parts = pathname.split("/").filter(Boolean);
+    nav(parts.length > 1 ? `/${parts[0]}` : "/ops");
+  };
+  return <Btn kind="ghost back-btn" sm onClick={back} title={t("nav_back")}><ArrowLeft size={16} /><span className="back-l">{t("nav_back")}</span></Btn>;
 }

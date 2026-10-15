@@ -1,4 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
+import { useAuth } from "../../auth";
+import { HostTail } from "./HostTail";
+import { HostAlarms } from "./HostAlarms";
 import { useNavigate } from "react-router-dom";
 import { Crosshair, Gauge, Server } from "lucide-react";
 import { get } from "../../api";
@@ -38,14 +41,14 @@ const UNIT: Record<string, string> = { cpu: "%", memory: "%", disk: "%", gpu: "%
  *  lines. "Focus" narrows the whole screen to it; "Set level" opens the thresholds page for it. */
 export function HostDetail({ host, base, row, span, onClose, onFocus, focused, onLogs, onZoom }: { host: string; base: string; row?: any; span: number; onClose: () => void;
   onFocus: (h: string) => void; focused: boolean; onLogs: (f: any) => void; onZoom: (t: number, stepMin: number) => void }) {
-  const { t, lang } = useT(); const nav = useNavigate();
+  const { t, lang } = useT(); const nav = useNavigate(); const { can } = useAuth();
   const rq = `${base}&host=${encodeURIComponent(host)}`; const live = base.includes("last=");
   const sum = useQuery({ queryKey: ["hd-sum", rq], queryFn: () => get(`/live/range/summary?${rq}`), refetchInterval: live ? 10000 : false });
   const thr = useQuery({ queryKey: ["thr-ov"], queryFn: () => get("/thresholds/overview"), refetchInterval: 30000 });
   const grp = useQuery({ queryKey: ["hd-grp", rq], queryFn: () => get(`/live/range/groups?${rq}&severity=ERROR&limit=6`), refetchInterval: live ? 15000 : false });
   const det = useQuery({ queryKey: ["range-detail", rq], queryFn: () => get(`/live/range/detail?${rq}`), refetchInterval: live ? 15000 : false });
   const ses = useQuery({ queryKey: ["hd-ses", rq], queryFn: () => get(`/live/range/sessions?${rq}&limit=8`), refetchInterval: live ? 15000 : false });
-  const logs = useQuery({ queryKey: ["hd-logs", rq], queryFn: () => get(`/live/range/logs?${rq}&limit=15`), refetchInterval: live ? 10000 : false });
+  const logs = useQuery({ queryKey: ["hd-logs", rq], queryFn: () => get(`/live/range/logs?${rq}&limit=15`), refetchInterval: live ? 10000 : false, enabled: !(live && can("page.logs")) });
   const s = sum.data; const th = (thr.data?.hosts ?? []).find((h: any) => h.host === host);
   const state = row ? hostState(row) : "ok";
   const series = settled(s?.series ?? [], s?.step_min ?? 1, live);
@@ -68,20 +71,18 @@ export function HostDetail({ host, base, row, span, onClose, onFocus, focused, o
       </div>
       <ScopeCharts rq={rq} title={host} series={series} step={s?.step_min ?? 1} span={span} onZoom={(x, st) => { onClose(); onZoom(x, st); }} />
       <div className="rd-two">
-        <Card title={t("hd_levels")}>{!th ? <Empty>{t("thr_no_hosts")}</Empty> :
-          <div className="hd-thr">{Object.entries(th.metrics).filter(([, x]: any) => x.value != null || (x.source && x.source.scope !== "global")).map(([m, x]: any) => <div key={m} className={`hd-thr-r ${x.level === "warn" || x.level === "crit" ? x.level : ""}`}>
-            <span>{t(`thr_m_${m}`)}</span><b>{x.value == null ? "–" : `${Number(x.value).toLocaleString("tr-TR", { maximumFractionDigits: 1 })}${UNIT[m] === "%" ? "%" : UNIT[m] === "ms" ? " ms" : ` ${UNIT[m]}`}`}</b>
-            <span className="dim small">{x.warn != null || x.crit != null ? `${x.warn ?? "–"} / ${x.crit ?? "–"}${x.source ? ` · ${t(`thr_scope_${x.source.scope}`)}` : ""}` : t("thr_no_level")}</span></div>)}</div>}</Card>
+        <HostAlarms host={host} pool={row?.pool ?? th?.pool} env={row?.env ?? th?.env} th={th} />
         <Card title={t("hd_errors")}>{!(grp.data?.groups ?? []).length ? <Empty>{t("rd_no_errors")}</Empty> :
           <div className="stack" style={{ gap: 4 }}>{grp.data.groups.map((g: any) => <button key={g.id} className="hd-err" onClick={() => go({ tab: "groups", sev: "ERROR", service: g.service === "-" ? "" : g.service })}>
             <span className={`sev-dot ${g.severity}`} /><span className="mono small">{g.template}</span><b className="small">{fmtN(g.count, lang)}</b></button>)}</div>}</Card>
       </div>
       <Card title={t("fv_services")}><SvcTable rows={det.data?.services ?? []} onLogs={go} /></Card>
       <Card title={t("fv_sessions")}><SessionTable rows={ses.data?.sessions ?? []} max={260} compact loading={ses.isLoading} /></Card>
+      {live && can("page.logs") ? <HostTail host={host} /> :
       <Card title={t("hd_lines")} right={<button className="btn sm" onClick={() => go({ tab: "raw", sev: "INFO" })}>{t("hd_all_lines")}</button>}>
         {!(logs.data?.lines ?? []).length ? <Empty>{t("lx_empty")}</Empty> : <div className="lx-raw" style={{ maxHeight: 300 }}>{logs.data.lines.map((l: any, i: number) =>
           <div key={i} className="lx-l" style={{ gridTemplateColumns: "70px 10px 130px minmax(0,1fr)" }}><span className="mono dim">{fmtTime(l.ts, span)}</span><span className={`sev-dot ${l.severity}`} /><span className="lx-svc small">{l.service}</span><span className="mono lx-msg">{l.message}</span></div>)}</div>}
-      </Card>
+      </Card>}
     </div>
   </Modal>;
 }

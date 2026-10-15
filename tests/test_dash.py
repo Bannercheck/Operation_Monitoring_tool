@@ -78,6 +78,15 @@ def test_infra_at_300_hosts_is_bounded_and_fast(app):
     # one environment only
     t = app.get("/api/dash/infra?last=15&env=test", headers=admin).json()
     assert t["hosts"] == 100
+    # one server, several servers, a pool: the gauges, tables and lines cover exactly those servers
+    one = app.get("/api/dash/infra?last=15&host=srv-007", headers=admin).json()
+    assert one["hosts"] == 1 and one["fleet"]["cpu"]["worst"] == "srv-007" and [x["host"] for x in one["top"]["cpu"]] == ["srv-007"]
+    two = app.get("/api/dash/infra?last=15&host=srv-007,srv-299", headers=admin).json()
+    assert two["hosts"] == 2 and {x["host"] for x in two["top"]["cpu"]} == {"srv-007", "srv-299"} and set(two["series"]["cpu"]["hosts"]) == {"srv-007", "srv-299"}
+    both = app.get("/api/dash/infra?last=15&env=test&host=srv-007", headers=admin).json()   # srv-007 is prod (7 % 3 != 0): nothing left
+    assert both["hosts"] == 0
+    assert app.get("/api/dash/infra?last=15&pool=srv", headers=admin).json()["hosts"] == 300
+    assert app.get("/api/dash/infra?last=15&pool=nope", headers=admin).json()["hosts"] == 0
     # uncached: the computation itself, at 300 servers x 3 metrics x 20 readings, well inside the budget
     from watchover.api.routers import dash as dash_router
     took = []

@@ -760,3 +760,23 @@ body.pn-lock { overflow: hidden; }
   .vars .env-chips { width: 100%; }
   .pn-ago { display: none; }
 }
+
+/* server detail: live tail at the bottom */
+.ht-list { max-height: 340px; overflow: auto; display: flex; flex-direction: column; font-size: 12px; }
+.ht-row { display: grid; grid-template-columns: 92px 64px 140px minmax(0, 1fr); gap: 10px; padding: 3px 6px; border-bottom: 1px solid var(--line); color: var(--fg); text-decoration: none; align-items: baseline; }
+.ht-row:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.ht-lv { font-weight: 600; font-size: 11px; }
+.ht-svc, .ht-msg { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ht-svc { color: var(--muted); }
+.ht-state { font-size: 11px; font-weight: 500; color: var(--green); margin-left: 6px; }
+.ht-state.off { color: var(--amber); }
+.ht-pill { display: block; margin: 0 auto 8px; font-size: 12px; padding: 3px 12px; border-radius: 999px; border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--fg); cursor: pointer; }
+@media (max-width: 640px) { .ht-row { grid-template-columns: 70px 48px minmax(0, 1fr); } .ht-svc { display: none; } }
+
+/* server detail: alarm metrics editor */
+.ha-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) 90px 90px auto; gap: 6px 10px; align-items: center; }
+.ha-grid .input.sm { width: 100%; }
+
+/* top bar: back button on every page */
+.back-btn { gap: 4px; display: inline-flex; align-items: center; }
+@media (max-width: 640px) { .back-l { display: none; } }
