@@ -1,0 +1,106 @@
+"""python -m watchover.act <command>
+
+    doctor                    tables and row counts, mode, key custody, audit chain
+    audit verify              walk the audit chain; exit 1 when it is broken
+    kill --global --reason R  write <WATCHOVER_HOME>/act.KILL (works with the database down); --resume removes it
+    templates lint <dir>      lint every *.tmpl.json pack in a folder (exit 1 on errors)
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+
+
+def _db():
+    from ..db import Database, default_url
+    return Database(default_url())
+
+
+def doctor(out=sys.stdout) -> int:
+    from . import store
+    from .audit import Audit
+    from .keys import KeyClient
+    from .policy import Policy
+    db = _db()
+    store.ensure(db)
+    keys = KeyClient(None)
+    audit = Audit(db, keys)
+    pol = Policy(db, audit)
+    keys.policy = pol
+    ks = keys.status()
+    from . import limits as killmod
+    print(f"watchover act doctor · {db.label}", file=out)
+    print(f"mode: {pol.mode} · custody: {ks['custody']}", file=out)
+    counts = store.counts(db)
+    missing = sorted(set(store.TABLES) - set(counts))
+    print(f"tables: {len(counts)} act_* ({'all present' if not missing else 'missing: ' + ', '.join(missing)})", file=out)
+    for t, n in counts.items():
+        print(f"  {t:<24} {n:>8}", file=out)
+    cases = db._exec("SELECT COUNT(*) AS n FROM actions WHERE kind='case'") if "actions" in db.tables() and "kind" in db.columns("actions") else [{"n": 0}]
+    print(f"cases: {cases[0]['n']}", file=out)
+    v = audit.verify()
+    chain = "ok" if v["ok"] else f"BROKEN at #{v['broken_at']} ({v['reason']})"
+    print(f"audit: {v['n']} events · chain: {chain} · mac: {', '.join(v['mac']) or '-'}"
+          f"{' (placeholder until watchover-keyd, WP2)' if v.get('placeholder') else ''}", file=out)
+    panic = killmod.panic_file()
+    print(f"global stop file: {'PRESENT ' + str(panic) if panic.exists() else 'none'}", file=out)
+    for w in ks["warnings"]:
+        print(f"warning: {w}", file=out)
+    db.close()
+    return 0 if v["ok"] else 1
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(prog="watchover.act", description="action agent administration")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("doctor")
+    a = sub.add_parser("audit")
+    a.add_argument("what", choices=["verify"])
+    k = sub.add_parser("kill")
+    k.add_argument("--global", dest="glob", action="store_true", required=True)
+    k.add_argument("--reason", default="")
+    k.add_argument("--resume", action="store_true")
+    t = sub.add_parser("templates")
+    t.add_argument("what", choices=["lint"])
+    t.add_argument("path")
+    args = ap.parse_args(argv)
+    if args.cmd == "doctor":
+        return doctor()
+    if args.cmd == "audit":
+        from .audit import Audit
+        from .keys import KeyClient
+        from .policy import Policy
+        from . import store
+        db = _db(); store.ensure(db)
+        keys = KeyClient(None); keys.policy = Policy(db)
+        v = Audit(db, keys).verify()
+        print(json.dumps(v, ensure_ascii=False))
+        return 0 if v["ok"] else 1
+    if args.cmd == "kill":
+        from . import limits as killmod
+        if args.resume:
+            killmod.panic_clear()
+            print("global stop file removed (database stops, if any, need two act.policy holders in the UI)")
+            return 0
+        if not args.reason.strip():
+            print("--reason is required", file=sys.stderr)
+            return 2
+        p = killmod.panic_set(args.reason)
+        print(f"global stop: {p}")
+        return 0
+    if args.cmd == "templates":
+        from .templates import lint_dir
+        res = lint_dir(args.path)
+        bad = 0
+        for f, items in res.items():
+            for it in items:
+                bad += it["level"] == "error"
+                print(f"{f}: {it['level']}: {it.get('template', '')} {it['code']} {it.get('detail', '')}".rstrip())
+        print(f"{len(res)} pack(s), {bad} error(s)")
+        return 1 if bad else 0
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

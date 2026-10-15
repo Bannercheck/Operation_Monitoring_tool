@@ -1,0 +1,262 @@
+{
+ "key": "linux-varlog-full",
+ "version": 1,
+ "title": "Linux: /var/log doluluğu",
+ "summary": "Eski logları sıkıştırır (silmez), gerekirse logrotate'i zorlar, diski doğrular.",
+ "risk": "R1",
+ "match": {
+  "sources": [
+   "threshold",
+   "anomaly",
+   "query"
+  ],
+  "metric": "disk",
+  "path_prefix": [
+   "/var/log"
+  ],
+  "templates": [
+   "*No space left on device*"
+  ],
+  "anomaly_kinds": [
+   "metric",
+   "errors"
+  ]
+ },
+ "applies_to": {
+  "os": [
+   "linux"
+  ],
+  "env": [
+   "prod",
+   "test"
+  ],
+  "host_class": [
+   "app-lnx*",
+   "web*"
+  ],
+  "tags_exclude": [
+   "db-primary"
+  ]
+ },
+ "params": {
+  "host": {
+   "type": "host",
+   "from": [
+    "case.host"
+   ]
+  },
+  "path": {
+   "type": "path",
+   "roots": [
+    "/var/log"
+   ],
+   "from": [
+    "evidence.log_dir",
+    "default"
+   ],
+   "default": "/var/log"
+  },
+  "days": {
+   "type": "int",
+   "min": 1,
+   "max": 30,
+   "from": [
+    "default"
+   ],
+   "default": 7
+  },
+  "conf": {
+   "type": "enum",
+   "values_from": "host:/etc/logrotate.d",
+   "from": [
+    "ask"
+   ]
+  }
+ },
+ "preconditions": [
+  {
+   "check": "agent_online",
+   "else": "guided"
+  },
+  {
+   "check": "no_other_run_on_host",
+   "else": "stop"
+  },
+  {
+   "check": "fact",
+   "if": "steps.d1.use_pct >= 85",
+   "else": "ask"
+  }
+ ],
+ "blast": {
+  "max_hosts_per_hour": 5,
+  "max_pool_fraction": 0.25,
+  "pool_min_healthy": 0.5,
+  "max_runs_per_host_24h": 3
+ },
+ "windows": {
+  "requires": null,
+  "respect_freeze": true
+ },
+ "itsm": {
+  "policy": "best_effort",
+  "when_env": [
+   "prod"
+  ],
+  "template": "std:log-cleanup"
+ },
+ "watch": {
+  "minutes": 15,
+  "expected_noise_s": 0,
+  "expected_noise": []
+ },
+ "max_level": 4,
+ "steps": [
+  {
+   "id": "d1",
+   "type": "diagnose",
+   "title": "Disk kullanımını ölç",
+   "template": "linux.disk.usage",
+   "args": {
+    "path": "{path}"
+   },
+   "capture": {
+    "use_pct": "number",
+    "avail_gb": "number",
+    "mount": "path"
+   }
+  },
+  {
+   "id": "d2",
+   "type": "diagnose",
+   "title": "En büyük dizinler",
+   "template": "linux.dir.top",
+   "args": {
+    "path": "{path}",
+    "depth": 1,
+    "n": 10
+   }
+  },
+  {
+   "id": "d3",
+   "type": "diagnose",
+   "title": "Silinmiş ama açık dosyalar",
+   "template": "linux.fs.lsof_deleted",
+   "args": {
+    "path": "{path}"
+   },
+   "capture": {
+    "deleted_open_bytes": "number"
+   }
+  },
+  {
+   "id": "c1",
+   "type": "choose",
+   "title": "Yöntem",
+   "options": [
+    {
+     "to": "a1",
+     "label": "Eski logları sıkıştır"
+    },
+    {
+     "to": "a2",
+     "label": "logrotate'i zorla"
+    }
+   ],
+   "when": [
+    {
+     "if": "steps.d3.deleted_open_bytes > 1073741824",
+     "to": "esc"
+    }
+   ]
+  },
+  {
+   "id": "a1",
+   "type": "act",
+   "title": "{days} günden eski logları sıkıştır",
+   "why": "Sıkıştırma genelde %80-90 yer açar; dosya silinmez, geri alınabilir.",
+   "template": "linux.logs.compress_old",
+   "args": {
+    "path": "{path}",
+    "days": "{days}"
+   },
+   "dry_run": "required",
+   "dry_expect": "files <= 10000 and bytes >= 104857600",
+   "rollback": "r1",
+   "verify": "v1"
+  },
+  {
+   "id": "a2",
+   "type": "act",
+   "title": "logrotate'i zorla",
+   "template": "linux.logrotate.force",
+   "args": {
+    "conf": "{conf}"
+   },
+   "verify": "v1"
+  },
+  {
+   "id": "v1",
+   "type": "verify",
+   "title": "Disk %80'in altına indi mi?",
+   "checks": [
+    {
+     "template": "linux.disk.usage",
+     "args": {
+      "path": "{path}"
+     },
+     "expect": "use_pct < 80"
+    },
+    {
+     "log_absent": {
+      "query": "\"No space left on device\" host:{host}",
+      "window_s": 300
+     }
+    },
+    {
+     "metric_below": {
+      "metric": "disk",
+      "value": 80,
+      "within_s": 300
+     },
+     "when": "steps.d1.mount == \"/\""
+    },
+    {
+     "http_ok": {
+      "url": "{inventory.health_url}",
+      "probe_from": "server"
+     },
+     "independent": true,
+     "when": "inventory.health_url"
+    }
+   ],
+   "require": "all",
+   "retries": 3,
+   "interval_s": 20,
+   "on_fail": "rollback"
+  },
+  {
+   "id": "r1",
+   "type": "rollback",
+   "title": "Sıkıştırılan dosyaları aç",
+   "template": "linux.logs.decompress_list",
+   "args": {
+    "list_id": "{steps.a1.out.list_id}"
+   },
+   "auto_safe": true
+  },
+  {
+   "id": "esc",
+   "type": "manual",
+   "title": "Ekibe devret",
+   "text": "Açık tutulan silinmiş dosya veya hızla büyüyen log: uygulama sahibini arayın."
+  },
+  {
+   "id": "m1",
+   "type": "manual",
+   "optional": true,
+   "title": "Kalıcı çözüm",
+   "text": "Uygulama ekibine log seviyesi ve saklama süresi için kayıt açın."
+  }
+ ]
+}

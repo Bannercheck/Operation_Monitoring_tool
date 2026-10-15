@@ -8,6 +8,7 @@ import Anomalies from "./pages/Anomalies";
 import Datasets from "./pages/Datasets";
 import DatasetDetail from "./pages/DatasetDetail";
 import Actions from "./pages/Actions";
+import Inbox from "./pages/Inbox";
 import Playbook from "./pages/Playbook";
 import Connections from "./pages/Connections";
 import SourcesPage from "./pages/Sources";
@@ -55,6 +56,7 @@ export default function App() {
         <Route path="/datasets" element={<Datasets />} />
         <Route path="/datasets/:key" element={<DatasetDetail />} />
         <Route path="/actions" element={<Actions />} />
+        <Route path="/inbox" element={<Inbox />} />
         <Route path="/playbook" element={<Playbook />} />
         <Route path="/connections" element={<Connections />} />
         <Route path="/sources" element={<SourcesPage />} />

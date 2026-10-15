@@ -22,7 +22,8 @@ exit 0
 
 @pytest.fixture
 def stage(tmp_path):
-    for f in ("watchover.sh", "docker-compose.yml", "docker-compose.edge.yml", ".env.docker.example", "pyproject.toml"):
+    for f in ("watchover.sh", "docker-compose.yml", "docker-compose.edge.yml", "docker-compose.loghot.yml", "docker-compose.logcold.yml",
+              ".env.docker.example", "pyproject.toml"):
         shutil.copy(ROOT / f, tmp_path / f)
     (tmp_path / "bin").mkdir(); fake = tmp_path / "bin" / "docker"; fake.write_text(FAKE); fake.chmod(0o755)
     env = dict(os.environ, PATH=f"{tmp_path / 'bin'}:{os.environ['PATH']}", FAKE_LOG=str(tmp_path / "calls.log"), WATCHOVER_VERIFY_TRIES="1")
@@ -410,3 +411,244 @@ def test_demo_clean_counts_restarts_then_cleans(stage):
     assert r.returncode != 0 and "usage: ./watchover.sh demo-clean" in r.stderr
     assert "demo-clean [--dry-run]" in run(stage, "help").stdout
     assert "WATCHOVER_DEMO: ${WATCHOVER_DEMO:-1}" in (d / "docker-compose.yml").read_text()
+
+
+# ---- RHEL server: separate log disks, Podman, production install, nightly backup, start on boot
+SYSTEMCTL = r"""#!/usr/bin/env bash
+echo "systemctl $*" >> "$FAKE_LOG"
+mkdir -p "$FAKE_STATE"
+case "$1" in
+  enable)     for u in "$@"; do case "$u" in *.service|*.timer) touch "$FAKE_STATE/$u" ;; esac; done ;;
+  disable)    for u in "$@"; do case "$u" in *.service|*.timer) rm -f "$FAKE_STATE/$u" ;; esac; done ;;
+  is-enabled) for u in "$@"; do case "$u" in *.service|*.timer) [ -f "$FAKE_STATE/$u" ] && exit 0 || exit 1 ;; esac; done ;;
+esac
+exit 0
+"""
+CRONTAB = r"""#!/usr/bin/env bash
+case "$1" in -l) [ -f "$FAKE_CRON" ] && cat "$FAKE_CRON" || exit 1 ;; -) t=$(cat); printf '%s\n' "$t" > "$FAKE_CRON" ;; esac
+"""
+PODMAN = r"""#!/usr/bin/env bash
+echo "podman $*" >> "$FAKE_LOG"
+case "$1 $2" in
+  "info --format") case "$3" in *CPUs*) echo 8 ;; *MemTotal*) echo 68719476736 ;; esac ;;
+esac
+[ "$1" = "--version" ] && echo "podman version 5.2.2"
+exit 0
+"""
+COMPOSE_BIN = r"""#!/usr/bin/env bash
+echo "compose[$DOCKER_HOST] $*" >> "$FAKE_LOG"
+case "$1" in
+  version) echo "Docker Compose version v2.29.7" ;;
+  ps) [[ "$*" == *--format* ]] && echo "dashboard healthy" ;;
+  config) echo '{"volumes":{"watchover-data":{"name":"watchover_watchover-data"}}}' ;;
+esac
+exit 0
+"""
+
+
+@pytest.fixture
+def server(stage, tmp_path):
+    """stage + fake systemd (units in a folder, enable/disable state) and a fake crontab"""
+    d, env = stage
+    for name, body in (("systemctl", SYSTEMCTL), ("crontab", CRONTAB)):
+        f = d / "bin" / name; f.write_text(body); f.chmod(0o755)
+    (tmp_path / "run-systemd").mkdir(); (tmp_path / "units").mkdir()
+    env.update(WATCHOVER_SYSTEMD_RUN=str(tmp_path / "run-systemd"), WATCHOVER_SYSTEMD_DIR=str(tmp_path / "units"),
+               FAKE_STATE=str(tmp_path / "systemd-state"), FAKE_CRON=str(tmp_path / "crontab.txt"))
+    return d, env
+
+
+def envval(d, key):
+    return next((l.split("=", 1)[1] for l in (d / ".env").read_text().splitlines() if l.startswith(key + "=")), None)
+
+
+def test_separate_hot_and_cold_log_disks(stage, tmp_path):
+    """WATCHOVER_LOG_HOT_PATH / _COLD_PATH: host directories bind-mounted at /logs/hot|cold through COMPOSE_FILE, the ownership is
+    checked with a message that says what to run; empty paths keep the data volume (no COMPOSE_FILE at all)."""
+    d, env = stage
+    assert run(stage, "install").returncode == 0
+    assert envval(d, "WATCHOVER_LOG_HOT_PATH") == "" and envval(d, "COMPOSE_FILE") is None          # default: inside the data volume
+    hot, cold = tmp_path / "disk1" / "hot", tmp_path / "disk2" / "cold"
+    hot.mkdir(parents=True); cold.mkdir(parents=True); hot.chmod(0o755); cold.chmod(0o755)
+    text = (d / ".env").read_text().replace("WATCHOVER_LOG_HOT_PATH=\n", f"WATCHOVER_LOG_HOT_PATH={hot}\n").replace("WATCHOVER_LOG_COLD_PATH=\n", f"WATCHOVER_LOG_COLD_PATH={cold}\n")
+    (d / ".env").write_text(text)
+    if os.geteuid() == 0 or os.getegid() == 0:                     # mode 755 owned by root/us: not writable for UID 10001 / GID 0
+        r = run(stage, "start")
+        assert r.returncode == 1 and f"sudo chown -R 10001:0 {hot}" in r.stderr and "chmod 2770" in r.stderr
+    hot.chmod(0o2777 if os.getegid() != 0 else 0o2770); cold.chmod(0o777 if os.getegid() != 0 else 0o2770)
+    r = run(stage, "start")
+    assert r.returncode == 0, r.stderr
+    assert envval(d, "COMPOSE_FILE") == "docker-compose.yml:docker-compose.loghot.yml:docker-compose.logcold.yml"
+    r = run(stage, "edge", "on", "watchover.firma.com")                                           # edge and log disks together
+    assert envval(d, "COMPOSE_FILE") == "docker-compose.yml:docker-compose.edge.yml:docker-compose.loghot.yml:docker-compose.logcold.yml"
+    r = run(stage, "storage")
+    assert r.returncode == 0 and f"{hot} -> /logs/hot" in r.stdout and f"{cold} -> /logs/cold" in r.stdout and "hot_max_gb ~" in r.stdout
+    r = run(stage, "edge", "off")
+    assert envval(d, "COMPOSE_FILE") == "docker-compose.yml:docker-compose.loghot.yml:docker-compose.logcold.yml"
+    (d / ".env").write_text((d / ".env").read_text().replace(f"WATCHOVER_LOG_COLD_PATH={cold}", "WATCHOVER_LOG_COLD_PATH=relative/cold"))
+    r = run(stage, "start")
+    assert r.returncode == 1 and "must be an absolute host directory" in r.stderr
+    (d / ".env").write_text((d / ".env").read_text().replace("WATCHOVER_LOG_COLD_PATH=relative/cold", "WATCHOVER_LOG_COLD_PATH=").replace(f"WATCHOVER_LOG_HOT_PATH={hot}", "WATCHOVER_LOG_HOT_PATH="))
+    assert run(stage, "start").returncode == 0 and envval(d, "COMPOSE_FILE") is None
+    if os.geteuid() == 0:                                                                          # root creates a missing directory itself
+        new = tmp_path / "disk3" / "hot"
+        (d / ".env").write_text((d / ".env").read_text().replace("WATCHOVER_LOG_HOT_PATH=\n", f"WATCHOVER_LOG_HOT_PATH={new}\n"))
+        r = run(stage, "start")
+        assert r.returncode == 0 and new.is_dir() and new.stat().st_uid == 10001 and oct(new.stat().st_mode)[-4:] == "2770", r.stderr
+    for k in ("hot", "cold"):                                                                      # what the override files mount
+        y = (d / f"docker-compose.log{k}.yml").read_text()
+        assert f"${{WATCHOVER_LOG_{k.upper()}_PATH:?" in y and f":/logs/{k}:z" in y and f"WATCHOVER_LOG_{k.upper()}_DIR: /logs/{k}" in y
+        assert all(f"  {svc}: *log-{k}" in y for svc in ("dashboard", "mcp", "legacy"))
+
+
+def test_compose_files_merge_with_the_real_compose(tmp_path):
+    """the real Compose (when installed) accepts the base file with every override: log disks bind-mounted with :z next to /data,
+    the edge resets the dashboard's plain port, MCP forwards live tools to the dashboard; bind mounts carry the SELinux label"""
+    import json
+    caddy = (ROOT / "docker" / "Caddyfile").read_text()                                            # edge: /mcp -> MCP container, rest -> API
+    assert "@mcp path /mcp /mcp/*" in caddy and "reverse_proxy mcp:8765" in caddy and caddy.index("handle @mcp") < caddy.index("reverse_proxy watchover:8501")
+    real = shutil.which("docker")
+    if not real or subprocess.run([real, "compose", "version"], capture_output=True).returncode != 0:
+        pytest.skip("docker compose not installed")
+    for f in ("docker-compose.yml", "docker-compose.edge.yml", "docker-compose.loghot.yml", "docker-compose.logcold.yml", ".env.docker.example"):
+        shutil.copy(ROOT / f, tmp_path / f)
+    (tmp_path / ".env").write_text((ROOT / ".env.docker.example").read_text() + "WATCHOVER_LOG_HOT_PATH=/srv/wo/hot\nWATCHOVER_LOG_COLD_PATH=/srv/wo/cold\n"
+                                   "COMPOSE_FILE=docker-compose.yml:docker-compose.edge.yml:docker-compose.loghot.yml:docker-compose.logcold.yml\n")
+    out = subprocess.run([real, "compose", "--profile", "mcp", "--profile", "legacy", "--profile", "edge", "config", "--format", "json"],
+                         cwd=tmp_path, capture_output=True, text=True, env={k: v for k, v in os.environ.items() if k != "COMPOSE_FILE"})
+    assert out.returncode == 0, out.stderr
+    svc = json.loads(out.stdout)["services"]
+    for name in ("dashboard", "mcp", "legacy"):
+        mounts = {v["target"]: v for v in svc[name]["volumes"]}
+        assert mounts["/logs/hot"]["source"] == "/srv/wo/hot" and mounts["/logs/hot"]["bind"]["selinux"] == "z"
+        assert mounts["/logs/cold"]["source"] == "/srv/wo/cold" and mounts["/data"]["source"] == "watchover-data"
+        assert svc[name]["environment"]["WATCHOVER_LOG_HOT_DIR"] == "/logs/hot" and svc[name]["environment"]["WATCHOVER_LOG_COLD_DIR"] == "/logs/cold"
+    assert "/logs/hot" not in {v["target"] for v in svc["receiver"]["volumes"]}
+    assert not svc["dashboard"].get("ports")                                                       # edge on: the interface over https only
+    assert svc["mcp"]["environment"]["WATCHOVER_API_URL"] == "http://watchover:8501"               # live tools forwarded to the dashboard
+    assert all(v.get("bind", {}).get("selinux") == "z" for v in svc["edge"]["volumes"] if v["type"] == "bind")
+    (tmp_path / ".env").write_text((ROOT / ".env.docker.example").read_text() + "COMPOSE_FILE=docker-compose.yml:docker-compose.loghot.yml\n")
+    out = subprocess.run([real, "compose", "config"], cwd=tmp_path, capture_output=True, text=True, env={k: v for k, v in os.environ.items() if k != "COMPOSE_FILE"})
+    assert out.returncode != 0 and "WATCHOVER_LOG_HOT_PATH must name a host directory" in out.stderr       # override without a path: clear error
+
+
+def test_podman_engine_socket_compose_and_native_build(server, tmp_path):
+    """WATCHOVER_ENGINE=podman: rootful Podman through podman.socket with the Compose v2 binary (DOCKER_HOST), images built by podman
+    build under Docker's names, sizing from podman info, multi-image save, helper containers fully qualified with :z, and the stack
+    starts on boot by itself (watchover-stack.service with ExecStop: no daemon restarts Podman containers)."""
+    d, env = server
+    import socket
+    for name, body in (("podman", PODMAN), ("docker-compose", COMPOSE_BIN)):
+        f = d / "bin" / name; f.write_text(body); f.chmod(0o755)
+    sock_path = str(tmp_path / "p.sock"); sk = socket.socket(socket.AF_UNIX); sk.bind(sock_path)
+    env.update(WATCHOVER_ENGINE="podman", WATCHOVER_PODMAN_SOCK=sock_path, WATCHOVER_COMPOSE_BIN=str(d / "bin" / "docker-compose"))
+    r = run(server, "install")
+    assert r.returncode == 0, r.stderr
+    log = (d / "calls.log").read_text(); v = version(d)
+    assert f"podman build --format docker -f Dockerfile -t docker.io/library/watchover:{v} --build-arg GIT_REV=" in log and f"--build-arg VERSION={v} ." in log
+    assert f"podman build --format docker -f Dockerfile.receiver -t docker.io/library/watchover-receiver:{v} ." in log
+    assert f"compose[unix://{sock_path}] up -d --remove-orphans" in log and "docker compose" not in log
+    assert "compose build" not in log.replace("podman build", "")                                     # no BuildKit on the socket
+    assert envval(d, "WATCHOVER_ENGINE") == "podman" and envval(d, "WATCHOVER_CPUS") == "6" and envval(d, "WATCHOVER_MEMORY") == "16g"
+    unit = (tmp_path / "units" / "watchover-stack.service").read_text()
+    assert "After=network-online.target podman.socket" in unit and f'ExecStart="{d}/watchover.sh" start' in unit and f'ExecStop="{d}/watchover.sh" stop' in unit
+    assert "Environment=WATCHOVER_ENGINE=podman" in unit and "systemctl enable watchover-stack.service" in (d / "calls.log").read_text()
+    (d / "calls.log").write_text("")
+    assert run(server, "backup", "--no-logs").returncode == 0
+    log = (d / "calls.log").read_text()
+    assert ":/out:z docker.io/library/alpine:latest tar czf /out/data.tgz --exclude=./logs -C /data ." in log and "podman run --rm -v watchover_watchover-data:/data" in log
+    assert run(server, "save", str(tmp_path / "img.tgz")).returncode == 0 and f"podman save -m watchover:{v} watchover-receiver:{v}" in (d / "calls.log").read_text()
+    # detection: no WATCHOVER_ENGINE and a 'docker' that is podman-docker -> podman
+    del env["WATCHOVER_ENGINE"]; (d / ".env").write_text((d / ".env").read_text().replace("WATCHOVER_ENGINE=podman", "WATCHOVER_ENGINE="))
+    (d / "bin" / "docker").write_text('#!/usr/bin/env bash\n[ "$1" = --version ] && echo "podman version 5.2.2"\nexit 0\n')
+    assert run(server, "start").returncode == 0 and envval(d, "WATCHOVER_ENGINE") == "podman"
+    # the socket is missing / not ours: clear messages
+    env["WATCHOVER_PODMAN_SOCK"] = str(tmp_path / "nope.sock")
+    r = run(server, "start")
+    assert r.returncode == 1 and "systemctl enable --now podman.socket" in r.stderr
+    env["WATCHOVER_ENGINE"] = "lxc"
+    r = run(server, "start")
+    assert r.returncode == 1 and "WATCHOVER_ENGINE must be docker or podman" in r.stderr
+
+
+def test_production_install_prints_the_checklist(server):
+    """install --production: WATCHOVER_DEMO=0 for good and the go-live checklist (backup timer, start on boot, admin password,
+    disk caps, log disks, TLS, firewall); 'checklist' prints it again with what is done ticked."""
+    d, _ = server
+    r = run(server, "install", "--production")
+    assert r.returncode == 0, r.stderr
+    assert envval(d, "WATCHOVER_DEMO") == "0" and envval(d, "WATCHOVER_PRODUCTION") == "1"
+    out = r.stdout
+    assert "production checklist" in out and "[x] demo off (WATCHOVER_DEMO=0)" in out and "[ ] nightly backup: off" in out
+    assert "./watchover.sh backup-timer on" in out and "admin@watchover.local" in out and "hot_max_gb ~ " in out and "cold_max_gb ~ " in out
+    assert "WATCHOVER_LOG_HOT_PATH" in out and "edge on" in out and "8765" in out
+    assert run(server, "backup-timer", "on").returncode == 0
+    out = run(server, "checklist").stdout
+    assert "[x] nightly backup: on (systemd, 02:15)" in out
+    r = run(server, "install", "--prod-ish")
+    assert r.returncode == 1 and "usage: ./watchover.sh install [--production]" in r.stderr
+    assert "install --production" in run(server, "help").stdout
+
+
+def test_backup_timer_systemd_and_cron(server, tmp_path):
+    """backup-timer on [HH:MM]: a systemd service + timer (Persistent, backup --no-logs) where systemd runs, a tagged crontab line
+    elsewhere; off removes exactly that, other cron lines stay."""
+    d, env = server
+    assert run(server, "install").returncode == 0
+    ino = (d / ".env").stat().st_ino
+    r = run(server, "backup-timer", "on", "03:30")
+    assert r.returncode == 0, r.stderr
+    assert (d / ".env").stat().st_ino == ino and oct((d / ".env").stat().st_mode)[-3:] == "600"   # rewritten in place: sudo keeps its owner
+    svc = (tmp_path / "units" / "watchover-backup.service").read_text(); tmr = (tmp_path / "units" / "watchover-backup.timer").read_text()
+    assert f'ExecStart="{d}/watchover.sh" backup --no-logs' in svc and f"WorkingDirectory={d}" in svc and "After=docker.service" in svc
+    assert "OnCalendar=*-*-* 03:30:00" in tmr and "Persistent=true" in tmr and "WantedBy=timers.target" in tmr
+    log = (d / "calls.log").read_text()
+    assert "systemctl daemon-reload" in log and "systemctl enable --now watchover-backup.timer" in log and envval(d, "WATCHOVER_BACKUP_AT") == "03:30"
+    assert "on (systemd, 03:30)" in run(server, "backup-timer").stdout
+    assert run(server, "backup-timer", "on", "25:00").returncode == 1
+    r = run(server, "backup-timer", "off")
+    assert r.returncode == 0 and not (tmp_path / "units" / "watchover-backup.timer").exists() and "disable --now watchover-backup.timer" in (d / "calls.log").read_text()
+    assert "nightly backup: off" in run(server, "backup-timer").stdout
+    # no systemd: cron
+    env["WATCHOVER_SYSTEMD_RUN"] = str(tmp_path / "no-systemd")
+    (tmp_path / "crontab.txt").write_text("0 1 * * * /usr/local/bin/other-job\n")
+    assert run(server, "backup-timer", "on").returncode == 0                                       # the time set before is kept
+    cron = (tmp_path / "crontab.txt").read_text()
+    assert "0 1 * * * /usr/local/bin/other-job" in cron and f"30 3 * * * cd '{d}' && ./watchover.sh backup --no-logs >> 'backups/backup.log' 2>&1 # watchover-backup" in cron
+    assert run(server, "backup-timer", "on", "04:05").returncode == 0                                # idempotent: one line, new time
+    cron = (tmp_path / "crontab.txt").read_text()
+    assert cron.count("# watchover-backup") == 1 and "5 4 * * * cd" in cron
+    assert run(server, "backup-timer", "off").returncode == 0
+    assert (tmp_path / "crontab.txt").read_text().strip() == "0 1 * * * /usr/local/bin/other-job"
+
+
+def test_backup_without_logs_and_a_restore_that_keeps_them(stage):
+    """backup --no-logs leaves /data/logs out (MANIFEST logs=0); restoring such a backup wipes everything but the raw logs"""
+    import tarfile
+    d, _ = stage
+    assert run(stage, "install").returncode == 0
+    (d / ".env").write_text((d / ".env").read_text().replace("WATCHOVER_BACKUP_DIR=\n", f"WATCHOVER_BACKUP_DIR={d / 'safe'}\n"))
+    r = run(stage, "backup", "--no-logs", "--keep", "3")
+    assert r.returncode == 0, r.stderr
+    log = (d / "calls.log").read_text()
+    assert "-v watchover_watchover-data:/data" in log and "tar czf /out/data.tgz --exclude=./logs -C /data ." in log
+    out = next((d / "safe").glob("watchover-*.tgz"))
+    with tarfile.open(out) as t:
+        assert "logs=0" in t.extractfile("./MANIFEST").read().decode()
+    assert oct(out.stat().st_mode)[-3:] == "600"
+    assert run(stage, "backup", "--bogus").returncode == 1
+    (d / "calls.log").write_text("")
+    r = run(stage, "restore", str(out))
+    assert r.returncode == 0, r.stderr
+    assert "find /data -mindepth 1 -maxdepth 1 ! -name logs -exec rm -rf {} + && tar xzf /in/data.tgz -C /data" in (d / "calls.log").read_text()
+
+
+def test_rhel_prepare_podman_check_mode():
+    """--engine podman: Podman from the RHEL repositories, only the Compose plugin, podman.socket; --mcp adds 8765 to the firewall"""
+    r = subprocess.run(["bash", str(ROOT / "scripts" / "rhel-prepare.sh"), "--check", "--engine", "podman", "--mcp", "--user", "ops"], capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stderr
+    out = r.stdout
+    assert "would run: dnf -y install podman container-selinux" in out and "would run: systemctl enable --now podman.socket" in out
+    assert "8765/tcp" in out and "engine: podman" in out and "dnf -y remove podman" not in out and "docker-ce docker-ce-cli" not in out
+    r = subprocess.run(["bash", str(ROOT / "scripts" / "rhel-prepare.sh"), "--check", "--engine", "lxc"], capture_output=True, text=True, timeout=60)
+    assert r.returncode == 1 and "--engine must be docker or podman" in r.stderr

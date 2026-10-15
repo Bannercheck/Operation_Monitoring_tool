@@ -167,7 +167,8 @@ class Notifier:
                 pass
         try:                                                     # condition "query": matching log lines in window_min minutes op threshold
             have = set(kb.columns("notify_rules"))
-            for c, ddl in (("query", "TEXT DEFAULT ''"), ("window_min", "INTEGER DEFAULT 5"), ("op", "TEXT DEFAULT '>='"), ("owner", "TEXT DEFAULT ''")):
+            for c, ddl in (("query", "TEXT DEFAULT ''"), ("window_min", "INTEGER DEFAULT 5"), ("op", "TEXT DEFAULT '>='"), ("owner", "TEXT DEFAULT ''"),
+                           ("open_case", "INTEGER DEFAULT 0")):          # open_case: action agent "Vaka aç" (docs/design/action-agent.md §4.1)
                 if c not in have:
                     kb._exec(f"ALTER TABLE notify_rules ADD COLUMN {c} {ddl}")
         except Exception:  # noqa: BLE001
@@ -268,7 +269,7 @@ class Notifier:
     def rules(self) -> list[dict]:
         return [dict(r) for r in self.kb._exec("SELECT * FROM notify_rules ORDER BY id")]
 
-    _RULE_COLS = ("name", "condition", "threshold", "env", "severity", "channels", "targets", "cooldown_min", "enabled")
+    _RULE_COLS = ("name", "condition", "threshold", "env", "severity", "channels", "targets", "cooldown_min", "enabled", "open_case")
 
     def recipient(self, rid: int) -> dict:
         rows = self.kb._exec("SELECT * FROM recipients WHERE id=?", (rid,))

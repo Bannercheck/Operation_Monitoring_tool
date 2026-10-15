@@ -1,0 +1,31 @@
+{"kind": "text", "in": "postgres://app:Canary-Pg-7f3a@db:5432/x", "out": "postgres://[KIMLIK]@db:5432/x"}
+{"kind": "text", "in": "jdbc:oracle:thin:scott/Canary-Ora-91@db:1521/X", "out": "jdbc:oracle:thin:[KIMLIK]@db:1521/X"}
+{"kind": "text", "in": "PGPASSWORD=Canary-Env-22 pg_dump orders", "out": "PGPASSWORD=[GIZLI] pg_dump orders"}
+{"kind": "text", "in": "/usr/bin/java -Djavax.net.ssl.keyStorePassword=Canary-Ks-5 -jar orders.jar", "out": "/usr/bin/java -Djavax.net.ssl.keyStorePassword=[GIZLI] -jar orders.jar"}
+{"kind": "text", "in": "mysqldump --password Canary-Flag-8 --all-databases", "out": "mysqldump --password [GIZLI] --all-databases"}
+{"kind": "text", "in": "mysql -p Canary-Flag-8 orders", "out": "mysql -p [GIZLI] orders"}
+{"kind": "text", "in": "client_secret=Canary-Oidc-3", "out": "client_secret=[GIZLI]"}
+{"kind": "text", "in": "aws key AKIACANARY0000000001 used", "out": "aws key [GIZLI] used"}
+{"kind": "text", "in": "Cookie: JSESSIONID=CanarySess0123456789abcdef; Path=/", "out": "Cookie: [GIZLI]; Path=/"}
+{"kind": "text", "in": "auth eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ4In0.c2lnbmF0dXJl ok", "out": "auth [GIZLI] ok"}
+{"kind": "text", "in": "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEAcanaryRSAprivateKeyBodyLine0123456789\n-----END RSA PRIVATE KEY-----\nafter", "out": "[PEM]\nafter"}
+{"kind": "text", "in": "head\n-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcanary\nno end marker", "out": "head\n[PEM]"}
+{"kind": "text", "in": "-----BEGIN CERTIFICATE-----\nMIIBszCCAVmgAwIBAgIUcanary\n-----END CERTIFICATE-----", "out": "[PEM]"}
+{"kind": "text", "in": "token aB3dE5fG7hJ9kL1mN3pQ5rS7tU9vW in header", "out": "token [GIZLI] in header"}
+{"kind": "text", "in": "sha256 9f3c2a7b1e0d4c5b6a7f8e9d0c1b2a3f4e5d6c7b8a9f0e1d2c3b4a5f6e7d8c9b", "out": "sha256 9f3c2a7b1e0d4c5b6a7f8e9d0c1b2a3f4e5d6c7b8a9f0e1d2c3b4a5f6e7d8c9b"}
+{"kind": "text", "in": "job J-20261015-000913 op_4b81c3d2e1f0", "out": "job J-20261015-000913 op_4b81c3d2e1f0"}
+{"kind": "text", "in": "write failed: No space left on device (/var/log/orders/orders.log)", "out": "write failed: No space left on device (/var/log/orders/orders.log)"}
+{"kind": "text", "in": "bytes_before 5368709120 files 412", "out": "bytes_before [TEL] files 412"}
+{"kind": "text", "in": "user mehmet@example.com called 0532 123 45 67", "out": "user [E-POSTA] called [TEL]"}
+{"kind": "text", "in": "password=hunter2 next", "out": "password=*** next"}
+{"kind": "text", "in": "Authorization: Bearer abcdefghijklmnop1234", "out": "Authorization: ***"}
+{"kind": "text", "in": "ｐａｓｓｗｏｒｄ=FullWidth1", "out": "password=***"}
+{"kind": "text", "in": "pass​word=zero-width", "out": "password=***"}
+{"kind": "text", "in": "Disk kullanımı (/var/log): %93,4 · bağlama /", "out": "Disk kullanımı (/var/log): %93,4 · bağlama /"}
+{"kind": "fields", "in": {"bytes_before": 5368709120, "bytes_after": 1073741824, "files": 412}, "schema": null, "out": {"bytes_before": 5368709120, "bytes_after": 1073741824, "files": 412}}
+{"kind": "fields", "in": {"size": 1234567890123456, "id": "4111111111111111"}, "schema": {"size": "number", "id": "number"}, "out": {"size": 1234567890123456, "id": "4111111111111111"}}
+{"kind": "fields", "in": {"path": "/home/ayse/app/x.log", "mount": "/var/log"}, "schema": {"path": "path", "mount": "path"}, "out": {"path": "/home/u_ac870ed68cfab117/app/x.log", "mount": "/var/log"}}
+{"kind": "fields", "in": {"state": "active", "unit": "orders.service", "note": "PGPASSWORD=Canary-Env-22"}, "schema": {"state": "enum", "unit": "ident", "note": "text"}, "out": {"state": "active", "unit": "orders.service", "note": "PGPASSWORD=[GIZLI]"}}
+{"kind": "fields", "in": {"rows": [{"User": "u_x", "Pid": 4121, "Cmd": "java -Djavax.net.ssl.trustStorePassword=Canary-Ks-5"}]}, "schema": null, "out": {"rows": [{"User": "u_x", "Pid": 4121, "Cmd": "java -Djavax.net.ssl.trustStorePassword=[GIZLI]"}]}}
+{"kind": "fields", "in": {"api_key": "plain-secret", "password": "", "token_count": 3}, "schema": null, "out": {"api_key": "[GIZLI]", "password": "", "token_count": 3}}
+{"kind": "fields", "in": {"use_pct": "93.4", "avail_gb": "1,2"}, "schema": {"use_pct": "number", "avail_gb": "number"}, "out": {"use_pct": "93.4", "avail_gb": "1,2"}}

@@ -4,15 +4,16 @@
 # OpenShift (restricted-v2 SCC, deploy/openshift): the process runs as any UID with GID 0, so everything it writes (/data, $HOME)
 # belongs to group 0 with the owner's rights (chgrp 0 + chmod g=u); no port below 1024, no root step at start, the root file system
 # may be read-only (writes go to /data, the log volumes and /tmp). Docker keeps running it as UID 10001.
+# Base images are fully qualified (docker.io/library/…): podman build on RHEL (short-name-mode=enforcing) never stops to ask.
 # stage 1: the React interface (web/) -> web/dist, served by the API container
-FROM node:20-alpine AS web
+FROM docker.io/library/node:20-alpine AS web
 WORKDIR /web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY web ./
 RUN npm run build
 
-FROM python:3.11-slim AS base
+FROM docker.io/library/python:3.11-slim AS base
 ARG GIT_REV=-
 ARG VERSION=dev
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 \

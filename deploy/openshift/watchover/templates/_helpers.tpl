@@ -13,7 +13,7 @@ app.kubernetes.io/part-of: watchover
 helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" }}
 {{- end -}}
 
-{{/* selector labels of one component: app | postgresql | ollama | backup */}}
+{{/* selector labels of one component: app | postgresql | ollama | backup | mcp */}}
 {{- define "watchover.selector" -}}
 app.kubernetes.io/name: watchover
 app.kubernetes.io/instance: {{ .root.Release.Name }}

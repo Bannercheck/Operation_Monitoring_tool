@@ -1,0 +1,13 @@
+# Applied while WATCHOVER_LOG_COLD_PATH is set in .env (./watchover.sh adds this file to COMPOSE_FILE): the cold raw logs live in that
+# host directory, a disk of their own, instead of the data volume. Mounted at /logs/cold as on OpenShift; :z gives it the SELinux
+# label shared by the containers that read logs (Podman, or Docker with selinux-enabled; a no-op otherwise). The directory belongs
+# to UID 10001 / GID 0, the containers' user: ./watchover.sh checks it (sudo chown -R 10001:0 DIR && sudo chmod 2770 DIR).
+x-log-cold: &log-cold
+  environment:
+    WATCHOVER_LOG_COLD_DIR: /logs/cold
+  volumes:
+    - ${WATCHOVER_LOG_COLD_PATH:?WATCHOVER_LOG_COLD_PATH must name a host directory}:/logs/cold:z
+services:
+  dashboard: *log-cold
+  mcp: *log-cold
+  legacy: *log-cold

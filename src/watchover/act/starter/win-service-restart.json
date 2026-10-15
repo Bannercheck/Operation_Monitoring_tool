@@ -1,0 +1,80 @@
+{
+ "key": "win-service-restart",
+ "version": 1,
+ "title": "Windows: servis yeniden başlatma",
+ "risk": "R2",
+ "summary": "Servis durumuna bakar, yeniden başlatır, çalıştığını doğrular.",
+ "match": {
+  "sources": [
+   "query",
+   "anomaly",
+   "incident"
+  ]
+ },
+ "applies_to": {
+  "os": [
+   "windows"
+  ]
+ },
+ "params": {
+  "host": {
+   "type": "host",
+   "from": [
+    "case.host"
+   ]
+  },
+  "name": {
+   "type": "win_service",
+   "pattern": "^(W3SVC|OrdersSvc|Billing[A-Za-z0-9_.-]{0,40})$",
+   "from": [
+    "evidence.win_service",
+    "ask"
+   ]
+  }
+ },
+ "watch": {
+  "minutes": 15,
+  "expected_noise_s": 0,
+  "expected_noise": []
+ },
+ "max_level": 4,
+ "steps": [
+  {
+   "id": "d1",
+   "type": "diagnose",
+   "title": "Servis durumu",
+   "template": "win.service.status",
+   "args": {
+    "name": "{name}"
+   }
+  },
+  {
+   "id": "a1",
+   "type": "act",
+   "title": "Servisi yeniden başlat",
+   "template": "win.service.restart",
+   "args": {
+    "name": "{name}"
+   },
+   "verify": "v1"
+  },
+  {
+   "id": "v1",
+   "type": "verify",
+   "title": "Servis çalışıyor mu?",
+   "checks": [
+    {
+     "template": "win.service.status",
+     "args": {
+      "name": "{name}"
+     },
+     "expect": "state == \"RUNNING\""
+    }
+   ],
+   "require": "all",
+   "retries": 3,
+   "interval_s": 20,
+   "on_fail": "escalate"
+  }
+ ]
+}

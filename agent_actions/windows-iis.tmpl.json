@@ -1,0 +1,137 @@
+{
+ "format": 1,
+ "pack": "watchover-windows-iis",
+ "pack_version": 1,
+ "templates": [
+  {
+   "id": "iis.apppool.state",
+   "rev": 1,
+   "os": "windows",
+   "kind": "diag",
+   "risk": "R0",
+   "cost": "light",
+   "argv": [
+    "C:\\Windows\\System32\\inetsrv\\appcmd.exe",
+    "list",
+    "apppool",
+    "/name:{pool}"
+   ],
+   "params": {
+    "pool": {
+     "type": "iis_pool"
+    }
+   },
+   "timeout_s": 15,
+   "max_output_kb": 8,
+   "output": {
+    "parser": "appcmd_apppool"
+   },
+   "title_tr": "Uygulama havuzu durumu",
+   "title_en": "Application pool state"
+  },
+  {
+   "id": "win.log.tail",
+   "rev": 1,
+   "os": "windows",
+   "kind": "diag",
+   "risk": "R0",
+   "cost": "light",
+   "privacy": "raw",
+   "argv": [
+    "C:\\Windows\\System32\\wevtutil.exe",
+    "qe",
+    "{channel}",
+    "/c:{n}",
+    "/rd:true",
+    "/f:text"
+   ],
+   "params": {
+    "channel": {
+     "type": "enum",
+     "values": [
+      "System",
+      "Application"
+     ]
+    },
+    "n": {
+     "type": "int",
+     "min": 1,
+     "max": 200,
+     "default": 50
+    }
+   },
+   "timeout_s": 20,
+   "max_output_kb": 64,
+   "title_tr": "Olay günlüğünün son kayıtları",
+   "title_en": "Event log tail"
+  },
+  {
+   "id": "iis.apppool.recycle",
+   "rev": 1,
+   "os": "windows",
+   "kind": "act",
+   "risk": "R1",
+   "reversibility": "transient",
+   "argv": [
+    "C:\\Windows\\System32\\inetsrv\\appcmd.exe",
+    "recycle",
+    "apppool",
+    "/apppool.name:{pool}"
+   ],
+   "params": {
+    "pool": {
+     "type": "iis_pool"
+    }
+   },
+   "pre": [
+    {
+     "pred": "iis_pool_exists",
+     "args": [
+      "{pool}"
+     ]
+    }
+   ],
+   "timeout_s": 60,
+   "max_output_kb": 16,
+   "limits": {
+    "per_hour": 4
+   },
+   "title_tr": "Uygulama havuzunu geri dönüştür",
+   "title_en": "Recycle the application pool"
+  },
+  {
+   "id": "iis.apppool.start",
+   "rev": 1,
+   "os": "windows",
+   "kind": "act",
+   "risk": "R1",
+   "reversibility": "transient",
+   "argv": [
+    "C:\\Windows\\System32\\inetsrv\\appcmd.exe",
+    "start",
+    "apppool",
+    "/apppool.name:{pool}"
+   ],
+   "params": {
+    "pool": {
+     "type": "iis_pool"
+    }
+   },
+   "pre": [
+    {
+     "pred": "iis_pool_exists",
+     "args": [
+      "{pool}"
+     ]
+    }
+   ],
+   "timeout_s": 60,
+   "max_output_kb": 16,
+   "limits": {
+    "per_hour": 4
+   },
+   "title_tr": "Uygulama havuzunu başlat",
+   "title_en": "Start the application pool"
+  }
+ ]
+}

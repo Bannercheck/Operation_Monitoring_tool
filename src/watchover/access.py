@@ -47,6 +47,7 @@ class Access:
     memberships: tuple
     perms: frozenset = frozenset()
     _scopes: dict = field(default_factory=dict, repr=False)
+    owners_fn: object = field(default=None, repr=False, compare=False)    # teams.owners(host) -> [team ids] (can_approve)
 
     def __post_init__(self):
         if not self.perms:
@@ -80,6 +81,23 @@ class Access:
         return m is not None and (perm in self.global_perms or perm in m.perms)
 
     def install(self, perm: str) -> bool:
+        return perm in self.global_perms and self.wide
+
+    def can_approve(self, host: str, perm: str = "act.approve") -> bool:
+        """May this account approve work on `host` (action agent votes, §10.9)? Unlike can_in there is no `all` bypass: the
+        user must hold `perm` in a team that owns the host; an installation-wide host needs `perm` installation-wide; an
+        installation-wide permission covers a team-owned host only for a `wide` user who also holds act.policy."""
+        owners = []
+        if host and self.owners_fn is not None:
+            try:
+                owners = list(self.owners_fn(host))
+            except Exception:  # noqa: BLE001 - unknown ownership fails closed to the installation rule
+                owners = []
+        if owners:
+            for m in self.memberships:
+                if m.team_id in owners and (perm in m.perms or perm in self.global_perms):
+                    return True
+            return perm in self.global_perms and self.wide and "act.policy" in self.global_perms
         return perm in self.global_perms and self.wide
 
     def manages(self, team_id) -> bool:
@@ -162,7 +180,8 @@ class AccessResolver:
             perms = frozenset(normalize(r["perms"], team=True)) if r else frozenset()
             ms.append(Membership(team_id=t["id"], team=t["name"], role_id=(r or {}).get("id"), role_key=(r or {}).get("key", ""), role_label=(r or {}).get("label", ""),
                                  perms=perms, hosts=frozenset(t["matched"]), service_rules=tuple(x for x in t["rules"] if x["field"] == "service")))
-        return Access(email=email, role=role, all=all_, strict=strict, global_perms=g, memberships=tuple(ms))
+        return Access(email=email, role=role, all=all_, strict=strict, global_perms=g, memberships=tuple(ms),
+                      owners_fn=getattr(self.teams, "owners", None))
 
 
 def wire(svc) -> None:

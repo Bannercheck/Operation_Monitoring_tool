@@ -25,26 +25,31 @@ MARKER = ".migrated-to-postgres"
 
 def sqlite_files(source: str | None = None) -> list[Path]:
     """The SQLite files of a classic install: explicit folder, else the env paths, else the working folder."""
-    out = []
+    from .actions import moved_in
+    out, kb_file = [], None
     for env, name in FILES:
+        if env == "ACTIONS_DB" and kb_file is not None and moved_in(kb_file):
+            continue                                   # actions already live in knowledge.db (actions_in_kb_v1): the old file is stale
         cands = [Path(source) / name] if source else [Path(os.environ.get(env, name)), Path(os.environ.get("WATCHOVER_HOME", "data")) / name, Path(name)]
         for p in cands:
             if p.exists() and p.suffix == ".db" and not is_postgres(str(p)) and p not in out:
-                out.append(p); break
+                out.append(p)
+                kb_file = p if env == "KNOWLEDGE_DB" else kb_file
+                break
     return out
 
 
 def open_schema(target: Database) -> None:
     """Create every table Watchover uses so the copy has somewhere to land (imports are local: the stores import this module's neighbours)."""
     from . import agents, auth, history, inventory, notify, rbac, sources
-    from .actions import ActionStore
+    from .actions import open_store
     from .knowledge import Knowledge
     from .playbook import Playbook
     kb = target if isinstance(target, Knowledge) else Knowledge(target.url)
     auth.Users(kb); rbac.Roles(kb); notify.Notifier(kb); agents.AgentRegistry(kb); sources.SourceStore(kb); inventory.Inventory(kb)
     history.History(kb)
     kb._exec(f"CREATE TABLE IF NOT EXISTS learn_runs (id {kb.pk}, ts TEXT, events INTEGER, incidents INTEGER, lessons INTEGER, note TEXT DEFAULT '')")   # autolearn
-    ActionStore(kb); Playbook(kb)
+    open_store(kb); Playbook(kb)
 
 
 def _fresh_users(target: Database) -> bool:

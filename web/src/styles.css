@@ -796,3 +796,36 @@ body.pn-lock { overflow: hidden; }
 /* LLM page: training schedule */
 .at-sched { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 10px; }
 .at-sched .seg button:disabled { opacity: 0.45; }
+
+/* Anomalies: dynamic learning (per-signal status) */
+.lrn-row { gap: 10px; flex-wrap: nowrap; align-items: center; }
+.lrn-hn { width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: none; }
+.lrn-line { display: flex; flex-wrap: wrap; gap: 4px 10px; flex: 1; min-width: 0; }
+.lrn-line > span { white-space: nowrap; }
+.lrn-line > span + span::before { content: "·"; margin-right: 10px; color: var(--muted, #94a3b8); }
+.lrn-ok { color: #2dd4bf; }
+.lrn-sig { color: var(--accent); }
+.lrn-sig.warn { color: #fbbf24; }
+.lrn-list { display: grid; gap: 4px; margin: 6px 0 4px 180px; }
+.lrn-item { display: grid; grid-template-columns: 90px 90px minmax(0, 1fr) auto; gap: 10px; align-items: center; }
+.lrn-events { margin-top: 10px; display: grid; gap: 2px; }
+.lrn-cfg { gap: 10px; align-items: flex-end; margin-bottom: 8px; }
+.lrn-cfg .input { width: 140px; }
+.lrn-host { display: grid; gap: 4px; }
+.lrn-head { display: flex; align-items: center; gap: 10px; background: none; border: 0; padding: 2px 0; color: inherit; cursor: pointer; text-align: left; font: inherit; }
+.lrn-head:disabled { cursor: default; }
+@media (max-width: 720px) { .lrn-list { margin-left: 0; } .lrn-row { flex-wrap: wrap; } }
+
+/* MCP (Ayarlar › Bağlantılar › MCP, Veri kaynakları › MCP kaynakları) */
+.mcp-dot { display: inline-block; width: 8px; height: 8px; border-radius: 4px; margin-right: 6px; vertical-align: middle; }
+.mcp-tools { flex-wrap: wrap; }
+.mcp-pull-form { border-top: 1px dashed var(--border, #334155); padding-top: 10px; }
+
+/* Action agent, stage 1 (System › Durum switch, read-only İş kutusu) — docs/design/action-agent.md §13 */
+.au-modes { gap: 8px; flex-wrap: wrap; }
+.au-mode { cursor: pointer; font-weight: 600; padding: 5px 14px; }
+.au-mode:disabled { cursor: default; opacity: 1; }
+.au-mode.on { border-color: var(--accent); }
+.au-stepup { gap: 8px; flex-wrap: wrap; align-items: center; }
+.au-off { max-width: 640px; }
+.au-kill { font-weight: 600; }

@@ -9,6 +9,8 @@ import threading
 from typing import Optional
 
 TEAM_TABLES = ("threshold_policies", "recipients", "notify_groups", "notify_rules", "alerts", "agents", "sources", "biz_flows", "lessons", "rules", "scan_runs")
+from .act.store import TEAM_OWNED as _ACT_TEAM_TABLES     # noqa: E402 - the action agent's team-owned tables (§10.9)
+TEAM_TABLES = TEAM_TABLES + _ACT_TEAM_TABLES
 _LOCK = threading.Lock()
 _TL = threading.local()
 
@@ -232,3 +234,30 @@ def attach_owned_hooks(svc) -> None:
         svc.actions.db._exec("UPDATE actions SET team_id=? WHERE team_id=?", (to, tid))
     svc.teams.owned_hooks["datasets"] = (ds_count, ds_move)
     svc.teams.owned_hooks["actions"] = (act_count, act_move)
+
+    def auto_count(tid):                     # action agent: runbooks, cells, windows, stops, on-call, ... (§10.9)
+        n = 0
+        for t in _ACT_TEAM_TABLES:
+            if t in ("act_trust_events", "act_examples", "act_metrics_weekly"):
+                continue                     # history moves with its cells; it does not block a delete on its own
+            try:
+                n += int(svc.kb._exec(f"SELECT COUNT(*) AS n FROM {t} WHERE team_id=?", (tid,))[0]["n"])
+            except Exception:  # noqa: BLE001 - tables not created yet
+                pass
+        return n
+
+    def auto_move(tid, to):
+        old, new = f"t:{int(tid)}/", "t:*/" if to is None else f"t:{int(to)}/"
+        for t in _ACT_TEAM_TABLES:
+            try:
+                svc.kb._exec(f"UPDATE {t} SET team_id=? WHERE team_id=?", (to, tid))
+            except Exception:  # noqa: BLE001
+                pass
+        for t, col in (("act_cells", "cell_key"), ("act_trust_events", "cell_key"), ("act_promotions", "cell_key"),
+                       ("act_level_events", "cell_key")):
+            try:                                 # cell keys carry the team key: rekey them with the move
+                for r in svc.kb._exec(f"SELECT DISTINCT {col} AS k FROM {t} WHERE {col} LIKE ?", (old + "%",)):
+                    svc.kb._exec(f"UPDATE {t} SET {col}=? WHERE {col}=?", (new + r["k"][len(old):], r["k"]))
+            except Exception:  # noqa: BLE001
+                pass
+    svc.teams.owned_hooks["automation"] = (auto_count, auto_move)

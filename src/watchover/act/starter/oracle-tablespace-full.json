@@ -1,0 +1,61 @@
+{
+ "key": "oracle-tablespace-full",
+ "version": 1,
+ "title": "Oracle: tablespace doluluğu",
+ "risk": "R3",
+ "summary": "DBA elle genişletir; sistem hata kaydının kesildiğini doğrular.",
+ "match": {
+  "sources": [
+   "query",
+   "anomaly"
+  ],
+  "templates": [
+   "*ORA-01653*",
+   "*ORA-01654*"
+  ]
+ },
+ "applies_to": {
+  "os": [
+   "linux"
+  ]
+ },
+ "params": {
+  "host": {
+   "type": "host",
+   "from": [
+    "case.host"
+   ]
+  }
+ },
+ "watch": {
+  "minutes": 15,
+  "expected_noise_s": 0,
+  "expected_noise": []
+ },
+ "max_level": 1,
+ "steps": [
+  {
+   "id": "m1",
+   "type": "manual",
+   "title": "DBA: tablespace'i genişlet",
+   "text": "DBA tablespace doluluğunu kontrol eder ve veri dosyası ekler ya da büyütür (salt okunur bağlayıcı kontrolü sonraki sürümde)."
+  },
+  {
+   "id": "v1",
+   "type": "verify",
+   "title": "ORA hataları kesildi mi?",
+   "checks": [
+    {
+     "log_absent": {
+      "query": "\"ORA-01653\" host:{host}",
+      "window_s": 600
+     }
+    }
+   ],
+   "require": "all",
+   "retries": 3,
+   "interval_s": 60,
+   "on_fail": "escalate"
+  }
+ ]
+}

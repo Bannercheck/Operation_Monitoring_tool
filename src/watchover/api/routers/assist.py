@@ -20,6 +20,7 @@ class AskIn(BaseModel):
     history: List[dict] = []
     dataset: Optional[str] = None
     lang: str = "tr"
+    mcp: bool = True                   # also ask the external MCP tools allowed for the assistant (read-only, cited [M1])
 
 
 class RateIn(BaseModel):
@@ -55,7 +56,10 @@ def _team(acc, team_id: Optional[int]) -> Optional[int]:
 @router.post("/ask")
 def ask(body: AskIn, acc=Depends(access), user=Depends(require("page.assist")), svc=Depends(services), sc=Depends(user_scope)):
     cfg = svc.llm_cfg("ops")
-    res = wo_assistant.answer(cfg, body.question, body.history[-6:], _analysis(svc, acc, body.dataset, sc), ownership.kb_for(svc, acc, sc), body.lang)
+    from ...mcpclient import assist_context
+    extra = assist_context(svc, acc, body.question) if body.mcp else []
+    res = wo_assistant.answer(cfg, body.question, body.history[-6:], _analysis(svc, acc, body.dataset, sc), ownership.kb_for(svc, acc, sc), body.lang,
+                              extra=extra)
     return {**res, "model": cfg.model if cfg.enabled else ""}
 
 

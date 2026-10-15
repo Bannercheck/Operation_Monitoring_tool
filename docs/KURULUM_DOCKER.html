@@ -14,9 +14,9 @@ th{background:#f8fafc}
 .foot{margin-top:26px;font-size:9pt;color:#64748b;border-top:1px solid #e2e8f0;padding-top:6px}
 </style></head><body>
 <h1>Watchover · Kurumsal Docker kurulum rehberi</h1>
-<p>Watchover şirket içindeki <strong>tek bir sunucuda, tamamen Docker'da</strong> çalışır. Kurulum paketi bu klasördür (<code>watchover.zip</code>): imaj sunucuda kaynak koddan derlenir (Node aşaması React arayüzünü, Python aşaması motoru kurar); GitHub, imaj kaydı ya da sunucuda Python gerekmez. Üç konteyner vardır: <strong>dashboard</strong> (React arayüzü + HTTP API 8501, canlı alıcı 8600, konteynerin kendini izleyen ajanı), <strong>postgres</strong> (ürün veritabanı, PostgreSQL 16) ve isteğe bağlı <strong>mcp</strong> (kendi MCP sunucumuz, 8765). Eski Streamlit arayüzü <code>legacy</code> profiliyle 8502'de bir süre daha açılabilir. Kod imajın içindedir; ayarlar, sırlar, anlık görüntüler ve loglar <code>watchover-data</code> biriminde, veritabanı <code>watchover-pg</code> biriminde durur. Güncelleme, yeni paketi klasörün üstüne açıp <code>./watchover.sh update</code> demektir; birimlere dokunulmaz.</p>
+<p>Watchover şirket içindeki <strong>tek bir sunucuda, tamamen Docker'da</strong> çalışır. Kurulum paketi bu klasördür (<code>watchover.zip</code>): imaj sunucuda kaynak koddan derlenir (Node aşaması React arayüzünü, Python aşaması motoru kurar); GitHub, imaj kaydı ya da sunucuda Python gerekmez. Üç konteyner vardır: <strong>dashboard</strong> (React arayüzü + HTTP API 8501, canlı alıcı 8600, konteynerin kendini izleyen ajanı), <strong>postgres</strong> (ürün veritabanı, PostgreSQL 16) ve isteğe bağlı <strong>mcp</strong> (kendi MCP sunucumuz, 8765). Eski Streamlit arayüzü <code>legacy</code> profiliyle 8502'de bir süre daha açılabilir. Kod imajın içindedir; ayarlar, sırlar, anlık görüntüler ve loglar <code>watchover-data</code> biriminde, veritabanı <code>watchover-pg</code> biriminde durur. Güncelleme, yeni paketi klasörün üstüne açıp <code>./watchover.sh update</code> demektir; birimlere dokunulmaz. Red Hat sunucuda motor Docker CE ya da Podman olabilir (bölüm 1b); aynı ürünün OpenShift kurulumu <code>docs/KURULUM_OPENSHIFT.md</code>'dedir, ikisinin karşılaştırması bölüm 1c.</p>
 <h2>1. Sunucu gereksinimleri</h2>
-<p>Sunucuya kurulacak <strong>tek bağımlılık Docker'dır</strong> (Engine 24+ ve Compose v2). Python, pip, PostgreSQL ana makineye kurulmaz; hepsi imajların içindedir.</p>
+<p>Sunucuya kurulacak <strong>tek bağımlılık konteyner motorudur</strong>: Docker (Engine 24+ ve Compose v2) ya da RHEL'de Podman 4.4+ ile Compose v2 (bölüm 1b). Python, pip, PostgreSQL ana makineye kurulmaz; hepsi imajların içindedir.</p>
 <table>
 <thead>
 <tr>
@@ -35,7 +35,7 @@ th{background:#f8fafc}
 </tr>
 <tr>
 <td>Ağ</td>
-<td>Kullanıcılar için 8501, izlenen sunuculardan gelen ajanlar için 8600 (MCP açılırsa 8765). İmaj derlenirken bir kez PyPI ve Docker Hub'a çıkış gerekir; kapalı ağ için bölüm 9</td>
+<td>Kullanıcılar için 8501, izlenen sunuculardan gelen ajanlar için 8600 (MCP açılırsa 8765; edge açıkken yalnız 443). İmaj derlenirken bir kez PyPI ve Docker Hub'a çıkış gerekir; kapalı ağ için bölüm 9</td>
 </tr>
 </tbody>
 </table>
@@ -44,64 +44,187 @@ th{background:#f8fafc}
 sudo usermod -aG docker $USER      # sonra oturumu kapatıp açın
 docker compose version             # v2.x görünmeli
 </code></pre>
-<h2>1b. Red Hat Enterprise Linux 8.8 üretim sunucusu</h2>
-<p>Red Hat, Docker yerine Podman ile gelir; Watchover betikleri <code>docker compose</code> kullandığı için sunucuya <strong>Docker CE + Compose v2</strong> kurulur (Docker'ın kendi RHEL deposundan, x86_64). Bunun dışında ana makineye hiçbir şey kurulmaz: Python, PostgreSQL, Ollama, Caddy imajların içindedir. Kurulması gerekenler:</p>
+<h2>1b. Red Hat Enterprise Linux 8.8 / 9 üretim sunucusu (Docker CE ya da Podman)</h2>
+<p>RHEL'de Watchover iki motordan biriyle çalışır; compose dosyası, komutlar, veriler ve yedekler ikisinde de aynıdır. <code>watchover.sh</code> motoru kendisi bulur (Docker CLI varsa Docker, yoksa Podman) ve <code>.env</code>'ye <code>WATCHOVER_ENGINE=docker|podman</code> olarak yazar; elle değiştirmek için bu satır yeterlidir. Ana makineye başka bir şey kurulmaz: Python, PostgreSQL, Ollama, Caddy imajların içindedir.</p>
 <table>
 <thead>
 <tr>
-<th>Bileşen</th>
-<th>Neden</th>
-<th>Komut</th>
+<th></th>
+<th>Docker CE (varsayılan)</th>
+<th>Podman (Red Hat'in kendi motoru)</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>docker-ce</code>, <code>docker-ce-cli</code>, <code>containerd.io</code>, <code>docker-buildx-plugin</code>, <code>docker-compose-plugin</code></td>
-<td>Konteyner motoru ve Compose v2 (Podman/buildah/runc kaldırılır, çakışır)</td>
-<td><code>scripts/rhel-prepare.sh</code> kurar</td>
+<td>Paketler</td>
+<td><code>docker-ce</code>, <code>docker-ce-cli</code>, <code>containerd.io</code>, <code>docker-buildx-plugin</code>, <code>docker-compose-plugin</code> (Docker'ın RHEL deposu; Podman / buildah / runc kaldırılır, çakışır)</td>
+<td><code>podman</code>, <code>container-selinux</code>, <code>netavark</code>, <code>aardvark-dns</code> (RHEL depoları) + yalnız <code>docker-compose-plugin</code> (tek Compose v2 ikilisi; Docker motoru kurulmaz, Podman'la çakışmaz)</td>
 </tr>
 <tr>
-<td><code>git</code> (ya da paket dosyası)</td>
-<td>Kaynak ağacını almak; internetsiz sunucuda <code>bundle</code> dosyası yeterlidir</td>
-<td><code>dnf install git</code></td>
+<td>Nasıl çalışır</td>
+<td>Docker servisi</td>
+<td><code>podman.socket</code> (Docker uyumlu API, rootful) + Compose v2 <code>DOCKER_HOST=unix:///run/podman/podman.sock</code> ile; imajlar <code>podman build</code> ile Docker'ın vereceği adlarla derlenir</td>
 </tr>
 <tr>
-<td><code>python3</code>, <code>tar</code>, <code>gzip</code>, <code>openssl</code>, <code>curl</code></td>
-<td><code>watchover.sh</code> yardımcıları (gizli anahtar üretimi, hacim adı, yedek) — RHEL 8.8 tabanında vardır</td>
-<td><code>dnf install python3 tar gzip openssl curl</code></td>
+<td>Komutlar</td>
+<td><code>./watchover.sh …</code> (kullanıcı <code>docker</code> grubunda)</td>
+<td><code>sudo ./watchover.sh …</code> (soket yalnız root'a açık)</td>
 </tr>
 <tr>
-<td><code>firewalld</code> kuralları</td>
-<td>8501/tcp arayüz, 8600/tcp ajanlar, 443/tcp edge TLS</td>
-<td>betik açar</td>
+<td>Açılışta başlama</td>
+<td>Docker servisi + <code>restart: unless-stopped</code></td>
+<td><code>watchover-stack.service</code> (<code>install</code> kendisi açar; <code>./watchover.sh autostart on</code> / <code>off</code>)</td>
 </tr>
 <tr>
-<td><code>chrony</code></td>
-<td>Zaman damgaları ve TLS için saat eşitleme</td>
-<td>betik açar</td>
+<td>SELinux</td>
+<td><code>enforcing</code> kalır; Docker CE konteynerleri SELinux dışında çalıştırır</td>
+<td><code>enforcing</code> kalır; konteynerler <code>container_t</code>, bind mount'lar <code>:z</code> ile etiketlenir</td>
+</tr>
+<tr>
+<td>Hazırlık</td>
+<td><code>sudo bash scripts/rhel-prepare.sh --user ops [--mcp]</code></td>
+<td><code>sudo bash scripts/rhel-prepare.sh --engine podman [--mcp]</code></td>
 </tr>
 </tbody>
 </table>
+<p>Hazırlık betiği her iki motorda da firewalld'de 8501/tcp (arayüz), 8600/tcp (ajanlar), 443/tcp (edge TLS) ve <code>--mcp</code> ile 8765/tcp açar, chrony'yi açar; <code>--check</code> yalnız ne yapacağını yazar. Diğer gerekenler: <code>git</code> (ya da paket dosyası), <code>python3</code>, <code>tar</code>, <code>gzip</code>, <code>openssl</code>, <code>curl</code> (RHEL tabanında vardır: <code>dnf install git python3 tar gzip openssl curl</code>).</p>
+<p>Örnek: 8 CPU / 64 GB / 200 GB sunucu, ham loglar ayrı disklerde:</p>
 <pre><code class="language-bash">sudo dnf -y install git
 sudo git clone https://github.com/Bannercheck/Operation_Monitoring_tool.git /opt/watchover-docker   # internetsiz: bundle'ı açın (bölüm &quot;İnternetsiz sunucu&quot;)
 cd /opt/watchover-docker
-sudo bash scripts/rhel-prepare.sh --check          # ne yapacağını gösterir, değişiklik yapmaz
-sudo bash scripts/rhel-prepare.sh --user ops       # Docker CE + Compose, docker grubu, firewalld, chrony, daemon.json (log sınırı, live-restore)
-# oturumu kapatıp açın (docker grubu), sonra:
-./watchover.sh install
-./watchover.sh edge on watchover.sirket.local      # TLS: ./certs/watchover.crt + watchover.key şirket sertifikası ya da iç CA
-./watchover.sh llm on                              # yerel LLM istenirse (internetli: modeller iner; internetsiz: paketten gelir)
+sudo bash scripts/rhel-prepare.sh --check                 # ne yapacağını gösterir, değişiklik yapmaz (Podman: --engine podman ekleyin)
+sudo bash scripts/rhel-prepare.sh --user ops --mcp        # Docker CE; Podman için:  sudo bash scripts/rhel-prepare.sh --engine podman --mcp
+# (Docker: oturumu kapatıp açın, docker grubu)
+cp .env.docker.example .env                               # kurulumdan önce ayrı log diskleri (isteğe bağlı, önerilir; aşağıda):
+#   WATCHOVER_LOG_HOT_PATH=/srv/watchover/hot   WATCHOVER_LOG_COLD_PATH=/srv/watchover/cold
+./watchover.sh install --production                       # Podman: sudo ./watchover.sh install --production
+sudo ./watchover.sh backup-timer on 02:15                 # gecelik yedek (systemd timer)
+./watchover.sh edge on watchover.sirket.local             # TLS: ./certs/watchover.crt + watchover.key şirket sertifikası ya da iç CA
+./watchover.sh llm on                                     # yerel LLM istenirse (internetli: modeller iner; internetsiz: paketten gelir)
 </code></pre>
+<p><strong>Üretim kurulumu (<code>install --production</code>).</strong> Normal kurulumun aynısı, ek olarak <code>.env</code>'ye <code>WATCHOVER_DEMO=0</code> yazar (simülatör açılamaz, demo verisi oluşmaz) ve sonunda devreye alma listesini basar; <code>./watchover.sh checklist</code> aynı listeyi istendiğinde, yapılanları işaretleyerek yeniden gösterir:</p>
+<ul>
+<li>gecelik yedek açık mı (<code>backup-timer on</code>), yedek klasörü başka bir makineye kopyalanıyor mu,</li>
+<li>açılışta başlama (Podman'da <code>watchover-stack.service</code>; Docker'da servis zaten açar),</li>
+<li>yönetici parolası: <code>admin@watchover.local</code> ilk girişte parolasını değiştirir ya da <code>./watchover.sh user password admin@watchover.local</code>; kişisel yönetici hesapları (<code>user add … --admin</code>),</li>
+<li>disk üst sınırları: Sistem › Ayarlar'da <code>hot_max_gb</code> / <code>cold_max_gb</code>; betik diske göre öneri yazar (kendi diskinin %80'i, iki katman aynı diskteyse %40'ı, veri biriminde %30'u),</li>
+<li>ham loglar ayrı disklerde mi, TLS (edge) açık mı, güvenlik duvarında yalnız gereken portlar mı.</li>
+</ul>
+<p><strong>Ayrı sıcak / soğuk log diskleri.</strong> Ham loglar varsayılan olarak veri biriminin içindedir (<code>/data/logs/hot</code>, <code>/data/logs/cold</code>). Üretimde sıcak loglar (son 48-72 saat, satır başına ~65-90 bayt; dakikada 100 bin satırda ~13 GB/gün) hızlı bir diske (NVMe / SSD), soğuk arşiv (~7-8 bayt/satır, ~1,1 GB/gün) ayrı ve ucuz bir diske konur. <code>.env</code>'de iki ana makine dizini verilir; <code>watchover.sh</code> bunları <code>docker-compose.loghot.yml</code> / <code>docker-compose.logcold.yml</code> üzerinden konteynerlerde <code>/logs/hot</code> ve <code>/logs/cold</code> olarak bağlar (OpenShift'teki yollarla aynı), <code>COMPOSE_FILE</code>'ı kendisi yazar:</p>
+<pre><code class="language-bash">sudo mkfs.xfs /dev/vg_data/lv_hot &amp;&amp; sudo mkfs.xfs /dev/vg_data/lv_cold          # örnek LVM: 200 GB'lık sunucuda ör. 60 GB hot, 50 GB cold
+sudo mkdir -p /srv/watchover/hot /srv/watchover/cold
+echo '/dev/vg_data/lv_hot  /srv/watchover/hot  xfs defaults,noatime 0 0' | sudo tee -a /etc/fstab
+echo '/dev/vg_data/lv_cold /srv/watchover/cold xfs defaults,noatime 0 0' | sudo tee -a /etc/fstab
+sudo mount -a
+sudo chown -R 10001:0 /srv/watchover/hot /srv/watchover/cold &amp;&amp; sudo chmod 2770 /srv/watchover/hot /srv/watchover/cold
+# .env:  WATCHOVER_LOG_HOT_PATH=/srv/watchover/hot   WATCHOVER_LOG_COLD_PATH=/srv/watchover/cold
+./watchover.sh start &amp;&amp; ./watchover.sh storage           # bağlama, boş alan ve önerilen hot_max_gb / cold_max_gb
+</code></pre>
+<ul>
+<li>Konteynerler UID 10001 / GID 0 ile yazar; <code>watchover.sh</code> her başlatmada dizinin mutlak yol olduğunu, var olduğunu (root ile çalışıyorsa yoksa kendisi açar) ve bu kullanıcıya yazılabilir olduğunu denetler, değilse çalıştırılacak <code>chown</code> / <code>chmod</code> komutunu yazarak durur. Dizin kök dosya sistemindeyse "ayrı disk değil" uyarısı verir.</li>
+<li>SELinux <code>enforcing</code> kalır: bağlamalar <code>:z</code> taşır, Podman (ya da <code>selinux-enabled</code> açık Docker) dizini ilk başlatmada <code>container_file_t</code> olarak etiketler (<code>ls -Zd /srv/watchover/hot</code>). Docker CE varsayılanında etiket gerekmez.</li>
+<li>Mevcut bir kurulumu taşımak: <code>./watchover.sh stop</code>, sonra eski loglar kopyalanır (Podman'da <code>sudo podman run … docker.io/library/alpine</code>), <code>.env</code>'ye yollar yazılır, <code>./watchover.sh start</code>:
+  <code>sudo docker run --rm -v watchover_watchover-data:/data -v /srv/watchover/hot:/dst:z alpine cp -a /data/logs/hot/. /dst/</code> (soğuk için <code>cold</code>). Birimdeki eski kopya sonra silinebilir.</li>
+<li>Log diskleri <code>./watchover.sh backup</code> içinde değildir: soğuk arşivi LVM / depolama anlık görüntüsüyle koruyun (OpenShift'teki VolumeSnapshot karşılığı).</li>
+</ul>
 <p><strong>Üretim notları (RHEL)</strong></p>
 <ul>
-<li><strong>SELinux</strong> <code>enforcing</code> kalabilir: Docker CE varsayılanı konteynerleri SELinux'tan muaf çalıştırır, bind mount'lar (<code>./certs</code>, <code>./docker/Caddyfile</code>) olduğu gibi çalışır. <code>daemon.json</code>'da <code>selinux-enabled</code> açılırsa bu iki mount'a <code>:z</code> eklenir.</li>
-<li><strong>Disk</strong>: imajlar, PostgreSQL, canlı spool ve Ollama modelleri <code>/var/lib/docker</code> altındadır. 100+ sunucu için ayrı bir LVM hacmi (≥ 200 GB, LLM ile ≥ 300 GB) <code>/var/lib/docker</code>'a bağlanır ya da <code>daemon.json</code> <code>data-root</code> ile taşınır; betik 40 GB'ın altında uyarır.</li>
-<li><strong>Kaynak</strong>: <code>watchover.sh</code> gördüğü tüm CPU'yu LLM ve eğiticiye, belleğin %80'ini LLM'e tavan olarak yazar; 100+ sunucu / 2.000 olay/sn için 16–32 CPU, 64 GB öneri (bkz. "Ölçek").</li>
-<li><strong>Abonelik / depo</strong>: <code>dnf</code> için RHEL aboneliği ya da Satellite gerekir; Docker deposu <code>download.docker.com/linux/rhel</code> (erişim yoksa RPM'ler internetli makinede <code>dnf download --resolve …</code> ile indirilip <code>dnf install ./*.rpm</code> ile kurulur, betik <code>--no-docker</code> ile çalıştırılır).</li>
-<li><strong>Yeniden başlatma</strong>: Docker servisi <code>enable</code> edilir, konteynerler <code>restart: unless-stopped</code> ile kendiliğinden kalkar; <code>live-restore</code> ile Docker güncellemesi konteynerleri düşürmez.</li>
-<li><strong>Yedek</strong>: <code>./watchover.sh backup --keep 14</code> günlük cron'a (<code>0 2 * * * /opt/watchover-docker/watchover.sh backup</code>) konur; <code>backups/</code> dizini merkezi yedeğe alınır.</li>
+<li><strong>Disk</strong>: imajlar, PostgreSQL, canlı spool ve Ollama modelleri Docker'da <code>/var/lib/docker</code>, Podman'da <code>/var/lib/containers</code> altındadır. 200 GB'lık sunucuda ham loglar ayrı disklere alınırsa kalan alan bunlara yeter (LLM ile ≥ 100 GB bırakın); betik <code>/var/lib</code>'de 40 GB'ın altında uyarır.</li>
+<li><strong>Kaynak</strong>: <code>watchover.sh</code> her install / update / start'ta CPU ve belleği ölçüp payları dağıtır (bölüm 2k); 8 CPU / 64 GB sunucuda sonuç <code>cpu8</code> profiliyle aynıdır. 100+ sunucu / 2.000 olay/sn için 16–32 CPU, 64 GB öneri (bkz. "Ölçek").</li>
+<li><strong>Abonelik / depo</strong>: <code>dnf</code> için RHEL aboneliği ya da Satellite gerekir; Docker deposu <code>download.docker.com/linux/rhel</code> (Podman'da yalnız <code>docker-compose-plugin</code> için). Erişim yoksa: Docker RPM'leri internetli makinede <code>dnf download --resolve …</code> ile indirilip <code>dnf install ./*.rpm</code>, betik <code>--no-docker</code> ile; Podman'da Compose ikilisi (<code>docker-compose-linux-x86_64</code>, github.com/docker/compose/releases) <code>/usr/local/lib/docker/cli-plugins/docker-compose</code> olarak kopyalanır.</li>
+<li><strong>Yeniden başlatma</strong>: Docker servisi <code>enable</code> edilir, konteynerler <code>restart: unless-stopped</code> ile kendiliğinden kalkar, <code>live-restore</code> Docker güncellemesinde konteynerleri düşürmez. Podman'da konteynerleri yeniden başlatan bir servis yoktur: <code>install</code> <code>watchover-stack.service</code>'i açar (<code>./watchover.sh autostart on|off</code>), kapanışta yığın düzgünce durdurulur.</li>
+<li><strong>Yedek</strong>: <code>sudo ./watchover.sh backup-timer on [SS:DD]</code> (bölüm 10); <code>backups/</code> (ya da <code>.env</code> <code>WATCHOVER_BACKUP_DIR</code>) merkezi yedeğe alınır.</li>
+<li><strong>Podman ağı</strong>: konteynerler birbirini adla bulur (<code>postgres</code>, <code>receiver</code>); bunun için netavark + aardvark-dns gerekir (RHEL 9 varsayılanı). RHEL 8'de eski CNI arka ucu görülürse betik uyarır: <code>/etc/containers/containers.conf</code> <code>[network] network_backend = "netavark"</code> ve yeni sunucuda <code>podman system reset --force</code>.</li>
 <li><strong>İzlenen RHEL sunucular</strong>: ajan yalnız <code>python3</code> ister (<code>dnf install python3</code>), <code>curl -fsSL http://&lt;watchover&gt;:8600/agent/install.sh | sudo bash -s -- --url … --enroll-key …</code> systemd servisini kurar; SELinux'ta <code>/opt/watchover-agent</code> altında çalışır, ek etiket gerekmez.</li>
 </ul>
+<h2>1c. RHEL sunucu vs OpenShift: aynı ürün, iki kurulum</h2>
+<p>Kurulum günü hedef hangisi olursa olsun ikisi de hazırdır: aynı imajlar (<code>Dockerfile</code>, <code>Dockerfile.receiver</code>), aynı veritabanı şeması, aynı <code>/logs/hot</code> ve <code>/logs/cold</code> yolları, aynı üretim kipi. RHEL sunucuda Docker CE ya da Podman (<code>docs/KURULUM_DOCKER.md</code> bölüm 1b), OpenShift'te Helm chart'ı (<code>docs/KURULUM_OPENSHIFT.md</code>). Tablo iki rehberde de aynıdır; "Fark" yazan yerde iki kurulum gerçekten ayrışır.</p>
+<table>
+<thead>
+<tr>
+<th>Konu</th>
+<th>RHEL sunucu (Docker CE ya da Podman)</th>
+<th>OpenShift</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Kurulum</td>
+<td><code>sudo bash scripts/rhel-prepare.sh [--engine podman] [--mcp]</code>, sonra <code>./watchover.sh install --production</code> (Podman: <code>sudo</code> ile). İmajlar sunucuda kaynak koddan derlenir; kapalı ağda <code>bundle</code> / <code>unbundle</code></td>
+<td>İmajlar <code>podman build</code> + <code>podman push</code> ya da <code>oc new-build</code> ile kayıt defterine, sonra <code>helm install … -f degerler.yaml</code>; Helm'siz: <code>oc apply -f deploy/openshift/rendered/watchover.yaml</code></td>
+</tr>
+<tr>
+<td>Yükseltme</td>
+<td><code>./watchover.sh upgrade</code> (git) ya da yeni paket + <code>./watchover.sh update</code>; veri birimleri ve log diskleri yerinde kalır</td>
+<td>Yeni etiketli imajlar + <code>helm upgrade … --set image.tag=X</code>; pod <code>Recreate</code> ile durup yenisi açılır, PVC'ler yerinde kalır</td>
+</tr>
+<tr>
+<td>Geri alma</td>
+<td>Önceki sürümün kaynak ağacı (eski commit ya da paket) + <code>./watchover.sh update</code>. Göçler ileriye dönüktür: veritabanı için yükseltmeden önce alınan yedekle <code>./watchover.sh restore</code></td>
+<td><code>helm rollback watchover &lt;REVİZYON&gt;</code> (imaj etiketi dahil). Göçler ileriye dönüktür: veritabanı için yükseltmeden önce alınan dump ile <code>pg_restore</code></td>
+</tr>
+<tr>
+<td>Otomatik boyutlandırma</td>
+<td><code>watchover.sh</code> her install / update / start'ta CPU ve belleği ölçüp konteyner sınırlarını yazar (8 CPU / 64 GB = <code>cpu8</code> profili); sabit değer: <code>profile cpu8</code> / <code>cpu16</code></td>
+<td>Fark: ölçme yoktur, istek / sınır değer dosyasındadır (<code>values.yaml</code>, tam performans <code>values-performance.yaml</code>). Ortak: alıcı kendi cgroup sınırını okuyup Go'nun CPU sayısını (GOMAXPROCS) ve bellek hedefini ona göre ayarlar</td>
+</tr>
+<tr>
+<td>Ayrı sıcak / soğuk disk</td>
+<td><code>.env</code>: <code>WATCHOVER_LOG_HOT_PATH</code>, <code>WATCHOVER_LOG_COLD_PATH</code> (ana makine dizinleri, sahibi <code>10001:0</code>, SELinux <code>:z</code>); <code>/logs/hot</code>, <code>/logs/cold</code> olarak bağlanır. Boşsa veri biriminin içinde (<code>/data/logs</code>)</td>
+<td>Her zaman ayrı PVC: <code>logs-hot</code> (hızlı sınıf), <code>logs-cold</code> (ucuz sınıf), aynı <code>/logs/hot</code>, <code>/logs/cold</code> yolları. Üst sınırlar <code>retention.hotMaxGb</code> / <code>coldMaxGb</code> ile sabitlenir</td>
+</tr>
+<tr>
+<td>PostgreSQL</td>
+<td><code>postgres:16-alpine</code> konteyneri (birim <code>watchover-pg</code>, parola <code>.env</code>'de üretilir) ya da <code>.env</code> <code>DATABASE_URL</code> ile kurumun sunucusu</td>
+<td><code>rhel9/postgresql-16</code> StatefulSet (parola Secret'ta üretilir, korunur) ya da <code>postgresql.enabled: false</code> + <code>externalDatabase.existingSecret</code></td>
+</tr>
+<tr>
+<td>LLM (yalnız CPU)</td>
+<td><code>./watchover.sh llm on</code>: Ollama + eğitim konteyneri, CPU payı otomatik; modeller indirilir (kapalı ağda paketten gelir)</td>
+<td><code>llm.enabled: true</code>: Ollama pod'u, tek model, <code>llm.lock</code>, indirdikten sonra <code>llm.ollama.allowEgress: false</code>; eğitim <code>trainer.enabled</code></td>
+</tr>
+<tr>
+<td>MCP sunucusu</td>
+<td><code>./watchover.sh mcp on</code>: aynı imaj, <code>http://&lt;sunucu&gt;:8765/mcp</code>; edge açıkken Caddy <code>https://&lt;ad&gt;/mcp</code> yolunu bu konteynere (TLS), <code>https://&lt;ad&gt;/api/mcp</code> yolunu arayüzün kendi MCP ucuna gönderir. Anahtarlar: arayüzde adlı, kapsamlı anahtarlar (Ayarlar › Bağlantılar › MCP); <code>.env</code> <code>MCP_API_KEY</code> kurulum çapında okuma anahtarıdır (ilk kurulumda üretilir; <code>MCP_API_KEY_WRITE=1</code> yazma da verir). Canlı ürün araçları arayüze iletilir (<code>WATCHOVER_API_URL=http://watchover:8501</code>); dosyalar <code>./datasets</code></td>
+<td><code>mcp.enabled: true</code>: ayrı Deployment + Route (<code>https://&lt;mcp route&gt;/mcp</code>, edge TLS) + NetworkPolicy; arayüzün kendi ucu <code>https://&lt;ui route&gt;/api/mcp</code>. Anahtarlar: aynı adlı anahtarlar; kurulum anahtarı Secret'ta (üretilir, upgrade'de korunur, arayüz pod'una da verilir) ya da <code>mcp.existingSecret</code>, yazma <code>mcp.installKeyWrite</code>. Canlı araçlar <code>WATCHOVER_API_URL=http://watchover:8501</code> ile iletilir; dosyalar kendi PVC'sinde (<code>/datasets</code>, <code>oc cp</code>). Fark: OpenShift'te MCP pod'u <code>/data</code> ve log disklerini görmez, canlı veriye arayüz üzerinden ulaşır; RHEL'de 8765 ayrıca düz http açıktır (<code>WATCHOVER_MCP_PORT=127.0.0.1:8765</code> ile yalnız yerel)</td>
+</tr>
+<tr>
+<td>Demo kapalı</td>
+<td><code>install --production</code> → <code>WATCHOVER_DEMO=0</code> (Docker'ın varsayılanı 1); kalan demo verisi: <code>./watchover.sh demo-clean</code></td>
+<td>Her zaman üretim (<code>demo: false</code>); kalan demo verisi: Sistem › Demo verisi ya da <code>oc exec … python -m watchover.demo clean</code></td>
+</tr>
+<tr>
+<td>Yedek</td>
+<td><code>./watchover.sh backup-timer on [SS:DD]</code>: her gece PostgreSQL dökümü + veri birimi (ham loglar hariç) + <code>.env</code> → <code>backups/</code>, son 14 (systemd timer; systemd yoksa cron). Geri: <code>./watchover.sh restore DOSYA</code>. Log diskleri: LVM / depolama anlık görüntüsü</td>
+<td><code>backup.enabled: true</code>: her gece <code>pg_dump</code> CronJob'u + kendi PVC'si, <code>keepDays</code>. Geri: <code>pg_restore</code>. Fark: <code>data</code> diski (ayarlar, <code>.vault.key</code>) ve log diskleri için VolumeSnapshot gerekir</td>
+</tr>
+<tr>
+<td>Ajan kayıt adresi</td>
+<td><code>http://&lt;sunucu&gt;:8600/ingest</code>, edge açıkken <code>https://&lt;ad&gt;/ingest</code>; kayıt anahtarı ve hazır komut Bağlantılar sayfasında</td>
+<td><code>https://&lt;ingest route&gt;/ingest</code> (ya da tek adres <code>routes.ui.host</code>); chart bu adresi uygulamaya verir (<code>WATCHOVER_INGEST_URL</code>), hazır komut aynı sayfada</td>
+</tr>
+<tr>
+<td>TLS</td>
+<td><code>./watchover.sh edge on &lt;ad&gt;</code>: Caddy 443'te; şirket sertifikası <code>./certs/watchover.crt</code> + <code>.key</code> ya da Caddy'nin kendi CA'sı (<code>edge cert</code>)</td>
+<td>OpenShift router'ı (Route, edge TLS, http → https); kümenin <code>*.apps</code> sertifikası ya da <code>routes.tls</code></td>
+</tr>
+<tr>
+<td>İzleme / sağlık</td>
+<td><code>./watchover.sh status</code> ve <code>doctor</code>; sağlık uçları <code>/api/health</code> (8501), <code>/health</code> (8600, MCP 8765); konteynerin kendi ajanı (<code>WATCHOVER_SELFMON=1</code>)</td>
+<td>Aynı uçlarda startup / readiness / liveness probları; <code>oc get pods</code>; pod'un kendi ajanı (<code>dashboard.selfMonitor</code>)</td>
+</tr>
+<tr>
+<td>Açılışta başlama</td>
+<td>Docker: servis + <code>restart: unless-stopped</code>; Podman: <code>watchover-stack.service</code> (install açar, <code>./watchover.sh autostart on</code> / <code>off</code>)</td>
+<td>Kubernetes (Deployment / StatefulSet)</td>
+</tr>
+<tr>
+<td>Sorun giderme</td>
+<td><code>./watchover.sh logs [servis]</code>, <code>./watchover.sh doctor</code>, <code>./watchover.sh storage</code>, <code>./watchover.sh checklist</code>; Docker rehberi bölüm 11</td>
+<td><code>oc logs deploy/watchover -c dashboard</code> (ya da <code>-c receiver</code>), <code>oc describe pod</code>, <code>oc get events</code>; OpenShift rehberi bölüm 11</td>
+</tr>
+</tbody>
+</table>
 <h2>2. Kurulum (on dakika)</h2>
 <p>Paketi sunucuya kopyalayın (scp / WinSCP), açın ve tek komutu çalıştırın:</p>
 <pre><code class="language-bash">scp watchover.zip kullanici@sunucu:~/
@@ -189,7 +312,7 @@ access_log /var/log/nginx/access.log watchover;
 <h2>2i. Log gezgini</h2>
 <p>Sinyaller › Loglar. Üstteki sorgu çubuğuna <code>level:err OR level:crit</code>, <code>host:prd-sap-* -service:nginx</code>, <code>pool:prd-crm level&gt;=warn "timeout"</code> gibi sorgular yazılır; soldaki filtrelere tıklamak sorguyu kendisi yazar. <strong>Canlı</strong> düğmesi akışı 2 saniyede bir getirir; aşağı kaydırınca durur ve "N yeni satır" gösterir. Satıra tıklayınca Ayrıntı / Bağlam / Ham / JSON açılır; her değerde süz, dışla, kopyala vardır. <strong>Kaydet</strong> aramayı kişiye (istenirse ekibe) kaydeder, <strong>Uyarı</strong> "M dakikada eşleşen satır ≥ N" kuralını mevcut bildirim kanallarına bağlar (<code>act.logalert</code> yetkisi). Son 48 saat satır satır aranır (<code>live_retention_h</code>); yoğun yükte uzun aralıklardaki serbest metin aramaları "≈ tahmini" sayı gösterir ve "Daha geriye tara" ile devam eder. Kişisel veri (e-posta, TCKN, kart, IBAN, telefon) içeren aramalar reddedilir; satırlar maskeli görünür.</p>
 <h2>2j. Log depolama: sıcak ve soğuk (v1.48)</h2>
-<p>Ham log satırları artık ana veritabanında değil, veri biriminde iki dizinde tutulur: <strong>sıcak</strong> (<code>/data/logs/hot</code>, gün başına bir dosya, son <code>live_retention_h</code> saat; ölçülen ~65-90 bayt/satır) ve <strong>soğuk</strong> (<code>/data/logs/cold</code>, şablon + sıkıştırma ile ~7-8 bayt/satır, <code>cold_retention_days</code> gün, varsayılan 7). Süresi dolan gün tek dosya silinerek gider, PostgreSQL şişmez. Log gezgini eski günleri arşivden tarar ("arşivden" rozeti, ilerleme çubuğu). Disk dolmasın diye Sistem › Ayarlar'da üst sınır verin: <code>hot_max_gb</code> (dolunca biten en eski gün erkenden arşive geçer) ve <code>cold_max_gb</code> (dolunca en eski arşiv günü silinir); Sistem › Depolama kartı doluluğu gösterir ve %85'te uyarır. Dakikada 100 bin satırda sıcak ~13 GB/gün, soğuk ~1,1 GB/gün. İlk açılışta eski <code>live_batches</code> tablosu arka planda dosyalara taşınır. Eski davranış için <code>.env</code>'de <code>WATCHOVER_LOG_STORE=db</code>.</p>
+<p>Ham log satırları artık ana veritabanında değil, veri biriminde iki dizinde tutulur: <strong>sıcak</strong> (<code>/data/logs/hot</code>, gün başına bir dosya, son <code>live_retention_h</code> saat; ölçülen ~65-90 bayt/satır) ve <strong>soğuk</strong> (<code>/data/logs/cold</code>, şablon + sıkıştırma ile ~7-8 bayt/satır, <code>cold_retention_days</code> gün, varsayılan 7). Süresi dolan gün tek dosya silinerek gider, PostgreSQL şişmez. Log gezgini eski günleri arşivden tarar ("arşivden" rozeti, ilerleme çubuğu). Disk dolmasın diye Sistem › Ayarlar'da üst sınır verin: <code>hot_max_gb</code> (dolunca biten en eski gün erkenden arşive geçer) ve <code>cold_max_gb</code> (dolunca en eski arşiv günü silinir); Sistem › Depolama kartı doluluğu gösterir ve %85'te uyarır. Dakikada 100 bin satırda sıcak ~13 GB/gün, soğuk ~1,1 GB/gün. İlk açılışta eski <code>live_batches</code> tablosu arka planda dosyalara taşınır. Eski davranış için <code>.env</code>'de <code>WATCHOVER_LOG_STORE=db</code>. Sunucuda iki katmanı <strong>ayrı disklere</strong> almak için <code>.env</code>'de <code>WATCHOVER_LOG_HOT_PATH</code> / <code>WATCHOVER_LOG_COLD_PATH</code> (bölüm 1b); <code>./watchover.sh storage</code> nerede durduklarını ve önerilen üst sınırları gösterir.</p>
 <h2>2k. Hazır boyut profili ve LLM'i GPU'suz çalıştırmak</h2>
 <p><strong>Kaynaklar kendiliğinden ayarlanır:</strong> <code>watchover.sh</code> her kurulum, güncelleme ve başlatmada makinenin CPU ve belleğini okur ve payları orantılı dağıtır: panel çekirdeklerin çoğunu (CPU − 2, en az 2), belleğin dörtte birini; alıcı CPU'nun dörtte birini (ayrıştırma işçisi CPU × 3/8); PostgreSQL belleğin sekizde birini (<code>shared_buffers</code> bunun dörtte biri); LLM CPU × 3/8 ve belleğin ~%16'sını; eğitim CPU'nun yarısını. 8 CPU / 64 GB makinede sonuç: panel 6 CPU / 16 GB, alıcı 2 CPU (3 işçi), PostgreSQL 2 CPU / 8 GB, LLM 3 CPU / 10 GB, eğitim 4 CPU / 12 GB. Makineye CPU ya da bellek eklenince bir sonraki <code>./watchover.sh start</code> yeni değerleri yazar. Sabit değer istenirse <code>./watchover.sh profile cpu8|cpu16</code> (ya da <code>.env</code>'de <code>WATCHOVER_SIZING=manual</code>); <code>profile auto</code> otomatiğe döner, <code>profile</code> geçerli değerleri gösterir. Alıcı ayrıca konteynerin CPU ve bellek sınırını kendisi okur (OpenShift pod sınırı dahil). Tanımlı bir LLM bağlantısı (LLM sayfası / <code>.env</code>) değiştirilmez.</p>
 <p>LLM'i açmak: <code>./watchover.sh llm on</code> (Ollama başlar, modeller iner: günlük kullanım için qwen2.5 3B, gece işleri için 7B). GPU'suz bir yanıt 3B ile ~20-40 sn, 7B ile ~45-90 sn sürer (LLM › Kalite'deki ölçüm kesin süreyi gösterir). Çekirdek (anomali, eşik, log analizi, panolar) LLM'siz çalışır.</p>
@@ -225,8 +348,24 @@ access_log /var/log/nginx/access.log watchover;
 <td><strong>Yeni sürüme geçmenin tek komutu</strong>: <code>git fetch</code> + ileri sarma + <code>update</code>. Klasörde elle değiştirilmiş dosya varsa kenara alır (<code>git stash</code>) ve sonra geri koyar; düz <code>git pull</code>'un "unstaged changes" diye durduğu yerde durmaz. Kendi commit'i olan klasörü elle birleştirmeye bırakır</td>
 </tr>
 <tr>
-<td><code>./watchover.sh backup</code></td>
-<td>PostgreSQL dökümü + veri birimi + <code>.env</code> → <code>backups/watchover-YYYYMMDD-HHMM.tgz</code></td>
+<td><code>./watchover.sh install --production</code></td>
+<td>Kurulum + <code>WATCHOVER_DEMO=0</code> + devreye alma listesi (yedek, açılışta başlama, yönetici parolası, disk sınırları, TLS); <code>./watchover.sh checklist</code> listeyi yeniden gösterir</td>
+</tr>
+<tr>
+<td><code>./watchover.sh backup [--no-logs] [--keep N]</code></td>
+<td>PostgreSQL dökümü + veri birimi + <code>.env</code> → <code>backups/watchover-YYYYMMDD-HHMM.tgz</code> (<code>--no-logs</code>: veri birimindeki ham loglar hariç)</td>
+</tr>
+<tr>
+<td><code>./watchover.sh backup-timer on [SS:DD]</code> / <code>off</code></td>
+<td>Gecelik yedek (<code>backup --no-logs</code>): systemd timer, systemd yoksa cron; varsayılan 02:15; argümansız durumu gösterir</td>
+</tr>
+<tr>
+<td><code>./watchover.sh autostart on</code> / <code>off</code></td>
+<td>Açılışta başlatan systemd birimi (<code>watchover-stack.service</code>); Podman'da <code>install</code> kendisi açar</td>
+</tr>
+<tr>
+<td><code>./watchover.sh storage</code></td>
+<td>Ham logların yeri (veri birimi ya da ayrı diskler), boş alan, önerilen <code>hot_max_gb</code> / <code>cold_max_gb</code></td>
 </tr>
 <tr>
 <td><code>./watchover.sh restore DOSYA</code></td>
@@ -258,7 +397,7 @@ access_log /var/log/nginx/access.log watchover;
 </tr>
 </tbody>
 </table>
-<p>Bütün bunlar düz <code>docker compose</code> komutlarıdır; alışkın olanlar <code>docker compose ps</code>, <code>docker compose logs -f dashboard</code> ile aynı işleri yapabilir.</p>
+<p>Bütün bunlar düz <code>docker compose</code> komutlarıdır; alışkın olanlar <code>docker compose ps</code>, <code>docker compose logs -f dashboard</code> ile aynı işleri yapabilir (Podman'da <code>sudo DOCKER_HOST=unix:///run/podman/podman.sock docker compose ps</code> ya da <code>sudo podman ps</code>).</p>
 <h2>4. Yapılandırma (.env)</h2>
 <p><code>install</code> gerekli her şeyi yazar; değiştirmek isteyenler için:</p>
 <table>
@@ -278,7 +417,12 @@ access_log /var/log/nginx/access.log watchover;
 <tr>
 <td><code>MCP_API_KEY</code></td>
 <td>rastgele</td>
-<td>MCP istemcilerinin göndereceği anahtar</td>
+<td>MCP istemcilerinin göndereceği kurulum anahtarı (yalnız okur)</td>
+</tr>
+<tr>
+<td><code>MCP_API_KEY_WRITE</code></td>
+<td>boş</td>
+<td><code>1</code>: kurulum anahtarı yazabilir de (<code>create_action</code>; OpenShift'te <code>mcp.installKeyWrite</code>)</td>
 </tr>
 <tr>
 <td><code>WATCHOVER_UI_PORT</code> / <code>WATCHOVER_LIVE_PORT</code> / <code>WATCHOVER_MCP_PORT</code></td>
@@ -287,13 +431,33 @@ access_log /var/log/nginx/access.log watchover;
 </tr>
 <tr>
 <td><code>WATCHOVER_CPUS</code> / <code>WATCHOVER_MEMORY</code></td>
-<td><code>4</code> / <code>4g</code></td>
-<td>Dashboard konteynerinin sınırı</td>
+<td>otomatik</td>
+<td>Dashboard konteynerinin sınırı (bölüm 2k; <code>WATCHOVER_SIZING=manual</code> ile elle)</td>
 </tr>
 <tr>
 <td><code>WATCHOVER_PG_CPUS</code> / <code>WATCHOVER_PG_MEMORY</code></td>
-<td><code>2</code> / <code>2g</code></td>
+<td>otomatik</td>
 <td>PostgreSQL konteynerinin sınırı</td>
+</tr>
+<tr>
+<td><code>WATCHOVER_ENGINE</code></td>
+<td>algılanır</td>
+<td><code>docker</code> ya da <code>podman</code> (RHEL, rootful Podman: bölüm 1b)</td>
+</tr>
+<tr>
+<td><code>WATCHOVER_LOG_HOT_PATH</code> / <code>WATCHOVER_LOG_COLD_PATH</code></td>
+<td>boş</td>
+<td>Ham logların ayrı diskleri (ana makine dizinleri, sahibi <code>10001:0</code>); boşsa veri biriminde</td>
+</tr>
+<tr>
+<td><code>WATCHOVER_BACKUP_DIR</code> / <code>WATCHOVER_BACKUP_KEEP</code></td>
+<td><code>backups</code> / <code>14</code></td>
+<td>Yedeklerin klasörü (başka disk önerilir) ve saklanacak sayı</td>
+</tr>
+<tr>
+<td><code>WATCHOVER_DEMO</code></td>
+<td><code>1</code></td>
+<td><code>0</code> = üretim: simülatör yok, demo verisi yazılmaz (<code>install --production</code> yazar)</td>
 </tr>
 <tr>
 <td><code>WATCHOVER_SELFMON</code></td>
@@ -347,7 +511,9 @@ cp uretim-log.zip datasets/        # istemcilerin analiz edeceği dosyalar
 <p>İstemci ayarı (<code>mcpServers</code> bloğu):</p>
 <pre><code class="language-json">{&quot;mcpServers&quot;: {&quot;watchover&quot;: {&quot;url&quot;: &quot;http://&lt;sunucu&gt;:8765/mcp&quot;, &quot;headers&quot;: {&quot;Authorization&quot;: &quot;Bearer &lt;MCP_API_KEY&gt;&quot;}}}}
 </code></pre>
-<p>Sonra istemciden <code>analyze_dataset("uretim-log.zip")</code> demek yeter. Anahtarsız istekler 401 alır.</p>
+<p>Sonra istemciden <code>analyze_dataset("uretim-log.zip")</code> demek yeter. Anahtarsız istekler 401 alır. MCP konteyneri canlı ürün araçlarını (loglar, panolar, anomaliler, envanter) arayüzün kendi MCP ucuna iletir (<code>WATCHOVER_API_URL</code>, varsayılan <code>http://watchover:8501</code>). Edge açıkken (bölüm 8) aynı sunucu TLS ile <code>https://&lt;ad&gt;/mcp</code> adresindedir (Caddy → <code>mcp:8765</code>), arayüzün kendi MCP ucu <code>https://&lt;ad&gt;/api/mcp</code>; düz 8765'i <code>.env</code>'de <code>WATCHOVER_MCP_PORT=127.0.0.1:8765</code> ile yalnız yerelde tutun (MCP kapalıyken <code>/mcp</code> 502 döner). Anahtarlar: Ayarlar › Bağlantılar › MCP'de adlı, kapsamlı (hesap ya da ekip, okuma / yazma) anahtarlar; <code>.env</code>'deki <code>MCP_API_KEY</code> kurulum çapında okuma anahtarıdır, <code>MCP_API_KEY_WRITE=1</code> ona yazma da verir. OpenShift'te aynı sunucu <code>mcp.enabled: true</code> ile kendi pod'u ve TLS'li Route'uyla gelir (OpenShift rehberi bölüm 5b).</p>
+<p><strong>Canlı ürünün araçları ve adlı anahtarlar.</strong> Arayüzün kendisi de MCP sunucusudur: <code>https://&lt;sunucu&gt;/api/mcp</code> (doğrudan <code>http://&lt;sunucu&gt;:8501/mcp</code>). Araçlar: <code>whoami</code>, <code>log_search</code> (sorgu dili + zaman aralığı), <code>log_tail</code>, <code>dash_infra</code> / <code>dash_alarms</code> / <code>dash_pools</code>, <code>host_detail</code> (özet, alarm metrikleri, eşik seviyeleri), <code>thresholds_state</code>, <code>list_anomalies</code> / <code>get_anomaly</code>, <code>integration_hosts</code> / <code>host_integrations</code> (teknolojiyle), <code>search_traces</code> / <code>get_trace</code> / <code>trace_session</code>, <code>list_flows</code> / <code>flow_funnel</code> / <code>flow_items</code>, <code>inventory_lookup</code>, <code>list_actions</code> / <code>get_action</code>; yazma: <code>create_action</code>, <code>ack_anomaly</code>, <code>set_threshold</code>. Anahtarları <strong>Ayarlar › Bağlantılar › MCP</strong>'de oluşturun: her anahtar bir hesaba (o hesabın gördüğü kadar) ya da bir ekibe (yalnız ekibin sunucuları) bağlıdır, varsayılan salt okunurdur, yazma araçları yalnız "yazma" izniyle açılır; iptal anında geçerlidir. Kişisel veri (KVKK) maskelenir; her çağrı kim / araç / kapsam olarak denetim kaydına düşer (argüman değerleri yazılmaz). <code>MCP_API_KEY</code> kurulum geneli <strong>okuma</strong> anahtarı olarak çalışmaya devam eder (<code>MCP_API_KEY_WRITE=1</code> eski yazma iznini geri verir). 8765 konteyneri adlı anahtarları da kabul eder; <code>.env</code>'e <code>WATCHOVER_API_URL=http://watchover:8501</code> yazılırsa canlı araçları da çağıranın anahtarıyla API'ye iletir.</p>
+<p><strong>Dış MCP sunucularından veri çekmek.</strong> <strong>Ayarlar › Veri kaynakları › MCP kaynakları</strong>: streamable HTTP ya da HTTP+SSE adresi (konteynerde stdio yok), bearer token ya da özel başlık (sırlar gibi şifreli saklanır). "Araçları listele" ile araç / kaynaklar görünür; bir çekme, bir aracı sabit argümanlarla aralıkla (en az 30 sn) çağırır ve sonucu log satırı (kaynak adıyla, JSON alanları korunur), envanter satırı ya da ITSM kaydı olarak alır. Zaman ve boyut sınırı, son çalışma, satır sayısı ve hata durumu listede görünür; ekibe ait kaynak yalnız ekibin sunucularına yazar. Kaynakta izin verilen salt okunur araçları "Watchover'a sor" da çağırır ve cevapta [M1] diye kaynak gösterir.</p>
 <h2>7b. Arayüz ve HTTP API</h2>
 <p>Ürün arayüzü React'tir ve <code>dashboard</code> konteynerinde HTTP API ile birlikte <code>http://&lt;sunucu&gt;:8501</code> altında yayınlanır: Operasyon (canlı, log dosyaları, SLO raporu), Anomaliler, Veri setleri (yükleme, incident, sinyal, gürültü, arama, karşılaştırma, postmortem), Hata haritası, Aksiyonlar, Playbook, Watchover'a sor, Bilgi tabanı, ITSM, Bağlantılar (ajanlar, kaynaklar, envanter, keşfedilen sunucular), LLM, Bildirimler (kurallar, alıcılar, SMTP / SMS kanalları), Kullanıcılar ve roller, Sistem (durum, ayarlar, anlık görüntü ve geri dönüş, güncelleme, giriş sağlayıcıları). Telefon ve tablette de çalışır. Motorun bütün işlevleri JSON uçları olarak da açılır; entegrasyonlar bunu kullanır.</p>
 <pre><code class="language-bash">./watchover.sh status                     # http://&lt;sunucu&gt;:8501  (arayüz)  ·  /api/docs (OpenAPI)
@@ -430,7 +596,7 @@ unzip -q watchover.zip &amp;&amp; mv hackathon watchover &amp;&amp; cd watchover
 <pre><code class="language-bash">./watchover.sh backup                                   # backups/watchover-YYYYMMDD-HHMM.tgz (pg_dump + veri birimi + .env)
 ./watchover.sh restore backups/watchover-20260921-0200.tgz
 </code></pre>
-<p>Gecelik yedek: <code>crontab -e</code> → <code>0 2 * * * cd /home/kullanici/watchover &amp;&amp; ./watchover.sh backup</code>. Yedek dosyasını başka bir diske / sunucuya kopyalayın; <code>data/.vault.key</code> sırların anahtarıdır, yedek onsuz açılmaz. Başka bir sunucuya taşımak: yeni sunucuda <code>install</code>, sonra <code>restore</code>.</p>
+<p>Gecelik yedek: <code>sudo ./watchover.sh backup-timer on 02:15</code> (systemd <code>watchover-backup.timer</code>: sunucu o gece kapalıysa yedek açılışta alınır; systemd yoksa kullanıcının crontab'ına tek satır yazar); <code>backup-timer off</code> kapatır, <code>backup-timer</code> durumu gösterir. Gecelik yedek <code>--no-logs</code> ile alınır: ham loglar büyüktür ve ayrı disklerdeyse zaten yedeğin dışındadır; böyle bir yedeği geri yüklemek mevcut ham loglara dokunmaz. Son 14 yedek kalır (<code>WATCHOVER_BACKUP_KEEP</code>), klasör <code>WATCHOVER_BACKUP_DIR</code> ile başka diske alınır. Yedek dosyasını başka bir diske / sunucuya kopyalayın; <code>data/.vault.key</code> sırların anahtarıdır, yedek onsuz açılmaz. Başka bir sunucuya taşımak: yeni sunucuda <code>install</code>, sonra <code>restore</code>.</p>
 <h2>11. Sorun giderme</h2>
 <table>
 <thead>
@@ -482,7 +648,23 @@ unzip -q watchover.zip &amp;&amp; mv hackathon watchover &amp;&amp; cd watchover
 </tr>
 <tr>
 <td>Disk doluyor</td>
-<td>Sistem › Depolama: hangi katman doluyor; Sistem › Ayarlar'da <code>hot_max_gb</code> / <code>cold_max_gb</code> ya da <code>cold_retention_days</code> düşürün</td>
+<td>Sistem › Depolama: hangi katman doluyor; Sistem › Ayarlar'da <code>hot_max_gb</code> / <code>cold_max_gb</code> ya da <code>cold_retention_days</code> düşürün; <code>./watchover.sh storage</code> öneri verir; ham logları ayrı disklere alın (bölüm 1b)</td>
+</tr>
+<tr>
+<td><code>WATCHOVER_LOG_HOT_PATH=… belongs to …</code></td>
+<td>Log dizini konteyner kullanıcısına ait değil: mesajdaki <code>sudo chown -R 10001:0 DİZİN &amp;&amp; sudo chmod 2770 DİZİN</code>, sonra <code>./watchover.sh start</code></td>
+</tr>
+<tr>
+<td><code>the Podman socket … is not there</code> / <code>needs root</code></td>
+<td><code>sudo systemctl enable --now podman.socket</code>; Podman'da komutlar <code>sudo ./watchover.sh …</code> ile</td>
+</tr>
+<tr>
+<td>Podman'da konteynerler birbirini bulamıyor (<code>postgres</code> adı çözülmüyor)</td>
+<td>Ağ arka ucu CNI: <code>podman info --format '{{.Host.NetworkBackend}}'</code>; netavark + aardvark-dns'e geçin (bölüm 1b, Podman ağı)</td>
+</tr>
+<tr>
+<td>Yeniden başlatmadan sonra Podman'da Watchover kalkmadı</td>
+<td><code>systemctl status watchover-stack.service</code>; kapalıysa <code>sudo ./watchover.sh autostart on</code></td>
 </tr>
 <tr>
 <td>LLM sorusu sorulunca ekranlar yavaşlıyor</td>

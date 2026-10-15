@@ -42,6 +42,24 @@ def next_version(version: str, kind: str) -> str:
     return {"major": f"{a + 1}.0.0", "minor": f"{a}.{b + 1}.0", "patch": f"{a}.{b}.{c + 1}"}[kind]
 
 
+def sync_chart(new: str, root: Path | None = None) -> None:
+    """The OpenShift chart's appVersion is the default image tag, and the committed oc-apply manifest carries it in its version labels
+    and image tags: both follow the release, so an OpenShift install never pulls the previous version."""
+    root = root or ROOT
+    chart, rendered = root / "deploy" / "openshift" / "watchover" / "Chart.yaml", root / "deploy" / "openshift" / "rendered" / "watchover.yaml"
+    if not chart.exists():
+        return
+    text = chart.read_text(encoding="utf-8")
+    m = re.search(r'(?m)^appVersion:\s*"?([^"\s]+)"?', text)
+    prev = m.group(1) if m else ""
+    chart.write_text(re.sub(r'(?m)^appVersion:.*$', f'appVersion: "{new}"', text, count=1), encoding="utf-8")
+    if prev and prev != new and rendered.exists():
+        r = rendered.read_text(encoding="utf-8")
+        r = r.replace(f'app.kubernetes.io/version: "{prev}"', f'app.kubernetes.io/version: "{new}"')
+        r = re.sub(rf'(image: \S+/watchover(?:-receiver)?):{re.escape(prev)}\b', rf'\g<1>:{new}', r)
+        rendered.write_text(r, encoding="utf-8")
+
+
 def bump(kind: str, summary: str, root: Path | None = None, when: date | None = None) -> str:
     """Write the new version into the package and pyproject, prepend the CHANGELOG entry; returns the new version."""
     root = root or ROOT
@@ -51,7 +69,8 @@ def bump(kind: str, summary: str, root: Path | None = None, when: date | None = 
     init.write_text(re.sub(r'__version__\s*=\s*"[^"]+"', f'__version__ = "{new}"', init.read_text(encoding="utf-8")), encoding="utf-8")
     if pyproject.exists():
         pyproject.write_text(re.sub(r'(?m)^version\s*=\s*"[^"]+"', f'version = "{new}"', pyproject.read_text(encoding="utf-8"), count=1), encoding="utf-8")
-    lines = [ln.strip(" -") for ln in summary.strip().splitlines() if ln.strip(" -")]
+    sync_chart(new, root)
+    lines =[ln.strip(" -") for ln in summary.strip().splitlines() if ln.strip(" -")]
     entry = f"## {display(new)} · {(when or date.today()).isoformat()} · {'büyük sürüm' if kind == 'major' else ('düzeltme' if kind == 'patch' else 'güncelleme')}\n\n" + "".join(f"- {ln}\n" for ln in lines) + "\n"
     body = changelog.read_text(encoding="utf-8") if changelog.exists() else "# Watchover sürüm geçmişi\n\n"
     head, sep, rest = body.partition("\n## ")

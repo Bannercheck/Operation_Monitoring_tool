@@ -1,0 +1,199 @@
+{
+ "format": 1,
+ "pack": "watchover-linux-act",
+ "pack_version": 1,
+ "templates": [
+  {
+   "id": "linux.logs.compress_old",
+   "rev": 1,
+   "os": "linux",
+   "kind": "act",
+   "risk": "R1",
+   "reversibility": "reversible",
+   "rollback": "linux.logs.decompress_list",
+   "builtin": "compress_older_than",
+   "manifest": "required",
+   "dry_run": true,
+   "run_as": "root",
+   "params": {
+    "path": {
+     "type": "path",
+     "roots": [
+      "/var/log"
+     ],
+     "must_exist": true,
+     "dir": true
+    },
+    "days": {
+     "type": "int",
+     "min": 1,
+     "max": 30
+    }
+   },
+   "pre": [
+    {
+     "pred": "path_under",
+     "args": [
+      "{path}",
+      "/var/log/"
+     ]
+    },
+    {
+     "pred": "fs_free_pct_below",
+     "args": [
+      "{path}",
+      20
+     ]
+    }
+   ],
+   "timeout_s": 600,
+   "max_output_kb": 64,
+   "limits": {
+    "per_hour": 4
+   },
+   "output": {
+    "parser": "compress_result"
+   },
+   "writes": [
+    "/var/log"
+   ],
+   "human_cmd": "find {path} -xdev -type f -name '*.log.*' ! -name '*.gz' -mtime +{days} -exec gzip -9 -- {{}} +",
+   "title_tr": "{days} günden eski döndürülmüş logları sıkıştır",
+   "title_en": "Compress rotated logs older than {days} days"
+  },
+  {
+   "id": "linux.logs.decompress_list",
+   "rev": 1,
+   "os": "linux",
+   "kind": "act",
+   "risk": "R1",
+   "reversibility": "transient",
+   "builtin": "decompress_list",
+   "run_as": "root",
+   "params": {
+    "list_id": {
+     "type": "ident"
+    }
+   },
+   "timeout_s": 600,
+   "max_output_kb": 32,
+   "output": {
+    "parser": "compress_result"
+   },
+   "writes": [
+    "/var/log"
+   ],
+   "human_cmd": "gunzip -- $(cat /var/lib/watchover/actions/compress-{list_id}.json | jq -r '.files[]')",
+   "title_tr": "Sıkıştırılan dosyaları aç",
+   "title_en": "Decompress the files of one run"
+  },
+  {
+   "id": "linux.logrotate.force",
+   "rev": 1,
+   "os": "linux",
+   "kind": "act",
+   "risk": "R1",
+   "reversibility": "transient",
+   "dry_run": true,
+   "argv": [
+    "/usr/sbin/logrotate",
+    "-f",
+    "/etc/logrotate.d/{conf}"
+   ],
+   "dry_argv": [
+    "/usr/sbin/logrotate",
+    "-d",
+    "/etc/logrotate.d/{conf}"
+   ],
+   "run_as": "root",
+   "params": {
+    "conf": {
+     "type": "enum",
+     "values_from": "host:/etc/logrotate.d"
+    }
+   },
+   "timeout_s": 300,
+   "max_output_kb": 32,
+   "limits": {
+    "per_hour": 2
+   },
+   "output": {
+    "parser": "logrotate_result"
+   },
+   "writes": [
+    "/var/log"
+   ],
+   "title_tr": "logrotate'i zorla",
+   "title_en": "Force logrotate"
+  },
+  {
+   "id": "linux.journal.vacuum",
+   "rev": 1,
+   "os": "linux",
+   "kind": "act",
+   "risk": "R1",
+   "reversibility": "irreversible",
+   "argv": [
+    "/usr/bin/journalctl",
+    "--vacuum-size",
+    "{size}"
+   ],
+   "run_as": "root",
+   "params": {
+    "size": {
+     "type": "size",
+     "min": 104857600,
+     "max": 10737418240
+    }
+   },
+   "timeout_s": 300,
+   "max_output_kb": 16,
+   "limits": {
+    "per_hour": 2
+   },
+   "output": {
+    "parser": "journal_vacuum"
+   },
+   "writes": [
+    "/var/log/journal"
+   ],
+   "title_tr": "journald arşivini {size} boyutuna indir",
+   "title_en": "Vacuum the journal to {size}"
+  },
+  {
+   "id": "linux.service.restart",
+   "rev": 1,
+   "os": "linux",
+   "kind": "act",
+   "risk": "R2",
+   "reversibility": "transient",
+   "argv": [
+    "/usr/bin/systemctl",
+    "restart",
+    "{unit}"
+   ],
+   "run_as": "root",
+   "params": {
+    "unit": {
+     "type": "unit",
+     "pattern": "^(tomcat|orders|billing)[A-Za-z0-9@._-]{0,40}\\.service$"
+    }
+   },
+   "pre": [
+    {
+     "pred": "unit_exists",
+     "args": [
+      "{unit}"
+     ]
+    }
+   ],
+   "timeout_s": 120,
+   "max_output_kb": 16,
+   "limits": {
+    "per_hour": 3
+   },
+   "title_tr": "Servisi yeniden başlat",
+   "title_en": "Restart the service"
+  }
+ ]
+}

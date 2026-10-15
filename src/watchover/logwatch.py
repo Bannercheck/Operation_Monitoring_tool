@@ -60,6 +60,7 @@ class LogWatch:
         self.lock = threading.Lock()
         self.rules: dict = {}                    # rule id -> stream state
         self._refreshed = 0.0
+        self.on_case = None                      # action agent: (rule, count) after the dispatch, for rules with open_case
 
     # ---------------------------------------------------------------- rule set-up
     def mode_of(self, text: str) -> str:
@@ -216,7 +217,13 @@ class LogWatch:
         link = f"/logs?q={quote(rule.get('query') or '')}&start={quote(c['start'].isoformat())}&end={quote(c['end'].isoformat())}"
         body = "\n".join([f"Sorgu / query: {norm or '*'}", f"{c['n']} satır / lines in {win} dk (eşik / threshold {op} {thr:g})",
                           "Sunucular / hosts: " + (", ".join(f"{h} ({n})" for h, n in c["hosts"]) or "-")] + [f"  {x}" for x in c["samples"][:3]] + [link])
-        return [notifier.dispatch(rule, f"query:{rule['id']}", f"{rule.get('name', '')}: {c['n']} satır / {win} dk", body)]
+        res = [notifier.dispatch(rule, f"query:{rule['id']}", f"{rule.get('name', '')}: {c['n']} satır / {win} dk", body)]
+        if self.on_case is not None and rule.get("open_case"):     # "Vaka aç": sent or skipped by cooldown alike
+            try:
+                self.on_case(rule, c)
+            except Exception:  # noqa: BLE001 - the action agent never breaks alerting
+                pass
+        return res
 
     def preview(self, text: str, window_min: int, op: str, threshold: float, last: int, scope, who=None) -> dict:
         """How often the condition would have held over the last `last` minutes (histogram bars of window_min minutes)."""

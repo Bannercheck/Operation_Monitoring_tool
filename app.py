@@ -22,7 +22,7 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
-from watchover.actions import PRIORITIES, STATUSES, ActionStore
+from watchover.actions import PRIORITIES, STATUSES, ActionStore, open_store as open_actions
 from watchover.analysis import Analysis, interesting, llm_prompt, postmortem_md, signal_dict, suggested_owner
 from watchover.connectors import fetch_http, fetch_mcp, mcp_tools, parse_headers
 from watchover.live import LiveStore, start_receiver, start_simulator
@@ -449,7 +449,7 @@ def kpi2(value, label, icon: str, accent: str, sub: str = "", muted: bool = Fals
 
 def store() -> ActionStore:
     """Actions live in the shared database (PostgreSQL); the separate SQLite file only remains for installs without DATABASE_URL."""
-    return _singleton("actions", ActionStore, lambda: ActionStore(knowledge() if knowledge().pg else os.environ.get("ACTIONS_DB", "actions.db")))
+    return _singleton("actions", ActionStore, lambda: open_actions(knowledge()))   # shared database; old actions.db copied in once
 
 
 def playbook() -> Playbook:

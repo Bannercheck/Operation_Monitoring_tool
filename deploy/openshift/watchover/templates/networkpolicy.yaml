@@ -1,5 +1,6 @@
-{{- /* Who may talk to whom: PostgreSQL and Ollama only from the Watchover pod (and the backup job for PostgreSQL); the Watchover
-     pod's 8501 / 8600 from the OpenShift router (Routes) and from namespaces listed in networkPolicy.ingestNamespaces. */}}
+{{- /* Who may talk to whom: PostgreSQL and Ollama only from the Watchover pod (PostgreSQL also from the backup job and the MCP
+     pod); the Watchover pod's 8501 / 8600 from the OpenShift router (Routes) and from namespaces listed in
+     networkPolicy.ingestNamespaces; the MCP pod's 8765 from the router and from mcp.clientNamespaces. */}}
 {{- if .Values.networkPolicy.enabled }}
 {{- $app := include "watchover.selector" (dict "root" . "component" "app") }}
 apiVersion: networking.k8s.io/v1
@@ -22,6 +23,14 @@ spec:
       ports:
         - {port: 8501, protocol: TCP}
         - {port: 8600, protocol: TCP}
+    {{- if .Values.mcp.enabled }}
+    - from:                                    # the MCP pod forwards live tools to the dashboard's own /mcp
+        - podSelector:
+            matchLabels:
+              {{- include "watchover.selector" (dict "root" . "component" "mcp") | nindent 14 }}
+      ports:
+        - {port: 8501, protocol: TCP}
+    {{- end }}
     {{- with .Values.networkPolicy.ingestNamespaces }}
     - from:                                    # in-cluster senders straight to the receiver (e.g. an OpenTelemetry collector)
         {{- range . }}
@@ -56,8 +65,45 @@ spec:
             matchLabels:
               {{- include "watchover.selector" (dict "root" . "component" "backup") | nindent 14 }}
         {{- end }}
+        {{- if .Values.mcp.enabled }}
+        - podSelector:
+            matchLabels:
+              {{- include "watchover.selector" (dict "root" . "component" "mcp") | nindent 14 }}
+        {{- end }}
       ports:
         - {port: 5432, protocol: TCP}
+{{- end }}
+{{- if .Values.mcp.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "watchover.fullname" . }}-mcp
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "watchover.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "watchover.selector" (dict "root" . "component" "mcp") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:                                    # the OpenShift router (Route mcp)
+        - namespaceSelector:
+            matchLabels:
+              network.openshift.io/policy-group: ingress
+      ports:
+        - {port: 8765, protocol: TCP}
+    {{- with .Values.mcp.clientNamespaces }}
+    - from:                                    # in-cluster MCP clients straight to the service
+        {{- range . }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .name | quote }}
+        {{- end }}
+      ports:
+        - {port: 8765, protocol: TCP}
+    {{- end }}
 {{- end }}
 {{- if .Values.llm.enabled }}
 ---

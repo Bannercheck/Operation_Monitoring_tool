@@ -7,8 +7,31 @@ Watchover OpenShift'te **kendi projesinde, kendi PostgreSQL pod'uyla** çalış�
 | `watchover` pod'u | iki konteyner tek pod'da: **dashboard** (React arayüzü + API, 8501) ve **receiver** (Go alıcı, 8600; ajanların kapısı). İkisi `/data` diskini paylaşır (alıcı kuyruğu `/data/spool`) | `data` (küçük), `logs-hot` (hızlı), `logs-cold` (ayrı, ucuz) |
 | `watchover-postgresql` | ürün veritabanı, PostgreSQL 16, StatefulSet, yalnız Watchover pod'u erişir | `pgdata` |
 | `watchover-ollama` (isteğe bağlı) | yerel LLM, yalnız CPU, tek küçük model | `ollama` |
+| `watchover-mcp` (isteğe bağlı) | kendi MCP sunucumuz (8765), kendi Route'u ve anahtarı (bölüm 5b) | `mcp-datasets` (küçük) |
 
 Ham loglar **son 48 saat hızlı diskte** (`logs-hot`) aranır; daha eskiler saatlik bir işle **ayrı, ucuz diskteki** sıkıştırılmış arşive (`logs-cold`) taşınır ve orada da aranabilir. PostgreSQL ham log tutmaz; dakikalık özetler, izler, anomaliler, envanter ve ayarlar oradadır. Kurulum **üretim modundadır** (`WATCHOVER_DEMO=0`): simülatör açılamaz, demo envanteri / RUM uygulaması / iş akışı hiç oluşmaz. Caddy edge konteyneri ve mDNS OpenShift'te kullanılmaz; TLS'i OpenShift router'ı (Route, edge) sağlar.
+
+## RHEL sunucu vs OpenShift: aynı ürün, iki kurulum
+
+Kurulum günü hedef hangisi olursa olsun ikisi de hazırdır: aynı imajlar (`Dockerfile`, `Dockerfile.receiver`), aynı veritabanı şeması, aynı `/logs/hot` ve `/logs/cold` yolları, aynı üretim kipi. RHEL sunucuda Docker CE ya da Podman (`docs/KURULUM_DOCKER.md` bölüm 1b), OpenShift'te Helm chart'ı (`docs/KURULUM_OPENSHIFT.md`). Tablo iki rehberde de aynıdır; "Fark" yazan yerde iki kurulum gerçekten ayrışır.
+
+| Konu | RHEL sunucu (Docker CE ya da Podman) | OpenShift |
+|---|---|---|
+| Kurulum | `sudo bash scripts/rhel-prepare.sh [--engine podman] [--mcp]`, sonra `./watchover.sh install --production` (Podman: `sudo` ile). İmajlar sunucuda kaynak koddan derlenir; kapalı ağda `bundle` / `unbundle` | İmajlar `podman build` + `podman push` ya da `oc new-build` ile kayıt defterine, sonra `helm install … -f degerler.yaml`; Helm'siz: `oc apply -f deploy/openshift/rendered/watchover.yaml` |
+| Yükseltme | `./watchover.sh upgrade` (git) ya da yeni paket + `./watchover.sh update`; veri birimleri ve log diskleri yerinde kalır | Yeni etiketli imajlar + `helm upgrade … --set image.tag=X`; pod `Recreate` ile durup yenisi açılır, PVC'ler yerinde kalır |
+| Geri alma | Önceki sürümün kaynak ağacı (eski commit ya da paket) + `./watchover.sh update`. Göçler ileriye dönüktür: veritabanı için yükseltmeden önce alınan yedekle `./watchover.sh restore` | `helm rollback watchover <REVİZYON>` (imaj etiketi dahil). Göçler ileriye dönüktür: veritabanı için yükseltmeden önce alınan dump ile `pg_restore` |
+| Otomatik boyutlandırma | `watchover.sh` her install / update / start'ta CPU ve belleği ölçüp konteyner sınırlarını yazar (8 CPU / 64 GB = `cpu8` profili); sabit değer: `profile cpu8` / `cpu16` | Fark: ölçme yoktur, istek / sınır değer dosyasındadır (`values.yaml`, tam performans `values-performance.yaml`). Ortak: alıcı kendi cgroup sınırını okuyup Go'nun CPU sayısını (GOMAXPROCS) ve bellek hedefini ona göre ayarlar |
+| Ayrı sıcak / soğuk disk | `.env`: `WATCHOVER_LOG_HOT_PATH`, `WATCHOVER_LOG_COLD_PATH` (ana makine dizinleri, sahibi `10001:0`, SELinux `:z`); `/logs/hot`, `/logs/cold` olarak bağlanır. Boşsa veri biriminin içinde (`/data/logs`) | Her zaman ayrı PVC: `logs-hot` (hızlı sınıf), `logs-cold` (ucuz sınıf), aynı `/logs/hot`, `/logs/cold` yolları. Üst sınırlar `retention.hotMaxGb` / `coldMaxGb` ile sabitlenir |
+| PostgreSQL | `postgres:16-alpine` konteyneri (birim `watchover-pg`, parola `.env`'de üretilir) ya da `.env` `DATABASE_URL` ile kurumun sunucusu | `rhel9/postgresql-16` StatefulSet (parola Secret'ta üretilir, korunur) ya da `postgresql.enabled: false` + `externalDatabase.existingSecret` |
+| LLM (yalnız CPU) | `./watchover.sh llm on`: Ollama + eğitim konteyneri, CPU payı otomatik; modeller indirilir (kapalı ağda paketten gelir) | `llm.enabled: true`: Ollama pod'u, tek model, `llm.lock`, indirdikten sonra `llm.ollama.allowEgress: false`; eğitim `trainer.enabled` |
+| MCP sunucusu | `./watchover.sh mcp on`: aynı imaj, `http://<sunucu>:8765/mcp`; edge açıkken Caddy `https://<ad>/mcp` yolunu bu konteynere (TLS), `https://<ad>/api/mcp` yolunu arayüzün kendi MCP ucuna gönderir. Anahtarlar: arayüzde adlı, kapsamlı anahtarlar (Ayarlar › Bağlantılar › MCP); `.env` `MCP_API_KEY` kurulum çapında okuma anahtarıdır (ilk kurulumda üretilir; `MCP_API_KEY_WRITE=1` yazma da verir). Canlı ürün araçları arayüze iletilir (`WATCHOVER_API_URL=http://watchover:8501`); dosyalar `./datasets` | `mcp.enabled: true`: ayrı Deployment + Route (`https://<mcp route>/mcp`, edge TLS) + NetworkPolicy; arayüzün kendi ucu `https://<ui route>/api/mcp`. Anahtarlar: aynı adlı anahtarlar; kurulum anahtarı Secret'ta (üretilir, upgrade'de korunur, arayüz pod'una da verilir) ya da `mcp.existingSecret`, yazma `mcp.installKeyWrite`. Canlı araçlar `WATCHOVER_API_URL=http://watchover:8501` ile iletilir; dosyalar kendi PVC'sinde (`/datasets`, `oc cp`). Fark: OpenShift'te MCP pod'u `/data` ve log disklerini görmez, canlı veriye arayüz üzerinden ulaşır; RHEL'de 8765 ayrıca düz http açıktır (`WATCHOVER_MCP_PORT=127.0.0.1:8765` ile yalnız yerel) |
+| Demo kapalı | `install --production` → `WATCHOVER_DEMO=0` (Docker'ın varsayılanı 1); kalan demo verisi: `./watchover.sh demo-clean` | Her zaman üretim (`demo: false`); kalan demo verisi: Sistem › Demo verisi ya da `oc exec … python -m watchover.demo clean` |
+| Yedek | `./watchover.sh backup-timer on [SS:DD]`: her gece PostgreSQL dökümü + veri birimi (ham loglar hariç) + `.env` → `backups/`, son 14 (systemd timer; systemd yoksa cron). Geri: `./watchover.sh restore DOSYA`. Log diskleri: LVM / depolama anlık görüntüsü | `backup.enabled: true`: her gece `pg_dump` CronJob'u + kendi PVC'si, `keepDays`. Geri: `pg_restore`. Fark: `data` diski (ayarlar, `.vault.key`) ve log diskleri için VolumeSnapshot gerekir |
+| Ajan kayıt adresi | `http://<sunucu>:8600/ingest`, edge açıkken `https://<ad>/ingest`; kayıt anahtarı ve hazır komut Bağlantılar sayfasında | `https://<ingest route>/ingest` (ya da tek adres `routes.ui.host`); chart bu adresi uygulamaya verir (`WATCHOVER_INGEST_URL`), hazır komut aynı sayfada |
+| TLS | `./watchover.sh edge on <ad>`: Caddy 443'te; şirket sertifikası `./certs/watchover.crt` + `.key` ya da Caddy'nin kendi CA'sı (`edge cert`) | OpenShift router'ı (Route, edge TLS, http → https); kümenin `*.apps` sertifikası ya da `routes.tls` |
+| İzleme / sağlık | `./watchover.sh status` ve `doctor`; sağlık uçları `/api/health` (8501), `/health` (8600, MCP 8765); konteynerin kendi ajanı (`WATCHOVER_SELFMON=1`) | Aynı uçlarda startup / readiness / liveness probları; `oc get pods`; pod'un kendi ajanı (`dashboard.selfMonitor`) |
+| Açılışta başlama | Docker: servis + `restart: unless-stopped`; Podman: `watchover-stack.service` (install açar, `./watchover.sh autostart on` / `off`) | Kubernetes (Deployment / StatefulSet) |
+| Sorun giderme | `./watchover.sh logs [servis]`, `./watchover.sh doctor`, `./watchover.sh storage`, `./watchover.sh checklist`; Docker rehberi bölüm 11 | `oc logs deploy/watchover -c dashboard` (ya da `-c receiver`), `oc describe pod`, `oc get events`; OpenShift rehberi bölüm 11 |
 
 ## 1. Ön koşullar
 
@@ -145,6 +168,34 @@ curl -fsSL https://watchover-ingest.apps.kume.firma.com/agent/install.sh | sudo 
 - Küme içinden doğrudan alıcıya gönderecek bir bileşen (ör. OpenTelemetry collector) için `networkPolicy.ingestNamespaces: [{name: otel}]` ve adres `http://watchover.watchover.svc:8600/ingest`.
 - Web/mobil kullanıcı deneyimi (RUM) betiği de bu adresi kullanır (`https://<ingest host>/rum.js`).
 
+## 5b. MCP sunucusu (isteğe bağlı)
+
+Docker'daki `./watchover.sh mcp on` karşılığıdır: Watchover motoru MCP istemcilerine (Claude, Cursor, kendi ajanlarınız) açılır; `analyze_dataset`, `list_incidents`, `get_incident`, `list_signals`, `evidence`, `postmortem`, `create_action`, `list_actions` araçları çağrılır, aksiyonlar arayüzle aynı veritabanına yazılır. Canlı ürün araçlarını (loglar, panolar, anomaliler, envanter) arayüzün kendi MCP ucuna iletir (`WATCHOVER_API_URL=http://watchover:8501`; NetworkPolicy bu yolu açar, anahtar arayüz pod'una da verilir; kurulum anahtarı yalnız okur, yazma için `mcp.installKeyWrite: true` ya da arayüzdeki yazma yetkili adlı anahtar). Aynı `watchover` imajı ve aynı süreç (`python mcp_server.py --http --port 8765`, tini altında), **kendi Deployment'ı** (`watchover-mcp`: çökmesi ya da yeniden başlaması arayüzü ve ajanları etkilemez), kendi Service'i ve **Route'u** (edge TLS, http → https), kendi NetworkPolicy'si (8765'e yalnız router ve `mcp.clientNamespaces`); PostgreSQL politikası MCP pod'una da izin verir. Güvenlik ayarları diğer pod'larla aynıdır (`restricted-v2`: keyfi UID, salt okunur kök, yetkisiz), istek / sınır `mcp.resources` (100m / 256 Mi → 1 CPU / 1 Gi), sağlık `/health` (startup, readiness, liveness).
+
+```yaml
+# watchover-degerler.yaml
+mcp:
+  enabled: true
+  route: {host: watchover-mcp.apps.kume.firma.com}     # boş = kümenin ürettiği adres
+  # existingSecret: benim-mcp-anahtarim                 # kendi Secret'ınız (anahtar adı mcp-api-key); boşsa üretilir
+  # clientNamespaces: [{name: ajanlar}]                 # küme içinden doğrudan http://watchover-mcp.watchover.svc:8765/mcp
+  datasets: {size: 5Gi, storageClass: ""}
+```
+
+```bash
+helm upgrade watchover deploy/openshift/watchover -n watchover -f watchover-degerler.yaml
+oc get secret watchover-mcp -n watchover -o jsonpath='{.data.mcp-api-key}' | base64 -d; echo      # istemcilere verilecek anahtar
+POD=$(oc get pod -n watchover -l app.kubernetes.io/component=mcp -o jsonpath='{.items[0].metadata.name}')
+oc cp uretim-log.zip watchover/$POD:/datasets/uretim-log.zip                                        # istemcilerin analiz edeceği dosya
+```
+
+İstemci ayarı: `{"mcpServers": {"watchover": {"url": "https://watchover-mcp.apps.kume.firma.com/mcp", "headers": {"Authorization": "Bearer <anahtar>"}}}}` (anahtar: Ayarlar › Bağlantılar › MCP'deki adlı bir anahtar ya da Secret'taki kurulum anahtarı); anahtarsız istekler 401 alır.
+
+- **Anahtar** ilk kurulumda 48 karakter üretilir ve `watchover-mcp` Secret'ında kalır: `helm upgrade` aynı anahtarı korur, `helm uninstall` silmez (`helm.sh/resource-policy: keep`). Döndürmek: `oc delete secret watchover-mcp -n watchover`, `helm upgrade …` (yenisi üretilir), `oc rollout restart deploy/watchover-mcp -n watchover`. Anahtarı değer dosyasına yazmayın.
+- **Helm'siz (oc apply)**: önce `oc create secret generic watchover-mcp -n watchover --from-literal=mcp-api-key="$(openssl rand -hex 24)"`, sonra hazır YAML'ı MCP ile yeniden üretin: `helm template watchover deploy/openshift/watchover -n watchover --set postgresql.existingSecret=watchover-db --set mcp.enabled=true,mcp.existingSecret=watchover-mcp --set routes.ui.host=… --set routes.ingest.host=… > watchover.yaml` ve `oc apply`.
+- **RHEL kurulumundan farkı**: MCP pod'u dashboard'un `/data` diskini ve ham log disklerini görmez (ayrı pod, diskler ReadWriteOnce); olaylar ve aksiyonlar veritabanından, canlı veriler arayüz üzerinden gelir, analiz edilecek dosyalar kendi `/datasets` diskindedir. RHEL'de 8765 düz http'dir; burada Route ile TLS'lidir.
+- Arayüzün kendi MCP ucu (`https://<ui route>/api/mcp`) `mcp.enabled` olmadan da vardır; bağımsız MCP sunucusu veri seti araçlarını (`analyze_dataset` …) ekler. Adlı, kapsamlı anahtarlar (hesap ya da ekip, okuma / yazma) Ayarlar › Bağlantılar › MCP'de oluşturulur ve iki uçta da geçer; Secret'taki kurulum anahtarı kurulum çapında okuma anahtarıdır.
+
 ## 6. Boyutlandırma
 
 Ölçülen değerler (yük testi verisi, 300 ajan): sıcak diskte satır başına **~65-90 bayt**, soğuk arşivde **~7-8 bayt** (şablon + lzma). Sıcak loglar gün dosyalarında tutulduğu için sıcak disk 48 değil 48-72 saat taşır; `hotMaxGb` dolarsa biten en eski gün erkenden arşive geçer, `coldMaxGb` dolarsa en eski arşiv günü silinir. İlk günün sonunda Sistem › Depolama kartından (ya da `oc exec deploy/watchover -c dashboard -- du -sh /logs/hot /logs/cold`) gerçek değeri görüp gerekirse disk büyütün (`allowVolumeExpansion: true` olan blok depolama sınıfı).
@@ -264,5 +315,7 @@ oc rollout restart deploy/watchover -n watchover      # çalışan pod'un bellek
 | `ImagePullBackOff` (watchover) | Etiket yok ya da başka projedeki imaj | `oc get istag -n watchover`; başka projedeyse `oc policy add-role-to-group system:image-puller system:serviceaccounts:watchover -n <imaj projesi>` |
 | `OOMKilled` (dashboard) | Bellek sınırı aşıldı (yoğun hacim, büyük veri seti yüklemesi) | `dashboard.resources.limits.memory` artırın (bölüm 6) |
 | Model inmiyor | Ollama'nın dışa çıkışı yok (`allowEgress: false` ya da EgressFirewall) | Geçici `allowEgress: true` + `oc rollout restart deploy/watchover-ollama` |
+| MCP istemcisi `401 unauthorized` | Anahtar yanlış / döndürüldü, başlık eksik | anahtar `watchover-mcp` Secret'ının `mcp-api-key` alanındadır (bölüm 5b'deki `oc get secret` komutu); istemci `Authorization: Bearer <anahtar>` göndermeli |
+| MCP Route `503` / pod `CrashLoopBackOff` | PostgreSQL'e ulaşamıyor (ilk kurulumda veritabanı hazır değil) ya da `existingSecret` yok | `oc logs deploy/watchover-mcp -n watchover`; `oc get secret`; arayüz ve ajanlar bundan etkilenmez |
 
-Loglar: `oc logs -n watchover deploy/watchover -c dashboard` (arayüz/API), `-c receiver` (alıcı), `oc logs -n watchover watchover-postgresql-0`.
+Loglar: `oc logs -n watchover deploy/watchover -c dashboard` (arayüz/API), `-c receiver` (alıcı), `oc logs -n watchover watchover-postgresql-0`, `oc logs -n watchover deploy/watchover-mcp` (MCP).

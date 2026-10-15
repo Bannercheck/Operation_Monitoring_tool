@@ -13,7 +13,7 @@ from .. import anomaly as wo_anomaly
 from .. import migrate as wo_migrate
 from .. import notify as wo_notify
 from .. import settings as wo_settings
-from ..actions import ActionStore
+from ..actions import ActionStore, open_store as open_actions
 from ..agents import AgentRegistry
 from ..analysis import Analysis
 from ..auth import Users
@@ -100,6 +100,17 @@ class Services:
             self._pools = (time.time(), m)
         return m.get((host or "").lower())
 
+    def _on_anomaly_open(self, row: dict) -> None:
+        """Every newly opened anomaly (threshold breaches included): company memory, then the action agent (a no-op while
+        act_mode = off; never raises). Learning-period anomalies never reach here."""
+        try:
+            self.memory.remember_anomaly(row)
+        except Exception:  # noqa: BLE001
+            pass
+        act = getattr(self, "act", None)
+        if act is not None:
+            act.from_anomaly(row)
+
     def _on_ingest(self, events) -> None:
         """Every accepted live batch: service-level history rollups, then spans / RED metrics (each best effort on its own)."""
         try:
@@ -137,7 +148,7 @@ class Services:
         self.roles = Roles(self.kb)
         from ..teams import Teams
         self.teams = Teams(self.kb, self)                    # several teams, each sees only its own hosts
-        self.actions = ActionStore(self.kb if self.kb.pg else os.environ.get("ACTIONS_DB", "actions.db"))
+        self.actions: ActionStore = open_actions(self.kb)    # shared database; the old SQLite actions.db is copied in once (C5)
         self.playbook = Playbook(self.kb if self.kb.pg else os.environ.get("PLAYBOOK_DB", "playbook.db"))
         cfg0 = wo_settings.load()
         self.live = LiveStore(spool=os.environ.get("LIVE_SPOOL", "data/live/events.jsonl"), maxlen=int(cfg0.get("live_ring", 50000) or 50000))
@@ -184,7 +195,7 @@ class Services:
         self.templates = TemplateStore(self.kb)
         c0 = wo_settings.load()
         self.memory = Memory(self.kb, self.live, self.lang, interval_min=int(c0.get("learn_min", 15) or 0), inventory_fn=None)
-        self.anomalies.on_open = self.memory.remember_anomaly
+        self.anomalies.on_open = self._on_anomaly_open      # memory + action agent; threshold breaches arrive here too (C7)
         self.scanner = ScanStore(self.kb, home=os.environ.get("WATCHOVER_HOME", "") or None)
         from ..techstack import TechStack                    # which technology each integration runs on (integration map)
         self.techstack = TechStack(self.kb, self.live); self.flows.tech = self.techstack; self.traces.on_spans = self.techstack.observe_spans
@@ -208,11 +219,16 @@ class Services:
         self.datasets = DatasetRegistry(self)
         from ..access import wire as _wire_access
         _wire_access(self)                                   # role-based teams: effective permissions, team hooks on agents / thresholds / alerts
+        from ..act import ActService                         # log-driven action agent (docs/design/action-agent.md): no-op while act_mode = off
+        self.act = ActService(self)
+        self.logwatch.on_case = self.act.from_query           # log-query rules with "Vaka aç" (open_case)
+        self.memory.learner.on_incidents = self.act.from_analysis   # live incidents of severity >= high
         self.started = time.time()
         llm_set_sink(self.kb.log_call)                       # every LLM call lands in the quality log
         self.refresh_llm()
         if bg:
             self.history.start(); self.anomalies.start(); self.alerts.start(); self.thresholds.start(); self.poller.start(); self.memory.learner.start()
+            self.act.start()                                 # act-cases thread: idle while act_mode = off
             self.log_tiers.start(self.kb if self._log_migrate else None)   # copy the old table once, then the hourly archive job
             c = wo_settings.load()
             port = int(os.environ.get("LIVE_PORT", c.get("live_port", 8600)) or 8600)
@@ -411,7 +427,7 @@ class DatasetRegistry:
         """Every incident card gets its recommended first action on record (deduplicated per dataset + incident), like the dashboard."""
         from ..analysis import suggested_owner
         st_ = self.svc.actions
-        existing = {x["evidence"] for x in st_.list()}
+        existing = {x["evidence"] for x in st_.list(kind="action")}     # first actions stay plain actions, never cases (C39)
         n = 0
         for inc in a.incidents:
             tag = f"first:{dataset}:{inc.id}"

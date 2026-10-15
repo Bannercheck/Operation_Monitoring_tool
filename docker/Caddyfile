@@ -33,6 +33,14 @@
 	handle @receiver {
 		reverse_proxy receiver:8600
 	}
+	# our MCP server (./watchover.sh mcp on): https://<host>/mcp, Authorization: Bearer <key>; streamed answers are passed on at once.
+	# (The API's own MCP endpoint stays at https://<host>/api/mcp, below.) While the MCP container is off this path answers 502.
+	@mcp path /mcp /mcp/*
+	handle @mcp {
+		reverse_proxy mcp:8765 {
+			flush_interval -1
+		}
+	}
 	# interface and API
 	handle {
 		reverse_proxy watchover:8501

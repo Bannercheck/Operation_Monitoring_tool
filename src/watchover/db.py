@@ -13,6 +13,7 @@ import base64
 import os
 import sqlite3
 import threading
+from contextlib import contextmanager
 from decimal import Decimal
 
 DEFAULT_SQLITE = "knowledge.db"
@@ -47,6 +48,7 @@ class Database:
         self.url = url or default_url()
         self.pg = is_postgres(self.url)
         self._lock = threading.RLock()                 # one connection per process; background threads (poller, alerts, learner) share it
+        self._tx_owner = None                          # thread ident while a tx() is open; other threads wait on the lock
         self.conn = None
         self._connect()
 
@@ -87,6 +89,43 @@ class Database:
     def blob(self) -> str:
         return "BYTEA" if self.pg else "BLOB"
 
+    # ---------------------------------------------------------------- transactions
+    @property
+    def in_tx(self) -> bool:
+        """True on the thread that holds an open tx() (other threads cannot run a statement meanwhile: they wait on the lock)."""
+        return self._tx_owner is not None and self._tx_owner == threading.get_ident()
+
+    @contextmanager
+    def tx(self):
+        """One transaction: every statement inside commits together or not at all.
+
+        It holds the process lock for its whole duration, so only SQL and in-memory work belong inside (no network, no model
+        call, no sleep); statements from other threads wait and then commit on their own as usual. Nested tx() is refused.
+        PostgreSQL: conn.transaction() (the connection is autocommit otherwise); SQLite: BEGIN IMMEDIATE ... COMMIT.
+        """
+        self._lock.acquire()
+        if self.in_tx:
+            self._lock.release()
+            raise RuntimeError("nested Database.tx() is not supported")
+        try:
+            self._tx_owner = threading.get_ident()
+            if self.pg:
+                with self.conn.transaction():
+                    yield self
+            else:
+                if self.conn.in_transaction:           # an implicit transaction left by the sqlite3 module: close it first
+                    self.conn.commit()
+                self.conn.execute("BEGIN IMMEDIATE")
+                try:
+                    yield self
+                except BaseException:
+                    self.conn.rollback()
+                    raise
+                self.conn.commit()
+        finally:
+            self._tx_owner = None
+            self._lock.release()
+
     # ---------------------------------------------------------------- statements
     def _q(self, sql: str, params: tuple) -> str:
         if not self.pg:
@@ -109,7 +148,8 @@ class Database:
                 return self._exec_pg(sql, params)
             cur = self.conn.execute(sql, params)
             rows = [dict(r) for r in cur.fetchall()] if cur.description else []
-            self.conn.commit()
+            if not self.in_tx:
+                self.conn.commit()
             return rows
 
     def _exec_pg(self, sql: str, params: tuple, retry: bool = True) -> list[dict]:
@@ -117,8 +157,8 @@ class Database:
         try:
             cur = self.conn.execute(self._q(sql, params), params or None)
         except (psycopg.OperationalError, psycopg.InterfaceError):
-            if not retry or not self.conn.closed and not self.conn.broken:
-                raise
+            if not retry or self.in_tx or not self.conn.closed and not self.conn.broken:
+                raise                                  # never replay a statement inside a transaction: the rest of it is gone
             self._connect()                            # the server restarted or the connection idled out: reconnect once and replay
             return self._exec_pg(sql, params, retry=False)
         if cur.description:
@@ -131,7 +171,8 @@ class Database:
             if self.pg:
                 return int(self._exec(sql + " RETURNING id", params)[0]["id"])
             cur = self.conn.execute(sql, params)
-            self.conn.commit()
+            if not self.in_tx:
+                self.conn.commit()
             return int(cur.lastrowid)
 
     def executemany(self, sql: str, rows: list[tuple]) -> None:
@@ -144,7 +185,8 @@ class Database:
                     cur.executemany(self._q(sql, rows[0]), rows)
             else:
                 self.conn.executemany(sql, rows)
-                self.conn.commit()
+                if not self.in_tx:
+                    self.conn.commit()
 
     def upsert_suffix(self, conflict_cols: str, updates: str) -> str:
         """ON CONFLICT clause for INSERT ... (same syntax in both engines, SQLite needs the conflict target too)."""

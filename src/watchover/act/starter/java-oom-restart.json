@@ -1,0 +1,105 @@
+{
+ "key": "java-oom-restart",
+ "version": 1,
+ "title": "Java: OutOfMemoryError sonrası yeniden başlatma",
+ "risk": "R2",
+ "summary": "JVM'i bulur, iş parçacığı dökümünü kanıt olarak saklar, servisi yeniden başlatır, sağlık ve hata oranını doğrular. Tekil servis R3.",
+ "match": {
+  "sources": [
+   "query",
+   "incident",
+   "anomaly"
+  ],
+  "templates": [
+   "*java.lang.OutOfMemoryError*"
+  ]
+ },
+ "applies_to": {
+  "os": [
+   "linux"
+  ]
+ },
+ "params": {
+  "host": {
+   "type": "host",
+   "from": [
+    "case.host"
+   ]
+  },
+  "unit": {
+   "type": "unit",
+   "pattern": "^(tomcat|orders|billing)[A-Za-z0-9@._-]{0,40}\\.service$",
+   "from": [
+    "evidence.unit",
+    "ask"
+   ]
+  },
+  "pid": {
+   "type": "pid",
+   "pid_exe": "java",
+   "from": [
+    "steps.d1.pid"
+   ]
+  }
+ },
+ "watch": {
+  "minutes": 15,
+  "expected_noise_s": 90,
+  "expected_noise": []
+ },
+ "max_level": 4,
+ "steps": [
+  {
+   "id": "d1",
+   "type": "diagnose",
+   "title": "JVM süreci",
+   "template": "linux.proc.find",
+   "args": {
+    "pattern": "java"
+   }
+  },
+  {
+   "id": "d2",
+   "type": "diagnose",
+   "title": "İş parçacığı dökümü",
+   "template": "linux.java.thread_dump",
+   "args": {
+    "pid": "{pid}"
+   }
+  },
+  {
+   "id": "a1",
+   "type": "act",
+   "title": "Servisi yeniden başlat",
+   "template": "linux.service.restart",
+   "args": {
+    "unit": "{unit}"
+   },
+   "verify": "v1"
+  },
+  {
+   "id": "v1",
+   "type": "verify",
+   "title": "Servis sağlıklı mı?",
+   "checks": [
+    {
+     "http_ok": {
+      "url": "{inventory.health_url}",
+      "probe_from": "server"
+     },
+     "independent": true
+    },
+    {
+     "log_absent": {
+      "query": "\"OutOfMemoryError\" host:{host}",
+      "window_s": 600
+     }
+    }
+   ],
+   "require": "all",
+   "retries": 3,
+   "interval_s": 30,
+   "on_fail": "escalate"
+  }
+ ]
+}

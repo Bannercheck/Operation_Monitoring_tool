@@ -148,6 +148,31 @@ routes:
     key: ""
     caCertificate: ""
 
+# ---------------------------------------------------------------- MCP sunucusu (isteğe bağlı, kendi pod'u ve Route'u)
+# Watchover motorunu MCP istemcilerine (Claude, Cursor, kendi ajanlarınız) açar: Docker'daki "./watchover.sh mcp on" ile aynı
+# imaj ve komut (python mcp_server.py --http --port 8765). Aynı PostgreSQL'i kullanır (olaylar, aksiyonlar); canlı ürün araçlarını
+# (loglar, panolar, anomaliler…) arayüzün kendi /mcp ucuna iletir. Kendi pod'u olduğu için çökmesi arayüzü ve ajanları etkilemez.
+# İstemciler https://<route>/mcp adresine Authorization: Bearer <anahtar> gönderir (arayüzdeki adlı anahtarlar da geçer).
+mcp:
+  enabled: false
+  # Anahtar: boş bırakın -> ilk kurulumda 48 karakter üretilir ve <release>-mcp Secret'ında kalır (helm upgrade aynısını korur,
+  # uninstall silmez). Kendi Secret'ınız için existingSecret (anahtar: mcp-api-key). Anahtarı bu dosyaya yazmayın.
+  existingSecret: ""
+  installKeyWrite: false               # true: bu kurulum anahtarı yazabilir de (create_action); false = yalnız okur, yazma adlı anahtarla
+  route:
+    host: ""                           # örn. watchover-mcp.apps.kume.firma.com; boş = kümenin ürettiği adres
+    timeout: 300s                      # akışlı (streamable HTTP) yanıtlar uzun sürebilir
+    annotations: {}
+  # Küme içinden doğrudan 8765'e bağlanacak ad alanları (örn. kendi ajanlarınız): [{name: ajanlar}]. Router her zaman izinli.
+  clientNamespaces: []
+  datasets:                            # istemcilerin göreli adla analiz ettiği dosyalar (/datasets; oc cp ile kopyalanır)
+    size: 5Gi
+    storageClass: ""
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {cpu: "1", memory: 1Gi}
+  extraEnv: []
+
 # ---------------------------------------------------------------- ağ politikası
 networkPolicy:
   enabled: true                        # PostgreSQL ve Ollama'ya yalnız Watchover pod'u erişir; 8501/8600 yalnız router'dan

@@ -111,6 +111,16 @@ class Playbook:
                     or any(ql in x.lower() for x in r["services"] + r["datasets"])]
         return rows
 
+    def to_runbook_draft(self, key: str) -> dict:
+        """The entry's runbook notes as bullets for the action agent's importer (watchover.act.importer); the link between a
+        playbook entry and a runbook lives in the act layer (act_playbook_links), not here."""
+        e = self.get(key)
+        if e is None:
+            raise KeyError(key)
+        items = [m.group(1) for m in (re.match(r"^\s*(?:[-*•]|\d+[.)])\s+(.*\S)\s*$", ln) for ln in (e.get("runbook") or "").splitlines()) if m]
+        return {"key": e["key"], "template": e["template"], "title": e.get("title") or e["key"], "runbook": e.get("runbook") or "",
+                "bullets": items, "resolution": e.get("resolution") or ""}
+
     def lookup(self, template: str, threshold: float = 0.6) -> dict | None:
         """Exact template match, else the most similar entry above the token-overlap threshold."""
         exact = self.get(template)

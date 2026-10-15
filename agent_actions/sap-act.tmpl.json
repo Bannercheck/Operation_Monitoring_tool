@@ -1,0 +1,47 @@
+{
+ "format": 1,
+ "pack": "watchover-sap-act",
+ "pack_version": 1,
+ "disabled": true,
+ "note": "Not installed by default; ships disabled until the customer's Basis team validates the signal for its kernel release.",
+ "templates": [
+  {
+   "id": "sap.wp.cancel",
+   "rev": 1,
+   "os": "linux",
+   "kind": "act",
+   "risk": "R3",
+   "reversibility": "irreversible",
+   "script": {
+    "path": "/usr/lib/watchover/actions/sap_wp_cancel.sh",
+    "sha256": "21291c689d7d7ea7e927cddac29f9eb28116db1047febf6cc136265e410a9d8b",
+    "args": [
+     "{sid}",
+     "{nr}",
+     "{pid}"
+    ]
+   },
+   "run_as": "root",
+   "pid_exe": "disp+work",
+   "params": {
+    "sid": {
+     "type": "sap_sid"
+    },
+    "nr": {
+     "type": "sap_nr"
+    },
+    "pid": {
+     "type": "pid",
+     "pid_exe": "disp+work"
+    }
+   },
+   "timeout_s": 60,
+   "max_output_kb": 8,
+   "limits": {
+    "per_hour": 2
+   },
+   "title_tr": "SAP iş sürecini iptal et",
+   "title_en": "Cancel the SAP work process"
+  }
+ ]
+}

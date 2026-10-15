@@ -1,0 +1,221 @@
+{{- /* Optional MCP server (mcp.enabled): the engine for MCP clients, the same image and process as "./watchover.sh mcp on" in Docker
+     (tini -> python mcp_server.py --http --port 8765). Its own Deployment, so a crash never touches the dashboard pod or the agents;
+     its own Route (edge TLS, clients use https://<host>/mcp); the API key from a Secret generated once (48 alphanumerics) and kept
+     across upgrades and after uninstall (lookup + keep), unless mcp.existingSecret names your own (key mcp-api-key). It shares the
+     database with the dashboard and forwards the live product tools to the dashboard's own /mcp (WATCHOVER_API_URL; the dashboard
+     gets the same key, as in Docker where both read .env); /data is scratch (emptyDir), the files clients analyse by name live on
+     a small PVC at /datasets. */}}
+{{- if .Values.mcp.enabled }}
+{{- $fn := include "watchover.fullname" . }}
+{{- $secret := .Values.mcp.existingSecret | default (printf "%s-mcp" $fn) }}
+{{- if not .Values.mcp.existingSecret }}
+{{- $old := lookup "v1" "Secret" .Release.Namespace $secret }}
+{{- $key := "" }}
+{{- if and $old $old.data (hasKey $old.data "mcp-api-key") }}
+{{- $key = index $old.data "mcp-api-key" | b64dec }}
+{{- else }}
+{{- $key = randAlphaNum 48 }}
+{{- end }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $secret }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "watchover.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mcp
+  annotations:
+    helm.sh/resource-policy: keep
+type: Opaque
+data:
+  mcp-api-key: {{ $key | b64enc | quote }}
+{{- end }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $fn }}-mcp-datasets
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "watchover.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mcp
+  {{- if .Values.persistence.keepOnUninstall }}
+  annotations:
+    helm.sh/resource-policy: keep
+  {{- end }}
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- if .Values.mcp.datasets.storageClass }}
+  storageClassName: {{ .Values.mcp.datasets.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.mcp.datasets.size }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fn }}-mcp
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "watchover.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mcp
+spec:
+  replicas: 1
+  revisionHistoryLimit: 5
+  strategy:
+    type: Recreate                      # the datasets PVC is ReadWriteOnce
+  selector:
+    matchLabels:
+      {{- include "watchover.selector" (dict "root" . "component" "mcp") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "watchover.labels" . | nindent 8 }}
+        app.kubernetes.io/component: mcp
+      annotations:
+        checksum/settings: {{ include "watchover.pinnedSettings" . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ $fn }}
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 20
+      securityContext:
+        {{- include "watchover.podSecurity" . | nindent 8 }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: mcp
+          image: {{ include "watchover.image" (dict "root" . "name" .Values.image.dashboard) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["python", "mcp_server.py", "--http", "--port", "8765"]     # the image's tini stays PID 1
+          ports:
+            - name: mcp
+              containerPort: 8765
+              protocol: TCP
+          env:
+            - name: TZ
+              value: {{ .Values.timezone | quote }}
+            - name: HOME
+              value: /tmp
+            - name: WATCHOVER_DEMO
+              value: {{ ternary "1" "0" .Values.demo | quote }}
+            {{- if .Values.postgresql.enabled }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "watchover.dbSecret" . }}
+                  key: postgres-password
+            - name: DATABASE_URL
+              value: "postgresql://{{ .Values.postgresql.username }}:$(POSTGRES_PASSWORD)@{{ include "watchover.pgHost" . }}:5432/{{ .Values.postgresql.database }}"
+            {{- else }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "externalDatabase.existingSecret is required when postgresql.enabled=false" .Values.externalDatabase.existingSecret }}
+                  key: database-url
+            {{- end }}
+            - name: MCP_API_KEY                 # always set: the server listens on all addresses only with a key
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secret }}
+                  key: mcp-api-key
+            - name: MCP_API_KEY_WRITE
+              value: {{ ternary "1" "0" .Values.mcp.installKeyWrite | quote }}
+            - name: WATCHOVER_DATASETS
+              value: /datasets
+            - name: WATCHOVER_API_URL                 # live product tools are forwarded to the dashboard's own MCP endpoint
+              value: "http://{{ $fn }}:8501"
+            - name: WATCHOVER_SETTINGS
+              value: {{ include "watchover.pinnedSettings" . | quote }}
+            {{- with .Values.mcp.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          volumeMounts:
+            - {name: data, mountPath: /data}
+            - {name: datasets, mountPath: /datasets}
+            - {name: tmp, mountPath: /tmp}
+          resources:
+            {{- toYaml .Values.mcp.resources | nindent 12 }}
+          securityContext:
+            {{- include "watchover.containerSecurity" . | nindent 12 }}
+          startupProbe:
+            httpGet: {path: /health, port: mcp}
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 60
+          readinessProbe:
+            httpGet: {path: /health, port: mcp}
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: {path: /health, port: mcp}
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+      volumes:
+        - name: data
+          emptyDir: {sizeLimit: 1Gi}
+        - name: datasets
+          persistentVolumeClaim: {claimName: {{ $fn }}-mcp-datasets}
+        - name: tmp
+          emptyDir: {sizeLimit: 1Gi}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fn }}-mcp
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "watchover.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mcp
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "watchover.selector" (dict "root" . "component" "mcp") | nindent 4 }}
+  ports:
+    - name: mcp
+      port: 8765
+      targetPort: mcp
+      protocol: TCP
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ $fn }}-mcp
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "watchover.labels" . | nindent 4 }}
+    app.kubernetes.io/component: mcp
+  annotations:
+    haproxy.router.openshift.io/timeout: {{ .Values.mcp.route.timeout | quote }}
+    {{- with .Values.mcp.route.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  {{- with .Values.mcp.route.host }}
+  host: {{ . | quote }}
+  {{- end }}
+  to:
+    kind: Service
+    name: {{ $fn }}-mcp
+    weight: 100
+  port:
+    targetPort: mcp
+  {{- include "watchover.routeTls" . }}
+  wildcardPolicy: None
+{{- end }}

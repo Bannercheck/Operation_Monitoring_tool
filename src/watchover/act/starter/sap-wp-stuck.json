@@ -1,0 +1,124 @@
+{
+ "key": "sap-wp-stuck",
+ "version": 1,
+ "title": "SAP: takılı iş süreci",
+ "risk": "R3",
+ "summary": "İş süreçleri tablosunu ve süreç listesini okur; iptal Basis onayına kadar elle yapılır.",
+ "match": {
+  "sources": [
+   "bizflow",
+   "query",
+   "anomaly"
+  ]
+ },
+ "applies_to": {
+  "os": [
+   "linux"
+  ]
+ },
+ "params": {
+  "host": {
+   "type": "host",
+   "from": [
+    "case.host"
+   ]
+  },
+  "sid": {
+   "type": "sap_sid",
+   "from": [
+    "evidence.sap_sid",
+    "inventory.sap_sid",
+    "ask"
+   ]
+  },
+  "nr": {
+   "type": "sap_nr",
+   "from": [
+    "evidence.sap_nr",
+    "inventory.sap_nr",
+    "ask"
+   ]
+  }
+ },
+ "watch": {
+  "minutes": 15,
+  "expected_noise_s": 0,
+  "expected_noise": []
+ },
+ "max_level": 2,
+ "steps": [
+  {
+   "id": "d1",
+   "type": "diagnose",
+   "title": "İş süreçleri tablosu",
+   "template": "sap.wp.table",
+   "args": {
+    "sid": "{sid}",
+    "nr": "{nr}"
+   }
+  },
+  {
+   "id": "d2",
+   "type": "diagnose",
+   "title": "Süreç listesi",
+   "template": "sap.process.list",
+   "args": {
+    "sid": "{sid}",
+    "nr": "{nr}"
+   }
+  },
+  {
+   "id": "v0",
+   "type": "verify",
+   "title": "Takılı süreç var mı?",
+   "checks": [
+    {
+     "template": "sap.wp.table",
+     "args": {
+      "sid": "{sid}",
+      "nr": "{nr}"
+     },
+     "expect": "Time < 3600"
+    }
+   ],
+   "require": "all",
+   "retries": 1,
+   "interval_s": 10,
+   "on_fail": "guided"
+  },
+  {
+   "id": "m1",
+   "type": "manual",
+   "title": "SM50 iptal",
+   "text": "SM50 → WP {wp_no} → Süreç → Çekirdek dökümü olmadan iptal",
+   "capture": {
+    "wp_no": "number"
+   }
+  },
+  {
+   "id": "v1",
+   "type": "verify",
+   "title": "İş akışı yürüyor mu?",
+   "checks": [
+    {
+     "template": "sap.wp.table",
+     "args": {
+      "sid": "{sid}",
+      "nr": "{nr}"
+     },
+     "expect": "Time < 3600"
+    },
+    {
+     "bizflow_stuck_below": {
+      "value": 20
+     },
+     "independent": true
+    }
+   ],
+   "require": "all",
+   "retries": 3,
+   "interval_s": 30,
+   "on_fail": "escalate"
+  }
+ ]
+}

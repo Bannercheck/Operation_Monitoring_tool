@@ -103,6 +103,36 @@ BUILTIN: dict[str, dict] = {
 BUILTIN["operator"]["perms"].add("act.logalert")             # page.logs: every page.* key is in the operator role already
 BUILTIN["viewer"]["perms"].add("page.logs")
 
+# ---------------------------------------------------------------- action agent (docs/design/action-agent.md §10.9; migration auto_v1)
+AUTO_DEF: dict[str, tuple] = {   # key: (TR, EN, team-assignable, requires, team templates)
+    "page.auto": ("Otomasyon: runbook'lar, güven, öğrenme (görüntüleme)", "Automation: runbooks, trust, learning (view)", True, None, ("manager", "operator", "viewer")),
+    "act.case": ("Vaka yürütme: karar, rehberli adım, teşhis, kapatma", "Work cases: decide, guided steps, diagnosis, close", True, "page.actions", ("manager", "operator")),
+    "act.execute": ("Adımı sistemle çalıştırma (Onaylı seviyede \"Çalıştır\")", "Run a step through the system (\"Run\" at Approved)", True, "page.actions", ("manager", "operator")),
+    "act.approve": ("Başkasının adımını onaylama; otomatik çalıştırmaları gözden geçirme", "Approve someone else's step; review automatic runs", True, "page.actions", ("manager",)),
+    "act.runbook": ("Runbook yazma ve taslak düzenleme", "Write runbooks and edit drafts", True, "page.auto", ("manager", "operator")),
+    "act.publish": ("Runbook sürümü yayınlama (yazar olmayan)", "Publish a runbook version (not its author)", True, "page.auto", ("manager",)),
+    "act.promote": ("Seviye yükseltme imzası, elle düşürme, dondurmayı ve durdurmayı kaldırma", "Sign promotions, demote, lift freezes and stops", True, "page.auto", ("manager",)),
+    "act.kill": ("Otomasyonu acil durdurma (ekip, runbook, sunucu)", "Emergency-stop automation (team, runbook, host)", True, "page.auto", ("manager", "operator")),
+    "act.golden": ("Altın küme ve etiket düzeltme", "Golden set and label corrections", True, "page.auto", ("manager",)),
+    "act.audit": ("Otomasyon denetim kaydını görme", "View the automation audit log", True, "page.auto", ("manager",)),
+    "act.policy": ("Kurulum geneli otomasyon politikası: mod, tavanlar, bütçeler, bağlayıcılar, şablon kataloğu, model yükseltme, genel durdurmayı kaldırma",
+                   "Installation automation policy: mode, caps, budgets, connectors, template catalogue, model promotion, global resume", False, "page.auto", ()),
+}
+for _k, (_tr, _en, _team, _req, _tpls) in AUTO_DEF.items():
+    PERMISSIONS[_k] = ("page" if _k.startswith("page.") else "act", _tr, _en)
+    FEATURES[_k] = ("respond", "view" if _k.startswith("page.") else ("manage" if _k == "act.policy" else "action"), _team)
+    if _req:
+        REQUIRES[_k] = _req
+    for _t in _tpls:
+        TEAM_TEMPLATES[_t]["perms"].add(_k)
+AUTO_PERMS = frozenset(AUTO_DEF)
+ALL = frozenset(PERMISSIONS)
+TEAM_PERMS = frozenset(k for k, v in FEATURES.items() if v[2])
+NEW_PERMS = NEW_PERMS | AUTO_PERMS
+BUILTIN["admin"]["perms"] = set(ALL)
+BUILTIN["operator"]["perms"] |= {"page.auto", "act.case", "act.runbook"}   # nothing that executes, approves, publishes or promotes
+BUILTIN["viewer"]["perms"].add("page.auto")
+
 
 class Roles:
     def __init__(self, kb):
@@ -118,6 +148,7 @@ class Roles:
                 kb._exec("UPDATE roles SET perms=? WHERE name=?", (json.dumps(sorted(d["perms"])), name))
         self._split_v1()
         self._logs_v1()
+        self._auto_v1()
 
     # ---------------------------------------------------------------- one-shot steps (a marker each, so a later edit is never undone)
     def meta(self, key: str) -> str | None:
@@ -163,6 +194,32 @@ class Roles:
         except Exception:  # noqa: BLE001 - no team roles yet
             pass
         self.set_meta("logs_v1")
+        self.version += 1
+
+    def _auto_v1(self) -> None:
+        """The action agent's keys (§10.9): every stored role and team role holding page.actions gets page.auto (view only); the
+        untouched built-in operator also gets act.case and act.runbook. Nothing that executes, approves, publishes, promotes or
+        sets policy is granted implicitly to an existing role. Once."""
+        if self.meta("auto_v1"):
+            return
+        op_old = BUILTIN["operator"]["perms"] - AUTO_PERMS
+        for r in self.kb._exec("SELECT name, perms FROM roles"):
+            if r["name"] == "admin":
+                continue
+            p = set(json.loads(r["perms"] or "[]"))
+            add = {"page.auto"} if "page.actions" in p else set()
+            if r["name"] == "operator" and p - AUTO_PERMS == op_old:
+                add |= {"page.auto", "act.case", "act.runbook"}
+            if add - p:
+                self.kb._exec("UPDATE roles SET perms=? WHERE name=?", (json.dumps(sorted(p | add)), r["name"]))
+        try:
+            for r in self.kb._exec("SELECT id, perms FROM team_roles"):
+                p = set(json.loads(r["perms"] or "[]"))
+                if "page.actions" in p and "page.auto" not in p:
+                    self.kb._exec("UPDATE team_roles SET perms=? WHERE id=?", (json.dumps(sorted(p | {"page.auto"})), r["id"]))
+        except Exception:  # noqa: BLE001 - no team roles yet
+            pass
+        self.set_meta("auto_v1")
         self.version += 1
 
     def ensure_member(self) -> None:

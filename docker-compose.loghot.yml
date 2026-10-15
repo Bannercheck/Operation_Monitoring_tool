@@ -1,0 +1,13 @@
+# Applied while WATCHOVER_LOG_HOT_PATH is set in .env (./watchover.sh adds this file to COMPOSE_FILE): the hot raw logs live in that
+# host directory, a disk of their own, instead of the data volume. Mounted at /logs/hot as on OpenShift; :z gives it the SELinux
+# label shared by the containers that read logs (Podman, or Docker with selinux-enabled; a no-op otherwise). The directory belongs
+# to UID 10001 / GID 0, the containers' user: ./watchover.sh checks it (sudo chown -R 10001:0 DIR && sudo chmod 2770 DIR).
+x-log-hot: &log-hot
+  environment:
+    WATCHOVER_LOG_HOT_DIR: /logs/hot
+  volumes:
+    - ${WATCHOVER_LOG_HOT_PATH:?WATCHOVER_LOG_HOT_PATH must name a host directory}:/logs/hot:z
+services:
+  dashboard: *log-hot
+  mcp: *log-hot
+  legacy: *log-hot

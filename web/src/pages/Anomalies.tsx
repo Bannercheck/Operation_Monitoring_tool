@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Flame, Radar, Sparkles, VolumeX, Waves } from "lucide-react";
-import { get, post } from "../api";
+import { get, post, put } from "../api";
 import { useAuth } from "../auth";
 import { useT } from "../i18n";
 import { Btn, Card, Empty, Err, Field, Kpi, Spark, fmtTs, hhmm } from "../components/ui";
+import { LearnLine, SignalList, sigLabel, signedPct } from "../components/LearningBar";
 
 const ICON: Record<string, any> = { errors: Flame, rate: Waves, silence: VolumeX, pattern: Sparkles, metric: Radar };
 const COLOR: Record<string, string> = { open: "#f87171", ack: "#fbbf24", resolved: "#2dd4bf", ignored: "#64748b", learning: "#a78bfa" };
@@ -41,23 +42,52 @@ export default function Anomalies() {
   );
 }
 
-/** Learning mode: which hosts are still learning their normal (first week), how far along, what was found meanwhile. */
+/** Learning mode: which hosts are still learning their normal, why (per signal in dinamik mode), what was found meanwhile. */
 function Learning({ st, editable, onShow }: { st: any; editable: boolean; onShow: () => void }) {
-  const { t } = useT(); const qc = useQueryClient();
+  const { t } = useT(); const qc = useQueryClient(); const { can } = useAuth();
+  const [open, setOpen] = useState(""); const [cfg, setCfg] = useState(false);
   const grad = useMutation({ mutationFn: (h: any) => post("/anomalies/learning/graduate", { host: h.host, env: h.env }), onSuccess: () => qc.invalidateQueries() });
-  if (!st || !st.days) return <div className="dim small">{t("an_learn_off")}</div>;
+  const gear = can("sys.maint") ? <Btn sm onClick={() => setCfg((c) => !c)} title={t("an_lr_settings")}>⚙</Btn> : null;
+  if (!st || !st.days) return <div className="row dim small">{t("an_learn_off")}{gear}{cfg && <LearnSettings onDone={() => setCfg(false)} />}</div>;
+  const dyn = st.mode === "dinamik";
   const hosts: any[] = st.learning ?? [];
-  return <Card title={`🎓 ${t("an_learn_title", { d: st.days })}`} right={st.shadow ? <Btn sm onClick={onShow}>{t("an_learn_shadow", { n: st.shadow })}</Btn> : null}>
-    <div className="muted small" style={{ marginBottom: 8 }}>{t("an_learn_lead", { d: st.days })}</div>
+  return <Card title={`🎓 ${dyn ? t("an_lrn_title_dyn", { min: st.min_days, max: st.days }) : t("an_learn_title", { d: st.days })}`}
+    right={<div className="row" style={{ gap: 6 }}>{st.shadow ? <Btn sm onClick={onShow}>{t("an_learn_shadow", { n: st.shadow })}</Btn> : null}{gear}</div>}>
+    <div className="muted small" style={{ marginBottom: 8 }}>{dyn ? t("an_lrn_lead_dyn") : t("an_learn_lead", { d: st.days })}</div>
+    {cfg && <LearnSettings onDone={() => setCfg(false)} />}
     {!hosts.length ? <div className="small"><span className="badge green">{t("an_learn_done")}</span> {t("an_learn_done_n", { n: st.learned })}</div> :
-      <div className="stack" style={{ gap: 6 }}>{hosts.slice(0, 12).map((h) => <div key={h.host + h.env} className="row" style={{ gap: 10, flexWrap: "nowrap" }}>
-        <b style={{ width: 180, overflow: "hidden", textOverflow: "ellipsis" }}>{h.host}</b><span className="dim small" style={{ width: 60 }}>{h.env}</span>
-        <div className="durbar" style={{ flex: 1 }}><div style={{ width: `${h.pct}%`, background: "var(--accent)" }} /></div>
-        <span className="small" style={{ width: 140 }}>%{Math.round(h.pct)} · {t("an_learn_until")} {h.ends.slice(5, 16).replace("T", " ")}</span>
-        {editable && <Btn sm onClick={() => grad.mutate(h)}>{t("an_learn_graduate")}</Btn>}</div>)}
+      <div className="stack" style={{ gap: 6 }}>{hosts.slice(0, 12).map((h) => { const k = `${h.host}|${h.env}`; return <div key={k}>
+        <div className="row lrn-row" style={{ cursor: dyn ? "pointer" : undefined }} onClick={() => dyn && setOpen(open === k ? "" : k)}>
+          <b className="lrn-hn">{h.host}</b><span className="dim small" style={{ width: 60 }}>{h.env}</span>
+          <div className="durbar" style={{ flex: dyn ? "0 0 110px" : 1 }}><div style={{ width: `${h.pct}%`, background: "var(--accent)" }} /></div>
+          {dyn ? <><span className="small" style={{ width: 40 }}>%{Math.round(h.pct)}</span><LearnLine h={h} /></>
+            : <span className="small" style={{ width: 140 }}>%{Math.round(h.pct)} · {t("an_learn_until")} {h.ends.slice(5, 16).replace("T", " ")}</span>}
+          {editable && <Btn sm onClick={(e) => { e.stopPropagation(); grad.mutate(h); }}>{t("an_learn_graduate")}</Btn>}</div>
+        {open === k && <SignalList h={h} editable={editable} />}</div>; })}
         {hosts.length > 12 && <div className="dim small">+{hosts.length - 12}</div>}
         <div className="dim small">{t("an_learn_done_n", { n: st.learned })}</div></div>}
+    {dyn && !!st.events?.length && <div className="lrn-events small"><b>{t("an_lr_events")}</b>{st.events.slice(0, 6).map((e: any) =>
+      <div key={`${e.host}|${e.env}|${e.signal}|${e.at}`}>{e.host} · {sigLabel(t, e.signal)}: {e.manual ? t("an_lr_manual") : t("an_lr_shift", { pct: signedPct(e.pct) })}
+        <span className="dim"> · {fmtTs(e.since)}{e.learning ? "" : ` · ${t("an_lr_ok")}`}</span></div>)}</div>}
   </Card>;
+}
+
+/** dinamik | sabit, minimum and upper bound in days (installation maintainers) */
+function LearnSettings({ onDone }: { onDone: () => void }) {
+  const { t } = useT(); const qc = useQueryClient();
+  const q = useQuery({ queryKey: ["an-learn-cfg"], queryFn: () => get("/anomalies/learning/settings") });
+  const [f, setF] = useState<any>(null);
+  useEffect(() => { if (q.data && !f) setF(q.data); }, [q.data, f]);
+  const save = useMutation({ mutationFn: () => put("/anomalies/learning/settings", { mode: f.mode, min_days: Number(f.min_days), max_days: Number(f.max_days) }),
+    onSuccess: () => { qc.invalidateQueries(); onDone(); } });
+  if (!f) return null;
+  const set = (k: string) => (e: any) => setF({ ...f, [k]: e.target.value });
+  return <div className="row lrn-cfg">
+    <Field label={t("an_lr_mode")}><select className="input" value={f.mode} onChange={set("mode")}><option value="dinamik">{t("an_lr_mode_dinamik")}</option><option value="sabit">{t("an_lr_mode_sabit")}</option></select></Field>
+    {f.mode === "dinamik" && <Field label={t("an_lr_min_days")}><input className="input" type="number" min={0} max={30} step={0.5} value={f.min_days} onChange={set("min_days")} /></Field>}
+    <Field label={f.mode === "dinamik" ? t("an_lr_max_days") : t("an_lr_days")}><input className="input" type="number" min={0} max={f.mode === "dinamik" ? f.cap : 365} value={f.max_days} onChange={set("max_days")} /></Field>
+    <Btn sm kind="primary" onClick={() => save.mutate()} disabled={save.isPending}>{t("save")}</Btn><Err e={save.error} />
+  </div>;
 }
 
 function AnomalyCard({ a, editable }: { a: any; editable: boolean }) {

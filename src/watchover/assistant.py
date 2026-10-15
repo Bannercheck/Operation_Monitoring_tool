@@ -16,10 +16,10 @@ from .llm import LLMConfig, chat_messages, last_call
 INC_RE = re.compile(r"\bINC-\d+\b", re.I)
 SYSTEM = {
     "tr": ("Sen Watchover'sın: bir operasyon merkezinin SRE asistanı. Yalnızca verilen BAĞLAM'a dayanarak Türkçe cevap ver. "
-           "Her iddiada kaynağını köşeli parantezle göster: incident için [INC-3], bilgi tabanı dersi için [L12], kanıt satırı için [dosya:satır]. "
+           "Her iddiada kaynağını köşeli parantezle göster: incident için [INC-3], bilgi tabanı dersi için [L12], kanıt satırı için [dosya:satır], dış MCP aracı için [M1]. "
            "Bağlamda olmayan bir şeyi bilmiyorsan 'bağlamda yok' de; uydurma. Kısa, net, madde madde; ilk aksiyonu ve sahibini söyle."),
     "en": ("You are Watchover, the SRE assistant of an operations centre. Answer in English using ONLY the CONTEXT. "
-           "Cite every claim in brackets: [INC-3] for incidents, [L12] for knowledge-base lessons, [file:line] for evidence. "
+           "Cite every claim in brackets: [INC-3] for incidents, [L12] for knowledge-base lessons, [file:line] for evidence, [M1] for external MCP tools. "
            "If the context does not contain it, say so; never invent. Be short and concrete; name the first action and its owner."),
 }
 
@@ -33,8 +33,8 @@ def _inc_line(a, inc, lang: str) -> str:
             f"recovery: {inc.recovery.get('kind', '?')} · first action: {inc.recommendations[0] if inc.recommendations else '-'} · owner: {suggested_owner(inc, root)}")
 
 
-def build_context(question: str, analysis, kb, lang: str = "tr", k: int = 6) -> tuple[str, list[dict]]:
-    """Text block for the model + the source cards shown to the user."""
+def build_context(question: str, analysis, kb, lang: str = "tr", k: int = 6, extra: list | None = None) -> tuple[str, list[dict]]:
+    """Text block for the model + the source cards shown to the user. `extra`: answers of external MCP tools ([M1], ...)."""
     parts, sources = [], []
     if analysis is not None:
         parts.append(f"## DATASET · {len(analysis.observations)} events · {len(analysis.incidents)} incidents · mode {analysis.mode}")
@@ -62,10 +62,15 @@ def build_context(question: str, analysis, kb, lang: str = "tr", k: int = 6) -> 
         if rules:
             parts.append("## APPROVED RULES")
             parts += [f"[R{r['id']}] {r['kind']} {r['key']} = {r['value']} ({r['reason'][:80]})" for r in rules[:20]]
+    if extra:
+        parts.append("## EXTERNAL MCP TOOLS (read-only)")
+        for x in extra:
+            parts.append(f"[{x['id']}] {x['title']}\n{x['text'][:1500]}")
+            sources.append({"kind": "mcp", "id": x["id"], "title": x["title"], "text": x["text"][:500]})
     return "\n".join(parts), sources
 
 
-def fallback_answer(question: str, analysis, kb, lang: str = "tr") -> str:
+def fallback_answer(question: str, analysis, kb, lang: str = "tr", extra: list | None = None) -> str:
     """No LLM: compose an answer from the same context (incidents that mention the terms, top lessons, rules)."""
     q = question.lower()
     terms = [w for w in re.findall(r"[a-zçğıöşü0-9][\w\-]{2,}", q) if w not in ("için", "nedir", "neden", "hangi", "what", "which", "the", "and", "olan")]
@@ -81,6 +86,8 @@ def fallback_answer(question: str, analysis, kb, lang: str = "tr") -> str:
     if kb is not None:
         for d in kb.search(question, k=4):
             lines.append(f"- [L{d['id']}] {d['title']} — {d['text'][:240].replace(chr(10), ' ')}")
+    for x in extra or []:
+        lines.append(f"- [{x['id']}] {x['title']} — {x['text'][:240].replace(chr(10), ' ')}")
     if not lines:
         return ("Bağlamda buna dair bir şey bulamadım. Bir veri seti yükleyin, bilgi tabanına not ekleyin ya da soruda bir incident numarası "
                 "(INC-1) / servis adı geçirin." if lang == "tr" else
@@ -89,9 +96,9 @@ def fallback_answer(question: str, analysis, kb, lang: str = "tr") -> str:
     return head + "\n\n" + "\n".join(lines)
 
 
-def answer(cfg: LLMConfig | None, question: str, history: list[dict], analysis, kb, lang: str = "tr") -> dict:
+def answer(cfg: LLMConfig | None, question: str, history: list[dict], analysis, kb, lang: str = "tr", extra: list | None = None) -> dict:
     """-> {"text", "sources", "context", "used_llm", "error"}"""
-    ctx, sources = build_context(question, analysis, kb, lang)
+    ctx, sources = build_context(question, analysis, kb, lang, extra=extra)
     if cfg is not None and cfg.enabled:
         msgs = [{"role": "system", "content": SYSTEM.get(lang, SYSTEM["en"]) + f"\n\nCURRENT TIME: {datetime.now():%Y-%m-%d %H:%M}\n\nCONTEXT:\n{ctx[:14000]}"}]
         for h in history[-6:]:
@@ -108,8 +115,8 @@ def answer(cfg: LLMConfig | None, question: str, history: list[dict], analysis, 
                       "estimated": bool(lc.get("tokens_est")), "latency_ms": lc.get("latency_ms", 0)}
             return {"text": text, "sources": sources, "context": ctx, "used_llm": True, "error": "", "grounding": g, "tokens": tokens}
         except Exception as e:  # noqa: BLE001 - fall back, never break the chat
-            return {"text": fallback_answer(question, analysis, kb, lang), "sources": sources, "context": ctx, "used_llm": False, "error": str(e)}
-    return {"text": fallback_answer(question, analysis, kb, lang), "sources": sources, "context": ctx, "used_llm": False, "error": ""}
+            return {"text": fallback_answer(question, analysis, kb, lang, extra), "sources": sources, "context": ctx, "used_llm": False, "error": str(e)}
+    return {"text": fallback_answer(question, analysis, kb, lang, extra), "sources": sources, "context": ctx, "used_llm": False, "error": ""}
 
 
 # ---------------------------------------------------------------- rule proposals by the model (a human still approves)

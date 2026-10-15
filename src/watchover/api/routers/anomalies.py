@@ -41,7 +41,8 @@ def stats(user=Depends(require("page.anom")), svc=Depends(services), sc=Depends(
             out["kinds"][r["kind"]] = out["kinds"].get(r["kind"], 0) + 1
     out["resolved_today"] = sum(1 for r in mine if r["status"] == "resolved" and (r.get("resolved_at") or "") >= today)
     lr = st.get("learning") or {}
-    out["learning"] = {**lr, "learning": [h for h in lr.get("learning", []) if sc.allows(h["host"])]}
+    out["learning"] = {**lr, "learning": [h for h in lr.get("learning", []) if sc.allows(h["host"])],
+                       "events": [e for e in lr.get("events", []) if sc.allows(e["host"])]}
     return out
 
 
@@ -57,16 +58,71 @@ def scan(user=Depends(require("act.anomaly")), svc=Depends(services), sc=Depends
 class LearnIn(BaseModel):
     host: Optional[str] = None
     env: str = ""
+    signal: Optional[str] = None
+
+
+class LearnCfgIn(BaseModel):
+    mode: Optional[str] = None
+    min_days: Optional[float] = None
+    max_days: Optional[float] = None
+
+
+def _learn_cfg(svc) -> dict:
+    from ... import settings as wo_settings
+    cfg = wo_settings.load()
+    return {"mode": svc.anomalies.learning_mode(), "min_days": float(cfg.get("anomaly_learning_min_days", 1) or 0),
+            "max_days": float(cfg.get("anomaly_learning_days", 7) or 0), "cap": 30}
+
+
+@router.get("/learning")
+def host_learning(host: str, env: str = "", user=Depends(require("page.anom")), svc=Depends(services), sc=Depends(user_scope)):
+    """One host's learning (server detail): per-signal status and why a signal is still learning."""
+    if sc is not None and not sc.allows(host):
+        raise KeyError(host)
+    return svc.anomalies.host_learning(host, env)
+
+
+@router.get("/learning/settings")
+def learning_settings(user=Depends(require("page.anom")), svc=Depends(services)):
+    return _learn_cfg(svc)
+
+
+@router.put("/learning/settings")
+def put_learning_settings(body: LearnCfgIn, user=Depends(require("sys.maint")), svc=Depends(services)):
+    """dinamik | sabit, the minimum and the upper bound (days, at most 30 in dinamik)."""
+    from ... import settings as wo_settings
+    vals: dict = {}
+    if body.mode is not None:
+        if body.mode not in ("dinamik", "sabit"):
+            raise ValueError("mode: dinamik | sabit")
+        vals["anomaly_learning_mode"] = body.mode
+    if body.max_days is not None:
+        vals["anomaly_learning_days"] = max(0.0, min(float(body.max_days), 365.0))
+    if body.min_days is not None:
+        vals["anomaly_learning_min_days"] = max(0.0, min(float(body.min_days), 30.0))
+    wo_settings.save(vals)
+    svc.anomalies.reset_learning_cache()
+    return _learn_cfg(svc)
 
 
 @router.post("/learning/graduate")
 def graduate(body: LearnIn, user=Depends(require("act.anomaly")), svc=Depends(services), sc=Depends(user_scope)):
-    """End a host's learning week now: from the next scan its anomalies open and notify."""
+    """End a host's learning now (or, with signal, one series): from the next scan its anomalies open and notify."""
     if not body.host:
         raise ValueError("host required")
     if sc is not None and not sc.allows(body.host):
         raise KeyError(body.host)
-    return svc.anomalies.graduate(body.host, body.env)
+    return svc.anomalies.graduate(body.host, body.env, body.signal or None)
+
+
+@router.post("/learning/relearn")
+def relearn(body: LearnIn, user=Depends(require("act.anomaly")), svc=Depends(services), sc=Depends(user_scope)):
+    """Send one signal of a host back to learning from now ('its normal changed')."""
+    if not body.host or not body.signal:
+        raise ValueError("host and signal required")
+    if sc is not None and not sc.allows(body.host):
+        raise KeyError(body.host)
+    return svc.anomalies.relearn(body.host, body.env, body.signal)
 
 
 @router.post("/learning/restart")

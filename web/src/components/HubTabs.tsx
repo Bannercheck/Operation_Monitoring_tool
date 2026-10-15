@@ -1,5 +1,5 @@
 import { NavLink, useLocation } from "react-router-dom";
-import { AlertTriangle, BellRing, BookOpen, Bot, Brain, Bug, ClipboardList, Database, FileText, Gauge, GitBranch, Layers, LayoutDashboard, LayoutGrid, MessageSquare, Network, Plug, Radar, Route, ScrollText, Server, Settings, Settings2, ShieldAlert, Siren, Smartphone, Sparkles, Ticket, UserCog, Users, Workflow } from "lucide-react";
+import { AlertTriangle, BellRing, BookOpen, Bot, Brain, Bug, ClipboardList, Database, Inbox as InboxIcon, FileText, Gauge, GitBranch, Layers, LayoutDashboard, LayoutGrid, MessageSquare, Network, Plug, Radar, Route, ScrollText, Server, Settings, Settings2, ShieldAlert, Siren, Smartphone, Sparkles, Ticket, UserCog, Users, Workflow } from "lucide-react";
 import { useAuth } from "../auth";
 import { useT } from "../i18n";
 
@@ -21,7 +21,8 @@ export const HUBS: Hub[] = [
     { to: "/anomalies", k: "nav_anom", icon: AlertTriangle, perm: "page.anom" }, { to: "/thresholds", k: "nav_thr", icon: Gauge, perm: "page.thr" },
     { to: "/alerts", k: "nav_tab_notify", icon: BellRing, perm: "sys.notify", any: ["sys.notify", "act.alerts"], unless: "sys.status" }] },
   { id: "respond", k: "nav_hub_respond", icon: Siren, tabs: [
-    { to: "/actions", k: "nav_actions", icon: ClipboardList, perm: "page.actions" }, { to: "/playbook", k: "nav_pb", icon: BookOpen, perm: "page.pb" },
+    { to: "/actions", k: "nav_actions", icon: ClipboardList, perm: "page.actions" }, { to: "/inbox", k: "au_inbox", icon: InboxIcon, perm: "page.actions" },
+    { to: "/playbook", k: "nav_pb", icon: BookOpen, perm: "page.pb" },
     { to: "/itsm", k: "nav_itsm", icon: Ticket, perm: "page.itsm" }] },
   { id: "exceptions", k: "nav_exc", icon: Bug, tabs: [{ to: "/exceptions", k: "nav_exc", icon: Bug, perm: "page.apm" }] },
   { id: "rum", k: "nav_rum", icon: Smartphone, tabs: [{ to: "/rum", k: "nav_rum", icon: Smartphone, perm: "page.rum" }] },

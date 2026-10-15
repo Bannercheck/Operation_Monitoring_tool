@@ -14,7 +14,7 @@ import time
 
 from .llm import LLMConfig, chat_messages
 
-CITE_RE = re.compile(r"\[(INC-\d+|L\d+|R\d+|S\d+|[\w./\-]+:\d+)(?: alt)?\]", re.I)
+CITE_RE = re.compile(r"\[(INC-\d+|L\d+|R\d+|S\d+|M\d+|[\w./\-]+:\d+)(?: alt)?\]", re.I)
 
 
 def grounding(answer: str, context: str) -> dict:

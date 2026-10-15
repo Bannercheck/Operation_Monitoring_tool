@@ -1,0 +1,14 @@
+# Planted host credentials (docs/design/action-agent.md §10.8): every value below must be masked by privacy.scrub_strict.
+2026-10-15 02:11:07 ERROR orders-api datasource url=postgres://app:Canary-Pg-7f3a@db:5432/x refused
+Caused by: java.sql.SQLException: jdbc:oracle:thin:scott/Canary-Ora-91@db:1521/X listener refused the connection
+root     4121  0.0  0.1 env PGPASSWORD=Canary-Env-22 /usr/bin/pg_dump -h db -U app orders
+tomcat   2211  3.2 12.0 /usr/bin/java -Xmx2g -Djavax.net.ssl.keyStorePassword=Canary-Ks-5 -jar orders.jar
+backup   3001  0.0  0.0 /usr/bin/mysqldump --password Canary-Flag-8 --all-databases
+keycloak.client_secret=Canary-Oidc-3
+aws_access_key_id = AKIACANARY0000000001
+GET /orders HTTP/1.1 Cookie: JSESSIONID=CanarySess0123456789abcdef; Path=/
+-----BEGIN RSA PRIVATE KEY-----
+MIIEowIBAAKCAQEAcanaryRSAprivateKeyBodyLine0123456789
+c2VjcmV0LWJvZHktbGluZS10d28tY2FuYXJ5LWtleQ==
+-----END RSA PRIVATE KEY-----
+WARN config dump continues after the key block; disk /var/log 93.4 %

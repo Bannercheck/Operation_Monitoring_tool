@@ -1,7 +1,7 @@
 # Watchover trainer — learns `watchover-ops` from the company's memory on CPU, unattended (llm profile).
 # Same source tree as the dashboard plus the CPU builds of torch / transformers / peft. No GPU, no internet after the
 # first run (the base weights are cached in the watchover-hf volume).
-FROM python:3.11-slim
+FROM docker.io/library/python:3.11-slim
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 \
     WATCHOVER_HOME=/data KNOWLEDGE_DB=/data/knowledge.db LIVE_SPOOL=/data/live/events.jsonl \
     HF_HOME=/hf TOKENIZERS_PARALLELISM=false HOME=/home/watchover

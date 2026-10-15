@@ -1,0 +1,76 @@
+{
+ "format": 1,
+ "pack": "watchover-sap-diag",
+ "pack_version": 1,
+ "templates": [
+  {
+   "id": "sap.wp.table",
+   "rev": 1,
+   "os": "linux",
+   "kind": "diag",
+   "risk": "R0",
+   "cost": "light",
+   "argv": [
+    "/usr/sap/hostctrl/exe/sapcontrol",
+    "-nr",
+    "{nr}",
+    "-function",
+    "ABAPGetWPTable",
+    "-format",
+    "script"
+   ],
+   "run_as": "{sid_lower}adm",
+   "params": {
+    "sid": {
+     "type": "sap_sid"
+    },
+    "nr": {
+     "type": "sap_nr"
+    }
+   },
+   "timeout_s": 30,
+   "max_output_kb": 64,
+   "output": {
+    "parser": "sap_wp_table",
+    "pseudonymise": [
+     "User"
+    ]
+   },
+   "title_tr": "SAP iş süreçleri tablosu",
+   "title_en": "SAP work process table"
+  },
+  {
+   "id": "sap.process.list",
+   "rev": 1,
+   "os": "linux",
+   "kind": "diag",
+   "risk": "R0",
+   "cost": "light",
+   "argv": [
+    "/usr/sap/hostctrl/exe/sapcontrol",
+    "-nr",
+    "{nr}",
+    "-function",
+    "GetProcessList",
+    "-format",
+    "script"
+   ],
+   "run_as": "{sid_lower}adm",
+   "params": {
+    "sid": {
+     "type": "sap_sid"
+    },
+    "nr": {
+     "type": "sap_nr"
+    }
+   },
+   "timeout_s": 30,
+   "max_output_kb": 32,
+   "output": {
+    "parser": "sap_process_list"
+   },
+   "title_tr": "SAP süreç listesi",
+   "title_en": "SAP process list"
+  }
+ ]
+}

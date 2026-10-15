@@ -273,3 +273,32 @@ class BizFlows:
 
     def prune(self, days: int = 30) -> None:
         self.kb._exec("DELETE FROM biz_events WHERE ts < ?", ((datetime.now(UTC) - timedelta(days=days)).isoformat(),))
+
+    def check_stuck(self, min_stuck: int = 20, minutes: int = 1440) -> list[dict]:
+        """Steps of enabled flows with >= min_stuck stuck items, or an item waiting longer than 2 x the step's p95 (the action
+        agent opens a case per flow step, docs/design/action-agent.md §4.1). Sample keys are hashed when the flow hashes keys."""
+        import hashlib
+        out = []
+        for f in self.list():
+            if not f.get("enabled"):
+                continue
+            try:
+                fun = self.funnel(f["id"], minutes)
+                stuck_items = self.items(f["id"], "stuck", minutes, limit=500)
+            except Exception:  # noqa: BLE001 - one broken flow never stops the others
+                continue
+            for st in fun["steps"]:
+                at = [x for x in stuck_items if x["last_index"] == st["index"]]
+                if not at:
+                    continue
+                p95 = st.get("to_next_p95_s") or 0
+                oldest = max(x["waiting_s"] for x in at)
+                if len(at) < min_stuck and not (p95 and oldest > 2 * p95):
+                    continue
+                keys = [x["key"] for x in at[:3]]
+                if f.get("hash_keys"):
+                    keys = [hashlib.sha256(str(k).encode()).hexdigest()[:12] for k in keys]
+                out.append({"flow_id": f["id"], "flow": f["name"], "step": st["index"], "step_name": st["name"], "stuck": len(at),
+                            "oldest_s": oldest, "hosts": sorted({x["last_host"] for x in at if x.get("last_host")})[:5], "samples": keys,
+                            "team_id": f.get("team_id")})
+        return out

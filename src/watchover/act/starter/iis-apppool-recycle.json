@@ -1,0 +1,120 @@
+{
+ "key": "iis-apppool-recycle",
+ "version": 1,
+ "title": "IIS: uygulama havuzu",
+ "risk": "R1",
+ "summary": "Havuz durumuna ve WAS / W3SVC kayıtlarına bakar; durmuşsa başlatır, değilse geri dönüştürür; sağlık adresini yoklar. Tek düğümde R2.",
+ "match": {
+  "sources": [
+   "query",
+   "anomaly",
+   "incident"
+  ]
+ },
+ "applies_to": {
+  "os": [
+   "windows"
+  ]
+ },
+ "params": {
+  "host": {
+   "type": "host",
+   "from": [
+    "case.host"
+   ]
+  },
+  "pool": {
+   "type": "iis_pool",
+   "from": [
+    "evidence.app_pool",
+    "ask"
+   ]
+  }
+ },
+ "watch": {
+  "minutes": 15,
+  "expected_noise_s": 0,
+  "expected_noise": []
+ },
+ "max_level": 4,
+ "steps": [
+  {
+   "id": "d1",
+   "type": "diagnose",
+   "title": "Havuz durumu",
+   "template": "iis.apppool.state",
+   "args": {
+    "pool": "{pool}"
+   }
+  },
+  {
+   "id": "d2",
+   "type": "diagnose",
+   "title": "Olay günlüğü",
+   "template": "win.log.tail",
+   "args": {
+    "channel": "System",
+    "n": 50
+   }
+  },
+  {
+   "id": "c1",
+   "type": "choose",
+   "title": "Durmuş mu?",
+   "options": [
+    {
+     "to": "a1",
+     "label": "Başlat"
+    },
+    {
+     "to": "a2",
+     "label": "Geri dönüştür"
+    }
+   ],
+   "when": [
+    {
+     "if": "steps.d1.state == \"Stopped\"",
+     "to": "a1"
+    }
+   ]
+  },
+  {
+   "id": "a1",
+   "type": "act",
+   "title": "Havuzu başlat",
+   "template": "iis.apppool.start",
+   "args": {
+    "pool": "{pool}"
+   },
+   "verify": "v1"
+  },
+  {
+   "id": "a2",
+   "type": "act",
+   "title": "Havuzu geri dönüştür",
+   "template": "iis.apppool.recycle",
+   "args": {
+    "pool": "{pool}"
+   },
+   "verify": "v1"
+  },
+  {
+   "id": "v1",
+   "type": "verify",
+   "title": "Uygulama yanıt veriyor mu?",
+   "checks": [
+    {
+     "http_ok": {
+      "url": "{inventory.health_url}",
+      "probe_from": "server"
+     },
+     "independent": true
+    }
+   ],
+   "require": "all",
+   "retries": 3,
+   "interval_s": 20,
+   "on_fail": "escalate"
+  }
+ ]
+}

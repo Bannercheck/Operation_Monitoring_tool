@@ -220,18 +220,27 @@ def _safe_next(nxt: str) -> str:
 
 
 @router.get("/oidc/{name}/start")
-def oidc_start(name: str, request: Request, next: str = "/"):
-    """Redirects the browser to the provider; state is a short signed token carrying the PKCE verifier and the return path."""
+def oidc_start(name: str, request: Request, next: str = "/", stepup: str = ""):
+    """Redirects the browser to the provider; state is a short signed token carrying the PKCE verifier and the return path.
+    With `stepup` (a token from POST /auth/stepup) it is a re-authentication: prompt=login, max_age=0 (action agent, §10.5)."""
     p = _provider(name, wo_settings.load())
     if not p:
         raise HTTPException(404, "provider not configured")
+    su = {}
+    if stepup:
+        su = verify(stepup)
+        if su.get("typ") != "stepup":
+            raise HTTPException(400, "bad step-up token")
     disc = _discover(p["issuer"])
     verifier = secrets.token_urlsafe(48)
     challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
     nonce = secrets.token_urlsafe(16)
-    state = issue({"typ": "oidc", "p": name, "v": verifier, "n": nonce, "next": _safe_next(next)}, 10)
+    state = issue({"typ": "oidc", "p": name, "v": verifier, "n": nonce, "next": _safe_next(next),
+                   **({"su": su.get("email", "")} if su else {})}, 10)
     q = {"response_type": "code", "client_id": p["client_id"], "redirect_uri": _redirect_uri(request, name), "state": state, "nonce": nonce}
     q.update({"scope": "openid email profile", "code_challenge": challenge, "code_challenge_method": "S256"})
+    if su:
+        q.update({"prompt": "login", "max_age": "0"})
     return RedirectResponse(disc["authorization_endpoint"] + "?" + urllib.parse.urlencode(q), status_code=302)
 
 
@@ -264,6 +273,13 @@ def _finish(name: str, request: Request, code: str, state: str, error: str, svc)
     email = (ident.get("email") or ident.get("preferred_username") or "").lower()
     if not email or (ident.get("nonce") and ident.get("nonce") != claims["n"]):
         return RedirectResponse(f"/login?error={urllib.parse.quote('no e-mail from provider')}", status_code=302)
+    if claims.get("su"):                                      # step-up re-authentication: record it, no new session token
+        from ...act.stepup import id_token_claims
+        idc = id_token_claims(t.get("id_token") or "")
+        acct = svc.users.get(claims["su"])
+        res = svc.act.stepup.verify_oidc({"id": acct["id"], "email": acct["email"]} if acct else {"id": 0, "email": claims["su"]},
+                                         {"email": email, "auth_time": idc.get("auth_time")})
+        return RedirectResponse(f"{_safe_next(claims.get('next') or '/')}#stepup={'ok' if res['ok'] else 'failed'}", status_code=302)
     u = svc.users.sso_login(email, ident.get("name", ""), cfg.get("auth_domains", ""), bool(cfg.get("auth_self_register", True)), provider=name)
     if not u:
         return RedirectResponse(f"/login?error={urllib.parse.quote('account not allowed')}", status_code=302)
@@ -280,3 +296,57 @@ async def oidc_callback_post(name: str, request: Request, svc=Depends(services))
     """Providers that post the code back (response_mode=form_post)."""
     form = await request.form()
     return _finish(name, request, str(form.get("code", "")), str(form.get("state", "")), str(form.get("error", "")), svc)
+
+
+# ---------------------------------------------------------------- step-up (action agent, docs/design/action-agent.md §10.5)
+class StepUpIn(BaseModel):
+    method: str = ""
+    next: str = "/"
+
+
+class StepUpVerifyIn(BaseModel):
+    code: str = ""
+    password: str = ""
+
+
+@router.post("/stepup")
+def stepup_start(body: StepUpIn, user: dict = Depends(current_user), svc=Depends(services)):
+    """Start a fresh identity check: an e-mail code (local accounts with SMTP), OIDC re-authentication (SSO accounts) or the
+    password (local accounts without SMTP; recorded as weak). Administrators are not exempt."""
+    su = svc.act.stepup
+    methods = su.methods(user)
+    if not methods:
+        raise HTTPException(428, {"code": "act_stepup_unavailable", "tr": "Bu hesap için adım doğrulaması yöntemi yok",
+                                  "en": "No step-up method is available for this account", "methods": []})
+    m = body.method if body.method in methods else methods[0]
+    if m == "otp":
+        ok, why = _send_otp(svc.users, svc.users.get(user["email"]))
+        if not ok:
+            raise HTTPException(503, {"code": "act_stepup_unavailable", "tr": "Doğrulama kodu gönderilemedi", "en": "The code could not be sent",
+                                      "reason": why[:120]})
+        return {"method": "otp", "sent": True, "minutes": wo_auth.OTP_MINUTES}
+    if m == "oidc":
+        acct = svc.users.get(user["email"]) or {}
+        tok = issue({"typ": "stepup", "sub": user["id"], "email": user["email"]}, 5)
+        q = urllib.parse.urlencode({"next": _safe_next(body.next), "stepup": tok})
+        return {"method": "oidc", "url": f"/api/auth/oidc/{acct.get('provider', 'oidc')}/start?{q}"}
+    return {"method": "password", "weak": True}
+
+
+@router.post("/stepup/verify")
+def stepup_verify(body: StepUpVerifyIn, user: dict = Depends(current_user), svc=Depends(services)):
+    from ...act.stepup import StepUpError
+    su = svc.act.stepup
+    try:
+        if body.code:
+            res = su.verify_otp(user, body.code)
+        elif body.password:
+            res = su.verify_password(user, body.password)
+        else:
+            raise HTTPException(422, {"code": "act_param_invalid", "tr": "Kod ya da parola gerekli", "en": "A code or the password is required"})
+    except StepUpError as e:
+        raise HTTPException(e.status, e.detail())
+    if not res["ok"]:
+        raise HTTPException(401, {"code": "act_stepup_failed", "tr": "Doğrulama başarısız", "en": "Verification failed",
+                                  "attempts_left": res.get("attempts_left")})
+    return res

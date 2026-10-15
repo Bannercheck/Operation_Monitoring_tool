@@ -119,7 +119,8 @@ def tickets(dataset: Optional[str] = None, refresh: bool = False, acc=Depends(ac
     allow = None if sc is None else sc.allows
     if allow is not None:
         breaches = [b for b in breaches if allow(b.get("host"))]
-    out = wo_itsm.correlate([copy.copy(t) for t in _cache["tickets"]], live_signals(svc.live, 15, allow), breaches, incs)
+    from ...mcpclient import tickets_for                      # tickets pulled from MCP sources (a team's only for that team)
+    out = wo_itsm.correlate([copy.copy(t) for t in _cache["tickets"]] + tickets_for(svc, acc), live_signals(svc.live, 15, allow), breaches, incs)
     if allow is not None:
-        out = [x for x in out if getattr(x, "related_ids", None)]
+        out = [x for x in out if getattr(x, "related_ids", None) or getattr(x, "own", False)]
     return {"system": c["system"], "fetched_at": _cache["at"], "tickets": [_dict(x) for x in out]}

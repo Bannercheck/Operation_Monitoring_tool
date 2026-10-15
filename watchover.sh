@@ -2,6 +2,12 @@
 # Watchover on one server, entirely in Docker, built from this source tree. No GitHub, no registry, no Python on the host.
 #
 #   ./watchover.sh install          first start: writes .env (random passwords / keys), builds the image, starts PostgreSQL + dashboard
+#   ./watchover.sh install --production   the same on a production server: demo off (WATCHOVER_DEMO=0) and the go-live checklist
+#   ./watchover.sh checklist        the production checklist again: backup timer, start on boot, disk caps, admin password, TLS
+#   ./watchover.sh backup-timer on [HH:MM]|off   nightly backup (systemd timer; cron where there is no systemd), default 02:15
+#   ./watchover.sh autostart on|off the stack starts with the server (systemd unit; switched on by 'install' with Podman)
+#   ./watchover.sh storage          where raw logs live (data volume, or the WATCHOVER_LOG_HOT_PATH / _COLD_PATH disks) and free space
+#                                   engine: Docker, or rootful Podman (RHEL): WATCHOVER_ENGINE=docker|podman in .env, detected when unset
 #   ./watchover.sh update           new source tree copied over this folder: rebuild the image, recreate the containers, keep the data
 #   ./watchover.sh upgrade          git pull of this folder (local edits set aside and put back) + update: the one-line way to a new version
 #   ./watchover.sh start|stop|restart|status|logs [service]
@@ -11,7 +17,8 @@
 #                                   NAME may be a DNS name, an IP or a Bonjour name like watchover.local (announced by the Mac itself)
 #   ./watchover.sh edge off|cert    stop it | export the CA root certificate colleagues install once (./certs/watchover-root.crt)
 #   ./watchover.sh doctor [--check] the address does not open? checks containers, the edge, the name (Bonjour) and repairs what it can
-#   ./watchover.sh backup [--keep N] PostgreSQL dump + data volume -> ./backups/watchover-YYYYMMDD-HHMM.tgz (oldest beyond N=14 removed)
+#   ./watchover.sh backup [--keep N] [--no-logs]  PostgreSQL dump + data volume (--no-logs: without /data/logs) + .env
+#                                   -> ./backups/watchover-YYYYMMDD-HHMM.tgz (WATCHOVER_BACKUP_DIR; oldest beyond N=14 removed)
 #   ./watchover.sh restore FILE     bring a backup back (containers are stopped meanwhile)
 #   ./watchover.sh user ...         account management, e.g.  user list | user add ops@firma.com --admin | user password EMAIL | user unlock EMAIL
 #   ./watchover.sh demo-clean [--dry-run] [--yes]   delete only what the simulator made (counts first; a real host with a demo name stays)
@@ -26,11 +33,53 @@ set -euo pipefail
 cd "$(dirname "$0")"
 ENV_FILE=.env
 COMPOSE="docker compose"
+CMD="${1:-}"
 
 say()  { printf '\033[1;36m▸ %s\033[0m\n' "$*"; }
 die()  { printf '\033[1;31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
+# Container engine. Docker, or rootful Podman as Red Hat ships it: podman.socket (Docker-compatible API) + the Compose v2 binary
+# talking to it through DOCKER_HOST, so the compose files and every command below stay the same. Images are built with podman
+# build itself (no BuildKit on that socket) under the names Docker would give them. WATCHOVER_ENGINE=docker|podman (environment
+# or .env) chooses; unset: a real Docker CLI wins, else Podman when it is installed.
+PODMAN_SOCK="${WATCHOVER_PODMAN_SOCK:-/run/podman/podman.sock}"
+detect_engine() {
+  local e="${WATCHOVER_ENGINE:-$(sed -n 's/^WATCHOVER_ENGINE=//p' "$ENV_FILE" 2>/dev/null | head -1 | sed 's/[[:space:]]*#.*$//; s/[[:space:]]*$//')}"
+  case "$e" in
+    docker|podman) echo "$e" ;;
+    ""|auto) if type -P docker >/dev/null 2>&1 && ! command docker --version 2>/dev/null | grep -qi podman; then echo docker
+             elif type -P podman >/dev/null 2>&1; then echo podman; else echo docker; fi ;;
+    *) echo "WATCHOVER_ENGINE must be docker or podman (got '$e')" >&2; return 1 ;;
+  esac
+}
+ENGINE=$(detect_engine) || exit 1
+compose_bin() {   # Compose v2 for Podman: standalone binary or the docker-compose-plugin RPM (only Compose, no Docker engine)
+  local c; for c in "${WATCHOVER_COMPOSE_BIN:-}" "$(command -v docker-compose 2>/dev/null || true)" /usr/libexec/docker/cli-plugins/docker-compose \
+    /usr/local/lib/docker/cli-plugins/docker-compose /usr/lib/docker/cli-plugins/docker-compose /usr/local/libexec/docker/cli-plugins/docker-compose; do
+    [ -n "$c" ] && [ -x "$c" ] && { echo "$c"; return 0; }; done; return 1
+}
+ALPINE=alpine; [ "$ENGINE" = podman ] && ALPINE=docker.io/library/alpine:latest    # helper container for volume copies (no short-name prompt)
+# every container command of this script goes through here
+docker() {
+  [ "$ENGINE" = podman ] || { command docker "$@"; return; }
+  case "${1:-}" in
+    compose) shift; DOCKER_HOST="unix://$PODMAN_SOCK" "$(compose_bin)" "$@" ;;
+    info) if [ "${2:-}" = --format ]; then case "${3:-}" in *NCPU*) podman info --format '{{.Host.CPUs}}' ;; *MemTotal*) podman info --format '{{.Host.MemTotal}}' ;; *) podman "$@" ;; esac
+          else podman "$@"; fi ;;
+    save) shift; podman save -m "$@" ;;                  # several images in one archive (docker save does that by default)
+    *) podman "$@" ;;
+  esac
+}
 need_docker() {
-  command -v docker >/dev/null 2>&1 || die "Docker is not installed. Linux:  curl -fsSL https://get.docker.com | sudo sh   (then: sudo usermod -aG docker \$USER and sign in again). macOS / Windows: Docker Desktop."
+  if [ "$ENGINE" = podman ]; then
+    command -v podman >/dev/null 2>&1 || die "Podman is not installed: sudo dnf -y install podman   (or: sudo bash scripts/rhel-prepare.sh --engine podman)"
+    compose_bin >/dev/null || die "Compose v2 is missing for Podman: sudo bash scripts/rhel-prepare.sh --engine podman installs docker-compose-plugin (Compose only, no Docker engine); air-gapped: copy the docker-compose-linux-x86_64 binary to /usr/local/lib/docker/cli-plugins/docker-compose (chmod +x)"
+    if [ ! -S "$PODMAN_SOCK" ] && [ "$(id -u)" = 0 ] && command -v systemctl >/dev/null 2>&1; then systemctl enable --now podman.socket >/dev/null 2>&1 || true; fi
+    [ -S "$PODMAN_SOCK" ] || die "the Podman socket $PODMAN_SOCK is not there: sudo systemctl enable --now podman.socket"
+    [ -w "$PODMAN_SOCK" ] || die "Watchover runs on rootful Podman and its socket needs root: sudo ./watchover.sh ${CMD:-start}"
+    docker info >/dev/null 2>&1 || die "Podman does not answer (podman info): see journalctl -u podman.socket"
+    return 0
+  fi
+  type -P docker >/dev/null 2>&1 || die "Docker is not installed. Linux:  curl -fsSL https://get.docker.com | sudo sh   (then: sudo usermod -aG docker \$USER and sign in again). macOS / Windows: Docker Desktop. RHEL with Podman: WATCHOVER_ENGINE=podman"
   docker info >/dev/null 2>&1 || die "Docker is installed but not reachable (daemon stopped, or your user is not in the 'docker' group)."
   docker compose version >/dev/null 2>&1 || die "Docker Compose v2 is missing (docker compose version)."
 }
@@ -38,7 +87,9 @@ rand() { if command -v openssl >/dev/null 2>&1; then openssl rand -hex "$1"; els
 version() { sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml | head -1; }
 git_rev() { (git rev-parse --short HEAD 2>/dev/null) || echo "-"; }
 env_get() { sed -n "s/^$1=//p" "$ENV_FILE" 2>/dev/null | head -1 | sed 's/[[:space:]]*#.*$//; s/[[:space:]]*$//'; }   # inline comments and trailing blanks dropped
-env_set() { if grep -q "^$1=" "$ENV_FILE" 2>/dev/null; then sed -i.bak "s|^$1=.*|$1=$2|" "$ENV_FILE" && rm -f "$ENV_FILE.bak"; else printf '%s=%s\n' "$1" "$2" >> "$ENV_FILE"; fi; }
+# .env is rewritten in place (same file): owner and mode stay when a command runs with sudo (systemd units, Podman)
+env_set() { local t; if grep -q "^$1=" "$ENV_FILE" 2>/dev/null; then t=$(sed "s|^$1=.*|$1=$2|" "$ENV_FILE") && printf '%s\n' "$t" > "$ENV_FILE"; else printf '%s=%s\n' "$1" "$2" >> "$ENV_FILE"; fi; }
+env_del() { local t; if grep -q "^$1=" "$ENV_FILE" 2>/dev/null; then t=$(sed "/^$1=/d" "$ENV_FILE") && printf '%s\n' "$t" > "$ENV_FILE"; fi; return 0; }
 # this machine's LAN address: Linux 'hostname -I'; macOS the interface of the default route (Wi-Fi, Ethernet or a USB-C adapter), never a
 # VPN tunnel (colleagues on the LAN cannot reach a utun address), then en0 / en1
 host_ip() {
@@ -59,7 +110,7 @@ size_env() {
   [ "$(env_get WATCHOVER_SIZING)" = "manual" ] && return 0
   local ncpu mem_b mem_gb dcpu dmem rcpu rmem pw spool pcpu pmem psb pcache lcpu lmem tcpu tmem keep
   ncpu=$(docker info --format '{{.NCPU}}' 2>/dev/null | tr -dc '0-9'); [ -n "$ncpu" ] && [ "$ncpu" -ge 1 ] || ncpu=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
-  mem_b=$(docker info --format '{{.MemTotal}}' 2>/dev/null | tr -dc '0-9'); [ -n "$mem_b" ] && [ "$mem_b" -ge 1 ] || mem_b=$((8 * 1024 * 1024 * 1024))
+  mem_b=$(docker info --format '{{.MemTotal}}' 2>/dev/null | tr -dc '0-9'); [ -n "$mem_b" ] && [ "$mem_b" -ge 1 ] || mem_b=$(awk '/^MemTotal:/ {printf "%d", $2 * 1024}' /proc/meminfo 2>/dev/null); [ -n "$mem_b" ] && [ "$mem_b" -ge 1 ] || mem_b=$((8 * 1024 * 1024 * 1024))
   mem_gb=$((mem_b / 1073741824)); [ "$mem_gb" -ge 2 ] || mem_gb=2
   dcpu=$(clamp $((ncpu - 2)) 2 12);          dmem=$(clamp $((mem_gb / 4)) 4 32)
   rcpu=$(clamp $((ncpu / 4)) 1 4);           rmem=$([ "$mem_gb" -ge 16 ] && echo 2 || echo 1)
@@ -91,9 +142,47 @@ write_env() {
   env_set GIT_REV "$(git_rev)"
   [ -n "$(env_get POSTGRES_PASSWORD)" ] && [ "$(env_get POSTGRES_PASSWORD)" != "change-me" ] || { env_set POSTGRES_PASSWORD "$(rand 24)"; say "POSTGRES_PASSWORD generated"; }
   [ -n "$(env_get MCP_API_KEY)" ] || { sed -i.bak 's/^#MCP_API_KEY=.*$//' "$ENV_FILE" 2>/dev/null; rm -f "$ENV_FILE.bak"; env_set MCP_API_KEY "$(rand 24)"; say "MCP_API_KEY generated"; }
+  env_set WATCHOVER_ENGINE "$ENGINE"
   size_env
+  compose_files
   chmod 600 "$ENV_FILE"
   mkdir -p datasets backups
+}
+
+# Raw logs on disks of their own (a server: e.g. /srv/watchover/hot on NVMe, /srv/watchover/cold on a cheaper volume). Empty =
+# inside the data volume (/data/logs/hot|cold) as before. Set: the host directory is bind-mounted at /logs/hot | /logs/cold (the
+# paths the OpenShift chart uses) by docker-compose.loghot.yml / .logcold.yml, with :z so SELinux (Podman, or Docker with
+# selinux-enabled) labels it for the containers that read logs. Those containers run as UID 10001 / GID 0: the directory is theirs.
+LOG_UID=10001
+fs_of() { df -P "$1" 2>/dev/null | awk 'NR==2 {print $6}'; }
+lower() { echo "$1" | tr 'A-Z' 'a-z'; }
+check_log_dir() {   # HOT|COLD PATH: exists (created when root), writable for UID 10001 / GID 0, on a disk of its own
+  local k="$1" p="$2" fix u g m ok=0
+  case "$p" in /*) ;; *) die "WATCHOVER_LOG_${k}_PATH must be an absolute host directory such as /srv/watchover/$(lower "$k") (got '$p')" ;; esac
+  fix="sudo chown -R $LOG_UID:0 $p && sudo chmod 2770 $p"
+  if [ ! -d "$p" ]; then
+    [ "$(id -u)" = 0 ] || die "WATCHOVER_LOG_${k}_PATH=$p does not exist: sudo mkdir -p $p && $fix"
+    mkdir -p "$p" && chown "$LOG_UID:0" "$p" && chmod 2770 "$p" && say "created $p for the $(lower "$k") logs (owner $LOG_UID:0, mode 2770)"
+  fi
+  read -r u g m <<EOF_STAT
+$(stat -c '%u %g %a' "$p" 2>/dev/null || stat -f '%u %g %Lp' "$p")
+EOF_STAT
+  m="00$m"; m="${m: -3}"                                 # owner / group / other digits (setgid bit dropped)
+  [ "$u" = "$LOG_UID" ] && [ $(( ${m:0:1} & 3 )) = 3 ] && ok=1
+  [ "$g" = 0 ] && [ $(( ${m:1:1} & 3 )) = 3 ] && ok=1
+  [ $(( ${m:2:1} & 3 )) = 3 ] && ok=1
+  [ "$ok" = 1 ] || die "WATCHOVER_LOG_${k}_PATH=$p belongs to $u:$g (mode $m) but the containers write as UID $LOG_UID / GID 0: $fix"
+  [ "$(fs_of "$p")" = "/" ] && say "note: $p is on the root file system, not a disk of its own (mount a volume there for production)"
+  return 0
+}
+compose_files() {   # COMPOSE_FILE in .env: the base file plus the overrides that apply now (edge on, separate log disks)
+  local f="docker-compose.yml" k p
+  [ "$(env_get WATCHOVER_EDGE)" = "1" ] && f="$f:docker-compose.edge.yml"
+  for k in HOT COLD; do
+    p=$(env_get "WATCHOVER_LOG_${k}_PATH"); [ -n "$p" ] || continue
+    check_log_dir "$k" "$p"; f="$f:docker-compose.log$(lower "$k").yml"
+  done
+  if [ "$f" = docker-compose.yml ]; then env_del COMPOSE_FILE; else env_set COMPOSE_FILE "$f"; fi
 }
 
 offline() { [ "$(env_get WATCHOVER_OFFLINE)" = "1" ]; }
@@ -104,9 +193,19 @@ build() {
     say "offline install: using the loaded image watchover:$(version) (no build)"; return 0
   fi
   say "building image watchover:$(version) from this source tree (first time: a few minutes, needs internet for PyPI)"
-  $COMPOSE build --build-arg GIT_REV="$(git_rev)" --build-arg VERSION="$(version)" dashboard
-  say "building the receiver (Go, a few seconds)"; $COMPOSE build receiver
-  [ "$(env_get WATCHOVER_LLM)" = "1" ] && $COMPOSE --profile llm build trainer || true
+  build_img dashboard --build-arg GIT_REV="$(git_rev)" --build-arg VERSION="$(version)"
+  say "building the receiver (Go, a few seconds)"; build_img receiver
+  [ "$(env_get WATCHOVER_LLM)" = "1" ] && build_img trainer || true
+}
+# one image: Docker through compose; Podman with podman build (Docker image format keeps HEALTHCHECK) under the name Docker gives
+# 'watchover:<tag>', which is the name compose asks the Podman socket for
+build_img() {
+  local svc="$1" f=Dockerfile n=watchover; shift
+  if [ "$ENGINE" = podman ]; then
+    case "$svc" in receiver) f=Dockerfile.receiver; n=watchover-receiver ;; trainer) f=Dockerfile.trainer; n=watchover-trainer ;; esac
+    podman build --format docker -f "$f" -t "docker.io/library/$n:$(version)" "$@" .
+  elif [ "$svc" = trainer ]; then $COMPOSE --profile llm build "$@" trainer
+  else $COMPOSE build "$@" "$svc"; fi
 }
 # compose volume name (project prefix) for a volume declared in docker-compose.yml
 vol_name() { $COMPOSE config --format json 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin)['volumes']['$1']['name'])" 2>/dev/null || echo "watchover_$1"; }
@@ -275,6 +374,52 @@ verify_running() {
 edge_url() { local h p; h=$(env_get WATCHOVER_EDGE_HOST); p=$(env_get WATCHOVER_EDGE_HTTPS_PORT || echo 443); [ "$p" = "443" ] && echo "https://$h" || echo "https://$h:$p"; }
 up() { $COMPOSE $(profiles) up -d --remove-orphans; mdns_ensure; }
 
+# systemd (Linux servers): the stack at boot and the nightly backup; cron where there is no systemd (the backup only)
+SYSTEMD_DIR="${WATCHOVER_SYSTEMD_DIR:-/etc/systemd/system}"
+systemd_ok() { command -v systemctl >/dev/null 2>&1 && [ -d "${WATCHOVER_SYSTEMD_RUN:-/run/systemd/system}" ]; }
+units_writable() { [ -w "$SYSTEMD_DIR" ] || die "systemd units are written to $SYSTEMD_DIR: run it with sudo (sudo ./watchover.sh $*)"; }
+engine_unit() { [ "$ENGINE" = podman ] && echo podman.socket || echo docker.service; }
+backup_dir() { local d; d=$(env_get WATCHOVER_BACKUP_DIR); echo "${d:-backups}"; }
+autostart_state() { systemd_ok && [ -f "$SYSTEMD_DIR/watchover-stack.service" ] && systemctl is-enabled -q watchover-stack.service 2>/dev/null && echo on || echo off; }
+autostart_on() {
+  systemd_ok || die "no systemd on this machine: Docker Desktop starts the containers itself (restart: unless-stopped)"
+  units_writable autostart on
+  { printf '[Unit]\nDescription=Watchover containers (%s, %s)\nWants=network-online.target %s\nAfter=network-online.target %s\n\n' "$ENGINE" "$PWD" "$(engine_unit)" "$(engine_unit)"
+    printf '[Service]\nType=oneshot\nRemainAfterExit=yes\nWorkingDirectory=%s\nEnvironment=WATCHOVER_ENGINE=%s\nExecStart="%s/watchover.sh" start\n' "$PWD" "$ENGINE" "$PWD"
+    [ "$ENGINE" = podman ] && printf 'ExecStop="%s/watchover.sh" stop\n' "$PWD"     # Podman has no daemon that stops / restarts containers
+    printf 'TimeoutStartSec=900\nTimeoutStopSec=180\n\n[Install]\nWantedBy=multi-user.target\n'; } > "$SYSTEMD_DIR/watchover-stack.service"
+  systemctl daemon-reload; systemctl enable watchover-stack.service >/dev/null 2>&1 || systemctl enable watchover-stack.service
+  say "start on boot: watchover-stack.service enabled ($ENGINE; runs ./watchover.sh start after $(engine_unit))"
+}
+backup_timer_state() {
+  if systemd_ok && [ -f "$SYSTEMD_DIR/watchover-backup.timer" ] && systemctl is-enabled -q watchover-backup.timer 2>/dev/null; then
+    echo "on (systemd, $(sed -n 's/^OnCalendar=\*-\*-\* \([0-9:]*\):00$/\1/p' "$SYSTEMD_DIR/watchover-backup.timer"))"
+  elif command -v crontab >/dev/null 2>&1 && crontab -l 2>/dev/null | grep -q '# watchover-backup$'; then echo "on (cron)"
+  else echo off; fi
+}
+cap_gb() {   # TIER OTHER -> suggested hot_max_gb / cold_max_gb: 80% of a disk of its own, 40% of one shared by both tiers, 30% of the engine's
+  local p o pct=30 base kb
+  p=$(env_get "WATCHOVER_LOG_$1_PATH"); o=$(env_get "WATCHOVER_LOG_$2_PATH")
+  if [ -n "$p" ]; then base="$p"; pct=80; [ -n "$o" ] && [ "$(fs_of "$p")" = "$(fs_of "$o")" ] && pct=40
+  else base=/var/lib/docker; [ "$ENGINE" = podman ] && base=/var/lib/containers; [ -d "$base" ] || base=/var/lib; [ -d "$base" ] || base=/; fi
+  kb=$(df -Pk "$base" 2>/dev/null | awk 'NR==2 {print $2}'); [ -n "$kb" ] && echo $((kb / 1048576 * pct / 100)) || echo "?"
+}
+checklist() {
+  local bt as hot cold
+  ck() { if [ "$1" = 1 ]; then printf '  [x] %s\n' "$2"; else printf '  [ ] %s\n' "$2"; fi; }
+  bt=$(backup_timer_state); as=$(autostart_state); hot=$(cap_gb HOT COLD); cold=$(cap_gb COLD HOT)
+  echo; say "production checklist ($ENGINE; ./watchover.sh checklist shows it again)"
+  ck "$([ "$(env_get WATCHOVER_DEMO)" = 0 ] && echo 1)" "demo off (WATCHOVER_DEMO=0): no simulator, no demo data. Leftovers from a demo: ./watchover.sh demo-clean"
+  ck "$(case "$bt" in on*) echo 1 ;; esac)" "nightly backup: $bt  -> ./watchover.sh backup-timer on [HH:MM]; copy $(backup_dir)/ to another machine (data/.vault.key is in it)"
+  if [ "$ENGINE" = podman ]; then ck "$([ "$as" = on ] && echo 1)" "start on boot: $as  -> sudo ./watchover.sh autostart on (Podman has no daemon that restarts containers)"
+  else ck "$([ "$as" = on ] && echo 1 || { systemctl is-enabled -q docker.service 2>/dev/null && echo 1; })" "start on boot: Docker service enabled, containers restart: unless-stopped (optional unit: ./watchover.sh autostart on)"; fi
+  ck "" "admin password: sign in as admin@watchover.local (a new password is required at once) or ./watchover.sh user password admin@watchover.local; personal admins: ./watchover.sh user add ops@firma.com --admin"
+  ck "" "disk caps: Sistem › Ayarlar  hot_max_gb ~ $hot, cold_max_gb ~ $cold  (0 = none; Sistem › Depolama warns at 85%)"
+  ck "$([ -n "$(env_get WATCHOVER_LOG_HOT_PATH)$(env_get WATCHOVER_LOG_COLD_PATH)" ] && echo 1)" "raw logs on disks of their own: WATCHOVER_LOG_HOT_PATH / WATCHOVER_LOG_COLD_PATH in .env (./watchover.sh storage)"
+  ck "$([ "$(env_get WATCHOVER_EDGE)" = 1 ] && echo 1)" "TLS: ./watchover.sh edge on watchover.firma.com (company certificate: ./certs/watchover.crt + .key); then only 443 (+ 8600 for http agents) open"
+  ck "" "firewall: 8501 / 8600 / 443 (and 8765 with MCP) for the right networks only: sudo bash scripts/rhel-prepare.sh prints and opens them"
+}
+
 banner() {
   local ip; ip=$(host_ip)
   cat <<TXT
@@ -282,25 +427,76 @@ banner() {
   Watchover v$(version) is running.
     Dashboard      http://$ip:$(env_get WATCHOVER_UI_PORT || echo 8501)     (same machine: http://localhost:$(env_get WATCHOVER_UI_PORT || echo 8501); API docs at /api/docs)
     Agents post to http://$ip:$(env_get WATCHOVER_LIVE_PORT || echo 8600)/ingest
-$( [ "$(env_get WATCHOVER_MCP)" = "1" ] && printf '    MCP server     http://%s:%s/mcp   (Authorization: Bearer <MCP_API_KEY in .env>)\n' "$ip" "$(env_get WATCHOVER_MCP_PORT || echo 8765)" )
+$( [ "$(env_get WATCHOVER_MCP)" = "1" ] && if [ "$(env_get WATCHOVER_EDGE)" = "1" ]; then printf '    MCP server     %s/mcp  (TLS; plain http://%s:%s/mcp)   key: Ayarlar › Bağlantılar › MCP, or MCP_API_KEY (read)\n' "$(edge_url)" "$ip" "$(env_get WATCHOVER_MCP_PORT || echo 8765)"; else printf '    MCP server     http://%s:%s/mcp   key: Ayarlar › Bağlantılar › MCP, or MCP_API_KEY in .env (read)\n' "$ip" "$(env_get WATCHOVER_MCP_PORT || echo 8765)"; fi )
 $( [ "$(env_get WATCHOVER_LEGACY)" = "1" ] && printf '    Legacy (Streamlit) http://%s:%s\n' "$ip" "$(env_get WATCHOVER_LEGACY_PORT || echo 8502)" )
 $( [ "$(env_get WATCHOVER_LLM)" = "1" ] && printf '    Local LLM        Ollama on the compose network (models: %s); manage with ./watchover.sh llm\n' "$(env_get WATCHOVER_LLM_MODELS || echo 'qwen2.5:7b-instruct qwen2.5:3b-instruct bge-m3')" )
 $( [ "$(env_get WATCHOVER_EDGE)" = "1" ] && printf '    Company network  %s   (agents: %s/ingest; CA root for colleagues: ./watchover.sh edge cert)\n' "$(edge_url)" "$(edge_url)" )
     First sign-in: admin@watchover.local with the initial password you were given; a new password is required at once.
-    Open the firewall for $(env_get WATCHOVER_UI_PORT || echo 8501) and $(env_get WATCHOVER_LIVE_PORT || echo 8600) if the server has one (ufw allow 8501,8600/tcp).
+    Open the firewall for $(env_get WATCHOVER_UI_PORT || echo 8501) and $(env_get WATCHOVER_LIVE_PORT || echo 8600) if the server has one (RHEL firewalld: sudo bash scripts/rhel-prepare.sh; ufw allow 8501,8600/tcp).
     Status: ./watchover.sh status     Logs: ./watchover.sh logs     Backup: ./watchover.sh backup
 
 TXT
 }
 
 case "${1:-}" in
-  install)
-    need_docker; write_env; build; up
+  install)   # --production: demo off for good (WATCHOVER_DEMO=0) and the go-live checklist at the end
+    prod=0; for a in "${@:2}"; do case "$a" in --production|--prod) prod=1 ;; *) die "usage: ./watchover.sh install [--production]" ;; esac; done
+    need_docker; write_env
+    if [ "$prod" = 1 ]; then env_set WATCHOVER_DEMO 0; env_set WATCHOVER_PRODUCTION 1; say "production install: WATCHOVER_DEMO=0 (no simulator, no demo data)"; fi
+    build; up
     say "waiting for the containers to become healthy"
     for _ in $(seq 1 60); do
       if $COMPOSE ps --format '{{.Service}} {{.Health}}' 2>/dev/null | grep -q '^dashboard healthy'; then break; fi; sleep 2
     done
-    $COMPOSE ps; banner ;;
+    if [ "$ENGINE" = podman ] && systemd_ok && [ -w "$SYSTEMD_DIR" ] && [ "$(autostart_state)" = off ]; then autostart_on; fi   # no daemon restarts Podman containers at boot
+    $COMPOSE ps; banner
+    if [ "$prod" = 1 ] || [ "$(env_get WATCHOVER_PRODUCTION)" = 1 ]; then checklist; fi ;;
+  checklist) [ -f "$ENV_FILE" ] || die "not installed yet: ./watchover.sh install --production"; checklist ;;
+  storage)
+    [ -f "$ENV_FILE" ] || die "not installed yet: ./watchover.sh install"
+    for k in HOT COLD; do
+      p=$(env_get "WATCHOVER_LOG_${k}_PATH")
+      if [ -n "$p" ]; then check_log_dir "$k" "$p"; printf '  %-4s %s -> /logs/%s   %s\n' "$(lower "$k")" "$p" "$(lower "$k")" "$(df -Ph "$p" | awk 'NR==2 {print $2" disk, "$4" free, mounted at "$6}')"
+      else printf '  %-4s data volume (/data/logs/%s)   for a disk of its own: WATCHOVER_LOG_%s_PATH=/srv/watchover/%s in .env, then ./watchover.sh start\n' "$(lower "$k")" "$(lower "$k")" "$k" "$(lower "$k")"; fi
+    done
+    say "suggested caps (Sistem › Ayarlar): hot_max_gb ~ $(cap_gb HOT COLD), cold_max_gb ~ $(cap_gb COLD HOT)" ;;
+  backup-timer)   # nightly ./watchover.sh backup --no-logs (raw logs are large; their disks have their own snapshots)
+    at="${3:-$(env_get WATCHOVER_BACKUP_AT)}"; at="${at:-02:15}"
+    case "${2:-}" in
+      on)
+        echo "$at" | grep -Eq '^([01][0-9]|2[0-3]):[0-5][0-9]$' || die "usage: ./watchover.sh backup-timer on [HH:MM]   (24-hour time, e.g. 02:15)"
+        [ -f "$ENV_FILE" ] || die "not installed yet: ./watchover.sh install"
+        if systemd_ok; then
+          units_writable backup-timer on "$at"
+          printf '[Unit]\nDescription=Watchover nightly backup (PostgreSQL dump, data volume without raw logs, .env)\nAfter=%s\n\n[Service]\nType=oneshot\nWorkingDirectory=%s\nEnvironment=WATCHOVER_ENGINE=%s\nExecStart="%s/watchover.sh" backup --no-logs\nNice=10\nIOSchedulingClass=best-effort\nIOSchedulingPriority=7\n' \
+            "$(engine_unit)" "$PWD" "$ENGINE" "$PWD" > "$SYSTEMD_DIR/watchover-backup.service"
+          printf '[Unit]\nDescription=Watchover nightly backup at %s\n\n[Timer]\nOnCalendar=*-*-* %s:00\nPersistent=true\nRandomizedDelaySec=300\n\n[Install]\nWantedBy=timers.target\n' "$at" "$at" > "$SYSTEMD_DIR/watchover-backup.timer"
+          systemctl daemon-reload; systemctl enable --now watchover-backup.timer
+          say "nightly backup at $at: watchover-backup.timer (a night missed while the server was off runs at the next boot). Next run: systemctl list-timers watchover-backup.timer · log: journalctl -u watchover-backup"
+        else
+          command -v crontab >/dev/null 2>&1 || die "neither systemd nor cron on this machine: schedule  cd $PWD && ./watchover.sh backup --no-logs  yourself"
+          cur=$(crontab -l 2>/dev/null | grep -v '# watchover-backup$' || true)        # read first: crontab - replaces the whole table
+          { [ -z "$cur" ] || echo "$cur"; echo "$((10#${at##*:})) $((10#${at%%:*})) * * * cd '$PWD' && ./watchover.sh backup --no-logs >> '$(backup_dir)/backup.log' 2>&1 # watchover-backup"; } | crontab -
+          say "nightly backup at $at (crontab of $(id -un))"
+        fi
+        env_set WATCHOVER_BACKUP_AT "$at"; k=$(env_get WATCHOVER_BACKUP_KEEP)
+        say "the newest ${k:-14} backups stay in $(backup_dir)/ (.env WATCHOVER_BACKUP_KEEP; WATCHOVER_BACKUP_DIR puts them on another disk)" ;;
+      off)
+        if systemd_ok && [ -f "$SYSTEMD_DIR/watchover-backup.timer" ]; then
+          units_writable backup-timer off; systemctl disable --now watchover-backup.timer >/dev/null 2>&1 || true
+          rm -f "$SYSTEMD_DIR/watchover-backup.timer" "$SYSTEMD_DIR/watchover-backup.service"; systemctl daemon-reload
+        fi
+        if command -v crontab >/dev/null 2>&1 && crontab -l 2>/dev/null | grep -q '# watchover-backup$'; then cur=$(crontab -l | grep -v '# watchover-backup$' || true); printf '%s\n' "$cur" | crontab -; fi
+        say "nightly backup off (existing backups kept in $(backup_dir)/)" ;;
+      "") echo "nightly backup: $(backup_timer_state)" ;;
+      *) die "usage: ./watchover.sh backup-timer on [HH:MM] | off" ;; esac ;;
+  autostart)
+    case "${2:-}" in
+      on)  autostart_on ;;
+      off) if systemd_ok && [ -f "$SYSTEMD_DIR/watchover-stack.service" ]; then units_writable autostart off; systemctl disable watchover-stack.service >/dev/null 2>&1 || true; rm -f "$SYSTEMD_DIR/watchover-stack.service"; systemctl daemon-reload; fi
+           say "start on boot off (running containers untouched)" ;;
+      "") echo "start on boot: $(autostart_state)" ;;
+      *) die "usage: ./watchover.sh autostart on|off" ;; esac ;;
   update)
     need_docker; before=$(running_version); write_env; build; up; docker image prune -f >/dev/null
     say "updated ${before:+from v$before }to v$(version); data volumes untouched"; $COMPOSE ps; verify_running ;;
@@ -351,7 +547,7 @@ case "${1:-}" in
         if offline; then
           have_image "watchover-trainer:$(version)" && say "offline install: using the loaded trainer image" || { env_set WATCHOVER_LLM 0; die "offline install and image watchover-trainer:$(version) is missing: run 'llm on' on the internet machine before 'bundle'"; }
         else
-          say "building the trainer image (torch CPU, transformers, peft; first time a few minutes)"; $COMPOSE --profile llm build trainer
+          say "building the trainer image (torch CPU, transformers, peft; first time a few minutes)"; build_img trainer
         fi
         up
         say "waiting for the Ollama service to become healthy"
@@ -410,34 +606,37 @@ case "${1:-}" in
         [ -n "$(env_get WATCHOVER_EDGE_HTTP_PORT)" ] || env_set WATCHOVER_EDGE_HTTP_PORT 80
         if [ -f certs/watchover.crt ] && [ -f certs/watchover.key ]; then env_set WATCHOVER_EDGE_TLS "/certs/watchover.crt /certs/watchover.key"; say "company certificate found in ./certs"; fi
         mkdir -p certs
-        env_set COMPOSE_FILE "docker-compose.yml:docker-compose.edge.yml"      # plain http port not published while the edge is on (Caddy uses the compose network)
+        compose_files                                                          # + docker-compose.edge.yml: plain http ports not published while the edge is on
         $COMPOSE $(profiles) up -d --remove-orphans --force-recreate dashboard edge
         say "edge on: $(edge_url)   (http://$(env_get WATCHOVER_EDGE_HOST) redirects; plain :8501 is no longer published)"
         if [ "$(env_get WATCHOVER_EDGE_TLS)" = "internal" ]; then say "colleagues install the CA root once: ./watchover.sh edge cert  ->  ./certs/watchover-root.crt"; fi ;;
       off)
         $COMPOSE --profile edge stop edge; $COMPOSE --profile edge rm -f edge; env_set WATCHOVER_EDGE 0; mdns_stop
-        sed -i.bak '/^COMPOSE_FILE=/d' "$ENV_FILE"; rm -f "$ENV_FILE.bak"
+        compose_files
         $COMPOSE $(profiles) up -d --remove-orphans --force-recreate dashboard; say "edge off: http://$(host_ip):$(env_get WATCHOVER_UI_PORT || echo 8501)" ;;
       cert)
         mkdir -p certs; docker cp watchover-edge:/data/caddy/pki/authorities/local/root.crt certs/watchover-root.crt
         say "CA root: ./certs/watchover-root.crt  — macOS: Keychain Access › System › import, set to Always Trust; Windows: certutil -addstore -f Root watchover-root.crt; Linux agents: --ca watchover-root.crt" ;;
       *) die "usage: ./watchover.sh edge on [name[,name2,ip]] | off | cert     e.g.  edge on watchover.local" ;; esac ;;
   api)     say "the API now runs inside the dashboard container: http://$(host_ip):$(env_get WATCHOVER_UI_PORT || echo 8501)/api/docs" ;;
-  backup)
-    need_docker; mkdir -p backups; stamp=$(date +%Y%m%d-%H%M); out="backups/watchover-$stamp.tgz"; tmp=$(mktemp -d)
+  backup)   # --no-logs: without the raw logs under /data/logs (the nightly timer's choice: they are large); on disks of their own they are never in it
+    need_docker; keep="${WATCHOVER_BACKUP_KEEP:-$(env_get WATCHOVER_BACKUP_KEEP)}"; keep="${keep:-14}"; logs=1
+    shift; while [ $# -gt 0 ]; do case "$1" in --keep) keep="${2:-14}"; shift ;; --no-logs) logs=0 ;; *) die "usage: ./watchover.sh backup [--keep N] [--no-logs]" ;; esac; shift; done
+    bdir=$(backup_dir); mkdir -p "$bdir"; stamp=$(date +%Y%m%d-%H%M); out="$bdir/watchover-$stamp.tgz"; tmp=$(mktemp -d)
     $COMPOSE exec -T postgres pg_dump -U "$(env_get POSTGRES_USER || echo watchover)" "$(env_get POSTGRES_DB || echo watchover)" | gzip > "$tmp/db.sql.gz"
-    docker run --rm -v "$($COMPOSE config --format json | python3 -c 'import json,sys; print(json.load(sys.stdin)["volumes"]["watchover-data"]["name"])' 2>/dev/null || echo watchover_watchover-data)":/data -v "$tmp":/out alpine tar czf /out/data.tgz -C /data .
-    cp "$ENV_FILE" "$tmp/env"; tar czf "$out" -C "$tmp" .; rm -rf "$tmp"; say "backup written: $out ($(du -h "$out" | cut -f1))"
-    keep="${WATCHOVER_BACKUP_KEEP:-$(env_get WATCHOVER_BACKUP_KEEP)}"; keep="${keep:-14}"
-    case "${2:-}" in --keep) keep="${3:-14}" ;; esac
-    ls -1t backups/watchover-*.tgz 2>/dev/null | tail -n +"$((keep + 1))" | while read -r old; do rm -f "$old"; say "old backup removed: $old"; done ;;
-  restore)
+    excl=""; [ "$logs" = 0 ] && excl="--exclude=./logs"
+    docker run --rm -v "$(vol_name watchover-data)":/data -v "$tmp":/out:z "$ALPINE" tar czf /out/data.tgz $excl -C /data .
+    printf 'version=%s\nengine=%s\nlogs=%s\n' "$(version)" "$ENGINE" "$logs" > "$tmp/MANIFEST"
+    cp "$ENV_FILE" "$tmp/env"; tar czf "$out" -C "$tmp" .; rm -rf "$tmp"; chmod 600 "$out"; say "backup written: $out ($(du -h "$out" | cut -f1))"
+    ls -1t "$bdir"/watchover-*.tgz 2>/dev/null | tail -n +"$((keep + 1))" | while read -r old; do rm -f "$old"; say "old backup removed: $old"; done ;;
+  restore)   # a backup made with --no-logs leaves the raw logs in place
     need_docker; [ -f "${2:-}" ] || die "usage: ./watchover.sh restore backups/watchover-….tgz"; tmp=$(mktemp -d); tar xzf "$2" -C "$tmp"
+    wipe='rm -rf /data/*'; grep -q '^logs=0' "$tmp/MANIFEST" 2>/dev/null && wipe='find /data -mindepth 1 -maxdepth 1 ! -name logs -exec rm -rf {} +'
     $COMPOSE $(profiles) stop dashboard mcp legacy 2>/dev/null || $COMPOSE stop dashboard
     $COMPOSE up -d postgres; sleep 5
     say "restoring the database"; $COMPOSE exec -T postgres psql -q -U "$(env_get POSTGRES_USER || echo watchover)" -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;" "$(env_get POSTGRES_DB || echo watchover)"
     gunzip -c "$tmp/db.sql.gz" | $COMPOSE exec -T postgres psql -q -U "$(env_get POSTGRES_USER || echo watchover)" "$(env_get POSTGRES_DB || echo watchover)"
-    say "restoring settings, secrets and snapshots"; docker run --rm -v "watchover_watchover-data":/data -v "$tmp":/in alpine sh -c 'rm -rf /data/* && tar xzf /in/data.tgz -C /data'
+    say "restoring settings, secrets and snapshots"; docker run --rm -v "$(vol_name watchover-data)":/data -v "$tmp":/in:z "$ALPINE" sh -c "$wipe && tar xzf /in/data.tgz -C /data"
     rm -rf "$tmp"; up; say "restored from $2"; $COMPOSE ps ;;
   user)    need_docker; shift; $COMPOSE exec dashboard python -m watchover.useradmin "$@" ;;
   profile)   # fixed caps for a known machine (WATCHOVER_SIZING=manual keeps them); the LLM gets a share, never every CPU, so a question
@@ -502,7 +701,7 @@ case "${1:-}" in
     for v in watchover-ollama watchover-hf watchover-models; do
       n=$(vol_name "$v"); docker volume inspect "$n" >/dev/null 2>&1 || continue
       say "exporting volume $v ($n: Ollama models / training weights / adapters)"
-      docker run --rm -v "$n":/v:ro -v "$tmp/volumes":/out alpine tar cf "/out/$v.tar" -C /v . || say "could not export $v (skipped)"
+      docker run --rm -v "$n":/v:ro -v "$tmp/volumes":/out:z "$ALPINE" tar cf "/out/$v.tar" -C /v . || say "could not export $v (skipped)"
     done
     say "adding the source tree"
     if git rev-parse HEAD >/dev/null 2>&1; then git archive --format=tar HEAD | tar xf - -C "$tmp/source"; else tar cf - --exclude=./.git --exclude=./data --exclude=./backups --exclude=./certs --exclude=./.env --exclude='./*.tar' --exclude='./*.tgz' --exclude=./web/node_modules . | tar xf - -C "$tmp/source"; fi
@@ -517,7 +716,7 @@ case "${1:-}" in
     for f in "$tmp"/volumes/*.tar; do
       [ -f "$f" ] || continue; v=$(basename "$f" .tar); n=$(vol_name "$v")
       say "restoring volume $v -> $n"; docker volume create "$n" >/dev/null
-      docker run --rm -v "$n":/v -v "$tmp/volumes":/in alpine tar xf "/in/$v.tar" -C /v || say "could not restore $v"
+      docker run --rm -v "$n":/v -v "$tmp/volumes":/in:z "$ALPINE" tar xf "/in/$v.tar" -C /v || say "could not restore $v"
     done
     rm -rf "$tmp"; touch "$ENV_FILE"; env_set WATCHOVER_OFFLINE 1
     say "offline install marked (.env WATCHOVER_OFFLINE=1: install/update never build, llm on never downloads). Next:  ./watchover.sh install   then  ./watchover.sh llm on  if the bundle carried Ollama models" ;;

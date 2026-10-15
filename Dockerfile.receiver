@@ -1,14 +1,14 @@
 # Watchover receiver: the Go front door on :8600 (agents, enrolment proxy, agent files). Static binary on Alpine, non-root,
 # same uid as the dashboard so both share the spool in the data volume (/data/spool). OpenShift: any UID with GID 0 works too
 # (/data belongs to group 0 with the owner's rights), the only write is the spool, the root file system may be read-only.
-FROM golang:1.24-alpine AS build
+FROM docker.io/library/golang:1.24-alpine AS build
 WORKDIR /src
 COPY receiver/ ./
 # the parse package's parity tests read the corpus inputs next to their goldens (../../samples/corpus from /src/parse)
 COPY samples/corpus/ /samples/corpus/
 RUN go test ./... && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/wo-receiver .
 
-FROM alpine:3.20
+FROM docker.io/library/alpine:3.20
 RUN apk upgrade --no-cache && adduser -D -u 10001 -G root -h /home/watchover watchover && mkdir -p /app/agent /data/spool \
     && chown -R 10001:0 /data /home/watchover && chmod -R g=u /data /home/watchover
 COPY --from=build /out/wo-receiver /usr/local/bin/wo-receiver

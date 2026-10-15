@@ -1,0 +1,124 @@
+{
+ "key": "linux-service-restart",
+ "version": 1,
+ "title": "Linux: servis yeniden başlatma",
+ "risk": "R2",
+ "summary": "Servis durumuna ve son loglara bakar, servisi yeniden başlatır, sağlığını doğrular. Üretimde havuzda en az 2 sağlıklı üye gerekir.",
+ "match": {
+  "sources": [
+   "anomaly",
+   "query",
+   "incident"
+  ],
+  "anomaly_kinds": [
+   "errors",
+   "silence"
+  ]
+ },
+ "applies_to": {
+  "os": [
+   "linux"
+  ]
+ },
+ "params": {
+  "host": {
+   "type": "host",
+   "from": [
+    "case.host"
+   ]
+  },
+  "unit": {
+   "type": "unit",
+   "pattern": "^(tomcat|orders|billing)[A-Za-z0-9@._-]{0,40}\\.service$",
+   "from": [
+    "evidence.unit",
+    "ask"
+   ]
+  },
+  "log": {
+   "type": "path",
+   "roots": [
+    "/var/log",
+    "/opt",
+    "/srv"
+   ],
+   "from": [
+    "evidence.log_dir",
+    "ask"
+   ]
+  }
+ },
+ "preconditions": [
+  {
+   "check": "no_other_run_on_host",
+   "else": "stop"
+  },
+  {
+   "check": "pool_healthy_at_least",
+   "else": "stop"
+  }
+ ],
+ "watch": {
+  "minutes": 15,
+  "expected_noise_s": 0,
+  "expected_noise": []
+ },
+ "max_level": 4,
+ "steps": [
+  {
+   "id": "d1",
+   "type": "diagnose",
+   "title": "Servis durumu",
+   "template": "linux.service.status",
+   "args": {
+    "unit": "{unit}"
+   }
+  },
+  {
+   "id": "d2",
+   "type": "diagnose",
+   "title": "Son log satırları",
+   "template": "linux.log.tail",
+   "args": {
+    "path": "{log}",
+    "n": 50
+   }
+  },
+  {
+   "id": "a1",
+   "type": "act",
+   "title": "Servisi yeniden başlat",
+   "template": "linux.service.restart",
+   "args": {
+    "unit": "{unit}"
+   },
+   "verify": "v1"
+  },
+  {
+   "id": "v1",
+   "type": "verify",
+   "title": "Servis çalışıyor mu?",
+   "checks": [
+    {
+     "template": "linux.service.status",
+     "args": {
+      "unit": "{unit}"
+     },
+     "expect": "ActiveState == \"active\""
+    },
+    {
+     "http_ok": {
+      "url": "{inventory.health_url}",
+      "probe_from": "server"
+     },
+     "independent": true,
+     "when": "inventory.health_url"
+    }
+   ],
+   "require": "all",
+   "retries": 3,
+   "interval_s": 20,
+   "on_fail": "escalate"
+  }
+ ]
+}

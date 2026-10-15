@@ -36,6 +36,12 @@ class LiveLearner:
                 a = Analysis(obs, [], self.inventory_fn() if self.inventory_fn else None)
                 out["incidents"] = len(a.incidents)
                 out["lessons"] = self.kb.record(a, f"live:{out['ts'][:16]}", self.lang)
+                hook = getattr(self, "on_incidents", None)        # action agent: live incidents become triggers (no-op while off)
+                if hook is not None:
+                    try:
+                        hook(a)
+                    except Exception:  # noqa: BLE001
+                        pass
             except Exception as e:  # noqa: BLE001
                 out["note"] = f"{type(e).__name__}: {str(e)[:160]}"
         self.kb._exec("INSERT INTO learn_runs (ts, events, incidents, lessons, note) VALUES (?,?,?,?,?)", (out["ts"], out["events"], out["incidents"], out["lessons"], out["note"]))

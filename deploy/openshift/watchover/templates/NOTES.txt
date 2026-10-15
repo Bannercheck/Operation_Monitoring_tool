@@ -15,6 +15,17 @@ Ajan adresi (ingest):
   (Bu adresi routes.ingest.host olarak verip helm upgrade yaparsanız arayüzdeki kurulum komutları da onu gösterir.)
   {{- end }}
 
+{{- if .Values.mcp.enabled }}
+
+MCP sunucusu (Authorization: Bearer <anahtar>):
+  {{- if .Values.mcp.route.host }}
+  https://{{ .Values.mcp.route.host }}/mcp
+  {{- else }}
+  oc get route {{ include "watchover.fullname" . }}-mcp -n {{ .Release.Namespace }} -o jsonpath='https://{.spec.host}/mcp{"\n"}'
+  {{- end }}
+  anahtar: oc get secret {{ .Values.mcp.existingSecret | default (printf "%s-mcp" (include "watchover.fullname" .)) }} -n {{ .Release.Namespace }} -o jsonpath='{.data.mcp-api-key}' | base64 -d
+{{- end }}
+
 İlk giriş: yerleşik yönetici hesabı ilk girişte parolasını değiştirmek zorundadır (rehber: docs/KURULUM_OPENSHIFT.md, "İlk giriş").
 Kendi yönetici hesabınız:
   oc exec -n {{ .Release.Namespace }} deploy/{{ include "watchover.fullname" . }} -c dashboard -- python -m watchover.useradmin add ops@firma.com --admin

@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from ..security import access, perm_scope, pick_team, services
@@ -54,8 +54,12 @@ def tag(svc, aid: int, team_id: Optional[int] = None, host: str = "") -> dict:
 
 
 @router.get("")
-def list_actions(incident_id: Optional[str] = None, acc=Depends(access), svc=Depends(services), sc=Depends(perm_scope("page.actions"))):
-    return [a for a in svc.actions.list(incident_id or None) if visible(acc, sc, a)]
+def list_actions(incident_id: Optional[str] = None, kind: str = "action", acc=Depends(access), svc=Depends(services),
+                 sc=Depends(perm_scope("page.actions"))):
+    """Plain actions by default; ?kind=all also lists the action agent's cases (?kind=case only those)."""
+    if kind not in ("action", "case", "all"):
+        raise ValueError("kind must be action, case or all")
+    return [a for a in svc.actions.list(incident_id or None, kind=kind) if visible(acc, sc, a)]
 
 
 @router.post("", status_code=201)
@@ -74,7 +78,10 @@ def get(aid: int, acc=Depends(access), svc=Depends(services), sc=Depends(perm_sc
 
 @router.patch("/{aid}")
 def update(aid: int, body: ActionPatch, acc=Depends(access), svc=Depends(services), sc=Depends(perm_scope("page.actions"))):
-    _mine(svc, acc, sc, aid)
+    cur = _mine(svc, acc, sc, aid)
+    if cur.get("kind") == "case" and body.status is not None:      # cases close through /api/act/cases/{id}/close (§4.6)
+        raise HTTPException(409, {"code": "act_case_managed", "tr": "Bu bir vaka; durumu İş kutusu'ndan değiştirin",
+                                  "en": "This is a case; change its state from the inbox"})
     a = svc.actions.update(aid, **body.model_dump(exclude_none=True))
     lid = svc.memory.remember_action(a)            # a closed action becomes a resolution memory (owned like the action)
     if lid and (a.get("team_id") is not None or a.get("host")):
@@ -92,6 +99,8 @@ def update(aid: int, body: ActionPatch, acc=Depends(access), svc=Depends(service
 
 @router.delete("/{aid}")
 def delete(aid: int, acc=Depends(access), svc=Depends(services), sc=Depends(perm_scope("page.actions"))):
-    _mine(svc, acc, sc, aid)
+    if _mine(svc, acc, sc, aid).get("kind") == "case":
+        raise HTTPException(409, {"code": "act_case_managed", "tr": "Vakalar silinmez; kapatın ya da bastırın",
+                                  "en": "Cases are not deleted; close or suppress them"})
     svc.actions.delete(aid)
     return {"ok": True}

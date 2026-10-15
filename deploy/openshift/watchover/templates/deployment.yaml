@@ -101,6 +101,15 @@ spec:
               value: {{ .Values.llm.model | quote }}
             {{- end }}
             {{- end }}
+            {{- if .Values.mcp.enabled }}
+            - name: MCP_API_KEY                 # the MCP pod forwards live tools here with the caller's key (Docker: both read .env)
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.mcp.existingSecret | default (printf "%s-mcp" $fn) }}
+                  key: mcp-api-key
+            - name: MCP_API_KEY_WRITE
+              value: {{ ternary "1" "0" .Values.mcp.installKeyWrite | quote }}
+            {{- end }}
             {{- with .Values.dashboard.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

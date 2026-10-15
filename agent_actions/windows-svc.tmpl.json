@@ -1,0 +1,138 @@
+{
+ "format": 1,
+ "pack": "watchover-windows-svc",
+ "pack_version": 1,
+ "templates": [
+  {
+   "id": "win.service.status",
+   "rev": 1,
+   "os": "windows",
+   "kind": "diag",
+   "risk": "R0",
+   "cost": "light",
+   "argv": [
+    "C:\\Windows\\System32\\sc.exe",
+    "query",
+    "{name}"
+   ],
+   "params": {
+    "name": {
+     "type": "win_service"
+    }
+   },
+   "timeout_s": 15,
+   "max_output_kb": 8,
+   "output": {
+    "parser": "sc_query"
+   },
+   "title_tr": "Windows servis durumu",
+   "title_en": "Windows service status"
+  },
+  {
+   "id": "win.service.restart",
+   "rev": 1,
+   "os": "windows",
+   "kind": "act",
+   "risk": "R2",
+   "reversibility": "transient",
+   "script": {
+    "path": "C:\\ProgramData\\Watchover\\actions\\scripts\\Restart-WoService.ps1",
+    "sha256": "a6ad23bca0ac807f8db5f5c98f7f67fdc95459d88ea3b3762ff489b57e917ea6",
+    "args": [
+     "-Name",
+     "{name}"
+    ]
+   },
+   "params": {
+    "name": {
+     "type": "win_service",
+     "pattern": "^(W3SVC|OrdersSvc|Billing[A-Za-z0-9_.-]{0,40})$"
+    }
+   },
+   "pre": [
+    {
+     "pred": "win_service_exists",
+     "args": [
+      "{name}"
+     ]
+    }
+   ],
+   "timeout_s": 180,
+   "max_output_kb": 16,
+   "limits": {
+    "per_hour": 3
+   },
+   "title_tr": "Windows servisini yeniden başlat",
+   "title_en": "Restart the Windows service"
+  },
+  {
+   "id": "win.disk.usage",
+   "rev": 1,
+   "os": "windows",
+   "kind": "diag",
+   "risk": "R0",
+   "cost": "light",
+   "builtin": "disk_usage",
+   "params": {
+    "path": {
+     "type": "path",
+     "roots": [
+      "C:\\",
+      "D:\\",
+      "E:\\"
+     ],
+     "must_exist": true
+    }
+   },
+   "timeout_s": 20,
+   "max_output_kb": 8,
+   "output": {
+    "parser": "win_disk"
+   },
+   "human_cmd": "Get-PSDrive -Name ({path}).Substring(0,1)",
+   "title_tr": "Disk kullanımı",
+   "title_en": "Disk usage"
+  },
+  {
+   "id": "win.dir.top",
+   "rev": 1,
+   "os": "windows",
+   "kind": "diag",
+   "risk": "R0",
+   "cost": "light",
+   "builtin": "dir_top",
+   "params": {
+    "path": {
+     "type": "path",
+     "roots": [
+      "C:\\",
+      "D:\\",
+      "E:\\"
+     ],
+     "must_exist": true,
+     "dir": true
+    },
+    "depth": {
+     "type": "int",
+     "min": 1,
+     "max": 3,
+     "default": 1
+    },
+    "n": {
+     "type": "int",
+     "min": 1,
+     "max": 50,
+     "default": 10
+    }
+   },
+   "timeout_s": 60,
+   "max_output_kb": 32,
+   "output": {
+    "parser": "du_top"
+   },
+   "human_cmd": "Get-ChildItem {path} -Directory | Sort-Object Length -Descending | Select-Object -First {n}",
+   "title_tr": "En büyük dizinler",
+   "title_en": "Largest directories"
+  }
+ ]
+}

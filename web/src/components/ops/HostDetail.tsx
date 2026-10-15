@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../../auth";
 import { HostTail } from "./HostTail";
 import { HostAlarms } from "./HostAlarms";
+import { HostLearning } from "../LearningBar";
 import { useNavigate } from "react-router-dom";
 import { Crosshair, Gauge, Server } from "lucide-react";
 import { get } from "../../api";
@@ -69,6 +70,7 @@ export function HostDetail({ host, base, row, span, onClose, onFocus, focused, o
           <button className="btn sm" onClick={() => nav(`/thresholds?tab=hosts&host=${encodeURIComponent(host)}`)}><Gauge size={13} /> {t("thr_set")}</button>
         </div>
       </div>
+      <HostLearning host={host} env={row?.env ?? th?.env} />
       <ScopeCharts rq={rq} title={host} series={series} step={s?.step_min ?? 1} span={span} onZoom={(x, st) => { onClose(); onZoom(x, st); }} />
       <div className="rd-two">
         <HostAlarms host={host} pool={row?.pool ?? th?.pool} env={row?.env ?? th?.env} th={th} />
