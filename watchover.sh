@@ -20,7 +20,7 @@
 #   ./watchover.sh bundle [FILE]    everything an air-gapped server needs in one .tar: all images, downloaded Ollama models, training weights, source
 #   ./watchover.sh unbundle FILE    on the air-gapped server: load the images and model volumes, mark the install offline (no builds, no pulls)
 #   ./watchover.sh llm prepare      cache the training base weights (done by 'bundle' automatically) so the trainer never needs internet
-#   ./watchover.sh profile [NAME]   ready sizing: cpu8 (8 CPU / 64 GB, no GPU), cpu16 (16 CPU / 64+ GB, no GPU), auto (follow the machine); no NAME shows it
+#   ./watchover.sh profile [NAME]   sizing: auto (default: measured from this machine on every start), cpu8 / cpu16 (fixed numbers); no NAME shows it
 #   ./watchover.sh shell            a shell inside the dashboard container
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -50,22 +50,35 @@ host_ip() {
   [ -n "$ip" ] || ip=$(ipconfig getifaddr en0 2>/dev/null); [ -n "$ip" ] || ip=$(ipconfig getifaddr en1 2>/dev/null); echo "${ip:-localhost}"
 }
 
-# sizing follows the machine: every CPU Docker can see and most of its memory, as caps (not reservations) - 10 on a laptop,
-# 32 or 64 on a server. Written on every install/update/start unless WATCHOVER_SIZING=manual keeps your own numbers.
+# sizing follows the machine Docker reports (CPUs, memory), on every install / update / start, as caps (not reservations), with shares
+# so that no part can starve another: the dashboard gets most CPUs, the LLM and the trainer a part (a question never slows the screens),
+# PostgreSQL a quarter of its memory as shared_buffers. 8 CPU / 64 GB gives exactly the cpu8 profile. WATCHOVER_SIZING=manual (or
+# ./watchover.sh profile cpu8|cpu16) keeps fixed numbers instead.
+clamp() { local v=$1; [ "$v" -lt "$2" ] && v=$2; [ "$v" -gt "$3" ] && v=$3; echo "$v"; }
 size_env() {
   [ "$(env_get WATCHOVER_SIZING)" = "manual" ] && return 0
-  local ncpu mem_b mem_gb llm_mem tr_mem
+  local ncpu mem_b mem_gb dcpu dmem rcpu rmem pw spool pcpu pmem psb pcache lcpu lmem tcpu tmem keep
   ncpu=$(docker info --format '{{.NCPU}}' 2>/dev/null | tr -dc '0-9'); [ -n "$ncpu" ] && [ "$ncpu" -ge 1 ] || ncpu=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
   mem_b=$(docker info --format '{{.MemTotal}}' 2>/dev/null | tr -dc '0-9'); [ -n "$mem_b" ] && [ "$mem_b" -ge 1 ] || mem_b=$((8 * 1024 * 1024 * 1024))
   mem_gb=$((mem_b / 1073741824)); [ "$mem_gb" -ge 2 ] || mem_gb=2
-  llm_mem=$((mem_gb * 80 / 100)); [ "$llm_mem" -ge 4 ] || llm_mem=$(( mem_gb < 4 ? mem_gb : 4 ))
-  tr_mem=$((mem_gb * 60 / 100));  [ "$tr_mem" -ge 4 ]  || tr_mem=$(( mem_gb < 4 ? mem_gb : 4 ))
+  dcpu=$(clamp $((ncpu - 2)) 2 12);          dmem=$(clamp $((mem_gb / 4)) 4 32)
+  rcpu=$(clamp $((ncpu / 4)) 1 4);           rmem=$([ "$mem_gb" -ge 16 ] && echo 2 || echo 1)
+  pw=$(clamp $((ncpu * 3 / 8)) 1 6);         spool=$([ "$mem_gb" -ge 32 ] && echo 4096 || echo 2048)
+  pcpu=$(clamp $((ncpu / 4)) 1 4);           pmem=$(clamp $((mem_gb / 8)) 2 16)
+  psb=$((pmem * 1024 / 4));                  pcache=$(clamp $((mem_gb / 2)) 1 256)
+  lcpu=$(clamp $((ncpu * 3 / 8)) 1 8);       lmem=$(clamp $((mem_gb * 16 / 100)) 4 16)
+  tcpu=$(clamp $((ncpu / 2)) 1 8);           tmem=$(clamp $((mem_gb / 5)) 4 16)
+  keep=$([ "$mem_gb" -ge 32 ] && echo 24h || echo 30m)
   env_set WATCHOVER_SIZING auto
-  env_set WATCHOVER_CPUS "$(( ncpu < 4 ? ncpu : 4 ))";     env_set WATCHOVER_MEMORY "$(( mem_gb < 4 ? mem_gb : 4 ))g"
-  env_set WATCHOVER_PG_CPUS "$(( ncpu < 2 ? ncpu : 2 ))";  env_set WATCHOVER_PG_MEMORY "$(( mem_gb < 2 ? mem_gb : 2 ))g"
-  env_set WATCHOVER_LLM_CPUS "$ncpu";   env_set WATCHOVER_LLM_THREADS "$ncpu";                       env_set WATCHOVER_LLM_MEMORY "${llm_mem}g"
-  env_set WATCHOVER_TRAIN_CPUS "$ncpu"; env_set WATCHOVER_TRAIN_THREADS "$(( ncpu > 1 ? ncpu - 1 : 1 ))"; env_set WATCHOVER_TRAIN_MEMORY "${tr_mem}g"
-  say "sizing: Docker sees $ncpu CPUs / ${mem_gb} GB -> LLM $ncpu cpu ${llm_mem}g, trainer $ncpu cpu ${tr_mem}g, dashboard $(( ncpu < 4 ? ncpu : 4 )) cpu  (WATCHOVER_SIZING=manual in .env keeps your own)"
+  env_set WATCHOVER_CPUS "$dcpu";            env_set WATCHOVER_MEMORY "${dmem}g"
+  env_set WATCHOVER_RECEIVER_CPUS "$rcpu";   env_set WATCHOVER_RECEIVER_MEMORY "${rmem}g"
+  env_set WATCHOVER_PARSE_WORKERS "$pw";     env_set WATCHOVER_SPOOL_MAX_MB "$spool"
+  env_set WATCHOVER_PG_CPUS "$pcpu";         env_set WATCHOVER_PG_MEMORY "${pmem}g"
+  env_set WATCHOVER_PG_SHARED_BUFFERS "${psb}MB"; env_set WATCHOVER_PG_CACHE "${pcache}GB"
+  env_set WATCHOVER_LLM_CPUS "$lcpu";        env_set WATCHOVER_LLM_THREADS "$lcpu"; env_set WATCHOVER_LLM_MEMORY "${lmem}g"
+  env_set WATCHOVER_LLM_PARALLEL 1;          env_set WATCHOVER_LLM_KEEPALIVE "$keep"
+  env_set WATCHOVER_TRAIN_CPUS "$tcpu";      env_set WATCHOVER_TRAIN_THREADS "$tcpu"; env_set WATCHOVER_TRAIN_MEMORY "${tmem}g"
+  say "sizing: Docker sees $ncpu CPUs / ${mem_gb} GB -> dashboard $dcpu cpu ${dmem}g, receiver $rcpu cpu (${pw} parse workers), PostgreSQL $pcpu cpu ${pmem}g, LLM $lcpu cpu ${lmem}g, trainer $tcpu cpu ${tmem}g  (WATCHOVER_SIZING=manual in .env keeps your own)"
 }
 
 write_env() {

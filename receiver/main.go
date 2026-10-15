@@ -655,6 +655,7 @@ func main() {
 		parseSpool(os.Args[2])
 		return
 	}
+	applyContainerLimits("/sys/fs/cgroup")
 	cfg := loadConfig()
 	sp, err := newSpool(cfg)
 	if err != nil {

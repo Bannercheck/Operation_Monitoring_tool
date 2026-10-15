@@ -45,9 +45,11 @@ def test_install_writes_env_builds_and_starts(stage):
     version = [l for l in (ROOT / "pyproject.toml").read_text().splitlines() if l.startswith("version")][0].split('"')[1]
     assert f"WATCHOVER_TAG={version}" in env and "WATCHOVER_IMAGE=watchover" in env
     assert oct((d / ".env").stat().st_mode)[-3:] == "600" and (d / "datasets").is_dir() and (d / "backups").is_dir()
-    # sizing follows the machine Docker reports (10 CPUs, 16 GB here): all CPUs to the LLM and the trainer, most of the memory as caps
-    for k, v in {"WATCHOVER_SIZING": "auto", "WATCHOVER_LLM_CPUS": "10", "WATCHOVER_LLM_THREADS": "10", "WATCHOVER_TRAIN_CPUS": "10", "WATCHOVER_TRAIN_THREADS": "9",
-                 "WATCHOVER_LLM_MEMORY": "12g", "WATCHOVER_TRAIN_MEMORY": "9g", "WATCHOVER_CPUS": "4", "WATCHOVER_PG_CPUS": "2"}.items():
+    # sizing follows the machine Docker reports (10 CPUs, 16 GB here) in shares: the dashboard most CPUs, the LLM and the trainer a part
+    for k, v in {"WATCHOVER_SIZING": "auto", "WATCHOVER_CPUS": "8", "WATCHOVER_MEMORY": "4g", "WATCHOVER_RECEIVER_CPUS": "2", "WATCHOVER_PARSE_WORKERS": "3",
+                 "WATCHOVER_PG_CPUS": "2", "WATCHOVER_PG_MEMORY": "2g", "WATCHOVER_PG_SHARED_BUFFERS": "512MB", "WATCHOVER_PG_CACHE": "8GB",
+                 "WATCHOVER_LLM_CPUS": "3", "WATCHOVER_LLM_THREADS": "3", "WATCHOVER_LLM_MEMORY": "4g", "WATCHOVER_TRAIN_CPUS": "5", "WATCHOVER_TRAIN_MEMORY": "4g",
+                 "WATCHOVER_LLM_KEEPALIVE": "30m", "WATCHOVER_SPOOL_MAX_MB": "2048"}.items():
         assert f"{k}={v}\n" in env, (k, v)
     calls = (d / "calls.log").read_text()
     assert "compose build" in calls and f"--build-arg VERSION={version}" in calls and "compose up -d --remove-orphans" in calls
@@ -135,10 +137,10 @@ def test_llm_on_keeps_existing_connection(stage):
 def test_manual_sizing_is_kept(stage):
     d, _ = stage
     run(stage, "install")
-    env = (d / ".env").read_text().replace("WATCHOVER_SIZING=auto", "WATCHOVER_SIZING=manual").replace("WATCHOVER_LLM_CPUS=10", "WATCHOVER_LLM_CPUS=3")
+    env = (d / ".env").read_text().replace("WATCHOVER_SIZING=auto", "WATCHOVER_SIZING=manual").replace("WATCHOVER_LLM_CPUS=3", "WATCHOVER_LLM_CPUS=2")
     (d / ".env").write_text(env)
     assert run(stage, "start").returncode == 0
-    assert "WATCHOVER_LLM_CPUS=3\n" in (d / ".env").read_text() and "WATCHOVER_SIZING=manual" in (d / ".env").read_text()
+    assert "WATCHOVER_LLM_CPUS=2\n" in (d / ".env").read_text() and "WATCHOVER_SIZING=manual" in (d / ".env").read_text()
 
 
 def test_profile_cpu8_fixes_the_caps_and_keeps_the_llm_connection(stage):
@@ -158,6 +160,22 @@ def test_profile_cpu8_fixes_the_caps_and_keeps_the_llm_connection(stage):
     assert "WATCHOVER_LLM_CPUS" in shown and "3" in shown
     assert run(stage, "profile", "auto").returncode == 0 and "WATCHOVER_SIZING=auto" in (d / ".env").read_text()
     assert run(stage, "profile", "nope").returncode != 0
+
+
+def test_auto_sizing_on_8_cpu_64_gb_equals_the_cpu8_profile(stage):
+    d, env = stage
+    fake = d / "bin" / "docker"
+    fake.write_text(fake.read_text().replace("*NCPU*) echo 10 ;; *MemTotal*) echo 17179869184 ;;", "*NCPU*) echo 8 ;; *MemTotal*) echo 68719476736 ;;"))
+    assert run(stage, "install").returncode == 0
+    auto = (d / ".env").read_text()
+    assert run(stage, "profile", "cpu8").returncode == 0
+    fixed = (d / ".env").read_text()
+    keys = ("WATCHOVER_CPUS", "WATCHOVER_MEMORY", "WATCHOVER_RECEIVER_CPUS", "WATCHOVER_RECEIVER_MEMORY", "WATCHOVER_PARSE_WORKERS", "WATCHOVER_SPOOL_MAX_MB",
+            "WATCHOVER_PG_CPUS", "WATCHOVER_PG_MEMORY", "WATCHOVER_PG_CACHE", "WATCHOVER_LLM_CPUS", "WATCHOVER_LLM_MEMORY", "WATCHOVER_TRAIN_CPUS",
+            "WATCHOVER_TRAIN_MEMORY", "WATCHOVER_LLM_KEEPALIVE")
+    val = lambda t, k: [l for l in t.splitlines() if l.startswith(k + "=")][0].split("=", 1)[1]   # noqa: E731
+    assert {k: val(auto, k) for k in keys} == {k: val(fixed, k) for k in keys}
+    assert val(auto, "WATCHOVER_PG_SHARED_BUFFERS") == "2048MB" and val(fixed, "WATCHOVER_PG_SHARED_BUFFERS") == "2GB"
 
 
 def test_backup_rotation(stage):
