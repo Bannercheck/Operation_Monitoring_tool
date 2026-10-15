@@ -1,0 +1,375 @@
+<!doctype html><html lang="tr"><head><meta charset="utf-8"><title>Watchover · OpenShift kurulum rehberi</title><style>
+@page{size:A4;margin:18mm 16mm}
+body{font-family:-apple-system,"Segoe UI",Inter,Arial,sans-serif;color:#0f172a;font-size:11.5pt;line-height:1.5}
+h1{font-size:24pt;margin:0 0 2px;color:#0f172a}
+.sub{color:#0e7490;font-weight:700;letter-spacing:2px;font-size:9pt;margin-bottom:18px}
+h2{font-size:14.5pt;margin:22px 0 6px;color:#0f172a;border-bottom:2px solid #2dd4bf;padding-bottom:3px}
+p{margin:6px 0}
+pre{background:#0b1220;color:#e2e8f0;padding:10px 12px;border-radius:8px;font-size:9.6pt;line-height:1.45;white-space:pre-wrap;word-break:break-word}
+code{font-family:"SF Mono",Consolas,Menlo,monospace}
+.note{background:#f1f5f9;border-left:4px solid #60a5fa;padding:8px 12px;border-radius:6px;margin:8px 0}
+table{border-collapse:collapse;width:100%;margin:6px 0;font-size:10.5pt}
+td,th{border:1px solid #cbd5e1;padding:6px 8px;text-align:left;vertical-align:top}
+th{background:#f8fafc}
+.foot{margin-top:26px;font-size:9pt;color:#64748b;border-top:1px solid #e2e8f0;padding-top:6px}
+</style></head><body>
+<h1>Watchover · OpenShift kurulum rehberi</h1>
+<p>Watchover OpenShift'te <strong>kendi projesinde, kendi PostgreSQL pod'uyla</strong> çalışır ve kümeden yalnız standart <code>restricted-v2</code> SCC'yi ister: konteynerler keyfi bir UID ve GID 0 ile, kök dosya sistemi salt okunur, hiçbir yetki (capability) olmadan koşar; özel SCC, ayrıcalıklı pod ya da GPU gerekmez. Kurulum <code>deploy/openshift/watchover</code> Helm chart'ıdır (Helm'siz kurulum için hazır YAML: <code>deploy/openshift/rendered/watchover.yaml</code>).</p>
+<table>
+<thead>
+<tr>
+<th>Bileşen</th>
+<th>Ne</th>
+<th>Disk</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>watchover</code> pod'u</td>
+<td>iki konteyner tek pod'da: <strong>dashboard</strong> (React arayüzü + API, 8501) ve <strong>receiver</strong> (Go alıcı, 8600; ajanların kapısı). İkisi <code>/data</code> diskini paylaşır (alıcı kuyruğu <code>/data/spool</code>)</td>
+<td><code>data</code> (küçük), <code>logs-hot</code> (hızlı), <code>logs-cold</code> (ayrı, ucuz)</td>
+</tr>
+<tr>
+<td><code>watchover-postgresql</code></td>
+<td>ürün veritabanı, PostgreSQL 16, StatefulSet, yalnız Watchover pod'u erişir</td>
+<td><code>pgdata</code></td>
+</tr>
+<tr>
+<td><code>watchover-ollama</code> (isteğe bağlı)</td>
+<td>yerel LLM, yalnız CPU, tek küçük model</td>
+<td><code>ollama</code></td>
+</tr>
+</tbody>
+</table>
+<p>Ham loglar <strong>son 48 saat hızlı diskte</strong> (<code>logs-hot</code>) aranır; daha eskiler saatlik bir işle <strong>ayrı, ucuz diskteki</strong> sıkıştırılmış arşive (<code>logs-cold</code>) taşınır ve orada da aranabilir. PostgreSQL ham log tutmaz; dakikalık özetler, izler, anomaliler, envanter ve ayarlar oradadır. Kurulum <strong>üretim modundadır</strong> (<code>WATCHOVER_DEMO=0</code>): simülatör açılamaz, demo envanteri / RUM uygulaması / iş akışı hiç oluşmaz. Caddy edge konteyneri ve mDNS OpenShift'te kullanılmaz; TLS'i OpenShift router'ı (Route, edge) sağlar.</p>
+<h2>1. Ön koşullar</h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Araçlar</td>
+<td><code>oc</code> (4.12+), <code>helm</code> 3.12+, imaj derlemek için <code>podman</code> (ya da kümede derleme: <code>oc new-build</code>, bölüm 2b)</td>
+</tr>
+<tr>
+<td>Yetki</td>
+<td>Bir proje açabilen kullanıcı (<code>oc new-project</code>); küme yöneticisi gerekmez. PVC, Route, NetworkPolicy, CronJob proje yetkisiyle oluşur</td>
+</tr>
+<tr>
+<td>Depolama</td>
+<td>İki <strong>blok</strong> depolama sınıfı önerilir: hızlı (ör. <code>ocs-storagecluster-ceph-rbd</code>, <code>gp3-csi</code>, <code>thin-csi</code>) <code>data</code> + <code>logs-hot</code> + PostgreSQL için, ucuz/yavaş olan <code>logs-cold</code> için. Hepsi <code>ReadWriteOnce</code>. Sıcak loglar SQLite gün dosyalarıdır: <strong>NFS / CephFS gibi paylaşımlı dosya sistemi kullanmayın</strong> (kilit ve WAL sorunları)</td>
+</tr>
+<tr>
+<td>Kaynak (varsayılan)</td>
+<td>istek 2 CPU / 3,5 Gi, sınır 8 CPU / 13 Gi (Watchover pod'u + PostgreSQL). LLM açılırsa +2 CPU / 4 Gi istek, 8 CPU / 8 Gi sınır. Boyutlar için bölüm 6</td>
+</tr>
+<tr>
+<td>Ağ</td>
+<td>Kümenin internet çıkışı: imaj derleme (Docker Hub, npm, PyPI, Go modülleri), <code>registry.redhat.io</code> (PostgreSQL imajı) ve LLM açıksa model indirme. İzlenen sunuculardan ingest Route adresine 443/tcp</td>
+</tr>
+<tr>
+<td>Kota</td>
+<td>Projede ResourceQuota varsa sınırlar yukarıdakilere göre ayarlanmalı; her konteynerin istek ve sınırı tanımlıdır</td>
+</tr>
+</tbody>
+</table>
+<pre><code class="language-bash">oc login https://api.kume.firma.com:6443
+oc new-project watchover
+oc get storageclass                      # sınıf adlarını not edin (hızlı / ucuz)
+</code></pre>
+<h2>2. İmajları derleyip dahili kayıt defterine göndermek</h2>
+<p>İki imaj gerekir: <code>watchover</code> (Dockerfile) ve <code>watchover-receiver</code> (Dockerfile.receiver). Eğitim konteyneri açılacaksa üçüncüsü <code>watchover-trainer</code> (Dockerfile.trainer). İmajlar OpenShift için hazırdır: yazılabilir dizinler GID 0'a aittir (<code>chgrp 0</code> + <code>chmod g=u</code>), 1024 altı port yoktur, başlangıçta root gerektiren adım yoktur. Aynı imajlar Docker Compose kurulumunda da kullanılır. Etiket olarak sürüm numarasını kullanın:</p>
+<pre><code class="language-bash">cd watchover                                          # kaynak ağacı
+TAG=$(sed -n 's/^version = &quot;\(.*\)&quot;/\1/p' pyproject.toml)   # ör. 1.47.1
+</code></pre>
+<h3>2a. podman ile (iş istasyonundan)</h3>
+<pre><code class="language-bash">oc patch configs.imageregistry.operator.openshift.io/cluster --type merge -p '{&quot;spec&quot;:{&quot;defaultRoute&quot;:true}}'   # bir kez, küme yöneticisi
+REG=$(oc registry info --public)
+podman login -u &quot;$(oc whoami)&quot; -p &quot;$(oc whoami -t)&quot; &quot;$REG&quot;
+podman build --platform linux/amd64 -f Dockerfile          -t &quot;$REG/watchover/watchover:$TAG&quot; --build-arg VERSION=&quot;$TAG&quot; --build-arg GIT_REV=&quot;$(git rev-parse --short HEAD)&quot; .
+podman build --platform linux/amd64 -f Dockerfile.receiver -t &quot;$REG/watchover/watchover-receiver:$TAG&quot; .
+podman push &quot;$REG/watchover/watchover:$TAG&quot;
+podman push &quot;$REG/watchover/watchover-receiver:$TAG&quot;
+</code></pre>
+<p>Dış bir kayıt defteri (Quay, Harbor, Nexus) kullanılacaksa aynı komutlarla oraya gönderin ve değer dosyasında <code>image.registry</code> / <code>image.project</code> ile <code>imagePullSecrets</code> verin.</p>
+<h3>2b. Kümede derleme (<code>oc new-build --binary</code>, iş istasyonunda podman yoksa)</h3>
+<pre><code class="language-bash">git archive --format=tar.gz -o /tmp/watchover-src.tar.gz HEAD        # yalnız kaynak; node_modules, veri, .env gitmez
+for img in watchover:Dockerfile watchover-receiver:Dockerfile.receiver; do
+  name=${img%%:*}; file=${img#*:}
+  oc new-build --name &quot;$name&quot; --binary --strategy docker --to &quot;$name:$TAG&quot; -n watchover
+  oc patch bc/&quot;$name&quot; -n watchover --type merge -p &quot;{\&quot;spec\&quot;:{\&quot;strategy\&quot;:{\&quot;dockerStrategy\&quot;:{\&quot;dockerfilePath\&quot;:\&quot;$file\&quot;}}}}&quot;
+  oc start-build &quot;$name&quot; -n watchover --from-archive=/tmp/watchover-src.tar.gz --build-arg VERSION=&quot;$TAG&quot; --follow
+done
+oc get imagestreamtag -n watchover                                   # watchover:1.47.1, watchover-receiver:1.47.1
+</code></pre>
+<p>Sonraki sürümlerde yalnız <code>oc start-build</code> satırını yeni arşiv ve yeni <code>--to</code> etiketiyle çalıştırırsınız (bc'yi <code>oc patch bc/watchover --type merge -p '{"spec":{"output":{"to":{"name":"watchover:YENI"}}}}'</code> ile yeni etikete çevirin).</p>
+<h2>3. Kurulum (helm install)</h2>
+<p>Kendi değer dosyanızı yazın; <code>values.yaml</code> içindeki Türkçe açıklamalar her alanı anlatır. Asgari örnek:</p>
+<pre><code class="language-yaml"># watchover-degerler.yaml
+image:
+  tag: &quot;1.47.1&quot;
+persistence:
+  data:     {size: 5Gi,  storageClass: ocs-storagecluster-ceph-rbd}
+  logsHot:  {size: 25Gi, storageClass: ocs-storagecluster-ceph-rbd}
+  logsCold: {size: 30Gi, storageClass: yavas-blok}
+postgresql:
+  storage: {size: 10Gi, storageClass: ocs-storagecluster-ceph-rbd}
+retention:
+  liveRetentionH: 48       # ham loglar sıcak diskte 48 saat
+  coldRetentionDays: 30    # arşivde 30 gün (coldMaxGb dolarsa en eski gün daha önce gider)
+  hotMaxGb: 20
+  coldMaxGb: 25
+routes:
+  ui:     {host: watchover.apps.kume.firma.com}
+  ingest: {host: watchover-ingest.apps.kume.firma.com}
+llm:
+  enabled: false
+</code></pre>
+<pre><code class="language-bash">helm install watchover deploy/openshift/watchover -n watchover -f watchover-degerler.yaml
+oc get pods -n watchover -w          # watchover-xxx 2/2 Running, watchover-postgresql-0 1/1 Running
+helm status watchover -n watchover   # adresler ve sonraki adımlar
+</code></pre>
+<ul>
+<li>PostgreSQL parolası ilk kurulumda 32 karakter üretilir ve <code>watchover-db</code> Secret'ında kalır; <code>helm upgrade</code> aynı parolayı korur, <code>helm uninstall</code> Secret'ı ve diskleri silmez (<code>helm.sh/resource-policy: keep</code>). Kendi Secret'ınızı vermek için <code>postgresql.existingSecret</code> (anahtar <code>postgres-password</code>). Parolayı değer dosyasına yazmayın.</li>
+<li>PostgreSQL imajı varsayılan olarak <code>registry.redhat.io/rhel9/postgresql-16</code>'dır (kümenin genel pull secret'ı ile çekilir). Erişim yoksa <code>postgresql.image: quay.io/sclorg/postgresql-16-c9s</code> (aynı imajın herkese açık eşdeğeri) ya da <code>postgresql.flavor: official</code> + <code>postgresql.image: docker.io/library/postgres:16</code>.</li>
+<li>Kurumda zaten bir PostgreSQL varsa: <code>postgresql.enabled: false</code> ve <code>externalDatabase.existingSecret</code> (anahtar <code>database-url</code>, <code>postgresql://kullanici:parola@sunucu:5432/veritabani</code>).</li>
+<li>Saklama değerleri (<code>retention</code>) ve LLM kilidi platform tarafından sabitlenir (<code>WATCHOVER_SETTINGS</code>): arayüzde değiştirilse bile Helm değeri geçerlidir. Değiştirmek için değer dosyası + <code>helm upgrade</code>.</li>
+</ul>
+<h3>3b. Helm olmadan kurulum (oc apply)</h3>
+<p><code>deploy/openshift/rendered/watchover.yaml</code>, chart'ın varsayılanlarla <code>helm template</code> çıktısıdır ve içinde hiçbir gizli değer yoktur:</p>
+<pre><code class="language-bash">oc new-project watchover
+oc create secret generic watchover-db -n watchover --from-literal=postgres-password=&quot;$(openssl rand -hex 24)&quot;
+cp deploy/openshift/rendered/watchover.yaml /tmp/watchover.yaml
+sed -i 's/apps\.example\.com/apps.kume.firma.com/g' /tmp/watchover.yaml      # Route adresleri; gerekirse storageClassName ekleyin
+oc apply -n watchover -f /tmp/watchover.yaml
+</code></pre>
+<h2>4. İlk giriş</h2>
+<ol>
+<li>Arayüz adresini açın: <code>https://watchover.apps.kume.firma.com</code> (ya da <code>oc get route watchover -n watchover</code>).</li>
+<li>Yerleşik yönetici <code>admin@watchover.local</code>'dır; başlangıç parolası kurulum ekibine ayrıca iletilir ve <strong>ilk girişte yeni parola istenir</strong>. Parolayı hiç paylaşmadan doğrudan terminalden belirlemek de mümkündür (yeni parolayı iki kez sorar, ilk parolayı geçersiz kılar):</li>
+</ol>
+<pre><code class="language-bash">oc exec -it -n watchover deploy/watchover -c dashboard -- python -m watchover.useradmin password admin@watchover.local
+</code></pre>
+<ol>
+<li>Kişisel yönetici hesapları açın ve yerleşik hesabı yalnız acil durum için saklayın:</li>
+</ol>
+<pre><code class="language-bash">oc exec -it -n watchover deploy/watchover -c dashboard -- python -m watchover.useradmin add ops@firma.com --admin
+</code></pre>
+<p>Şirket SSO'su (OIDC / Microsoft / Google) Sistem › Giriş sağlayıcıları'ndan bağlanır; dönüş adresi Route adresidir (<code>public_host</code> chart tarafından <code>https://&lt;ui host&gt;</code> olarak sabitlenir).</p>
+<h2>5. Sunucuları bağlamak (ajanlar)</h2>
+<p>Ajanlar ingest Route'una https ile gönderir. <code>routes.ingest.host</code> verildiğinde bu adreste yalnız alıcı yolları açıktır: <code>/ingest</code>, <code>/enroll</code>, <code>/agent.py</code>, <code>/agent/install.sh</code>, <code>/mobile</code>, <code>/rum</code>, <code>/rum.js</code> (alıcının <code>/health</code> ve <code>/metrics</code> uçları küme içinde kalır). Kayıt anahtarı Bağlantılar sayfasındadır (ekip anahtarları Ekip sayfasında); aynı sayfa komutu bu adresle hazır gösterir.</p>
+<pre><code class="language-bash"># izlenecek her Linux sunucuda:
+curl -fsSL https://watchover-ingest.apps.kume.firma.com/agent/install.sh | sudo bash -s -- \
+     --url https://watchover-ingest.apps.kume.firma.com/ingest --enroll-key wk_… --env prod
+</code></pre>
+<ul>
+<li>Route şirket iç CA'sıyla imzalıysa ve sunucular bu CA'ya güvenmiyorsa: sunucuya CA'yı kurun ya da ajana <code>--ca /etc/pki/firma-root.pem</code> verin (<code>WATCHOVER_CA</code>).</li>
+<li>Küme içinden doğrudan alıcıya gönderecek bir bileşen (ör. OpenTelemetry collector) için <code>networkPolicy.ingestNamespaces: [{name: otel}]</code> ve adres <code>http://watchover.watchover.svc:8600/ingest</code>.</li>
+<li>Web/mobil kullanıcı deneyimi (RUM) betiği de bu adresi kullanır (<code>https://&lt;ingest host&gt;/rum.js</code>).</li>
+</ul>
+<h2>6. Boyutlandırma</h2>
+<p>Ölçülen değerler (yük testi verisi, 300 ajan): sıcak diskte satır başına <strong>~65-90 bayt</strong>, soğuk arşivde <strong>~7-8 bayt</strong> (şablon + lzma). Sıcak loglar gün dosyalarında tutulduğu için sıcak disk 48 değil 48-72 saat taşır; <code>hotMaxGb</code> dolarsa biten en eski gün erkenden arşive geçer, <code>coldMaxGb</code> dolarsa en eski arşiv günü silinir. İlk günün sonunda Sistem › Depolama kartından (ya da <code>oc exec deploy/watchover -c dashboard -- du -sh /logs/hot /logs/cold</code>) gerçek değeri görüp gerekirse disk büyütün (<code>allowVolumeExpansion: true</code> olan blok depolama sınıfı).</p>
+<table>
+<thead>
+<tr>
+<th>Dakikada satır</th>
+<th>Sunucu (yaklaşık)</th>
+<th>logs-hot</th>
+<th>logs-cold (30 gün)</th>
+<th>PostgreSQL</th>
+<th>data</th>
+<th>Watchover pod'u (istek → sınır)</th>
+<th>PostgreSQL pod'u</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>50 bin</td>
+<td>~100</td>
+<td>30 Gi (<code>hotMaxGb: 24</code>)</td>
+<td>25 Gi (<code>coldMaxGb: 20</code>)</td>
+<td>15 Gi</td>
+<td>20 Gi</td>
+<td>2 CPU / 6 Gi → 4 CPU / 12 Gi</td>
+<td>1 / 2 Gi → 2 / 4 Gi</td>
+</tr>
+<tr>
+<td><strong>100 bin</strong> (varsayılan)</td>
+<td>~200-300</td>
+<td><strong>50 Gi</strong> (<code>hotMaxGb: 40</code>)</td>
+<td><strong>50 Gi</strong> (<code>coldMaxGb: 40</code>)</td>
+<td><strong>30 Gi</strong></td>
+<td><strong>30 Gi</strong></td>
+<td><strong>2 CPU / 8 Gi → 6 CPU / 16 Gi</strong></td>
+<td><strong>1 / 4 Gi → 2 / 8 Gi</strong></td>
+</tr>
+<tr>
+<td>300 bin</td>
+<td>300+</td>
+<td>150 Gi (<code>hotMaxGb: 120</code>)</td>
+<td>130 Gi (<code>coldMaxGb: 105</code>)</td>
+<td>50 Gi</td>
+<td>40 Gi</td>
+<td>8 CPU / 16 Gi → 12 CPU / 24 Gi</td>
+<td>2 / 8 Gi → 4 / 12 Gi</td>
+</tr>
+</tbody>
+</table>
+<p>Watchover pod'u panel + alıcıdır (alıcı ayrıca 0,5 CPU / 512 Mi → 2 CPU / 2 Gi). Gece arşivleme bir çekirdeği düşük öncelikle birkaç saat kullanır (dakikada 100 bin satırda günde ~2 saat). Dakikada ~300 bin satır tek pod'un tavanına yakındır (docs/LOAD_TEST.md).</p>
+<p><strong>Tam performans profili</strong> — <code>deploy/openshift/watchover/values-performance.yaml</code>: istek = sınır (Guaranteed QoS: yoğun anda CPU kısıtlaması yok), panel 6 CPU / 16 Gi, alıcı 2 CPU / 2 Gi, PostgreSQL 2 CPU / 8 Gi (<code>shared_buffers</code> 2 GB), diskler tablodaki "100 bin" satırının değerleri. Sıcak loglar ve PostgreSQL için yerel NVMe/SSD blok depolama (LVM Storage ya da Local Storage Operator) seçin, NFS / CephFS kullanmayın; pod'u <code>nodeSelector</code> / <code>tolerations</code> ile az kalabalık, sabit bir düğüme koyun:</p>
+<pre><code class="language-bash">helm upgrade --install watchover deploy/openshift/watchover -n watchover \
+  -f deploy/openshift/watchover/values-performance.yaml -f benim-degerlerim.yaml
+</code></pre>
+<p>Proje kotası önerisi (LLM kapalı): CPU 12, bellek 32 Gi, depolama 250 Gi; LLM açılacaksa CPU 20, bellek 40 Gi.</p>
+<h2>7. Yükseltme ve geri alma</h2>
+<pre><code class="language-bash"># 1) yeni sürümün imajları (bölüm 2), ör. 1.48.0
+# 2) etiketi değiştirip yükseltin; pod Recreate stratejisiyle durup yenisi açılır (kısa kesinti, ajanlar kendi kuyruklarında bekler)
+helm upgrade watchover deploy/openshift/watchover -n watchover -f watchover-degerler.yaml --set image.tag=1.48.0
+oc rollout status deploy/watchover -n watchover
+# geri alma: bir önceki revizyon (imaj etiketi dahil)
+helm history watchover -n watchover
+helm rollback watchover &lt;REVIZYON&gt; -n watchover
+</code></pre>
+<p>Veritabanı göçleri ileriye dönüktür; geri almadan önce yedek alın (bölüm 8). Chart'ı da güncellediyseniz <code>deploy/openshift</code> klasörünü yeni sürümden alın.</p>
+<h2>8. Yedekleme</h2>
+<p><strong>Veritabanı.</strong> <code>backup.enabled: true</code> her gece <code>pg_dump</code> (özel biçim, sıkıştırılmış) alan bir CronJob ve ona ait 20 Gi'lik bir disk açar; <code>backup.keepDays</code> (14) günden eskiler silinir:</p>
+<pre><code class="language-yaml">backup:
+  enabled: true
+  schedule: &quot;15 2 * * *&quot;
+  keepDays: 14
+  storage: {size: 20Gi, storageClass: yavas-blok}
+</code></pre>
+<pre><code class="language-bash">oc create job --from=cronjob/watchover-backup elle-yedek -n watchover        # hemen bir yedek
+# geri yükleme: Watchover'ı durdurun, dump'ı PostgreSQL pod'una kopyalayıp pg_restore
+oc scale deploy/watchover -n watchover --replicas=0
+oc cp ./watchover-20261015-0215.dump watchover/watchover-postgresql-0:/tmp/w.dump
+oc exec -n watchover watchover-postgresql-0 -- pg_restore -h 127.0.0.1 -U watchover -d watchover --clean --if-exists /tmp/w.dump
+oc scale deploy/watchover -n watchover --replicas=1
+</code></pre>
+<p><strong>Diskler.</strong> CSI sürücüsü destekliyorsa <code>data</code> ve <code>logs-cold</code> için VolumeSnapshot alın (sıcak loglar 48 saatte zaten arşive geçer):</p>
+<pre><code class="language-yaml">apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshot
+metadata: {name: watchover-logs-cold-20261015, namespace: watchover}
+spec:
+  volumeSnapshotClassName: ocs-storagecluster-rbdplugin-snapclass
+  source: {persistentVolumeClaimName: watchover-logs-cold}
+</code></pre>
+<p>Sistem › Anlık görüntü (veritabanı dahil) PostgreSQL'in tamamını JSON olarak <code>/data</code>'ya yazar; büyük kurulumda <code>data</code> diskini doldurur, üretimde yukarıdaki yolları kullanın.</p>
+<h2>9. LLM'i kısıtlamak</h2>
+<p>Watchover'ın çekirdeği deterministiktir; LLM yalnız açıklama ve soru-cevap yardımcısıdır ve kapalıyken her şey çalışır. Üç seçenek:</p>
+<table>
+<thead>
+<tr>
+<th>Seçenek</th>
+<th>Değerler</th>
+<th>Sonuç</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Kapalı (varsayılan)</td>
+<td><code>llm.enabled: false</code>, <code>llm.lock: true</code></td>
+<td>Ollama pod'u yok; LLM ayarları boş sabitlenir, arayüzden dış bir sağlayıcı (OpenAI vb.) da tanımlanamaz</td>
+</tr>
+<tr>
+<td>Yalnız küme içi model</td>
+<td><code>llm.enabled: true</code>, <code>llm.lock: true</code>, <code>llm.model: qwen2.5:3b-instruct</code></td>
+<td>Ollama pod'u (yalnız CPU, 2→8 CPU / 4→8 Gi), açılışta tek model iner; Watchover yalnız bu modeli kullanır, ayar arayüzden değiştirilemez. Ollama'ya yalnız Watchover pod'u erişir (NetworkPolicy)</td>
+</tr>
+<tr>
+<td>Model indikten sonra dışa çıkış yok</td>
+<td>yukarıdakine ek <code>llm.ollama.allowEgress: false</code></td>
+<td>Ollama pod'unun dışarıya hiçbir çıkışı kalmaz (Egress NetworkPolicy). Model diskte kaldığı için çalışmaya devam eder; yeni model için geçici olarak <code>true</code> yapın</td>
+</tr>
+</tbody>
+</table>
+<p>Çıkışı yalnız model deposuna sınırlamak isterseniz (OVN-Kubernetes), küme yöneticisi projeye bir EgressFirewall yazar; Ollama model katmanlarını <code>registry.ollama.ai</code> üzerinden bir CDN'den indirir, CDN adı değişebildiği için en sağlam yol yukarıdaki "indir, sonra kapat" düzenidir:</p>
+<pre><code class="language-yaml">apiVersion: k8s.ovn.org/v1
+kind: EgressFirewall
+metadata: {name: default, namespace: watchover}
+spec:
+  egress:
+    - {type: Allow, to: {dnsName: registry.ollama.ai}}
+    - {type: Allow, to: {dnsName: smtp.firma.com}}      # Watchover'ın kendi çıkışları (e-posta, ITSM, webhook) da listelenmeli
+    - {type: Deny,  to: {cidrSelector: 0.0.0.0/0}}
+</code></pre>
+<p>Eğitim konteyneri (<code>trainer.enabled</code>) varsayılan kapalıdır; açılırsa Watchover pod'una üçüncü konteyner olarak eklenir, ilk eğitimde Hugging Face'ten temel ağırlıkları indirir ve saatlerce CPU kullanır.</p>
+<h2>10. Demo verisi</h2>
+<p>OpenShift kurulumu üretim modundadır; simülatör hiç açılamaz. Docker'dan taşınan ya da demo modunda çalışmış bir kurulumda kalan simülatör verisini (simülatörün satırları, "demo (simulator)" envanter kayıtları, demo RUM uygulamaları ve oturumları, demo iş akışı ve yalnız simülatörün kullandığı sunucu adlarına ait kayıtlar) Sistem › Demo verisi › <strong>Demo verisini temizle</strong> siler; yalnız kurulum yöneticisi görür, işlem denetim kaydına yazılır. Aynı adı taşıyan gerçek bir sunucunun (ör. kendi <code>db-01</code>'iniz) verisine dokunulmaz. Terminalden önce sayım, sonra silme:</p>
+<pre><code class="language-bash">oc exec -n watchover deploy/watchover -c dashboard -- python -m watchover.demo clean --dry-run
+oc exec -n watchover deploy/watchover -c dashboard -- python -m watchover.demo clean
+oc rollout restart deploy/watchover -n watchover      # çalışan pod'un bellekteki canlı penceresi de unutsun
+</code></pre>
+<h2>11. Sorun giderme</h2>
+<table>
+<thead>
+<tr>
+<th>Belirti</th>
+<th>Neden</th>
+<th>Çözüm</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Pod <code>CreateContainerConfigError</code> / <code>unable to validate against any security context constraint</code></td>
+<td>Konteynerde sabit <code>runAsUser</code>, ek capability ya da ayrıcalık istendi (kendi değişikliğiniz)</td>
+<td>Chart UID vermez; <code>oc get pod &lt;pod&gt; -o jsonpath='{.metadata.annotations.openshift\.io/scc}'</code> <code>restricted-v2</code> olmalı. <code>extraEnv</code> dışında securityContext'e dokunmayın</td>
+</tr>
+<tr>
+<td><code>Permission denied</code> / <code>Read-only file system</code> loglarda</td>
+<td>OpenShift uyumlu olmayan eski bir imaj ya da yazılabilir olmayan bir yol</td>
+<td>Bu rehberle gelen kaynak ağacından derlenmiş imajları kullanın; yazılan yollar yalnız <code>/data</code>, <code>/logs/hot</code>, <code>/logs/cold</code>, <code>/tmp</code></td>
+</tr>
+<tr>
+<td>PVC <code>Pending</code></td>
+<td>Depolama sınıfı yok / yanlış ad, <code>WaitForFirstConsumer</code> (pod planlanınca bağlanır), kota</td>
+<td><code>oc describe pvc -n watchover</code>; <code>oc get storageclass</code>; değer dosyasında <code>storageClass</code></td>
+</tr>
+<tr>
+<td>Route <code>503 Application is not available</code></td>
+<td>Pod hazır değil (ilk açılışta veritabanı göçü), Service eşleşmiyor, NetworkPolicy router'ı engelliyor</td>
+<td><code>oc get pods</code>, <code>oc logs deploy/watchover -c dashboard</code>; router ad alanında <code>network.openshift.io/policy-group: ingress</code> etiketi olmalı (OpenShift 4 varsayılanı)</td>
+</tr>
+<tr>
+<td>Ajan <code>401 invalid or revoked token</code></td>
+<td>Kayıt anahtarı yanlış/döndürülmüş, ajan iptal edilmiş, alıcı <code>auth.json</code>'u henüz okumadı (ilk saniyeler)</td>
+<td>Bağlantılar'da anahtarı ve ajan durumunu kontrol edin; <code>oc logs deploy/watchover -c receiver</code>; kurulum komutunu yeni anahtarla tekrarlayın</td>
+</tr>
+<tr>
+<td>Ajan <code>503 receiver starting</code></td>
+<td>Dashboard ayağa kalkmadan alıcı istek aldı</td>
+<td>Ajan kendi kuyruğunda bekleyip yeniden dener; sürerse dashboard loglarına bakın</td>
+</tr>
+<tr>
+<td>Ajan TLS hatası</td>
+<td>Route kurum CA'sıyla imzalı, sunucu güvenmiyor</td>
+<td>Sunucuya CA'yı kurun ya da <code>--ca</code> ile verin</td>
+</tr>
+<tr>
+<td><code>ImagePullBackOff</code> (postgresql)</td>
+<td><code>registry.redhat.io</code> için pull secret yok</td>
+<td><code>postgresql.image: quay.io/sclorg/postgresql-16-c9s</code></td>
+</tr>
+<tr>
+<td><code>ImagePullBackOff</code> (watchover)</td>
+<td>Etiket yok ya da başka projedeki imaj</td>
+<td><code>oc get istag -n watchover</code>; başka projedeyse <code>oc policy add-role-to-group system:image-puller system:serviceaccounts:watchover -n &lt;imaj projesi&gt;</code></td>
+</tr>
+<tr>
+<td><code>OOMKilled</code> (dashboard)</td>
+<td>Bellek sınırı aşıldı (yoğun hacim, büyük veri seti yüklemesi)</td>
+<td><code>dashboard.resources.limits.memory</code> artırın (bölüm 6)</td>
+</tr>
+<tr>
+<td>Model inmiyor</td>
+<td>Ollama'nın dışa çıkışı yok (<code>allowEgress: false</code> ya da EgressFirewall)</td>
+<td>Geçici <code>allowEgress: true</code> + <code>oc rollout restart deploy/watchover-ollama</code></td>
+</tr>
+</tbody>
+</table>
+<p>Loglar: <code>oc logs -n watchover deploy/watchover -c dashboard</code> (arayüz/API), <code>-c receiver</code> (alıcı), <code>oc logs -n watchover watchover-postgresql-0</code>.</p>
+</body></html>

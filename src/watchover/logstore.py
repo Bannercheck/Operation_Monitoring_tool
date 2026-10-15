@@ -398,6 +398,9 @@ def has_v1(db) -> bool:
 
 # ---------------------------------------------------------------- reading rows
 def row_bytes(r: dict) -> bytes:
+    t = r.get("_text")                       # a row read from the cold archive (logtiers): its JSONL, already decoded
+    if t is not None:
+        return t
     pz = r.get("pz")
     if pz:
         return zlib.decompress(bytes(pz))

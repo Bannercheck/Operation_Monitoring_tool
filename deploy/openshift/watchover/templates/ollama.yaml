@@ -1,0 +1,134 @@
+{{- /* Optional local LLM: CPU-only Ollama (no GPU request), one small model pulled at start when missing. Only the Watchover pod
+     may reach it (networkpolicy.yaml); llm.ollama.allowEgress=false cuts its way out once the model is on the volume. */}}
+{{- if .Values.llm.enabled }}
+{{- $fn := include "watchover.fullname" . }}
+{{- $o := .Values.llm.ollama }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $fn }}-ollama
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "watchover.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ollama
+  {{- if .Values.persistence.keepOnUninstall }}
+  annotations:
+    helm.sh/resource-policy: keep
+  {{- end }}
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- if $o.storage.storageClass }}
+  storageClassName: {{ $o.storage.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ $o.storage.size }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fn }}-ollama
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "watchover.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ollama
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "watchover.selector" (dict "root" . "component" "ollama") | nindent 4 }}
+  ports:
+    - name: http
+      port: 11434
+      targetPort: http
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fn }}-ollama
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "watchover.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ollama
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "watchover.selector" (dict "root" . "component" "ollama") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "watchover.labels" . | nindent 8 }}
+        app.kubernetes.io/component: ollama
+    spec:
+      serviceAccountName: {{ $fn }}
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        {{- include "watchover.podSecurity" . | nindent 8 }}
+      containers:
+        - name: ollama
+          image: {{ $o.image }}
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              ollama serve &
+              pid=$!
+              for i in $(seq 1 60); do ollama list >/dev/null 2>&1 && break; sleep 1; done
+              if [ "$WO_PULL" = "1" ]; then
+                for m in $WO_MODELS; do
+                  ollama show "$m" >/dev/null 2>&1 || ollama pull "$m" || echo "model $m could not be pulled (no egress?); Watchover keeps working without it" >&2
+                done
+              fi
+              wait $pid
+          ports:
+            - name: http
+              containerPort: 11434
+              protocol: TCP
+          env:
+            - {name: HOME, value: /ollama}
+            - {name: OLLAMA_MODELS, value: /ollama/models}
+            - {name: OLLAMA_HOST, value: "0.0.0.0:11434"}
+            - {name: OLLAMA_KEEP_ALIVE, value: {{ $o.keepAlive | quote }}}
+            - {name: OLLAMA_NUM_PARALLEL, value: {{ $o.numParallel | quote }}}
+            - {name: OLLAMA_MAX_LOADED_MODELS, value: "2"}
+            - {name: OMP_NUM_THREADS, value: {{ $o.threads | quote }}}
+            - {name: WO_PULL, value: {{ ternary "1" "0" $o.pullOnStart | quote }}}
+            - {name: WO_MODELS, value: {{ trim (printf "%s %s" .Values.llm.model .Values.llm.embedModel) | quote }}}
+          volumeMounts:
+            - {name: models, mountPath: /ollama}
+            - {name: tmp, mountPath: /tmp}
+          resources:
+            {{- toYaml $o.resources | nindent 12 }}
+          securityContext:
+            {{- include "watchover.containerSecurity" . | nindent 12 }}
+          startupProbe:
+            httpGet: {path: /, port: http}
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet: {path: /api/tags, port: http}
+            periodSeconds: 15
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet: {path: /, port: http}
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+      volumes:
+        - name: models
+          persistentVolumeClaim: {claimName: {{ $fn }}-ollama}
+        - name: tmp
+          emptyDir: {sizeLimit: 2Gi}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

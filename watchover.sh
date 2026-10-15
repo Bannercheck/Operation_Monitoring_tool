@@ -14,11 +14,13 @@
 #   ./watchover.sh backup [--keep N] PostgreSQL dump + data volume -> ./backups/watchover-YYYYMMDD-HHMM.tgz (oldest beyond N=14 removed)
 #   ./watchover.sh restore FILE     bring a backup back (containers are stopped meanwhile)
 #   ./watchover.sh user ...         account management, e.g.  user list | user add ops@firma.com --admin | user password EMAIL | user unlock EMAIL
+#   ./watchover.sh demo-clean [--dry-run] [--yes]   delete only what the simulator made (counts first; a real host with a demo name stays)
 #   ./watchover.sh migrate          copy old SQLite files (knowledge.db / actions.db / playbook.db in ./data or the volume) into PostgreSQL
 #   ./watchover.sh save|load FILE   export the built images to a .tgz (build on a machine with internet), import them on an air-gapped server
 #   ./watchover.sh bundle [FILE]    everything an air-gapped server needs in one .tar: all images, downloaded Ollama models, training weights, source
 #   ./watchover.sh unbundle FILE    on the air-gapped server: load the images and model volumes, mark the install offline (no builds, no pulls)
 #   ./watchover.sh llm prepare      cache the training base weights (done by 'bundle' automatically) so the trainer never needs internet
+#   ./watchover.sh profile [NAME]   ready sizing: cpu8 (8 CPU / 64 GB, no GPU), cpu16 (16 CPU / 64+ GB, no GPU), auto (follow the machine); no NAME shows it
 #   ./watchover.sh shell            a shell inside the dashboard container
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -425,6 +427,49 @@ case "${1:-}" in
     say "restoring settings, secrets and snapshots"; docker run --rm -v "watchover_watchover-data":/data -v "$tmp":/in alpine sh -c 'rm -rf /data/* && tar xzf /in/data.tgz -C /data'
     rm -rf "$tmp"; up; say "restored from $2"; $COMPOSE ps ;;
   user)    need_docker; shift; $COMPOSE exec dashboard python -m watchover.useradmin "$@" ;;
+  profile)   # fixed caps for a known machine (WATCHOVER_SIZING=manual keeps them); the LLM gets a share, never every CPU, so a question
+             # never slows the dashboard. An LLM connection you configured (LLM page / .env) is never changed.
+    keys="WATCHOVER_SIZING WATCHOVER_CPUS WATCHOVER_MEMORY WATCHOVER_RECEIVER_CPUS WATCHOVER_RECEIVER_MEMORY WATCHOVER_PARSE_WORKERS WATCHOVER_SPOOL_MAX_MB WATCHOVER_PG_CPUS WATCHOVER_PG_MEMORY WATCHOVER_PG_SHARED_BUFFERS WATCHOVER_PG_CACHE WATCHOVER_LLM_CPUS WATCHOVER_LLM_THREADS WATCHOVER_LLM_MEMORY WATCHOVER_LLM_PARALLEL WATCHOVER_LLM_KEEPALIVE WATCHOVER_LLM_MODELS WATCHOVER_TRAIN_CPUS WATCHOVER_TRAIN_THREADS WATCHOVER_TRAIN_MEMORY"
+    case "${2:-}" in
+      cpu8|cpu16)
+        write_env; pname="$2"
+        if [ "$pname" = cpu8 ]; then
+          set -- 6 16g 2 2g 3 4096 2 8g 2GB 32GB 3 3 10g 4 4 12g
+        else
+          set -- 10 24g 4 2g 6 6144 4 12g 4GB 48GB 6 6 12g 8 8 16g
+        fi
+        env_set WATCHOVER_SIZING manual
+        env_set WATCHOVER_CPUS "$1"; env_set WATCHOVER_MEMORY "$2"; env_set WATCHOVER_RECEIVER_CPUS "$3"; env_set WATCHOVER_RECEIVER_MEMORY "$4"
+        env_set WATCHOVER_PARSE_WORKERS "$5"; env_set WATCHOVER_SPOOL_MAX_MB "$6"; env_set WATCHOVER_PG_CPUS "$7"; env_set WATCHOVER_PG_MEMORY "$8"
+        env_set WATCHOVER_PG_SHARED_BUFFERS "$9"; env_set WATCHOVER_PG_CACHE "${10}"; env_set WATCHOVER_LLM_CPUS "${11}"; env_set WATCHOVER_LLM_THREADS "${12}"
+        env_set WATCHOVER_LLM_MEMORY "${13}"; env_set WATCHOVER_LLM_PARALLEL 1; env_set WATCHOVER_LLM_KEEPALIVE 24h
+        env_set WATCHOVER_TRAIN_CPUS "${14}"; env_set WATCHOVER_TRAIN_THREADS "${15}"; env_set WATCHOVER_TRAIN_MEMORY "${16}"
+        env_set WATCHOVER_LLM_MODELS "qwen2.5:3b-instruct qwen2.5:7b-instruct bge-m3"
+        if [ -z "$(env_get LLM_BASE_URL)" ] && [ -z "$(env_get LLM_MODEL)" ]; then env_set LLM_MODEL "qwen2.5:3b-instruct"; fi
+        say "profile $pname written to .env; apply it with: ./watchover.sh start (the LLM, if on, restarts with its share)"
+        say "training runs only inside the window you set on the LLM page (Kalite > Eğitim takvimi)" ;;
+      auto)
+        write_env; env_set WATCHOVER_SIZING auto; size_env; say "sizing follows the machine again; apply with ./watchover.sh start" ;;
+      "")
+        for k in $keys; do printf '  %-28s %s\n' "$k" "$(env_get "$k")"; done ;;
+      *) die "usage: ./watchover.sh profile [cpu8|cpu16|auto]" ;;
+    esac ;;
+  demo-clean)   # only simulator-made data goes (its lines, "demo (simulator)" inventory / RUM apps, the demo flow); a real host with a demo name stays
+    need_docker; shift; dry=0; yes=0
+    for a in "$@"; do case "$a" in --dry-run) dry=1 ;; --yes|-y) yes=1 ;; *) die "usage: ./watchover.sh demo-clean [--dry-run] [--yes]" ;; esac; done
+    if [ "$dry" = 1 ]; then $COMPOSE exec -T dashboard python -m watchover.demo clean --dry-run; exit 0; fi
+    if [ "$yes" != 1 ] && [ -t 0 ]; then
+      $COMPOSE exec -T dashboard python -m watchover.demo clean --dry-run
+      printf 'Delete the demo data counted above? [y/N] '; read -r ans
+      case "$ans" in y|Y|yes|e|E|evet) ;; *) say "nothing deleted"; exit 0 ;; esac
+    fi
+    say "restarting the dashboard: the simulator stops and the in-memory live window forgets the demo hosts"
+    $COMPOSE restart dashboard
+    for _ in $(seq 1 60); do
+      if $COMPOSE ps --format '{{.Service}} {{.Health}}' 2>/dev/null | grep -q '^dashboard healthy'; then break; fi; sleep 2
+    done
+    $COMPOSE exec -T dashboard python -m watchover.demo clean
+    say "demo data removed (audited as 'cli' in the sign-in log)" ;;
   migrate) need_docker; shift; [ -d data ] && docker cp data/. watchover:/data/ 2>/dev/null || true; $COMPOSE exec dashboard python -m watchover.migrate --source /data "$@" ;;
   save)    need_docker; out="${2:-watchover-images-$(version).tgz}"; docker save "watchover:$(version)" "watchover-receiver:$(version)" postgres:16-alpine | gzip > "$out"; say "images saved to $out (copy it with this folder to the air-gapped server, then: ./watchover.sh load $out && ./watchover.sh install)" ;;
   load)    need_docker; [ -f "${2:-}" ] || die "usage: ./watchover.sh load watchover-images-X.Y.tgz"; gunzip -c "$2" | docker load; say "images loaded; ./watchover.sh install skips the build when the image tag matches" ;;

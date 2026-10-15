@@ -1,0 +1,256 @@
+{{- /* The Watchover pod: dashboard (React interface + API, :8501) and the Go receiver (:8600) share /data (the receiver's spool,
+     auth.json written by the dashboard) and the loopback (the receiver proxies enrolment to the dashboard's :8601). One replica,
+     Recreate: the volumes are ReadWriteOnce and the spool has one consumer. */}}
+{{- $fn := include "watchover.fullname" . }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fn }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "watchover.labels" . | nindent 4 }}
+    app.kubernetes.io/component: app
+spec:
+  replicas: 1
+  revisionHistoryLimit: 5
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "watchover.selector" (dict "root" . "component" "app") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "watchover.labels" . | nindent 8 }}
+        app.kubernetes.io/component: app
+      annotations:
+        checksum/settings: {{ include "watchover.pinnedSettings" . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ $fn }}
+      automountServiceAccountToken: false
+      enableServiceLinks: false             # no WATCHOVER_PORT=tcp://… style variables next to the app's own WATCHOVER_* settings
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        {{- include "watchover.podSecurity" . | nindent 8 }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: dashboard
+          image: {{ include "watchover.image" (dict "root" . "name" .Values.image.dashboard) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8501
+              protocol: TCP
+          env:
+            - name: TZ
+              value: {{ .Values.timezone | quote }}
+            - name: HOME
+              value: /tmp
+            - name: WATCHOVER_DEMO
+              value: {{ ternary "1" "0" .Values.demo | quote }}
+            {{- if .Values.postgresql.enabled }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "watchover.dbSecret" . }}
+                  key: postgres-password
+            - name: DATABASE_URL
+              value: "postgresql://{{ .Values.postgresql.username }}:$(POSTGRES_PASSWORD)@{{ include "watchover.pgHost" . }}:5432/{{ .Values.postgresql.database }}"
+            {{- else }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "externalDatabase.existingSecret is required when postgresql.enabled=false" .Values.externalDatabase.existingSecret }}
+                  key: database-url
+            {{- end }}
+            - name: WATCHOVER_RECEIVER
+              value: go
+            - name: WATCHOVER_API_RECEIVER
+              value: "1"
+            - name: WATCHOVER_INTERNAL_PORT
+              value: "8601"
+            - name: WATCHOVER_GO_PARSE
+              value: {{ .Values.dashboard.goParse | quote }}
+            - name: WATCHOVER_SELFMON
+              value: {{ ternary "1" "0" .Values.dashboard.selfMonitor | quote }}
+            - name: WATCHOVER_LOG_HOT_DIR
+              value: /logs/hot
+            - name: WATCHOVER_LOG_COLD_DIR
+              value: /logs/cold
+            - name: WATCHOVER_SETTINGS
+              value: {{ include "watchover.pinnedSettings" . | quote }}
+            {{- if .Values.routes.ingest.host }}
+            - name: WATCHOVER_INGEST_URL
+              value: {{ printf "https://%s" .Values.routes.ingest.host | quote }}
+            {{- end }}
+            {{- if .Values.llm.enabled }}
+            - name: OLLAMA_URL
+              value: {{ include "watchover.ollamaUrl" . | quote }}
+            {{- if not .Values.llm.lock }}
+            - name: LLM_PROVIDER
+              value: ollama
+            - name: LLM_BASE_URL
+              value: {{ include "watchover.ollamaUrl" . | quote }}
+            - name: LLM_MODEL
+              value: {{ .Values.llm.model | quote }}
+            {{- end }}
+            {{- end }}
+            {{- with .Values.dashboard.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          volumeMounts:
+            - {name: data, mountPath: /data}
+            - {name: logs-hot, mountPath: /logs/hot}
+            - {name: logs-cold, mountPath: /logs/cold}
+            - {name: tmp, mountPath: /tmp}
+          resources:
+            {{- toYaml .Values.dashboard.resources | nindent 12 }}
+          securityContext:
+            {{- include "watchover.containerSecurity" . | nindent 12 }}
+          startupProbe:                     # first start: database migrations; later starts are seconds
+            httpGet: {path: /api/health, port: http}
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 120
+          readinessProbe:
+            httpGet: {path: /api/health, port: http}
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: {path: /api/health, port: http}
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+        - name: receiver
+          image: {{ include "watchover.image" (dict "root" . "name" .Values.image.receiver) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: ingest
+              containerPort: 8600
+              protocol: TCP
+          env:
+            - name: TZ
+              value: {{ .Values.timezone | quote }}
+            - name: HOME
+              value: /tmp
+            - name: WO_UPSTREAM
+              value: http://127.0.0.1:8601
+            - name: WO_SPOOL
+              value: /data/spool
+            - name: WO_MAX_BACKLOG_MB
+              value: {{ .Values.receiver.maxBacklogMB | quote }}
+            - name: WATCHOVER_GO_PARSE
+              value: {{ .Values.dashboard.goParse | quote }}
+            - name: GOMEMLIMIT
+              value: {{ .Values.receiver.goMemLimit | quote }}
+            {{- with .Values.receiver.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          volumeMounts:
+            - {name: data, mountPath: /data}
+            - {name: tmp-receiver, mountPath: /tmp}
+          resources:
+            {{- toYaml .Values.receiver.resources | nindent 12 }}
+          securityContext:
+            {{- include "watchover.containerSecurity" . | nindent 12 }}
+          readinessProbe:
+            httpGet: {path: /health, port: ingest}
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: {path: /health, port: ingest}
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+        {{- if .Values.trainer.enabled }}
+        - name: trainer                     # periodic CPU training of watchover-ops; no port (probes: the process itself)
+          image: {{ include "watchover.image" (dict "root" . "name" .Values.image.trainer) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: TZ
+              value: {{ .Values.timezone | quote }}
+            - name: HOME
+              value: /tmp
+            {{- if .Values.postgresql.enabled }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "watchover.dbSecret" . }}
+                  key: postgres-password
+            - name: DATABASE_URL
+              value: "postgresql://{{ .Values.postgresql.username }}:$(POSTGRES_PASSWORD)@{{ include "watchover.pgHost" . }}:5432/{{ .Values.postgresql.database }}"
+            {{- else }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.externalDatabase.existingSecret }}
+                  key: database-url
+            {{- end }}
+            - name: OLLAMA_URL
+              value: {{ include "watchover.ollamaUrl" . | quote }}
+            - name: WATCHOVER_TRAIN_THREADS
+              value: {{ .Values.trainer.threads | quote }}
+            - name: WATCHOVER_MODELS_DIR
+              value: /models
+            - name: WATCHOVER_SETTINGS
+              value: {{ include "watchover.pinnedSettings" . | quote }}
+          volumeMounts:
+            - {name: data, mountPath: /data}
+            - {name: trainer-hf, mountPath: /hf}
+            - {name: trainer-models, mountPath: /models}
+            - {name: tmp-trainer, mountPath: /tmp}
+          resources:
+            {{- toYaml .Values.trainer.resources | nindent 12 }}
+          securityContext:
+            {{- include "watchover.containerSecurity" . | nindent 12 }}
+          livenessProbe:
+            exec:
+              command: ["python", "-c", "import os, sys; sys.exit(0 if b'autotrain' in open('/proc/1/cmdline', 'rb').read() else 1)"]
+            periodSeconds: 60
+            timeoutSeconds: 10
+          readinessProbe:
+            exec:
+              command: ["python", "-c", "import watchover"]
+            periodSeconds: 60
+            timeoutSeconds: 10
+        {{- end }}
+      volumes:
+        - name: data
+          persistentVolumeClaim: {claimName: {{ $fn }}-data}
+        - name: logs-hot
+          persistentVolumeClaim: {claimName: {{ $fn }}-logs-hot}
+        - name: logs-cold
+          persistentVolumeClaim: {claimName: {{ $fn }}-logs-cold}
+        - name: tmp
+          emptyDir: {sizeLimit: 2Gi}
+        - name: tmp-receiver
+          emptyDir: {sizeLimit: 64Mi}
+        {{- if .Values.trainer.enabled }}
+        - name: trainer-hf
+          persistentVolumeClaim: {claimName: {{ $fn }}-trainer-hf}
+        - name: trainer-models
+          persistentVolumeClaim: {claimName: {{ $fn }}-trainer-models}
+        - name: tmp-trainer
+          emptyDir: {sizeLimit: 4Gi}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

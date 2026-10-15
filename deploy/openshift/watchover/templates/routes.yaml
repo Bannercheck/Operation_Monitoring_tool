@@ -1,0 +1,86 @@
+{{- /* Edge TLS (https at the router, http inside the cluster). UI: the whole host to :8501. Ingest: with routes.ingest.host one
+     Route per receiver path on that host (/metrics and /health stay inside the cluster); without it a single Route on an
+     address the cluster generates. */}}
+{{- $fn := include "watchover.fullname" . }}
+{{- $root := . }}
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ $fn }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "watchover.labels" . | nindent 4 }}
+    app.kubernetes.io/component: app
+  annotations:
+    haproxy.router.openshift.io/timeout: {{ .Values.routes.ui.timeout | quote }}
+    {{- with .Values.routes.ui.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  {{- with .Values.routes.ui.host }}
+  host: {{ . | quote }}
+  {{- end }}
+  to:
+    kind: Service
+    name: {{ $fn }}
+    weight: 100
+  port:
+    targetPort: http
+  {{- include "watchover.routeTls" . }}
+  wildcardPolicy: None
+{{- $paths := list (list "ingest" "/ingest") (list "enroll" "/enroll") (list "agent-py" "/agent.py") (list "agent-install" "/agent/install.sh") (list "mobile" "/mobile") (list "rum" "/rum") (list "rum-js" "/rum.js") }}
+{{- if .Values.routes.ingest.host }}
+{{- range $p := $paths }}
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ $fn }}-ingest-{{ index $p 0 }}
+  namespace: {{ $root.Release.Namespace }}
+  labels:
+    {{- include "watchover.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: app
+    watchover.io/route: ingest
+  annotations:
+    haproxy.router.openshift.io/timeout: {{ $root.Values.routes.ingest.timeout | quote }}
+    {{- with $root.Values.routes.ingest.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  host: {{ $root.Values.routes.ingest.host | quote }}
+  path: {{ index $p 1 }}
+  to:
+    kind: Service
+    name: {{ $fn }}
+    weight: 100
+  port:
+    targetPort: ingest
+  {{- include "watchover.routeTls" $root }}
+  wildcardPolicy: None
+{{- end }}
+{{- else }}
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ $fn }}-ingest
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "watchover.labels" . | nindent 4 }}
+    app.kubernetes.io/component: app
+    watchover.io/route: ingest
+  annotations:
+    haproxy.router.openshift.io/timeout: {{ .Values.routes.ingest.timeout | quote }}
+    {{- with .Values.routes.ingest.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  to:
+    kind: Service
+    name: {{ $fn }}
+    weight: 100
+  port:
+    targetPort: ingest
+  {{- include "watchover.routeTls" . }}
+  wildcardPolicy: None
+{{- end }}

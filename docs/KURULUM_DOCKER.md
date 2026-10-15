@@ -148,6 +148,20 @@ Müdahale › Eşikler: "Yeni eşik" ile sunucu, ad deseni (`prd-sap-*`), pool y
 
 Sinyaller › Loglar. Üstteki sorgu çubuğuna `level:err OR level:crit`, `host:prd-sap-* -service:nginx`, `pool:prd-crm level>=warn "timeout"` gibi sorgular yazılır; soldaki filtrelere tıklamak sorguyu kendisi yazar. **Canlı** düğmesi akışı 2 saniyede bir getirir; aşağı kaydırınca durur ve "N yeni satır" gösterir. Satıra tıklayınca Ayrıntı / Bağlam / Ham / JSON açılır; her değerde süz, dışla, kopyala vardır. **Kaydet** aramayı kişiye (istenirse ekibe) kaydeder, **Uyarı** "M dakikada eşleşen satır ≥ N" kuralını mevcut bildirim kanallarına bağlar (`act.logalert` yetkisi). Son 48 saat satır satır aranır (`live_retention_h`); yoğun yükte uzun aralıklardaki serbest metin aramaları "≈ tahmini" sayı gösterir ve "Daha geriye tara" ile devam eder. Kişisel veri (e-posta, TCKN, kart, IBAN, telefon) içeren aramalar reddedilir; satırlar maskeli görünür.
 
+## 2j. Log depolama: sıcak ve soğuk (v1.48)
+
+Ham log satırları artık ana veritabanında değil, veri biriminde iki dizinde tutulur: **sıcak** (`/data/logs/hot`, gün başına bir dosya, son `live_retention_h` saat; ölçülen ~65-90 bayt/satır) ve **soğuk** (`/data/logs/cold`, şablon + sıkıştırma ile ~7-8 bayt/satır, `cold_retention_days` gün, varsayılan 7). Süresi dolan gün tek dosya silinerek gider, PostgreSQL şişmez. Log gezgini eski günleri arşivden tarar ("arşivden" rozeti, ilerleme çubuğu). Disk dolmasın diye Sistem › Ayarlar'da üst sınır verin: `hot_max_gb` (dolunca biten en eski gün erkenden arşive geçer) ve `cold_max_gb` (dolunca en eski arşiv günü silinir); Sistem › Depolama kartı doluluğu gösterir ve %85'te uyarır. Dakikada 100 bin satırda sıcak ~13 GB/gün, soğuk ~1,1 GB/gün. İlk açılışta eski `live_batches` tablosu arka planda dosyalara taşınır. Eski davranış için `.env`'de `WATCHOVER_LOG_STORE=db`.
+
+## 2k. Hazır boyut profili ve LLM'i GPU'suz çalıştırmak
+
+`./watchover.sh profile cpu8` (8 CPU / 64 GB, GPU yok) ya da `profile cpu16` sabit kaynak sınırlarını `.env`'e yazar, `./watchover.sh start` uygular; `./watchover.sh profile` geçerli değerleri gösterir, `profile auto` makineye göre otomatik boyutlandırmaya döner. cpu8: panel 6 CPU / 16 GB, alıcı 2 CPU / 2 GB (3 ayrıştırma işçisi, kuyruk 4 GB), PostgreSQL 2 CPU / 8 GB (`shared_buffers` 2 GB), LLM 3 CPU / 10 GB (aynı anda tek soru, model 24 saat bellekte), eğitim 4 CPU / 12 GB. Otomatik boyutlandırma LLM'e bütün CPU'ları verdiği için LLM açılacak sunucuda profil önerilir; tanımlı bir LLM bağlantısı (LLM sayfası / `.env`) değiştirilmez.
+
+LLM'i açmak: `./watchover.sh llm on` (Ollama başlar, modeller iner: günlük kullanım için qwen2.5 3B, gece işleri için 7B). GPU'suz bir yanıt 3B ile ~20-40 sn, 7B ile ~45-90 sn sürer (LLM › Kalite'deki ölçüm kesin süreyi gösterir). Çekirdek (anomali, eşik, log analizi, panolar) LLM'siz çalışır.
+
+**Eğitim takvimi:** LLM › Kalite › Eğitim takvimi: günler, başlangıç / bitiş saati ve saat dilimi. Takvim açıkken otomatik eğitim yalnız bu pencerede başlar (bitiş başlangıçtan önceyse pencere gece yarısını geçer, ör. 22:00-05:00); "Şimdi eğit" takvimi beklemez, başlamış eğitim pencere bitince kesilmez.
+
+**Demo verisi:** simülatörün ürettiği veriyi silmek için `./watchover.sh demo-clean --dry-run` (ne silineceğini gösterir), sonra `./watchover.sh demo-clean`; ya da Sistem › Demo verisi. Gerçek kaynakların kullandığı sunucu adlarına dokunmaz. Üretimde simülatörü tamamen kapatmak için `.env`'de `WATCHOVER_DEMO=0`.
+
 ## 3. Günlük işletim: watchover.sh
 
 | Komut | Ne yapar |
@@ -343,6 +357,8 @@ Gecelik yedek: `crontab -e` → `0 2 * * * cd /home/kullanici/watchover && ./wat
 | `password authentication failed` | `.env` parolası birim oluşturulduktan sonra değişti: bölüm 6'daki `ALTER USER` |
 | Giriş yapılamıyor | `./watchover.sh user list`, `user password EMAIL`, `user unlock EMAIL` |
 | Entegrasyonlarda teknoloji "olası" ya da yalnız protokol görünüyor | Ajan 0.6.0'dan eski: ajanı yeniden kurun (bölüm 2d); ajan root çalışmıyorsa süreç adları ve parmak izleri okunamaz. Kesin bilgi için "Elle düzelt" |
+| Disk doluyor | Sistem › Depolama: hangi katman doluyor; Sistem › Ayarlar'da `hot_max_gb` / `cold_max_gb` ya da `cold_retention_days` düşürün |
+| LLM sorusu sorulunca ekranlar yavaşlıyor | `./watchover.sh profile cpu8` (LLM'e CPU payı) ve `./watchover.sh start` |
 | Ajan gönderemiyor | Sunucudan `curl -s http://<watchover>:8600/health`; 8600 açık mı; token / kayıt anahtarı Bağlantı ayarları › Ajanlar'da geçerli mi |
 
 ## Ölçek: 100+ sunucu, 50+ uygulama (Faz 1)

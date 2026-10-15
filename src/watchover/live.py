@@ -86,7 +86,13 @@ class LiveStore:
     # ---------------------------------------------------------------- durable window (100+ hosts: the ring alone is seconds of data)
     def attach_db(self, db) -> None:
         """Keep every ingested batch in `live_batches` so a window longer than the ring (anomaly scan, live analysis, learner)
-        is complete whatever the event rate. One row per agent POST, JSONL payload, pruned after `retention_h` hours."""
+        is complete whatever the event rate. One row per agent POST, JSONL payload, pruned after `retention_h` hours. A
+        logtiers.HotStore (SQLite day files off the main database) has its schema already: only the line ids are picked up."""
+        if getattr(db, "hot", False):
+            self._v2 = True
+            self.seq = max(self.seq, db.last_seq())
+            self.db = db
+            return
         db._exec(f"""CREATE TABLE IF NOT EXISTS live_batches (id {db.pk}, ts_min TEXT, ts_max TEXT, received_at TEXT, agent TEXT DEFAULT '',
             env TEXT DEFAULT '', n INTEGER DEFAULT 0, payload TEXT DEFAULT '')""")
         from . import logstore
@@ -159,6 +165,8 @@ class LiveStore:
         """Drop batches older than `retention_h`; returns the number removed (0 when no database)."""
         if not self.db:
             return 0
+        if getattr(self.db, "hot", False):                      # hot day files: whole days go (or wait for the archiver), no DELETE
+            return self.db.expire((now or datetime.now(UTC)) - timedelta(hours=float(self.retention_h)))
         cut = self._utc_iso((now or datetime.now(UTC)) - timedelta(hours=float(self.retention_h)))
         before = self.db._exec("SELECT COUNT(*) AS n FROM live_batches WHERE ts_max < ?", (cut,))
         self.db._exec("DELETE FROM live_batches WHERE ts_max < ?", (cut,))
@@ -277,6 +285,11 @@ class LiveStore:
     def db_stats(self) -> dict:
         if not self.db:
             return {"enabled": False}
+        if getattr(self.db, "hot", False):                  # hot day files: per-file counters, no scan of the rows
+            try:
+                return self.db.stats()
+            except Exception:  # noqa: BLE001
+                return {"enabled": True, "error": True}
         try:
             pz = " + COALESCE(SUM(LENGTH(pz)), 0)" if self._v2 else ""
             r = self.db._exec(f"SELECT COUNT(*) AS batches, COALESCE(SUM(n), 0) AS events, MIN(ts_min) AS oldest, MAX(ts_max) AS newest, COALESCE(SUM(LENGTH(payload)), 0){pz} AS bytes FROM live_batches")[0]

@@ -53,6 +53,65 @@ def trainer_alive(max_age_s: int = 180) -> bool:
         return False
 
 
+_DAY_TR = ("Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz")
+
+
+def _hm(v: str, dflt: str) -> tuple:
+    try:
+        h, m = (int(x) for x in str(v or dflt).split(":")[:2])
+        if 0 <= h <= 24 and 0 <= m < 60:
+            return (h, m)
+    except ValueError:
+        pass
+    return _hm(dflt, "00:00") if v != dflt else (0, 0)
+
+
+def _days(v) -> set:
+    out = set()
+    for p in str(v or "").replace(" ", "").split(","):
+        if p.isdigit() and 1 <= int(p) <= 7:
+            out.add(int(p))
+    return out or set(range(1, 8))
+
+
+def window_state(s: dict, now: datetime | None = None) -> dict:
+    """The training window set by the operator: weekdays (1 = Monday ... 7 = Sunday) and a start / end time in a time zone. A window
+    whose end is before its start runs past midnight (22:00-05:00 belongs to the day it starts). Off: training may start any time."""
+    from zoneinfo import ZoneInfo
+    now = now or datetime.now(UTC)
+    try:
+        tz = ZoneInfo(str(s.get("train_tz") or "Europe/Istanbul"))
+    except Exception:  # noqa: BLE001 - an unknown zone name falls back to UTC
+        tz = UTC
+    days, (sh, sm), (eh, em) = _days(s.get("train_days")), _hm(s.get("train_start"), "01:00"), _hm(s.get("train_end"), "06:00")
+    loc = now.astimezone(tz)
+    start_min, end_min = sh * 60 + sm, eh * 60 + em
+    label = f"{','.join(_DAY_TR[d - 1] for d in sorted(days))} {sh:02d}:{sm:02d}-{eh:02d}:{em:02d} {getattr(tz, 'key', 'UTC')}"
+
+    def opens(day_start: datetime) -> tuple:            # the window that starts on this local calendar day
+        a = day_start + timedelta(minutes=start_min)
+        b = day_start + timedelta(minutes=end_min if end_min > start_min else end_min + 1440)
+        return a, b
+    today = loc.replace(hour=0, minute=0, second=0, microsecond=0)
+    is_open = False
+    for back in (0, 1):                                  # today's window, or yesterday's one running past midnight
+        d0 = today - timedelta(days=back)
+        if d0.isoweekday() in days:
+            a, b = opens(d0)
+            if a <= loc < b:
+                is_open = True
+    nxt = None
+    for ahead in range(0, 8):
+        d0 = today + timedelta(days=ahead)
+        if d0.isoweekday() in days:
+            a, _ = opens(d0)
+            if a > loc:
+                nxt = a
+                break
+    return {"on": bool(s.get("train_schedule_on")), "open": is_open, "label": label,
+            "next": nxt.strftime("%Y-%m-%d %H:%M") if nxt else None, "tz": getattr(tz, "key", "UTC")}
+
+
 class AutoTrainer:
     def __init__(self, kb, ollama_url: str | None = None, models_dir: str | None = None, lang: str = "tr", log=print):
         self.kb, self.lang, self.log = kb, lang, log
@@ -65,7 +124,8 @@ class AutoTrainer:
     # ---------------------------------------------------------------- state
     def settings(self) -> dict:
         c = wo_settings.load()
-        return {k: c.get(k) for k in ("train_auto", "train_every_h", "train_min_examples", "train_min_new", "train_base", "train_gate_min", "train_use_ops")}
+        return {k: c.get(k) for k in ("train_auto", "train_every_h", "train_min_examples", "train_min_new", "train_base", "train_gate_min", "train_use_ops",
+                                      "train_schedule_on", "train_days", "train_start", "train_end", "train_tz")}
 
     def runs(self, n: int = 20) -> list[dict]:
         out = []
@@ -107,8 +167,11 @@ class AutoTrainer:
             reasons.append(f"new {new} < {s['train_min_new']}")
         if not elapsed_ok:
             reasons.append(f"waiting {s['train_every_h']} h since the last run")
+        win = window_state(s, now)
+        if win["on"] and not win["open"]:
+            reasons.append(f"outside the training window ({win['label']}); next {win['next']}")
         forced = flag_path().exists()
-        return {"examples": total, "by_source": counts, "new_since_pass": new, "eligible": (not reasons) or forced, "forced": forced, "reasons": reasons,
+        return {"examples": total, "by_source": counts, "new_since_pass": new, "eligible": (not reasons) or forced, "forced": forced, "reasons": reasons, "window": win,
                 "last_run": last_any, "last_pass": last_pass, "runs": self.runs(10)}
 
     def should_run(self, now: datetime | None = None) -> bool:

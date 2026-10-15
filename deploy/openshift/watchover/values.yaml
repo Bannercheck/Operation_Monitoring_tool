@@ -1,0 +1,171 @@
+# Watchover — OpenShift Helm değerleri (kurulum rehberi: docs/KURULUM_OPENSHIFT.md)
+#
+#   helm install watchover deploy/openshift/watchover -n watchover -f benim-degerlerim.yaml
+#
+# Bu dosyada hiçbir parola yoktur ve olmamalıdır: PostgreSQL parolası ilk kurulumda üretilip Secret'ta saklanır, yerleşik
+# yönetici hesabının ilk parolası ilk girişte değiştirilir (rehberde anlatıldığı gibi). Değerleri kendi dosyanızda geçersiz
+# kılın; bu dosyayı düzenlemeyin.
+
+# ---------------------------------------------------------------- imajlar
+image:
+  # Dahili kayıt defteri (OpenShift image registry). Dış bir kayıt defteri için örn. "quay.example.com".
+  registry: image-registry.openshift-image-registry.svc:5000
+  # Kayıt defterindeki proje / organizasyon (dahili kayıt defterinde: ImageStream'lerin bulunduğu OpenShift projesi).
+  project: watchover
+  dashboard: watchover                 # arayüz + API (Dockerfile)
+  receiver: watchover-receiver         # Go alıcı, ajanların kapısı (Dockerfile.receiver)
+  trainer: watchover-trainer           # yerel model eğitimi (Dockerfile.trainer), yalnız trainer.enabled ile
+  tag: ""                              # boş = Chart appVersion (ör. 1.47.1); yükseltmede yeni etiket + helm upgrade
+  pullPolicy: IfNotPresent
+imagePullSecrets: []                   # dış kayıt defteri için: [{name: benim-pull-secret}]
+
+# ---------------------------------------------------------------- üretim modu
+# false (önerilen): simülatör başlatılamaz, demo envanter / RUM uygulaması / akış / teknoloji demo sunucusu hiç yazılmaz
+# (WATCHOVER_DEMO=0). true yalnız gösterim ortamları içindir.
+demo: false
+timezone: Europe/Istanbul
+
+# ---------------------------------------------------------------- arayüz + API konteyneri (port 8501)
+dashboard:
+  resources:
+    requests: {cpu: "2", memory: 8Gi}          # dakikada ~100 bin satır için; tam performans: values-performance.yaml (istek = sınır)
+    limits: {cpu: "6", memory: 16Gi}
+  selfMonitor: true                    # pod'un kendi ölçümleri ve logları yerleşik ajanla izlenir
+  goParse: "1"                         # 1: alıcı izinli formatları Go'da ayrıştırır; 0: hepsini Python ayrıştırır
+  extraEnv: []                         # [{name: WATCHOVER_CORS, value: "https://..."}]
+
+# ---------------------------------------------------------------- Go alıcı konteyneri (port 8600), aynı pod'da
+receiver:
+  resources:
+    requests: {cpu: 500m, memory: 512Mi}
+    limits: {cpu: "2", memory: 2Gi}
+  goMemLimit: 1800MiB                  # Go çöp toplayıcısının hedefi: bellek sınırının biraz altında
+  maxBacklogMB: 1024                   # arayüz yetişemezse /data/spool'da birikebilecek en çok veri (data PVC'ye sığmalı)
+  extraEnv: []
+
+# ---------------------------------------------------------------- kalıcı diskler (PVC)
+persistence:
+  data:                                # ayarlar, anahtarlar, alıcı kuyruğu (/data/spool), canlı spool, sürüm görüntüleri
+    size: 30Gi                         # alıcı kuyruğu + Sistem › Anlık görüntüler (veritabanının ~2 katı)
+    storageClass: ""                   # boş = kümenin varsayılan sınıfı; hızlı sınıf önerilir (kuyruk burada)
+    accessMode: ReadWriteOnce
+  logsHot:                             # ham loglar, son live_retention_h saat (varsayılan 48): HIZLI disk
+    size: 50Gi                         # ölçülen ~65-90 bayt/satır; gün dosyası olduğu için 48-72 saat: 100 bin satır/dk ≈ 13 GB/gün
+    storageClass: ""                   # örn. "ocs-storagecluster-ceph-rbd" / "gp3-csi" / "thin-csi" (hızlı)
+    accessMode: ReadWriteOnce
+  logsCold:                            # daha eski loglar, sıkıştırılmış arşiv: AYRI, ucuz disk
+    size: 50Gi                         # ölçülen ~7-8 bayt/satır: 100 bin satır/dk ≈ 1,1 GB/gün, 30 gün ≈ 33 GB
+    storageClass: ""                   # örn. yavaş / ucuz sınıf; hot ile aynı sınıf da olabilir ama ayrı PVC kalır
+    accessMode: ReadWriteOnce
+  keepOnUninstall: true                # helm uninstall PVC'leri silmez (veri kaybını önler)
+
+# ---------------------------------------------------------------- saklama (arayüzden değiştirilemez; Helm değeri geçerlidir)
+retention:
+  liveRetentionH: 48                   # ham loglar sıcak diskte kaç saat kalır
+  coldRetentionDays: 30                # soğuk arşivde kaç gün kalır (coldMaxGb dolarsa en eskiler daha önce gider)
+  hotMaxGb: 40                         # sıcak dizin üst sınırı (GB, 0 = sınırsız); logsHot.size'ın ~%80'i
+  coldMaxGb: 40                        # soğuk dizin üst sınırı (GB, 0 = sınırsız); logsCold.size'ın ~%80'i
+  historyRetentionDays: 400            # dakikalık özetler (PostgreSQL)
+
+# Ek sabitlenmiş ayarlar (WATCHOVER_SETTINGS): {anahtar: değer}. Örn. {teams_strict: true}. Parola koymayın.
+settings: {}
+
+# ---------------------------------------------------------------- PostgreSQL (kendi pod'u, StatefulSet)
+postgresql:
+  enabled: true                        # false: externalDatabase kullanılır
+  # rhel: Red Hat imajı (OpenShift'in genel pull secret'ı ile çekilir; keyfi UID ile çalışır). Herkese açık eşdeğeri:
+  #       quay.io/sclorg/postgresql-16-c9s. official: docker.io/library/postgres:16 (Debian; keyfi UID desteği nss_wrapper ile).
+  flavor: rhel
+  image: registry.redhat.io/rhel9/postgresql-16:latest
+  database: watchover
+  username: watchover
+  # Parola: boş bırakın -> ilk kurulumda 32 karakter üretilir ve Secret'ta kalır (helm upgrade aynı parolayı korur).
+  # Kendi Secret'ınız için existingSecret (anahtar: postgres-password). Parolayı bu dosyaya yazmayın.
+  existingSecret: ""
+  storage:
+    size: 30Gi
+    storageClass: ""
+  resources:
+    requests: {cpu: "1", memory: 4Gi}
+    limits: {cpu: "2", memory: 8Gi}
+  maxConnections: 100
+  sharedBuffers: 2GB                   # bellek sınırının ~%25'i
+  effectiveCacheSize: 3GB              # bellek sınırının ~%75'i
+
+externalDatabase:                      # postgresql.enabled=false iken: Secret içinde tam bağlantı adresi
+  existingSecret: ""                   # anahtar: database-url (postgresql://kullanici:parola@sunucu:5432/veritabani)
+
+# ---------------------------------------------------------------- yerel LLM (isteğe bağlı, yalnız CPU, GPU yok)
+llm:
+  enabled: false                       # true: Ollama pod'u + tek küçük model
+  # lock: true -> arayüzdeki LLM ayarları sabitlenir; enabled=false iken LLM tamamen kapalıdır (dış bir sağlayıcı da
+  # tanımlanamaz), enabled=true iken yalnız bu küme içi Ollama kullanılır.
+  lock: true
+  model: qwen2.5:3b-instruct           # ~1.9 GB, CPU için küçük ve hızlı, Türkçe yeterli
+  embedModel: ""                       # örn. "bge-m3" (ek ~1.2 GB); boş = gömme kapalı
+  ollama:
+    image: docker.io/ollama/ollama:0.35.1
+    pullOnStart: true                  # açılışta model yoksa indirilir (internet gerekir; sonra allowEgress=false yapılabilir)
+    allowEgress: true                  # false: Ollama pod'unun dışarıya hiç çıkışı yok (yalnız iç model)
+    threads: 8                         # çıkarım iş parçacığı = CPU sınırı
+    keepAlive: 30m
+    numParallel: 1
+    resources:
+      requests: {cpu: "2", memory: 4Gi}
+      limits: {cpu: "8", memory: 8Gi}
+    storage:
+      size: 20Gi
+      storageClass: ""
+
+# Model eğitimi (watchover-ops): yalnız CPU, saatlerce sürebilir. Varsayılan kapalı; açılırsa aynı pod'a üçüncü konteyner eklenir.
+trainer:
+  enabled: false
+  threads: 3
+  resources:
+    requests: {cpu: 250m, memory: 256Mi}
+    limits: {cpu: "4", memory: 6Gi}
+  hfStorage: {size: 10Gi, storageClass: ""}       # temel model ağırlıkları önbelleği
+  modelsStorage: {size: 5Gi, storageClass: ""}    # eğitilen adaptörler
+
+# ---------------------------------------------------------------- dış erişim (Route, edge TLS, https)
+routes:
+  ui:
+    # Arayüz adresi, örn. watchover.apps.kume.firma.com. Doluysa ajan yolları (/ingest, /enroll, /agent.py,
+    # /agent/install.sh, /mobile, /rum, /rum.js) da AYNI adreste alıcıya gider: tek adres önerilir.
+    host: ""
+    timeout: 120s
+    annotations: {}
+  ingest:
+    # İsteğe bağlı ayrı ajan adresi (örn. watchover-ingest.apps...): bu adresin tamamı alıcıya gider.
+    # ui.host da boşsa otomatik bir adresle tek bir ingest Route'u oluşur.
+    host: ""
+    timeout: 60s
+    annotations: {}
+  # Kurumsal sertifika (isteğe bağlı; boş = kümenin varsayılan *.apps sertifikası). Anahtar değerlerini ayrı bir değer
+  # dosyasında tutun, depoya koymayın.
+  tls:
+    certificate: ""
+    key: ""
+    caCertificate: ""
+
+# ---------------------------------------------------------------- ağ politikası
+networkPolicy:
+  enabled: true                        # PostgreSQL ve Ollama'ya yalnız Watchover pod'u erişir; 8501/8600 yalnız router'dan
+  # Küme içinden doğrudan alıcıya (8600) gönderecek ad alanları (örn. OpenTelemetry collector): [{name: otel}]
+  ingestNamespaces: []
+
+# ---------------------------------------------------------------- yedek (isteğe bağlı pg_dump CronJob)
+backup:
+  enabled: false
+  schedule: "15 2 * * *"               # her gece 02:15
+  keepDays: 14
+  storage: {size: 20Gi, storageClass: ""}
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {cpu: "1", memory: 1Gi}
+
+# ---------------------------------------------------------------- pod ayarları
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}

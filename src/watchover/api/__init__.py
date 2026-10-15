@@ -56,6 +56,13 @@ def create_app(services=None) -> FastAPI:
     app.include_router(logs_router.router, prefix="/api")
     from .routers import dash as dash_router                  # the operations home's built-in dashboards (watchover.dash)
     app.include_router(dash_router.router, prefix="/api")
+    from .routers import demo as demo_router                  # demo mode (WATCHOVER_DEMO) and the clean-up of simulator-made data
+    app.include_router(demo_router.router, prefix="/api")
+    from ..demo import DemoDisabled, enabled as demo_enabled
+
+    @app.exception_handler(DemoDisabled)
+    async def _demo_off(_: Request, e: DemoDisabled):
+        return JSONResponse({"detail": str(e)[:300]}, status_code=403)
 
     @app.exception_handler(KeyError)
     async def _not_found(_: Request, e: KeyError):
@@ -68,7 +75,8 @@ def create_app(services=None) -> FastAPI:
     @app.get("/api/health", tags=["system"])
     def health():
         svc = app.state.services
-        return {"ok": True, "version": __version__, "database": svc.kb.backend, "live_events": svc.live.received}
+        return {"ok": True, "version": __version__, "database": svc.kb.backend, "live_events": svc.live.received, "demo": demo_enabled(),
+                "ingest": os.environ.get("WATCHOVER_INGEST_URL", "").strip().rstrip("/")}   # agents' address when it is not <host>:8600 (OpenShift Route)
 
     dist = Path(os.environ.get("WATCHOVER_WEB_DIST") or WEB_DIST)
     if (dist / "index.html").exists():                      # the React build: assets from /assets, every other path -> index.html (client routing)

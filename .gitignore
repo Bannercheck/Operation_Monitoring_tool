@@ -19,6 +19,7 @@ build/
 .pytest_cache/
 *.db
 data/live/
+data/logs/
 data/profiles.json
 data/grok.json
 

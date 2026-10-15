@@ -82,6 +82,8 @@ export default function Ops() {
   const nCrit = items.filter((i) => i.level === 3).length; const crit = nCrit > 0;
   const health = !s ? "" : !s.total ? t("ops_h_nodata") : !items.length ? t("ops_h_ok") : crit ? t("ops_h_crit", { n: items.length, c: nCrit }) : t("ops_h_warn", { n: items.length });
   const simOn = !!sys.data?.live?.simulator;
+  const apiHealth = useQuery({ queryKey: ["api-health"], queryFn: () => get("/health"), staleTime: 300000 });
+  const demoMode = (apiHealth.data as any)?.demo === true;          // production installs (WATCHOVER_DEMO=0) have no simulator at all
   const services: string[] = (s?.services ?? []).map((x: any) => x[0]);
   const slo = 0.999;
   // live: the rate of the last complete bar; a fixed range: its average
@@ -115,7 +117,7 @@ export default function Ops() {
         {menu && <div className="menu card" onMouseLeave={() => setMenu(false)}>
           {can("act.report") && <button onClick={() => { setMenu(false); report(); }}>📄 {t("ops_report")}</button>}
           {can("act.connect") && <Link to="/connections">🔗 {t("ops_connect")}</Link>}
-          {can("act.sim") && user?.all !== false && <button onClick={async () => { setMenu(false); await post("/live/simulate", { on: !simOn }); qc.invalidateQueries(); }}>🧪 {t("ops_sim")} {simOn ? "ON → OFF" : "OFF → ON"}</button>}
+          {demoMode && can("act.sim") && user?.all !== false && <button onClick={async () => { setMenu(false); await post("/live/simulate", { on: !simOn }); qc.invalidateQueries(); }}>🧪 {t("ops_sim")} {simOn ? "ON → OFF" : "OFF → ON"}</button>}
           {can("page.data") && <button onClick={async () => { setMenu(false); await post("/live/analyze"); nav("/datasets"); }}>🗂 {t("ops_analyze")}</button>}
           <button onClick={() => { setMenu(false); setDetail("files"); }}>📁 {t("od_files")}</button>
         </div>}

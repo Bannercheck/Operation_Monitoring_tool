@@ -4,12 +4,13 @@ import { api, del, get, post, put } from "../api";
 import { useAuth } from "../auth";
 import { useT } from "../i18n";
 import { Btn, Card, Collapsible, Confirm, Err, Field, Kpi, Table, Tabs, fmtTs } from "../components/ui";
+import { StorageCard } from "../components/StorageCard";
 import { useSearchParams } from "react-router-dom";
 import Notify from "./Notify";
 import Readme from "./Readme";
 
 export default function System() {
-  const { t } = useT(); const qc = useQueryClient(); const { can } = useAuth();
+  const { t } = useT(); const qc = useQueryClient(); const { can, user } = useAuth();
   const st = useQuery({ queryKey: ["sys-status"], queryFn: () => get("/system/status"), refetchInterval: 15000 });
   const snaps = useQuery({ queryKey: ["snapshots"], queryFn: () => get("/system/snapshots") });
   const rel = useQuery({ queryKey: ["releases"], queryFn: () => get("/system/releases") });
@@ -41,6 +42,7 @@ export default function System() {
         <div className="mono dim">{db.url}</div></div>
         <div className="row" style={{ marginTop: 10 }}><Btn sm onClick={() => vacuum.mutate()}>{t("sys_vacuum")}</Btn></div><Err e={vacuum.error} /></Collapsible>
       <Capacity c={s?.capacity} />
+      <StorageCard />
       <DbTables tables={db.tables ?? {}} />
     </div>
     <ParserCoverage />
@@ -52,6 +54,7 @@ export default function System() {
       {can("sys.maint") && <Settings />}
     </div>
     {can("sys.maint") && <Maintenance docker={!!upd.data?.docker} />}
+    {user?.role === "admin" && user?.all !== false && <DemoClean />}
     {can("sys.auth") && <SignInProviders />}
     {!!rel.data?.length && <Collapsible id="sys-releases" title={t("sys_releases")} defaultOpen={false}><div className="stack small">{rel.data.slice(0, 6).map((r: any) => <div key={r.version}><b>v{r.version}</b> <span className="muted">{r.date} · {r.kind}</span><ul style={{ margin: "2px 0 0", paddingLeft: 18 }}>{(r.lines ?? []).map((n: string, i: number) => <li key={i}>{n}</li>)}</ul></div>)}</div></Collapsible>}
   </div>;
@@ -109,6 +112,29 @@ function Settings() {
       <Field label={t("set_live_key")}><input className="input" type="password" value={f.live_key ?? ""} onChange={set("live_key")} autoComplete="off" /></Field><Field label={t("set_public_host")}><input className="input" value={f.public_host ?? ""} onChange={set("public_host")} /></Field>
       <Field label={t("set_workspace")}><input className="input" value={f.workspace ?? ""} onChange={set("workspace")} /></Field><Field label={t("set_lang")}><select className="input" value={f.lang} onChange={set("lang")}><option value="tr">Türkçe</option><option value="en">English</option></select></Field></div>
     {saved && <div className="ok">{t("saved")}</div>}<Err e={save.error} /></div></Collapsible>;
+}
+
+/** Demo data clean-up (installation administrators): deletes only what the simulator made; a real host with a demo name stays. */
+function DemoClean() {
+  const { t } = useT(); const qc = useQueryClient();
+  const preview = useMutation({ mutationFn: () => get("/system/demo") });
+  const clean = useMutation({ mutationFn: () => post("/system/demo-clean"), onSuccess: () => { preview.reset(); qc.invalidateQueries(); } });
+  const res: any = clean.data ?? preview.data; const counts: Record<string, number> = res?.counts ?? {};
+  return <Collapsible id="sys-demo" defaultOpen={false} title={`🧹 ${t("sys_demo")}`}>
+    <div className="stack small">
+      <p className="muted" style={{ margin: 0 }}>{t("sys_demo_lead")}</p>
+      <div className="row">
+        <Btn sm onClick={() => preview.mutate()} disabled={preview.isPending}>🔎 {t("sys_demo_preview")}</Btn>
+        <Confirm onConfirm={() => clean.mutate()}>🧹 {t("sys_demo_clean")}</Confirm>
+        {preview.data && <span className="chip">{preview.data.demo ? t("sys_demo_on") : t("sys_demo_off")}</span>}
+      </div>
+      {res && <div className="row">{Object.entries(counts).filter(([, n]) => n).map(([k, n]) => <span key={k} className="chip mono">{k}: {n}</span>)}
+        <b>{clean.data ? t("sys_demo_done", { n: res.total }) : t("sys_demo_found", { n: res.total })}</b></div>}
+      {!!res?.kept_hosts?.length && <div className="muted">{t("sys_demo_kept", { h: res.kept_hosts.join(", ") })}</div>}
+      {!!Object.keys(res?.pending ?? {}).length && <div className="muted">{t("sys_demo_pending", { n: Object.values(res.pending as Record<string, number>).reduce((a, b) => a + b, 0) })}</div>}
+      <Err e={clean.error || preview.error} />
+    </div>
+  </Collapsible>;
 }
 
 function Maintenance({ docker }: { docker: boolean }) {

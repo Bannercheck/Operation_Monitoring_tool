@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { BellPlus, Bookmark, RefreshCw, SlidersHorizontal, ZoomIn, ZoomOut } from "lucide-react";
+import { Archive, BellPlus, Bookmark, RefreshCw, SlidersHorizontal, ZoomIn, ZoomOut } from "lucide-react";
 import { get } from "../api";
 import { useAuth } from "../auth";
 import { useT } from "../i18n";
@@ -20,7 +20,7 @@ import type { Range } from "../components/ops/util";
 /** Log explorer (docs/design/logs.md section 6): one query string drives the facet sidebar, the result count, the per-level
  *  histogram and the table; Live tail follows new lines as they arrive (pausing when you scroll or open a row); every row opens in
  *  place with its fields, context, raw line and JSON. Query, range, columns, grouping and the open line live in the URL. */
-const PAGE = 200; const MAX_ROWS = 1000; const BUF_MAX = 2000;
+const PAGE = 200; const MAX_ROWS = 1000; const BUF_MAX = 2000; const COLD_AUTO = 40;
 const retry5xx = (n: number, e: any) => (e?.status ?? 0) >= 500 && n < 2;
 
 export default function Logs() {
@@ -176,16 +176,30 @@ export default function Logs() {
   const scope = user && user.all === false ? <ScopeChip /> : null;
   const busy = err?.status === 503 || (hist.error && toErr(hist.error).status === 503);
 
+  // older than the hot window: lines come from the cold archive (logtiers); "expired" only past the archive's oldest day
+  const coldRet = first?.retention?.cold;
+  const retMsg = coldRet?.horizon ? t("lg_retention_cold", { d: tsLocal(coldRet.horizon, { date: true, ms: false }) }) : t("lg_retention", { h: Math.round(first?.retention?.hours ?? 48) });
+  const fromCold = !st.tail && (st.group ? groups.data?.source === "cold" : pages.some((p: any) => p?.source === "cold") || first?.source === "cold");
+  // a scan of the cold archive goes on by itself while the page is not full (each request keeps its 1.5 s budget): a progress bar
+  // instead of a hundred "Scan further back" clicks; at most COLD_AUTO requests per search, the button stops it
+  const [auto, setAuto] = useState(0);
+  useEffect(() => { setAuto(0); }, [first]);
+  useEffect(() => {
+    if (fromCold && incomplete && !loadingMore && !moreErr && auto < COLD_AUTO && searchRows.length < PAGE) { setAuto((n) => n + 1); more(); }
+  }, [fromCold, incomplete, loadingMore, moreErr, auto, searchRows.length]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const autoOn = fromCold && incomplete && auto > 0 && auto < COLD_AUTO && searchRows.length < PAGE;
   const emptyMsg = (() => {
     if (st.tail) return tailInfo ? t("lg_tail_wait") : t("loading");
-    if (st.group) return groups.isLoading ? t("loading") : groups.error ? errText(toErr(groups.error), lang) : groups.data?.source === "history" ? t("lg_retention", { h: Math.round(first?.retention?.hours ?? 48) }) : t("lg_empty");
+    if (st.group) return groups.isLoading ? t("loading") : groups.error ? errText(toErr(groups.error), lang) : groups.data?.source === "history" ? retMsg : t("lg_empty");
     if (search.isLoading) return t("loading");
     if (err) return err.status === 400 ? t("lg_fix_query") : errText(err, lang);
-    if (first?.source === "history") return t("lg_retention", { h: Math.round(first?.retention?.hours ?? 48) });
+    if (first?.source === "history") return retMsg;
     if (incomplete) return t("lg_empty_partial");
     return t("lg_empty");
   })();
-  const empty = <div className="lg-empty">{emptyMsg}{incomplete && !rows.length && <> <button className="linklike" onClick={more} disabled={loadingMore}>{t("lg_scan_more")}</button></>}</div>;
+  const empty = <div className="lg-empty">{emptyMsg}{incomplete && !rows.length && <> {fromCold && <ColdProgress range={first.range} frontier={scan.frontier} />}
+    {autoOn ? <button className="linklike" onClick={() => setAuto(COLD_AUTO)}>{t("lg_cold_stop")}</button>
+      : <button className="linklike" onClick={more} disabled={loadingMore}>{loadingMore && fromCold ? t("lg_cold_scanning") : t("lg_scan_more")}</button>}</>}</div>;
   const bottom = st.tail || !rows.length ? (st.tail && rows.length >= MAX_ROWS ? <div className="lg-endnote dim small">{t("lg_cap_note", { n: fullN(MAX_ROWS, lang) })}</div> : null) : <div className="lg-endnote">
     <div ref={sentinel} />
     {loadingMore ? <span className="dim small">{t("loading")}</span> : moreErr ? <span className="bad small">{errText(moreErr, lang)}</span> :
@@ -225,6 +239,7 @@ export default function Logs() {
             <button className="btn sm lg-fbtn" onClick={() => setDrawer(true)}><SlidersHorizontal size={13} /> {t("lg_filters")}{nSel ? ` (${nSel})` : ""}</button>
             {count ? <span className="lg-count" title={count.tip}>{count.text}</span> : <span className="lg-count dim">…</span>}
             {count?.flag && <span className="chip lg-flag" title={count.tip}>{count.flag}</span>}
+            {fromCold && <span className="chip lg-cold" title={t("lg_cold_tip")}><Archive size={11} />{t("lg_cold")}</span>}
             {scope}
             <span className="grow" />
             {!st.tail && rel && <button className={`btn sm ${newer > 0 ? "lg-new" : ""}`} onClick={refresh} title={t("lg_refresh")}><RefreshCw size={12} />{newer > 0 ? <span>{t("lg_refresh_new", { n: fullN(newer, lang) })}</span> : <span className="lg-bl">{t("lg_refresh")}</span>}</button>}
@@ -243,7 +258,9 @@ export default function Logs() {
             {!phone && <span className="dim small">{t("lg_drag")}</span>}</div>
           {st.tail && <TailStatus info={tailInfo} paused={paused} buffered={buf.length} onPause={() => setUserPause(true)} onResume={backToTop} err={tailErr && tailErr.status !== 400 ? tailErr : null} />}
           {incomplete && rows.length > 0 && <div className="lg-scan">{t("lg_scanned", { from: tsLocal(scan.frontier), to: tsLocal(first.range.end), n: fullN(scan.lines, lang) })}
-            <button className="linklike" onClick={more} disabled={loadingMore}>{t("lg_scan_more")}</button></div>}
+            {fromCold && <ColdProgress range={first.range} frontier={scan.frontier} />}
+            {autoOn ? <button className="linklike" onClick={() => setAuto(COLD_AUTO)}>{t("lg_cold_stop")}</button>
+              : <button className="linklike" onClick={more} disabled={loadingMore}>{loadingMore && fromCold ? t("lg_cold_scanning") : t("lg_scan_more")}</button>}</div>}
         </div>
 
         {standalone && <div className="card lg-standalone"><div className="row between"><b className="small">{t("lg_linked_line", { id: st.line })}</b><button className="btn sm ghost" onClick={() => st.setLine(null)}>✕</button></div>
@@ -271,4 +288,12 @@ function ScopeChip() {
   const q = useQuery({ queryKey: ["scope-mine"], queryFn: () => get("/teams/mine"), staleTime: 60000, enabled: !!user && user.all === false });
   const ms = user?.teams ?? [];
   return <span className="chip lg-scope" title={t("tm_scope_hint")}>{t("lg_scope", { t: ms.map((m) => m.name).join(", ") || "–", n: q.data?.hosts ?? Math.max(0, ...ms.map((m) => m.hosts)) })}</span>;
+}
+
+/** How far back a scan over the cold archive got: the part of the pinned range from its end down to the scan frontier. */
+function ColdProgress({ range, frontier }: { range: { start: string; end: string }; frontier: string }) {
+  const { t } = useT();
+  const s = new Date(range.start).getTime(), e = new Date(range.end).getTime(), f = new Date(frontier).getTime();
+  const pct = e > s && Number.isFinite(f) ? Math.max(0, Math.min(100, Math.round((100 * (e - f)) / (e - s)))) : 0;
+  return <span className="lg-coldbar" title={t("lg_cold_progress", { p: pct })} role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}><i style={{ width: `${pct}%` }} /></span>;
 }

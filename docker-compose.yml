@@ -27,6 +27,7 @@ services:
       TZ: ${TZ:-Europe/Istanbul}
       DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-watchover}:${POSTGRES_PASSWORD:-change-me}@postgres:5432/${POSTGRES_DB:-watchover}}
       WATCHOVER_SELFMON: ${WATCHOVER_SELFMON:-1}
+      WATCHOVER_DEMO: ${WATCHOVER_DEMO:-1}           # 0 = production: no simulator, no demo seeding (./watchover.sh demo-clean removes old demo data)
       WATCHOVER_PARALLEL: ${WATCHOVER_PARALLEL:-}
       WATCHOVER_API_RECEIVER: "1"
       WATCHOVER_RECEIVER: go                        # the Go receiver owns :8600 and spools to /data/spool; this container consumes it
@@ -71,6 +72,7 @@ services:
       TZ: ${TZ:-Europe/Istanbul}
       WO_UPSTREAM: http://dashboard:8601
       WO_MAX_BACKLOG_MB: ${WATCHOVER_SPOOL_MAX_MB:-2048}
+      WO_PARSE_WORKERS: ${WATCHOVER_PARSE_WORKERS:-0}           # Go parse workers; 0 = every CPU the container may use
       WATCHOVER_GO_PARSE: ${WATCHOVER_GO_PARSE:-1}  # must match the dashboard's value
     depends_on:
       dashboard:
@@ -134,6 +136,7 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-watchover}:${POSTGRES_PASSWORD:-change-me}@postgres:5432/${POSTGRES_DB:-watchover}}
       WATCHOVER_SELFMON: "0"
+      WATCHOVER_DEMO: ${WATCHOVER_DEMO:-1}
       LIVE_PORT: "8601"                            # its own receiver port: the product's receiver is on the dashboard container
     depends_on:
       postgres:
@@ -256,6 +259,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-watchover}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}     # set a real one in .env before the first start
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C.UTF-8"
+    command: ["postgres", "-c", "shared_buffers=${WATCHOVER_PG_SHARED_BUFFERS:-128MB}", "-c", "effective_cache_size=${WATCHOVER_PG_CACHE:-4GB}"]   # ./watchover.sh profile sets these (defaults = PostgreSQL's own)
     volumes:
       - watchover-pg:/var/lib/postgresql/data
     healthcheck:

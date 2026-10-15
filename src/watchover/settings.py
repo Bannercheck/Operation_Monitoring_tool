@@ -16,9 +16,10 @@ DEFAULTS = {"setup_done": False, "lang": "tr", "workspace": "", "llm_provider": 
             "self_monitor": True, "self_agent_token": "", "thr_cpu": 85, "thr_memory": 90, "thr_disk": 90, "thr_gpu": 95, "alerts_on": True, "smtp_host": "", "smtp_port": 587, "smtp_security": "starttls", "smtp_user": "", "smtp_password": "", "smtp_from": "", "smtp_from_name": "Watchover",
             "sms_preset": "http", "sms_url": "", "sms_method": "POST", "sms_auth": "bearer", "sms_user": "", "sms_password": "", "sms_token": "", "sms_from": "", "sms_account": "", "sms_body": "", "sms_content_type": "application/json", "demo_on_start": False,
             "live_retention_h": 48, "live_window_max_events": 200000, "live_ring": 50000, "live_spool_mb": 64, "history_retention_days": 400,
+            "cold_retention_days": 7, "cold_max_gb": 0, "hot_max_gb": 0,      # log tiers (logtiers.py): cold archive days, size caps (0 = none)
             "logs_raw": True, "logs_attr_max_bytes": 2048, "logs_msg_max_bytes": 16384,      # stored log lines v2 (logstore.py)
             "trace_sample_pct": 10, "trace_slow_ms": 1000, "trace_apdex_ms": 500, "trace_retention_h": 72, "trace_rollup_days": 30, "rum_retention_days": 30, "anomaly_learning_days": 7, "teams_strict": False, "teams_self_claim": False,
-            "train_auto": True, "train_every_h": 24, "train_min_examples": 200, "train_min_new": 50, "train_base": "qwen2.5:1.5b-instruct", "train_gate_min": 0.6, "train_use_ops": True, "version": 2}
+            "train_auto": True, "train_every_h": 24, "train_schedule_on": False, "train_days": "1,2,3,4,5,6,7", "train_start": "01:00", "train_end": "06:00", "train_tz": "Europe/Istanbul", "train_min_examples": 200, "train_min_new": 50, "train_base": "qwen2.5:1.5b-instruct", "train_gate_min": 0.6, "train_use_ops": True, "version": 2}
 SESSION_KEYS = ("lang", "llm_provider", "llm_base", "llm_model", "llm_key", "llm_embed", "live_port", "live_key", "public_host", "sim_on", "learn_min", "auth_local", "auth_google", "auth_oidc", "google_client_id", "google_client_secret", "auth_self_register", "auth_domains", "oidc_issuer", "oidc_client_id", "oidc_client_secret", "oidc_redirect", "mfa_email", "auth_apple", "apple_client_id", "apple_team_id", "apple_key_id", "apple_private_key", "auth_microsoft", "ms_tenant", "ms_client_id", "ms_client_secret",
                 "self_monitor", "self_agent_token", "alerts_on", "smtp_host", "smtp_port", "smtp_security", "smtp_user", "smtp_password", "smtp_from", "smtp_from_name",
                 "sms_preset", "sms_url", "sms_method", "sms_auth", "sms_user", "sms_password", "sms_token", "sms_from", "sms_account", "sms_body", "sms_content_type")
@@ -55,7 +56,21 @@ def load() -> dict:
     for k in SECRET_KEYS:
         if isinstance(cfg.get(k), str):
             cfg[k] = vault.decrypt(cfg[k])
+    cfg.update(pinned())
     return cfg
+
+
+def pinned() -> dict:
+    """Settings the platform fixes (OpenShift chart: retention, LLM lock, public address): WATCHOVER_SETTINGS='{"key": value}'.
+    They win over config.json, so a change on the System page does not outlive the next read; change them in the deployment."""
+    raw = os.environ.get("WATCHOVER_SETTINGS", "").strip()
+    if not raw:
+        return {}
+    try:
+        val = json.loads(raw)
+    except ValueError:
+        return {}
+    return {str(k): v for k, v in val.items()} if isinstance(val, dict) else {}
 
 
 def save(values: dict) -> dict:

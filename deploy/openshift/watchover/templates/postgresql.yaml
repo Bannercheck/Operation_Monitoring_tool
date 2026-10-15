@@ -1,0 +1,159 @@
+{{- /* Watchover's own PostgreSQL: one StatefulSet pod with its volume, reachable only from the Watchover pod (networkpolicy.yaml).
+     flavor rhel: Red Hat / sclorg image (POSTGRESQL_* variables, data in /var/lib/pgsql/data, built for arbitrary UIDs).
+     flavor official: postgres:16 (Debian; POSTGRES_* variables, PGDATA below the volume). */}}
+{{- if .Values.postgresql.enabled }}
+{{- $fn := include "watchover.fullname" . }}
+{{- $pg := .Values.postgresql }}
+{{- $rhel := eq $pg.flavor "rhel" }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "watchover.pgHost" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "watchover.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "watchover.selector" (dict "root" . "component" "postgresql") | nindent 4 }}
+  ports:
+    - name: postgresql
+      port: 5432
+      targetPort: postgresql
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "watchover.pgHost" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "watchover.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+spec:
+  serviceName: {{ include "watchover.pgHost" . }}
+  replicas: 1
+  podManagementPolicy: OrderedReady
+  updateStrategy:
+    type: RollingUpdate
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+  selector:
+    matchLabels:
+      {{- include "watchover.selector" (dict "root" . "component" "postgresql") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "watchover.labels" . | nindent 8 }}
+        app.kubernetes.io/component: postgresql
+    spec:
+      serviceAccountName: {{ $fn }}
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 60     # a clean shutdown checkpoint instead of crash recovery at the next start
+      securityContext:
+        {{- include "watchover.podSecurity" . | nindent 8 }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: postgresql
+          image: {{ $pg.image }}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: postgresql
+              containerPort: 5432
+              protocol: TCP
+          env:
+            {{- if $rhel }}
+            - {name: POSTGRESQL_USER, value: {{ $pg.username | quote }}}
+            - {name: POSTGRESQL_DATABASE, value: {{ $pg.database | quote }}}
+            - name: POSTGRESQL_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: {{ include "watchover.dbSecret" . }}, key: postgres-password}
+            - {name: POSTGRESQL_MAX_CONNECTIONS, value: {{ $pg.maxConnections | quote }}}
+            - {name: POSTGRESQL_SHARED_BUFFERS, value: {{ $pg.sharedBuffers | quote }}}
+            - {name: POSTGRESQL_EFFECTIVE_CACHE_SIZE, value: {{ $pg.effectiveCacheSize | quote }}}
+            {{- else }}
+            - {name: POSTGRES_USER, value: {{ $pg.username | quote }}}
+            - {name: POSTGRES_DB, value: {{ $pg.database | quote }}}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: {{ include "watchover.dbSecret" . }}, key: postgres-password}
+            - {name: PGDATA, value: /var/lib/postgresql/data/pgdata}
+            - {name: POSTGRES_INITDB_ARGS, value: "--encoding=UTF8 --locale=C.UTF-8"}
+            {{- end }}
+            - {name: TZ, value: {{ .Values.timezone | quote }}}
+          volumeMounts:
+            {{- if $rhel }}
+            - {name: pghome, mountPath: /var/lib/pgsql}          # the image's passwd entry (nss_wrapper) and start-up files
+            - {name: pgdata, mountPath: /var/lib/pgsql/data}
+            - {name: pgrun, mountPath: /var/run/postgresql}
+            {{- else }}
+            - {name: pgdata, mountPath: /var/lib/postgresql/data}
+            - {name: pgrun, mountPath: /var/run/postgresql}
+            {{- end }}
+            - {name: tmp, mountPath: /tmp}
+          resources:
+            {{- toYaml $pg.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true    # writes: the data volume, /var/run/postgresql, /tmp (and /var/lib/pgsql for rhel)
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          startupProbe:                     # initdb on the first start
+            exec:
+              command: ["pg_isready", "-h", "127.0.0.1", "-p", "5432", "-U", {{ $pg.username | quote }}, "-d", {{ $pg.database | quote }}, "-q"]
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-h", "127.0.0.1", "-p", "5432", "-U", {{ $pg.username | quote }}, "-d", {{ $pg.database | quote }}, "-q"]
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-h", "127.0.0.1", "-p", "5432", "-U", {{ $pg.username | quote }}, "-d", {{ $pg.database | quote }}, "-q"]
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+      volumes:
+        {{- if $rhel }}
+        - name: pghome
+          emptyDir: {sizeLimit: 64Mi}
+        {{- end }}
+        - name: pgrun
+          emptyDir: {sizeLimit: 16Mi}
+        - name: tmp
+          emptyDir: {sizeLimit: 256Mi}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  volumeClaimTemplates:
+    - metadata:
+        name: pgdata
+        labels:
+          {{- include "watchover.labels" . | nindent 10 }}
+          app.kubernetes.io/component: postgresql
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- if $pg.storage.storageClass }}
+        storageClassName: {{ $pg.storage.storageClass | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ $pg.storage.size }}
+{{- end }}

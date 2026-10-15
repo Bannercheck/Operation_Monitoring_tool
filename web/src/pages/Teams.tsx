@@ -157,7 +157,9 @@ function EnrollKey({ tid, title }: { tid: number; title?: string }) {
   const off = useMutation({ mutationFn: () => del(`/teams/${tid}/enroll-key`), onSuccess: () => qc.invalidateQueries({ queryKey: ["team-key", tid] }) });
   const [show, setShow] = useState(false);
   const key: string = q.data?.key ?? ""; const host = typeof window !== "undefined" ? window.location.hostname : "watchover";
-  const cmd = `curl -fsSL http://${host}:8600/agent/install.sh | sudo bash -s -- --url http://${host}:8600/ingest --enroll-key ${key} --env prod`;
+  const hq = useQuery({ queryKey: ["api-health"], queryFn: () => get("/health"), staleTime: 300000 });
+  const base = ((hq.data as any)?.ingest as string) || `http://${host}:8600`;   // OpenShift: the ingest Route (WATCHOVER_INGEST_URL)
+  const cmd = `curl -fsSL ${base}/agent/install.sh | sudo bash -s -- --url ${base}/ingest --enroll-key ${key} --env prod`;
   return <Card className="tight" title={title ? `${t("tmr_enroll")} · ${title}` : t("tmr_enroll")}>
     <div className="dim small" style={{ marginBottom: 6 }}>{t("tmr_enroll_hint")}</div>
     {key ? <div className="stack" style={{ gap: 6 }}>

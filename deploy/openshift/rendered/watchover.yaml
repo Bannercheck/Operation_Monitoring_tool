@@ -1,0 +1,762 @@
+# Watchover on OpenShift without Helm (oc apply). Generated from deploy/openshift/watchover with:
+#   helm template watchover deploy/openshift/watchover -n watchover \
+#     --set postgresql.existingSecret=watchover-db \
+#     --set routes.ui.host=watchover.apps.example.com --set routes.ingest.host=watchover-ingest.apps.example.com
+# Before applying (docs/KURULUM_OPENSHIFT.md, "Helm olmadan kurulum"):
+#   1. oc new-project watchover   (other project name: replace "namespace: watchover" and the image paths below)
+#   2. oc create secret generic watchover-db -n watchover --from-literal=postgres-password="$(openssl rand -hex 24)"
+#   3. sed -i 's/apps\.example\.com/apps.<cluster domain>/g' watchover.yaml   and the storage classes if the default is not wanted
+#   4. oc apply -f watchover.yaml
+# No secret value is in this file. Regenerate it after a chart change instead of editing it by hand.
+---
+# Source: watchover/templates/networkpolicy.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: watchover-app
+  namespace: watchover
+  labels:
+    app.kubernetes.io/name: watchover
+    app.kubernetes.io/instance: watchover
+    app.kubernetes.io/version: "1.47.1"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/part-of: watchover
+    helm.sh/chart: watchover-0.1.0
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: watchover
+      app.kubernetes.io/instance: watchover
+      app.kubernetes.io/component: app
+  policyTypes: [Ingress]
+  ingress:
+    - from:                                    # the OpenShift router (Routes ui / ingest)
+        - namespaceSelector:
+            matchLabels:
+              network.openshift.io/policy-group: ingress
+      ports:
+        - {port: 8501, protocol: TCP}
+        - {port: 8600, protocol: TCP}
+---
+# Source: watchover/templates/networkpolicy.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: watchover-postgresql
+  namespace: watchover
+  labels:
+    app.kubernetes.io/name: watchover
+    app.kubernetes.io/instance: watchover
+    app.kubernetes.io/version: "1.47.1"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/part-of: watchover
+    helm.sh/chart: watchover-0.1.0
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: watchover
+      app.kubernetes.io/instance: watchover
+      app.kubernetes.io/component: postgresql
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: watchover
+              app.kubernetes.io/instance: watchover
+              app.kubernetes.io/component: app
+      ports:
+        - {port: 5432, protocol: TCP}
+---
+# Source: watchover/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: watchover
+  namespace: watchover
+  labels:
+    app.kubernetes.io/name: watchover
+    app.kubernetes.io/instance: watchover
+    app.kubernetes.io/version: "1.47.1"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/part-of: watchover
+    helm.sh/chart: watchover-0.1.0
+automountServiceAccountToken: false
+---
+# Source: watchover/templates/pvc.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: watchover-data
+  namespace: watchover
+  labels:
+    app.kubernetes.io/name: watchover
+    app.kubernetes.io/instance: watchover
+    app.kubernetes.io/version: "1.47.1"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/part-of: watchover
+    helm.sh/chart: watchover-0.1.0
+    app.kubernetes.io/component: app
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 30Gi
+---
+# Source: watchover/templates/pvc.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: watchover-logs-hot
+  namespace: watchover
+  labels:
+    app.kubernetes.io/name: watchover
+    app.kubernetes.io/instance: watchover
+    app.kubernetes.io/version: "1.47.1"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/part-of: watchover
+    helm.sh/chart: watchover-0.1.0
+    app.kubernetes.io/component: app
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 50Gi
+---
+# Source: watchover/templates/pvc.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: watchover-logs-cold
+  namespace: watchover
+  labels:
+    app.kubernetes.io/name: watchover
+    app.kubernetes.io/instance: watchover
+    app.kubernetes.io/version: "1.47.1"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/part-of: watchover
+    helm.sh/chart: watchover-0.1.0
+    app.kubernetes.io/component: app
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 50Gi
+---
+# Source: watchover/templates/postgresql.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: watchover-postgresql
+  namespace: watchover
+  labels:
+    app.kubernetes.io/name: watchover
+    app.kubernetes.io/instance: watchover
+    app.kubernetes.io/version: "1.47.1"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/part-of: watchover
+    helm.sh/chart: watchover-0.1.0
+    app.kubernetes.io/component: postgresql
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: watchover
+    app.kubernetes.io/instance: watchover
+    app.kubernetes.io/component: postgresql
+  ports:
+    - name: postgresql
+      port: 5432
+      targetPort: postgresql
+      protocol: TCP
+---
+# Source: watchover/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: watchover
+  namespace: watchover
+  labels:
+    app.kubernetes.io/name: watchover
+    app.kubernetes.io/instance: watchover
+    app.kubernetes.io/version: "1.47.1"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/part-of: watchover
+    helm.sh/chart: watchover-0.1.0
+    app.kubernetes.io/component: app
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: watchover
+    app.kubernetes.io/instance: watchover
+    app.kubernetes.io/component: app
+  ports:
+    - name: http                     # React interface + API (Route "ui")
+      port: 8501
+      targetPort: http
+      protocol: TCP
+    - name: ingest                   # Go receiver: agents, enrolment, agent files, RUM (Route "ingest")
+      port: 8600
+      targetPort: ingest
+      protocol: TCP
+---
+# Source: watchover/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: watchover
+  namespace: watchover
+  labels:
+    app.kubernetes.io/name: watchover
+    app.kubernetes.io/instance: watchover
+    app.kubernetes.io/version: "1.47.1"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/part-of: watchover
+    helm.sh/chart: watchover-0.1.0
+    app.kubernetes.io/component: app
+spec:
+  replicas: 1
+  revisionHistoryLimit: 5
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: watchover
+      app.kubernetes.io/instance: watchover
+      app.kubernetes.io/component: app
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: watchover
+        app.kubernetes.io/instance: watchover
+        app.kubernetes.io/version: "1.47.1"
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/part-of: watchover
+        helm.sh/chart: watchover-0.1.0
+        app.kubernetes.io/component: app
+      annotations:
+        checksum/settings: ed723983aeeaedd097f80252b6e68eb868ebb07d01191a7599e03128977190bd
+    spec:
+      serviceAccountName: watchover
+      automountServiceAccountToken: false
+      enableServiceLinks: false             # no WATCHOVER_PORT=tcp://… style variables next to the app's own WATCHOVER_* settings
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: dashboard
+          image: image-registry.openshift-image-registry.svc:5000/watchover/watchover:1.47.1
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8501
+              protocol: TCP
+          env:
+            - name: TZ
+              value: "Europe/Istanbul"
+            - name: HOME
+              value: /tmp
+            - name: WATCHOVER_DEMO
+              value: "0"
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: watchover-db
+                  key: postgres-password
+            - name: DATABASE_URL
+              value: "postgresql://watchover:$(POSTGRES_PASSWORD)@watchover-postgresql:5432/watchover"
+            - name: WATCHOVER_RECEIVER
+              value: go
+            - name: WATCHOVER_API_RECEIVER
+              value: "1"
+            - name: WATCHOVER_INTERNAL_PORT
+              value: "8601"
+            - name: WATCHOVER_GO_PARSE
+              value: "1"
+            - name: WATCHOVER_SELFMON
+              value: "1"
+            - name: WATCHOVER_LOG_HOT_DIR
+              value: /logs/hot
+            - name: WATCHOVER_LOG_COLD_DIR
+              value: /logs/cold
+            - name: WATCHOVER_SETTINGS
+              value: "{\"cold_max_gb\":40,\"cold_retention_days\":30,\"history_retention_days\":400,\"hot_max_gb\":40,\"live_retention_h\":48,\"llm_base\":\"\",\"llm_embed\":\"\",\"llm_key\":\"\",\"llm_model\":\"\",\"public_host\":\"https://watchover.apps.example.com\",\"train_auto\":false,\"x_llm_probed\":true}"
+            - name: WATCHOVER_INGEST_URL
+              value: "https://watchover-ingest.apps.example.com"
+          volumeMounts:
+            - {name: data, mountPath: /data}
+            - {name: logs-hot, mountPath: /logs/hot}
+            - {name: logs-cold, mountPath: /logs/cold}
+            - {name: tmp, mountPath: /tmp}
+          resources:
+            limits:
+              cpu: "6"
+              memory: 16Gi
+            requests:
+              cpu: "2"
+              memory: 8Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          startupProbe:                     # first start: database migrations; later starts are seconds
+            httpGet: {path: /api/health, port: http}
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 120
+          readinessProbe:
+            httpGet: {path: /api/health, port: http}
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: {path: /api/health, port: http}
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+        - name: receiver
+          image: image-registry.openshift-image-registry.svc:5000/watchover/watchover-receiver:1.47.1
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: ingest
+              containerPort: 8600
+              protocol: TCP
+          env:
+            - name: TZ
+              value: "Europe/Istanbul"
+            - name: HOME
+              value: /tmp
+            - name: WO_UPSTREAM
+              value: http://127.0.0.1:8601
+            - name: WO_SPOOL
+              value: /data/spool
+            - name: WO_MAX_BACKLOG_MB
+              value: "1024"
+            - name: WATCHOVER_GO_PARSE
+              value: "1"
+            - name: GOMEMLIMIT
+              value: "1800MiB"
+          volumeMounts:
+            - {name: data, mountPath: /data}
+            - {name: tmp-receiver, mountPath: /tmp}
+          resources:
+            limits:
+              cpu: "2"
+              memory: 2Gi
+            requests:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          readinessProbe:
+            httpGet: {path: /health, port: ingest}
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: {path: /health, port: ingest}
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+      volumes:
+        - name: data
+          persistentVolumeClaim: {claimName: watchover-data}
+        - name: logs-hot
+          persistentVolumeClaim: {claimName: watchover-logs-hot}
+        - name: logs-cold
+          persistentVolumeClaim: {claimName: watchover-logs-cold}
+        - name: tmp
+          emptyDir: {sizeLimit: 2Gi}
+        - name: tmp-receiver
+          emptyDir: {sizeLimit: 64Mi}
+---
+# Source: watchover/templates/postgresql.yaml
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: watchover-postgresql
+  namespace: watchover
+  labels:
+    app.kubernetes.io/name: watchover
+    app.kubernetes.io/instance: watchover
+    app.kubernetes.io/version: "1.47.1"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/part-of: watchover
+    helm.sh/chart: watchover-0.1.0
+    app.kubernetes.io/component: postgresql
+spec:
+  serviceName: watchover-postgresql
+  replicas: 1
+  podManagementPolicy: OrderedReady
+  updateStrategy:
+    type: RollingUpdate
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: watchover
+      app.kubernetes.io/instance: watchover
+      app.kubernetes.io/component: postgresql
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: watchover
+        app.kubernetes.io/instance: watchover
+        app.kubernetes.io/version: "1.47.1"
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/part-of: watchover
+        helm.sh/chart: watchover-0.1.0
+        app.kubernetes.io/component: postgresql
+    spec:
+      serviceAccountName: watchover
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      terminationGracePeriodSeconds: 60     # a clean shutdown checkpoint instead of crash recovery at the next start
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: postgresql
+          image: registry.redhat.io/rhel9/postgresql-16:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: postgresql
+              containerPort: 5432
+              protocol: TCP
+          env:
+            - {name: POSTGRESQL_USER, value: "watchover"}
+            - {name: POSTGRESQL_DATABASE, value: "watchover"}
+            - name: POSTGRESQL_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: watchover-db, key: postgres-password}
+            - {name: POSTGRESQL_MAX_CONNECTIONS, value: "100"}
+            - {name: POSTGRESQL_SHARED_BUFFERS, value: "2GB"}
+            - {name: POSTGRESQL_EFFECTIVE_CACHE_SIZE, value: "3GB"}
+            - {name: TZ, value: "Europe/Istanbul"}
+          volumeMounts:
+            - {name: pghome, mountPath: /var/lib/pgsql}          # the image's passwd entry (nss_wrapper) and start-up files
+            - {name: pgdata, mountPath: /var/lib/pgsql/data}
+            - {name: pgrun, mountPath: /var/run/postgresql}
+            - {name: tmp, mountPath: /tmp}
+          resources:
+            limits:
+              cpu: "2"
+              memory: 8Gi
+            requests:
+              cpu: "1"
+              memory: 4Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            readOnlyRootFilesystem: true    # writes: the data volume, /var/run/postgresql, /tmp (and /var/lib/pgsql for rhel)
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          startupProbe:                     # initdb on the first start
+            exec:
+              command: ["pg_isready", "-h", "127.0.0.1", "-p", "5432", "-U", "watchover", "-d", "watchover", "-q"]
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-h", "127.0.0.1", "-p", "5432", "-U", "watchover", "-d", "watchover", "-q"]
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-h", "127.0.0.1", "-p", "5432", "-U", "watchover", "-d", "watchover", "-q"]
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+      volumes:
+        - name: pghome
+          emptyDir: {sizeLimit: 64Mi}
+        - name: pgrun
+          emptyDir: {sizeLimit: 16Mi}
+        - name: tmp
+          emptyDir: {sizeLimit: 256Mi}
+  volumeClaimTemplates:
+    - metadata:
+        name: pgdata
+        labels:
+          app.kubernetes.io/name: watchover
+          app.kubernetes.io/instance: watchover
+          app.kubernetes.io/version: "1.47.1"
+          app.kubernetes.io/managed-by: Helm
+          app.kubernetes.io/part-of: watchover
+          helm.sh/chart: watchover-0.1.0
+          app.kubernetes.io/component: postgresql
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 30Gi
+---
+# Source: watchover/templates/routes.yaml
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: watchover
+  namespace: watchover
+  labels:
+    app.kubernetes.io/name: watchover
+    app.kubernetes.io/instance: watchover
+    app.kubernetes.io/version: "1.47.1"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/part-of: watchover
+    helm.sh/chart: watchover-0.1.0
+    app.kubernetes.io/component: app
+  annotations:
+    haproxy.router.openshift.io/timeout: "120s"
+spec:
+  host: "watchover.apps.example.com"
+  to:
+    kind: Service
+    name: watchover
+    weight: 100
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None
+---
+# Source: watchover/templates/routes.yaml
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: watchover-ingest-ingest
+  namespace: watchover
+  labels:
+    app.kubernetes.io/name: watchover
+    app.kubernetes.io/instance: watchover
+    app.kubernetes.io/version: "1.47.1"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/part-of: watchover
+    helm.sh/chart: watchover-0.1.0
+    app.kubernetes.io/component: app
+    watchover.io/route: ingest
+  annotations:
+    haproxy.router.openshift.io/timeout: "60s"
+spec:
+  host: "watchover-ingest.apps.example.com"
+  path: /ingest
+  to:
+    kind: Service
+    name: watchover
+    weight: 100
+  port:
+    targetPort: ingest
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None
+---
+# Source: watchover/templates/routes.yaml
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: watchover-ingest-enroll
+  namespace: watchover
+  labels:
+    app.kubernetes.io/name: watchover
+    app.kubernetes.io/instance: watchover
+    app.kubernetes.io/version: "1.47.1"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/part-of: watchover
+    helm.sh/chart: watchover-0.1.0
+    app.kubernetes.io/component: app
+    watchover.io/route: ingest
+  annotations:
+    haproxy.router.openshift.io/timeout: "60s"
+spec:
+  host: "watchover-ingest.apps.example.com"
+  path: /enroll
+  to:
+    kind: Service
+    name: watchover
+    weight: 100
+  port:
+    targetPort: ingest
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None
+---
+# Source: watchover/templates/routes.yaml
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: watchover-ingest-agent-py
+  namespace: watchover
+  labels:
+    app.kubernetes.io/name: watchover
+    app.kubernetes.io/instance: watchover
+    app.kubernetes.io/version: "1.47.1"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/part-of: watchover
+    helm.sh/chart: watchover-0.1.0
+    app.kubernetes.io/component: app
+    watchover.io/route: ingest
+  annotations:
+    haproxy.router.openshift.io/timeout: "60s"
+spec:
+  host: "watchover-ingest.apps.example.com"
+  path: /agent.py
+  to:
+    kind: Service
+    name: watchover
+    weight: 100
+  port:
+    targetPort: ingest
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None
+---
+# Source: watchover/templates/routes.yaml
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: watchover-ingest-agent-install
+  namespace: watchover
+  labels:
+    app.kubernetes.io/name: watchover
+    app.kubernetes.io/instance: watchover
+    app.kubernetes.io/version: "1.47.1"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/part-of: watchover
+    helm.sh/chart: watchover-0.1.0
+    app.kubernetes.io/component: app
+    watchover.io/route: ingest
+  annotations:
+    haproxy.router.openshift.io/timeout: "60s"
+spec:
+  host: "watchover-ingest.apps.example.com"
+  path: /agent/install.sh
+  to:
+    kind: Service
+    name: watchover
+    weight: 100
+  port:
+    targetPort: ingest
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None
+---
+# Source: watchover/templates/routes.yaml
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: watchover-ingest-mobile
+  namespace: watchover
+  labels:
+    app.kubernetes.io/name: watchover
+    app.kubernetes.io/instance: watchover
+    app.kubernetes.io/version: "1.47.1"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/part-of: watchover
+    helm.sh/chart: watchover-0.1.0
+    app.kubernetes.io/component: app
+    watchover.io/route: ingest
+  annotations:
+    haproxy.router.openshift.io/timeout: "60s"
+spec:
+  host: "watchover-ingest.apps.example.com"
+  path: /mobile
+  to:
+    kind: Service
+    name: watchover
+    weight: 100
+  port:
+    targetPort: ingest
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None
+---
+# Source: watchover/templates/routes.yaml
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: watchover-ingest-rum
+  namespace: watchover
+  labels:
+    app.kubernetes.io/name: watchover
+    app.kubernetes.io/instance: watchover
+    app.kubernetes.io/version: "1.47.1"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/part-of: watchover
+    helm.sh/chart: watchover-0.1.0
+    app.kubernetes.io/component: app
+    watchover.io/route: ingest
+  annotations:
+    haproxy.router.openshift.io/timeout: "60s"
+spec:
+  host: "watchover-ingest.apps.example.com"
+  path: /rum
+  to:
+    kind: Service
+    name: watchover
+    weight: 100
+  port:
+    targetPort: ingest
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None
+---
+# Source: watchover/templates/routes.yaml
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: watchover-ingest-rum-js
+  namespace: watchover
+  labels:
+    app.kubernetes.io/name: watchover
+    app.kubernetes.io/instance: watchover
+    app.kubernetes.io/version: "1.47.1"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/part-of: watchover
+    helm.sh/chart: watchover-0.1.0
+    app.kubernetes.io/component: app
+    watchover.io/route: ingest
+  annotations:
+    haproxy.router.openshift.io/timeout: "60s"
+spec:
+  host: "watchover-ingest.apps.example.com"
+  path: /rum.js
+  to:
+    kind: Service
+    name: watchover
+    weight: 100
+  port:
+    targetPort: ingest
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None

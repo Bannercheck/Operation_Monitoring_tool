@@ -780,3 +780,19 @@ body.pn-lock { overflow: hidden; }
 /* top bar: back button on every page */
 .back-btn { gap: 4px; display: inline-flex; align-items: center; }
 @media (max-width: 640px) { .back-l { display: none; } }
+
+/* log tiers: "from archive" badge, cold scan progress (Logs), storage card (System) */
+.chip.lg-cold { padding: 1px 8px; font-size: 11px; display: inline-flex; align-items: center; gap: 4px; color: var(--accent2); cursor: help; }
+.lg-coldbar { display: inline-block; width: 90px; height: 6px; margin: 0 8px; vertical-align: middle; border-radius: 3px; background: var(--line2); overflow: hidden; }
+.lg-coldbar > i { display: block; height: 100%; background: var(--accent2); }
+.stg-tier { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; border: 1px solid var(--line2); border-radius: 10px; min-width: 0; }
+.stg-h { font-size: 12px; color: var(--muted); }
+.stg-v { font-size: 22px; font-weight: 600; }
+.stg-use { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; }
+.stg-bar { height: 7px; border-radius: 4px; background: var(--line2); overflow: hidden; }
+.stg-bar > i { display: block; height: 100%; background: var(--green); }
+.stg-bar.warn > i { background: var(--amber); }
+
+/* LLM page: training schedule */
+.at-sched { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 10px; }
+.at-sched .seg button:disabled { opacity: 0.45; }

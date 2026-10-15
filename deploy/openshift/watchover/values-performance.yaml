@@ -1,0 +1,38 @@
+# Tam performans profili: dakikada ~100-150 bin satır, GPU yok.
+#   helm upgrade --install watchover deploy/openshift/watchover -f deploy/openshift/watchover/values-performance.yaml -f benim-degerlerim.yaml
+# İstek = sınır (Guaranteed QoS): pod yoğun anda CPU kısıtlamasına (throttling) uğramaz. Sıcak loglar ve PostgreSQL yerel NVMe/SSD
+# blok depolamada olmalı (LVM Storage / Local Storage Operator); NFS / CephFS olmamalı. Pod'u az kalabalık, sabit bir düğüme koyun.
+
+dashboard:
+  resources:
+    requests: {cpu: "6", memory: 16Gi}
+    limits: {cpu: "6", memory: 16Gi}
+
+receiver:
+  resources:
+    requests: {cpu: "2", memory: 2Gi}
+    limits: {cpu: "2", memory: 2Gi}
+  goMemLimit: 1800MiB
+  maxBacklogMB: 4096
+
+persistence:
+  data: {size: 30Gi, storageClass: ""}           # hızlı sınıf
+  logsHot: {size: 50Gi, storageClass: ""}        # yerel NVMe / SSD sınıfı (ör. "lvms-vg1")
+  logsCold: {size: 50Gi, storageClass: ""}       # ucuz blok sınıfı
+
+retention:
+  liveRetentionH: 48
+  coldRetentionDays: 30
+  hotMaxGb: 40
+  coldMaxGb: 40
+
+postgresql:
+  storage: {size: 30Gi, storageClass: ""}        # yerel NVMe / SSD sınıfı
+  resources:
+    requests: {cpu: "2", memory: 8Gi}
+    limits: {cpu: "2", memory: 8Gi}
+  sharedBuffers: 2GB
+
+# Pod'u ayrılmış düğüme sabitleyin (yöneticinin verdiği etiketle), örn.:
+# nodeSelector: {watchover: "true"}
+# tolerations: [{key: "dedicated", operator: "Equal", value: "watchover", effect: "NoSchedule"}]

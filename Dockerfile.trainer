@@ -4,9 +4,11 @@
 FROM python:3.11-slim
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 \
     WATCHOVER_HOME=/data KNOWLEDGE_DB=/data/knowledge.db LIVE_SPOOL=/data/live/events.jsonl \
-    HF_HOME=/hf TOKENIZERS_PARALLELISM=false
+    HF_HOME=/hf TOKENIZERS_PARALLELISM=false HOME=/home/watchover
+# OpenShift: any UID with GID 0 (chgrp 0 + chmod g=u on everything it writes), like the dashboard image
 RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/* \
-    && useradd --create-home --uid 10001 watchover && mkdir -p /app /data /hf /models && chown -R watchover:watchover /app /data /hf /models
+    && useradd --create-home --home-dir /home/watchover --uid 10001 --gid 0 watchover && mkdir -p /app /data /hf /models \
+    && chown -R 10001:0 /app /data /hf /models /home/watchover && chmod -R g=u /app /data /hf /models /home/watchover
 WORKDIR /app
 COPY pyproject.toml README.md CHANGELOG.md ./
 COPY src ./src
@@ -14,7 +16,7 @@ COPY samples ./samples
 RUN pip install --no-cache-dir --upgrade "pip>=26.2" "setuptools>=83" "wheel>=0.46.2" \
     && pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu "torch>=2.2" \
     && pip install --no-cache-dir -e ".[postgres]" "transformers>=4.44" "peft>=0.12"
-RUN chown -R watchover:watchover /app
-USER watchover
+RUN chown -R 10001:0 /app && chmod -R g=u /app
+USER 10001
 VOLUME ["/data", "/hf", "/models"]
 CMD ["python", "-m", "watchover.autotrain", "--loop"]

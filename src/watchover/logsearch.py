@@ -88,6 +88,7 @@ class Budget:
         self.max_lines = BUDGET_LINES if lines is None else lines
         self.max_rows = BUDGET_ROWS if rows is None else rows
         self.lines = self.rows = 0
+        self.cold = 0                                   # rows read from the cold archive (logtiers): the answer says "cold"
         self.cancel = cancel
 
     def over(self) -> Optional[str]:
@@ -173,8 +174,12 @@ class LogSearch:
         self._pre_max = None                        # a range after it is fully counted even when the counters are younger than it
         if live.db is not None:
             try:
-                r = live.db._exec("SELECT MAX(ts_max) AS m FROM live_batches WHERE ts_max <= ?", (iso_s(datetime.now(UTC)),))
-                self._pre_max = datetime.fromisoformat(r[0]["m"]).timestamp() + 1 if r and r[0]["m"] else None
+                if getattr(live.db, "hot", False):             # hot day files: an index probe per file
+                    m = live.db.ts_edge(True, iso_s(datetime.now(UTC)))
+                else:
+                    r = live.db._exec("SELECT MAX(ts_max) AS m FROM live_batches WHERE ts_max <= ?", (iso_s(datetime.now(UTC)),))
+                    m = r[0]["m"] if r else None
+                self._pre_max = datetime.fromisoformat(m).timestamp() + 1 if m else None
             except Exception:  # noqa: BLE001
                 self._pre_max = float("inf")
         if settings_fn is not None:
@@ -218,14 +223,62 @@ class LogSearch:
         now = time.time()
         if now - self._oldest[0] > 60 and self.live.db is not None:
             try:
-                r = self.live.db._exec("SELECT MIN(ts_max) AS o FROM live_batches")
-                self._oldest = (now, (r[0]["o"] or "") if r else "")
+                if getattr(self.live.db, "hot", False):
+                    o = self.live.db.ts_edge(False) or ""
+                else:
+                    r = self.live.db._exec("SELECT MIN(ts_max) AS o FROM live_batches")
+                    o = (r[0]["o"] or "") if r else ""
+                self._oldest = (now, o)
             except Exception:  # noqa: BLE001
                 self._oldest = (now, "")
-        return {"hours": float(self.live.retention_h), "oldest": self._oldest[1] or None}
+        out = {"hours": float(self.live.retention_h), "oldest": self._oldest[1] or None}
+        cold = self.cold
+        if cold is not None and self.live.db is not None:       # ranges back to the oldest archived day are searched (source "cold")
+            co, lo, hz = cold.oldest_start(), self._hot_lo(), self._horizon()
+            out["cold"] = {"oldest": co.isoformat() if co else None, "hot_from": lo.isoformat() if lo else None,
+                           "horizon": hz.isoformat() if hz else None, "days": len(cold.days())}
+        return out
+
+    # ---------------------------------------------------------------- tiers (logtiers): hot day files, then the cold archive
+    @property
+    def cold(self):
+        return getattr(self.live, "cold", None)
+
+    def _hot_lo(self) -> Optional[datetime]:
+        """Start of the oldest hot day file: older rows are only in the cold archive. None when there is no hot day file."""
+        return self.live.db.oldest_start() if getattr(self.live.db, "hot", False) else None
+
+    def _horizon(self) -> Optional[datetime]:
+        """The oldest instant lines are kept for (oldest cold or hot day); None without a cold tier (the line retention rules)."""
+        cold = self.cold
+        if cold is None or self.live.db is None:
+            return None
+        cs = [x for x in (cold.oldest_start(), self._hot_lo()) if x is not None]
+        return min(cs) if cs else datetime.now(UTC)
+
+    def _past_retention(self, e: datetime) -> bool:
+        return self.live.db is not None and e < datetime.now(UTC) - timedelta(hours=float(self.live.retention_h))
 
     def _expired(self, e: datetime) -> bool:
-        return self.live.db is not None and e < datetime.now(UTC) - timedelta(hours=float(self.live.retention_h))
+        """No stored line can be in a range ending at e: older than the cold archive or, without one, the line retention."""
+        if self.live.db is None:
+            return False
+        hz = self._horizon()
+        if hz is not None:
+            return e <= hz
+        return self._past_retention(e)
+
+    def _history_ok(self, q: Q) -> bool:
+        """The per-minute history answers this query's histogram (host / env / pool / level>=error only)."""
+        if self.history is None:
+            return False
+        for leaf in lq._leaves(q.node):
+            if isinstance(leaf, lq.Field) and not leaf.attr and leaf.name in ("host", "env", "pool"):
+                continue
+            if isinstance(leaf, lq.Field) and leaf.name == "level" and leaf.levels == frozenset({"ERROR", "CRITICAL"}):
+                continue
+            return False
+        return True
 
     def _v1_present(self) -> bool:
         now = time.time()
@@ -303,13 +356,70 @@ class LogSearch:
         return n, over
 
     # ---------------------------------------------------------------- reading rows and lines
+    def _hot_days(self) -> set:
+        return set(self.live.db.days()) if getattr(self.live.db, "hot", False) else set()
+
     def _rows(self, s: datetime, T: datetime, plan, budget: Budget, scope=None):
-        """Rows that may hold lines stamped in [s, T), newest ts_max first, keyset paged, pruned before decompression."""
+        """Rows that may hold lines stamped in [s, T), newest ts_max first. Without archived days in the range: the stored (hot)
+        rows. With them: day by day (rows sit in the file / archive of their ts_max day), each day's hot rows merged with its
+        archived rows when no hot file holds that day any more (hot is authoritative for its days)."""
+        cold = self.cold
+        if cold is None or self.live.db is None:
+            yield from self._hot_rows(s, T, plan, budget, scope)
+            return
+        from . import logtiers
+        hot_days = self._hot_days()
+        hi = T + timedelta(seconds=ROW_SPAN_S + 1)
+        cdays = {d for d in cold.days() if d not in hot_days and logtiers.day_start(d) < hi and logtiers.day_end(d) > s}
+        if not cdays:
+            yield from self._hot_rows(s, T, plan, budget, scope)
+            return
+        sev_mask = plan.sev_mask if plan is not None else lq.ALL_SEV
+        hosts = plan.hosts if plan is not None else None
+        srcs = plan.sources if plan is not None else None
+        allows = scope.allows if scope is not None else None
+        prune = (lambda ch: not (int(ch.get("sev", lq.ALL_SEV)) & sev_mask)) if sev_mask != lq.ALL_SEV else None
+        lt = "<" if T.microsecond == 0 else "<="
+
+        def cold_rows(day):
+            for r in cold.rows_desc(s, T, lt, None, prune, days={day}, pre=plan.prefilter if plan is not None else None):
+                budget.cold += 1
+                h = r.get("host") or ""
+                sr = r.get("src") or ""
+                if (not (int(r.get("sevmask") or lq.ALL_SEV) & sev_mask)
+                        or (h and ((hosts is not None and lq.fold(h) not in hosts) or (allows is not None and not allows(h))))
+                        or (sr and srcs is not None and lq.fold(sr) not in srcs)):
+                    r["_skip"] = True
+                yield r
+        known = sorted(hot_days | set(cold.days()))
+        floor = max(logtiers.day_start(logtiers.day_of(iso_s(s))), logtiers.day_start(known[0]) - timedelta(days=1))
+        d = logtiers.day_start(logtiers.day_of(iso_s(hi)))
+        key = lambda r: (r.get("ts_max") or "", r.get("ts_min") or "", int(r.get("id") or 0))   # noqa: E731
+        while d >= floor:
+            day = logtiers.day_key(d)
+            hot = self._hot_rows(max(s, d), T, plan, budget, scope, ts_hi=d + timedelta(days=1))
+            if day not in cdays:
+                yield from hot
+            else:
+                last = None
+                for r in heapq.merge(hot, cold_rows(day), key=key, reverse=True):
+                    k = key(r)
+                    if k != last:                                # a row both in a hot file and in the archive: once
+                        last = k
+                        yield r
+            d -= timedelta(days=1)
+
+    def _hot_rows(self, s: datetime, T: datetime, plan, budget: Budget, scope=None, ts_hi: Optional[datetime] = None):
+        """Stored rows that may hold lines stamped in [s, T), newest ts_max first, keyset paged, pruned before decompression.
+        ts_hi: only rows with ts_max before it (one day of a range that also reads the cold archive)."""
         db = self.live.db
         v1 = self._v1_present()
         params = [iso_s(s), iso_s(T)]
         lt = "<" if T.microsecond == 0 else "<="                # lines < T: a whole-second T excludes rows starting at T
         base = f"SELECT {ROW_COLS} FROM live_batches WHERE ts_max >= ? AND ts_min {lt} ?"   # index (ts_max, ts_min): no row fetch to test ts_min
+        if ts_hi is not None:
+            base += " AND ts_max < ?"
+            params.append(iso_s(ts_hi))
         if not v1:
             base += " AND ts_max < ?"
             params.append(iso_s(T + timedelta(seconds=ROW_SPAN_S + 1)))
@@ -437,6 +547,13 @@ class LogSearch:
                     return float(rows[0]["t"])
             except Exception:  # noqa: BLE001
                 pass
+        cold = self.cold
+        if cold is not None and self.live.db is not None:          # archived days: the archive index knows its line counts
+            lo = self._hot_lo()
+            n = cold.lines_between(s, e, self._hot_days())
+            if lo is None or e <= lo:
+                return n
+            return n + self._rate() * (e - max(s, lo)).total_seconds()
         return self._rate() * (e - s).total_seconds()
 
     def _rate(self) -> float:
@@ -496,6 +613,8 @@ class LogSearch:
             if stopped:
                 break
         info.update(lines=budget.lines, rows=budget.rows, ms=budget.ms())
+        if budget.cold:
+            info["cold"] = budget.cold
         if stopped:
             info.update(complete=False, frontier=iso_s(frontier), stopped_by=stopped)
         return info
@@ -574,7 +693,7 @@ class LogSearch:
                 self._release(who and (who, "search"), ev)
             nxt = self.encode_cursor(nxt_key[0], nxt_key[1], h) if nxt_key else None
             total = self._total(q, s, e, live, matched, info, upper is not None)
-            source = "stored"
+            source = "cold" if info.get("cold") else "stored"
         lines = [self.line_obj(v, colnames) for _t, _s, v in emitted]
         exact = bool(total.get("exact"))
         return {"lines": lines, "next": nxt, "total": total, "scan": info, "source": source, "exact": exact}
@@ -644,6 +763,8 @@ class LogSearch:
             nxt, stopped_by = (frontier_us, -(2 ** 62)), stopped   # frontier (every line at or above it was returned)
         info = {"lines": budget.lines, "rows": budget.rows, "ms": budget.ms(), "complete": exhausted,
                 "frontier": _iso_ms(frontier_us / 1e6), "stopped_by": stopped_by}
+        if budget.cold:
+            info["cold"] = budget.cold
         if not exhausted:                                       # rows straddling the frontier were partly read: only the lines at or
             info["matched_above"] = sum(n for sec, n in msec.items() if sec * 1_000_000 >= frontier_us)   # above it were all seen
         return emitted, matched, info, nxt
@@ -774,8 +895,8 @@ class LogSearch:
         step = self._steps(s, e)
         st = s.timestamp()
         nb = max(1, int(math.ceil((e.timestamp() - st) / step)))
-        if self._expired(e):
-            return self._hist_history(q, s, e, step, nb)
+        if self._expired(e) or (self._past_retention(e) and self._history_ok(q)):
+            return self._hist_history(q, s, e, step, nb)        # older than the hot window: the long-term counters, when they answer
         valfn = self._by_fn(by, q.ctx)
         counts: list = [dict() for _ in range(nb)]
         totals: dict = {}
@@ -822,6 +943,8 @@ class LogSearch:
                     self._release(who and (who, "histogram"), ev)
             sample = info.get("sample", 1)
             exact = info["complete"] and sample == 1
+            if info.get("cold"):
+                source = "cold"
         if by == "level":
             keys = list(SEVS_DESC)
         else:
@@ -981,7 +1104,7 @@ class LogSearch:
             if scale != 1:
                 counts = {f: {k: int(round(n * scale)) for k, n in c.items()} for f, c in counts.items()}
             exact = info["complete"] and sample == 1
-            source = "stored" if self.live.db is not None else "ring"
+            source = "cold" if info.get("cold") else "stored" if self.live.db is not None else "ring"
         out = {"mode": mode, "facets": {f: self._facet_out(f, counts[f], q, limit, stext) for f in want}, "exact": exact, "source": source, "sample": sample,
                "scaled": round(scale / sample, 2) if info is not None and scale != sample else None}
         if info is not None:
@@ -1070,7 +1193,7 @@ class LogSearch:
                          "hosts": len(g["hosts"]), "top_hosts": sorted(g["hosts"])[:5], "first": _iso_ms(g["first"]), "last": _iso_ms(g["last"]),
                          "trend": g["trend"], "sample_id": str(smp.seq), "sample": privacy.scrub(smp.msg or "")[:400], "new": False})
         return {"groups": rows, "distinct": len(acc), "total": int(round(sum(g["count"] for g in acc.values()) * k)), "exact": info["complete"] and k == 1 and cap[0] < 200_000,
-                "source": "stored" if self.live.db is not None else "ring", "sample": ks, "scaled": round(cov, 2) if cov != 1 else None, "scan": info}
+                "source": "cold" if (info or {}).get("cold") else "stored" if self.live.db is not None else "ring", "sample": ks, "scaled": round(cov, 2) if cov != 1 else None, "scan": info}
 
     # ---------------------------------------------------------------- live tail
     def tail(self, text: str = "", after: Optional[int] = None, limit: int = 200, cols: str = "", scope=None, who=("", "")) -> dict:
@@ -1165,6 +1288,22 @@ class LogSearch:
                 return v, None
         if live.db is None:
             raise KeyError(str(lid))
+        cold = self.cold
+        floor = live.db.seq_floor() if cold is not None and lid > 0 and getattr(live.db, "hot", False) else None
+        if floor is None or lid >= floor:                       # below every hot line id: archived, skip the hot pages
+            try:
+                return self._find_stored(lid, ctx)
+            except KeyError:
+                if cold is None:
+                    raise
+        hd = self._hot_days()                                   # the cold archive: the days no hot file holds
+        hit = self._in_rows(cold.find_seq(lid, hd) if lid > 0 else cold.find_id((-lid) // logstore.V1_ID_BASE, hd), lid, ctx)
+        if hit is None:
+            raise KeyError(str(lid))
+        return hit
+
+    def _find_stored(self, lid: int, ctx):
+        live = self.live
         if lid > 0:
             if not live._v2:
                 raise KeyError(str(lid))
@@ -1206,7 +1345,7 @@ class LogSearch:
         return None
 
     def line(self, lid: int, scope=None) -> dict:
-        v, _row = self._find(int(lid))
+        v, row = self._find(int(lid))
         if scope is not None and not scope.allows(v.host):
             raise KeyError(str(lid))                            # 404, not 403: existence is not confirmed
         p = v.packed() if isinstance(v, ObsLine) else v.d
@@ -1249,7 +1388,7 @@ class LogSearch:
                 "raw": p.get("raw") if raw_state == "stored" else None, "raw_state": raw_state,
                 "attrs": at, "attrs_dropped": int(p.get("atx") or 0), "trace": trace, "session": session,
                 "host_link": {"ops": f"/ops?host={v.host}&start={a}&end={b}"} if v.host else None,
-                "group": {"key": gk, "template": logstore.scrub_template(tpl), "count_1h": count_1h}, "source_of_detail": "ring" if isinstance(v, ObsLine) else "stored"}
+                "group": {"key": gk, "template": logstore.scrub_template(tpl), "count_1h": count_1h}, "source_of_detail": "ring" if isinstance(v, ObsLine) else "cold" if (row or {}).get("_cold") else "stored"}
 
     def context(self, lid: int, before: int = 20, after: int = 20, text: str = "", scope=None) -> dict:
         v, _row = self._find(int(lid))
@@ -1270,6 +1409,12 @@ class LogSearch:
                 # the anchor's own row is bounded by its arrival (a stale stamp, logstore.encode_rows): read it by line id
                 rows += [r for r in self.live.db._exec(f"SELECT {ROW_COLS} FROM live_batches WHERE seq_min <= ? AND seq_min > 0 ORDER BY seq_min DESC LIMIT 32",
                                                        (lid,)) if int(r.get("seq_max") or 0) >= lid and (r.get("agent") or "") == (v.agent if v.agent != "-" else "")]
+            cold = self.cold
+            if cold is not None:                                 # archived days of the window (those no hot file holds)
+                hd = self._hot_days()
+                rows += cold.rows_agent(v.agent if v.agent != "-" else "", datetime.fromtimestamp(lo, UTC), datetime.fromtimestamp(hi, UTC), hd)
+                if lid > 0 and not any(int(r.get("seq_min") or 0) <= lid <= int(r.get("seq_max") or 0) for r in rows):
+                    rows += [r for r in cold.find_seq(lid, hd) if (r.get("agent") or "") == (v.agent if v.agent != "-" else "")]
             for r in rows:
                 if (r.get("host") and r["host"] != host) or (r.get("src") and r["src"] != src):
                     continue

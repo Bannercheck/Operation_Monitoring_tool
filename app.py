@@ -577,7 +577,10 @@ def _sim_holder() -> dict:
 def set_simulation(on: bool) -> None:
     """Simulation mode (Operations page only): synthetic hosts feed the live store; off = stop and purge everything it shipped."""
     from watchover.live import SIM_HOSTS
+    from watchover.demo import enabled as demo_enabled
     h = _sim_holder()
+    if on and not demo_enabled():                            # production install (WATCHOVER_DEMO=0): never starts
+        return
     if on and "stop" not in h:
         h["stop"] = start_simulator(live_store(), interval=1.0)
     elif not on and "stop" in h:

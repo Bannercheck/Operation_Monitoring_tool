@@ -16,7 +16,7 @@ from ... import settings as wo_settings
 from ..security import require, require_install, services
 
 SETTING_KEYS = ("self_monitor", "learn_min", "alerts_on", "live_port", "live_key", "public_host", "lang", "workspace", "demo_on_start", "thr_cpu", "thr_memory", "thr_disk", "thr_gpu",
-                "live_retention_h", "live_window_max_events", "live_ring", "live_spool_mb", "history_retention_days",
+                "live_retention_h", "live_window_max_events", "live_ring", "live_spool_mb", "history_retention_days", "cold_retention_days", "cold_max_gb", "hot_max_gb",
                 "trace_sample_pct", "trace_slow_ms", "trace_apdex_ms", "trace_retention_h", "trace_rollup_days", "rum_retention_days", "anomaly_learning_days", "teams_strict", "teams_self_claim")
 CHANNEL_KEYS = ("smtp_host", "smtp_port", "smtp_security", "smtp_user", "smtp_password", "smtp_from", "smtp_from_name",
                 "sms_preset", "sms_url", "sms_method", "sms_auth", "sms_user", "sms_password", "sms_token", "sms_from", "sms_account", "sms_body", "sms_content_type", "webhook_url", "webhook_kind", "webhook_secret")
@@ -37,6 +37,12 @@ class SnapshotIn(BaseModel):
 @router.get("/status")
 def status(user=Depends(require("sys.status")), svc=Depends(services)):
     return svc.status()
+
+
+@router.get("/storage")
+def storage(user=Depends(require("sys.status")), svc=Depends(services)):
+    """Log tiers (logtiers.py): hot day files and cold archive sizes, days, caps, bytes per line; the main database size."""
+    return svc.log_tiers.report(svc.kb, svc.live)
 
 
 _coverage_cache: dict = {}

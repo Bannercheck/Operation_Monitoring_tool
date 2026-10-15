@@ -1,0 +1,86 @@
+{{- /* Optional nightly pg_dump into its own volume (custom format, compressed), keepDays newest kept. Restore: see
+     docs/KURULUM_OPENSHIFT.md (pg_restore). PVC snapshots of data / logs-cold are the storage team's VolumeSnapshot. */}}
+{{- if and .Values.backup.enabled .Values.postgresql.enabled }}
+{{- $fn := include "watchover.fullname" . }}
+{{- $pg := .Values.postgresql }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $fn }}-backup
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "watchover.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backup
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- if .Values.backup.storage.storageClass }}
+  storageClassName: {{ .Values.backup.storage.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.backup.storage.size }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ $fn }}-backup
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "watchover.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backup
+spec:
+  schedule: {{ .Values.backup.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            {{- include "watchover.labels" . | nindent 12 }}
+            app.kubernetes.io/component: backup
+        spec:
+          restartPolicy: Never
+          serviceAccountName: {{ $fn }}
+          automountServiceAccountToken: false
+          enableServiceLinks: false
+          securityContext:
+            {{- include "watchover.podSecurity" . | nindent 12 }}
+          containers:
+            - name: pg-dump
+              image: {{ $pg.image }}
+              imagePullPolicy: IfNotPresent
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -eu
+                  f="/backup/watchover-$(date +%Y%m%d-%H%M).dump"
+                  pg_dump -h "$PGHOST" -U "$PGUSER" -d "$PGDATABASE" -Fc -Z 6 -f "$f.part"
+                  mv "$f.part" "$f"
+                  find /backup -name 'watchover-*.dump' -mtime +{{ .Values.backup.keepDays }} -delete
+                  ls -lh /backup
+              env:
+                - {name: PGHOST, value: {{ include "watchover.pgHost" . | quote }}}
+                - {name: PGUSER, value: {{ $pg.username | quote }}}
+                - {name: PGDATABASE, value: {{ $pg.database | quote }}}
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef: {name: {{ include "watchover.dbSecret" . }}, key: postgres-password}
+                - {name: HOME, value: /tmp}
+              volumeMounts:
+                - {name: backup, mountPath: /backup}
+                - {name: tmp, mountPath: /tmp}
+              resources:
+                {{- toYaml .Values.backup.resources | nindent 16 }}
+              securityContext:
+                {{- include "watchover.containerSecurity" . | nindent 16 }}
+          volumes:
+            - name: backup
+              persistentVolumeClaim: {claimName: {{ $fn }}-backup}
+            - name: tmp
+              emptyDir: {sizeLimit: 64Mi}
+{{- end }}

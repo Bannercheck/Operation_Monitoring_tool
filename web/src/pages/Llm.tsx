@@ -103,6 +103,17 @@ function AutoTrain({ tr, dl }: { tr: any; dl: (p: string) => void }) {
       <label className="small muted">{t("llm_base_model")} <select className="input" value={f.train_base} onChange={(e) => { setF({ ...f, train_base: e.target.value }); save.mutate({ train_base: e.target.value }); }}>{["qwen2.5:1.5b-instruct", "qwen2.5:3b-instruct"].map((m) => <option key={m} value={m}>{m}</option>)}</select></label>
       <div className="grow" /><Btn sm kind="primary" onClick={() => runNow.mutate()} disabled={runNow.isPending || !d.trainer_alive} title={!d.trainer_alive ? t("llm_at_dead") : ""}>⚡ {t("llm_at_now")}</Btn>{d.forced && <span className="badge amber">{t("llm_at_queued")}</span>}
     </div>
+    <div className="at-sched">
+      <label className="chip"><input type="checkbox" checked={!!f.train_schedule_on} onChange={() => toggle("train_schedule_on")} /> {t("llm_at_sched")}</label>
+      <div className="seg">{[1, 2, 3, 4, 5, 6, 7].map((n) => { const ds = new Set(String(f.train_days ?? "1,2,3,4,5,6,7").split(",").map(Number)); const on = ds.has(n);
+        return <button key={n} className={on ? "on" : ""} disabled={!f.train_schedule_on} onClick={() => { if (on && ds.size === 1) return; on ? ds.delete(n) : ds.add(n); const v = [...ds].sort().join(","); setF({ ...f, train_days: v }); save.mutate({ train_days: v }); }}>{t(`llm_at_d${n}`)}</button>; })}</div>
+      <label className="small muted">{t("llm_at_from")} <input className="input" type="time" style={{ width: 110 }} disabled={!f.train_schedule_on} value={f.train_start ?? "01:00"} onChange={(e) => setF({ ...f, train_start: e.target.value })} onBlur={() => save.mutate({ train_start: f.train_start })} /></label>
+      <label className="small muted">{t("llm_at_to")} <input className="input" type="time" style={{ width: 110 }} disabled={!f.train_schedule_on} value={f.train_end ?? "06:00"} onChange={(e) => setF({ ...f, train_end: e.target.value })} onBlur={() => save.mutate({ train_end: f.train_end })} /></label>
+      <label className="small muted">{t("llm_at_tz")} <select className="input" disabled={!f.train_schedule_on} value={f.train_tz ?? "Europe/Istanbul"} onChange={(e) => { setF({ ...f, train_tz: e.target.value }); save.mutate({ train_tz: e.target.value }); }}>
+        {["Europe/Istanbul", "UTC", "Europe/London", "Europe/Berlin"].map((z) => <option key={z} value={z}>{z}</option>)}</select></label>
+      {d.window?.on && <span className={`badge ${d.window.open ? "green" : ""}`}>{d.window.open ? t("llm_at_open") : t("llm_at_next", { t: d.window.next ?? "–" })}</span>}
+    </div>
+    <div className="dim small">{t("llm_at_sched_hint")}</div>
     {!!d.reasons?.length && !d.forced && <div className="muted small" style={{ marginTop: 6 }}>{t("llm_at_waiting")}: {d.reasons.join(" · ")}</div>}
     <Err e={save.error || runNow.error} />
     {!!d.runs?.length && <Table cols={[{ k: "ts", label: t("time"), render: (r) => fmtTs(r.ts) }, { k: "status", label: t("status"), render: (r) => <span lang="en" className={`badge ${r.status === "pass" ? "green" : r.status === "fail" || r.status === "error" ? "red" : "amber"}`}>{r.status}</span> },

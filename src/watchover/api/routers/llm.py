@@ -4,7 +4,7 @@ from __future__ import annotations
 import threading
 from typing import Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
@@ -152,7 +152,8 @@ def training_export(lang: str = "tr", part: str = "all", user=Depends(require_in
     return PlainTextResponse(body, media_type="application/jsonl", headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 
-TRAIN_KEYS = ("train_auto", "train_every_h", "train_min_examples", "train_min_new", "train_base", "train_gate_min", "train_use_ops")
+TRAIN_KEYS = ("train_auto", "train_every_h", "train_min_examples", "train_min_new", "train_base", "train_gate_min", "train_use_ops",
+              "train_schedule_on", "train_days", "train_start", "train_end", "train_tz")
 
 
 class TrainIn(BaseModel):
@@ -163,6 +164,11 @@ class TrainIn(BaseModel):
     train_base: Optional[str] = None
     train_gate_min: Optional[float] = None
     train_use_ops: Optional[bool] = None
+    train_schedule_on: Optional[bool] = None
+    train_days: Optional[str] = None          # "1,2,3,4,5" (1 = Monday ... 7 = Sunday)
+    train_start: Optional[str] = None         # "01:00"
+    train_end: Optional[str] = None           # "06:00"; before the start = past midnight
+    train_tz: Optional[str] = None            # IANA name, e.g. Europe/Istanbul
 
 
 @router.get("/autotrain")
@@ -178,6 +184,21 @@ def autotrain_state(user=Depends(require("page.llm")), svc=Depends(services)):
 @router.put("/autotrain")
 def autotrain_settings(body: TrainIn, user=Depends(require_install("page.llm")), svc=Depends(services)):
     vals = {k: v for k, v in body.model_dump().items() if v is not None and k in TRAIN_KEYS}
+    import re
+    for k in ("train_start", "train_end"):
+        if k in vals and not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d|24:00", vals[k]):
+            raise HTTPException(400, f"{k}: HH:MM")
+    if "train_days" in vals:
+        days = sorted({int(d) for d in vals["train_days"].replace(" ", "").split(",") if d.isdigit() and 1 <= int(d) <= 7})
+        if not days:
+            raise HTTPException(400, "train_days: at least one day 1-7")
+        vals["train_days"] = ",".join(map(str, days))
+    if "train_tz" in vals:
+        from zoneinfo import ZoneInfo
+        try:
+            ZoneInfo(vals["train_tz"])
+        except Exception:  # noqa: BLE001
+            raise HTTPException(400, "train_tz: unknown time zone")
     wo_settings.save(vals)
     svc._ops_at = 0
     return {k: wo_settings.load().get(k) for k in TRAIN_KEYS}

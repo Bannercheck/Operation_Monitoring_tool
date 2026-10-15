@@ -988,3 +988,68 @@ Verification under load (scratch server, `scripts/loadtest.py --rate 1700 --agen
 probes; the paging run must return every line of the fixed minute exactly once (compare with the `live_batches` ground
 truth); the same query 12 times must give 12 identical answers; `q=zzzz` must report `complete:false` with a cursor, never
 "no logs"; a tail poll under 10 ms; facet-only answers under 150 ms; screenshots of `/logs` in dark, light and phone widths.
+
+## 8. Log tiers: hot day files and the cold archive (logtiers.py)
+
+Raw lines no longer live in the main database (PostgreSQL stays small: users, teams, inventory, thresholds, actions, minute
+counters, history, traces config). `WATCHOVER_LOG_STORE=db` keeps the old layout (live_batches in the main database, pruned after
+`live_retention_h`, no archive) for tests and small installs.
+
+| tier | where | what | expiry |
+|---|---|---|---|
+| hot | `WATCHOVER_LOG_HOT_DIR` (default `<WATCHOVER_HOME>/logs/hot`) | `logs-YYYYMMDD.db`: SQLite (WAL, synchronous=NORMAL), one file per UTC day of the row's `ts_max`, the v2 rows and indexes of section 4; `meta.db` keeps the id / line-id high-water marks | the whole file, once archived |
+| cold | `WATCHOVER_LOG_COLD_DIR` (default `<WATCHOVER_HOME>/logs/cold`) | `logs-YYYYMMDD.wcl`: one archive per hot day | `cold_retention_days` (default 7), `cold_max_gb` |
+
+**Hot.** `HotStore` speaks the Database subset the readers use; each read connection ATTACHes the day files and sees one TEMP VIEW
+`live_batches` (UNION ALL), so the explorer, live tail, detail, context and the analysis window keep their SQL (SQLite merges the
+per-file index scans). Writes go to the file of the row's ts_max day (a stamp days ahead lands in tomorrow's file; a day being
+archived is never written again: its late rows go to the arrival day); one id counter spans all files and the archive. No DELETE,
+no VACUUM: a day leaves by deleting its file. Keep `live_retention_h` at 7 days or less in this mode (SQLite attaches 10 files).
+
+**Cold.** A day archive is chunks of ~32k lines (rows in `(ts_max, ts_min, id)` order) + an lzma index (per chunk: offset, lines,
+ts range, id range, line-id range, severity mask) + a trailer. A chunk stores every stored JSON line as a template (the line with
+its digit runs cut out, a repeated run as a back reference, the stamp and the line id as deltas) and its digit runs in
+per-(template, slot) columns, all lzma (preset 6). Lines come back byte for byte, so every field (raw, attributes, trace id, line id)
+and the privacy transform are exactly what the hot tier stored. A search literal is checked against a chunk's templates and digit
+columns before its lines are rebuilt (`chunk_may_hold`, never a false negative): a rare id or phrase skips most chunks.
+
+**Job** (hourly, `LogTiers.tick`): hot days whose end is older than `live_retention_h` + 10 min are archived in a child process
+(`python -m watchover.logtiers archive …`, `nice 19`; the same code in a thread when no child can be started), then their file is
+deleted; `hot_max_gb` archives the oldest finished day early, `cold_max_gb` deletes the oldest archived day (0 = no cap),
+`cold_retention_days` (0 = no archive, hot days are deleted) expires archives. Crash-safe: the archive is written to `*.wcl.tmp`,
+fsynced and renamed; the hot file is deleted only after; a re-run merges with an existing archive by row id (no loss, no
+duplicate); temp leftovers are removed by the next tick.
+
+**Reading.** A range with no archived day in it reads the hot rows as before. Otherwise `_rows` walks day by day, newest first:
+the hot rows of the day (`ts_max` within it) merged with the archived rows of a day no hot file holds; hot is authoritative for its
+days. Search, facets, groups and text histograms over archived days scan with the usual budgets and answer `source: "cold"`,
+the at-least / estimated wording and a cursor; histograms that the per-minute history can answer (host / env / pool / level>=error)
+still come from it past the hot window. `line/{id}` and `context/{id}` fall back to the archive (by line-id range, by row id for v1
+lines). A range is "expired" (`source: "history"`) only before the oldest archived day.
+
+**Migration** (first start in files mode): the old main-database `live_batches` is copied into the hot day files in the
+background (500 rows per step, ids and line ids kept, `INSERT OR IGNORE`), each copied batch is deleted, and the empty table is
+dropped. Ids and line ids are reserved above the old table first, so new lines never collide. Interrupted, it continues on the
+next start; rows not yet copied are missing from the explorer for those minutes.
+
+**Demo clean-up**: `logtiers.demo_purge` is registered in `demo.PURGERS`: it counts (dry run) or deletes the simulator's lines
+in the hot day files (`DELETE … WHERE agent = ?` per file) and rewrites each archived day that holds some (temp file + rename;
+an archive lists its senders, so other days are not read).
+
+**Report**: `GET /api/system/storage` (sys.status): hot / cold bytes, day files, oldest / newest, events / lines, bytes per line,
+caps and % used, disk free, the last archive run, the migration state, the main database size (`pg_database_size` / file size);
+`warnings` past 85 % of a cap. The System page shows it as the "Depolama" card.
+
+**Measured** (scripts/loadtest.py corpus, 300 agents, lines spread over one simulated day, this container, one core):
+
+| | 20-line batches | 50-line batches |
+|---|---|---|
+| hot day file | 90.5 B/line (63 B/line compressed payload) | 65.8 B/line (41.6) |
+| cold archive | 7.74 B/line (735k lines) | 6.72 B/line (291k lines) |
+| archive speed | ~17k lines/s (child process, nice 19) | ~19.5k lines/s |
+
+Cold search on one archived day of 735k lines (uncached): a common term fills the first 100-line page in 0.7-1.2 s; a rare literal
+(`"order 999999"`, `4815162342`, `ORA-01555`) scans the whole day in one request in 0.5-0.8 s (every chunk skipped by the literal
+check, ~1.4M lines/s); a line's detail 160-200 ms (one chunk decoded; 5-9 ms once cached), its context 160-250 ms. At 100k
+lines/min (144M lines a day) a rare-literal scan of a day is ~100 s of chunk checks: the page continues by itself
+(`Arşiv taranıyor…`, up to 40 requests) with a progress bar.

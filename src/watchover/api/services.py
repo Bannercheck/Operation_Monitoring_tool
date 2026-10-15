@@ -48,10 +48,13 @@ class Services:
     def _simulate_users(self, rng, incident: bool) -> None:
         """Simulator extra: web and mobile HR sessions through the RUM path, their backend logs through the live path."""
         from ..live import simulate_rum
+        from .. import demo as wo_demo
+        if not wo_demo.enabled():                                # production (WATCHOVER_DEMO=0): nothing is ever seeded
+            return
         if not getattr(self, "_sim_inventory", False):          # name the simulated peers once (only when they are not in the inventory yet)
             self._sim_inventory = True
             from ..techstack import SIM_TECH_EXTRA_INVENTORY, SIM_TECH_INVENTORY
-            for h, ip, role in (("db-01", "172.16.1.55", "PostgreSQL"), ("cache-01", "172.16.1.60", "Redis"), ("kafka-01", "172.16.1.70", "Kafka"), ("hr-db", "172.16.2.10", "Oracle")):
+            for h, ip, role in wo_demo.DEMO_PEERS:
                 try:
                     if self.inventory.get(h) is None:
                         self.inventory.upsert({"hostname": h, "ip": ip, "env": "prod", "role": role, "application": SIM_TECH_EXTRA_INVENTORY.get(h, ""), "owner": "demo (simulator)"})
@@ -71,14 +74,13 @@ class Services:
             self.live.ingest("otel.jsonl", simulate_tech_lines(rng), "simulator")
         if not getattr(self, "_sim_flow", False):
             self._sim_flow = True
-            if not any(f["name"] == "Sipariş → Fatura" for f in self.bizflows.list()):
+            if not any(f["name"] == wo_demo.DEMO_FLOW["name"] for f in self.bizflows.list()):
                 try:
-                    self.bizflows.save("Sipariş → Fatura", r"sipariş\s+(\d{7})", [{"name": "Oluşturuldu", "match": "oluşturuldu"}, {"name": "Kredi onayı", "match": "kredi kontrolü onaylandı"},
-                                                                                 {"name": "Sevkiyat", "match": "sevkiyat"}, {"name": "Fatura", "match": "fatura"}])
+                    self.bizflows.save(wo_demo.DEMO_FLOW["name"], wo_demo.DEMO_FLOW["key_regex"], [dict(s) for s in wo_demo.DEMO_FLOW["steps"]])
                 except Exception:  # noqa: BLE001
                     pass
         apps = {a["name"]: a for a in self.rum.apps()}
-        for name, platform in (("ik-mobil", "android"), ("ik-portal", "web")):
+        for name, platform in wo_demo.DEMO_RUM_APPS:
             if name not in apps:
                 apps[name] = self.rum.create_app(name, platform, note="demo (simulator)")
         sessions, backend = simulate_rum(rng, incident)
@@ -139,7 +141,23 @@ class Services:
         self.playbook = Playbook(self.kb if self.kb.pg else os.environ.get("PLAYBOOK_DB", "playbook.db"))
         cfg0 = wo_settings.load()
         self.live = LiveStore(spool=os.environ.get("LIVE_SPOOL", "data/live/events.jsonl"), maxlen=int(cfg0.get("live_ring", 50000) or 50000))
-        self.live.attach_db(self.kb)                          # 100+ hosts: the ring is seconds of data, the database holds the window
+        from .. import logtiers                              # raw lines off the main database: hot day files + cold archive
+        self.log_hot = self.log_cold = None
+        if logtiers.store_mode() == "files":
+            try:
+                self.log_hot, self.log_cold = logtiers.HotStore(), logtiers.ColdStore()
+            except Exception as e:  # noqa: BLE001 - an unwritable log directory: keep the old layout, say why
+                print(f"watchover: log tiers unavailable ({e}); raw lines stay in the main database", flush=True)
+                self.log_hot = self.log_cold = None
+        if self.log_hot is not None:
+            self._log_migrate = logtiers.LogTiers.prepare(self.kb, self.log_hot)   # ids above the old main-database table
+            self.live.attach_db(self.log_hot)
+            self.live.cold = self.log_cold
+        else:                                                 # WATCHOVER_LOG_STORE=db (or no log directory): the main database
+            self._log_migrate = False
+            self.live.attach_db(self.kb)                      # 100+ hosts: the ring is seconds of data, the database holds the window
+        self.log_tiers = logtiers.LogTiers(self.log_hot, self.log_cold, wo_settings.load)
+        logtiers.register_purger(self.log_tiers)              # demo clean-up reaches the hot day files and the archive (demo.PURGERS)
         self.apply_capacity_settings(cfg0)
         self.agents = AgentRegistry(self.kb)
         self.sources = SourceStore(self.kb)
@@ -195,6 +213,7 @@ class Services:
         self.refresh_llm()
         if bg:
             self.history.start(); self.anomalies.start(); self.alerts.start(); self.thresholds.start(); self.poller.start(); self.memory.learner.start()
+            self.log_tiers.start(self.kb if self._log_migrate else None)   # copy the old table once, then the hourly archive job
             c = wo_settings.load()
             port = int(os.environ.get("LIVE_PORT", c.get("live_port", 8600)) or 8600)
             if os.environ.get("WATCHOVER_RECEIVER", "python") == "go":      # the Go receiver owns :8600 and spools; this process consumes the spool
@@ -290,6 +309,9 @@ class Services:
         return self._live_an[1]
 
     def simulate(self, on: bool) -> bool:
+        from .. import demo as wo_demo
+        if on and not wo_demo.enabled():                     # production install: the API answers 403
+            raise wo_demo.DemoDisabled("the simulator is disabled on this installation (WATCHOVER_DEMO=0)")
         if on and self.sim_stop is None:
             self.sim_stop = start_simulator(self.live, interval=1.0, extra=self._simulate_users)
         elif not on and self.sim_stop is not None:
@@ -299,8 +321,9 @@ class Services:
 
     def status(self) -> dict:
         from .. import __version__
+        from ..demo import enabled as demo_enabled
         return {"version": {"version": __version__, **wo_admin.version_info()}, "database": wo_admin.db_info(self.kb), "uptime_s": int(time.time() - self.started),
-                "live": {"received": self.live.received, "agents": len(self.live.agents), "receiver": bool(self.receiver), "simulator": self.sim_stop is not None,
+                "live": {"received": self.live.received, "agents": len(self.live.agents), "receiver": bool(self.receiver), "simulator": self.sim_stop is not None, "demo": demo_enabled(),
                          "selfmon": self.selfmon.status() if self.selfmon else None},
                 "llm": {"provider": self.llm_cfg().kind, "model": self.llm_cfg().model, "enabled": self.llm_cfg().enabled},
                 "services": {"history": bool(self.history.thread and self.history.thread.is_alive()) if hasattr(self.history, "thread") else None,
@@ -322,6 +345,9 @@ class Services:
                 self.selfmon.stop()
             except Exception:  # noqa: BLE001
                 pass
+        self.log_tiers.stop.set()
+        if self.log_hot is not None:
+            self.log_hot.close()
         self.kb.close()
 
 

@@ -141,6 +141,25 @@ def test_manual_sizing_is_kept(stage):
     assert "WATCHOVER_LLM_CPUS=3\n" in (d / ".env").read_text() and "WATCHOVER_SIZING=manual" in (d / ".env").read_text()
 
 
+def test_profile_cpu8_fixes_the_caps_and_keeps_the_llm_connection(stage):
+    d, _ = stage
+    run(stage, "install")
+    env = (d / ".env").read_text() + "LLM_BASE_URL=http://gpu-box:11434\nLLM_MODEL=qwen2.5:14b\n"
+    (d / ".env").write_text(env)
+    r = run(stage, "profile", "cpu8")
+    assert r.returncode == 0, r.stderr
+    e = (d / ".env").read_text()
+    for kv in ("WATCHOVER_SIZING=manual", "WATCHOVER_CPUS=6", "WATCHOVER_MEMORY=16g", "WATCHOVER_LLM_CPUS=3", "WATCHOVER_LLM_THREADS=3",
+               "WATCHOVER_PARSE_WORKERS=3", "WATCHOVER_PG_SHARED_BUFFERS=2GB", "WATCHOVER_TRAIN_CPUS=4", "WATCHOVER_LLM_KEEPALIVE=24h"):
+        assert kv + "\n" in e, kv
+    assert "LLM_BASE_URL=http://gpu-box:11434" in e and "LLM_MODEL=qwen2.5:14b" in e          # a configured connection is never touched
+    assert run(stage, "start").returncode == 0 and "WATCHOVER_CPUS=6\n" in (d / ".env").read_text()   # manual: start keeps the profile
+    shown = run(stage, "profile").stdout
+    assert "WATCHOVER_LLM_CPUS" in shown and "3" in shown
+    assert run(stage, "profile", "auto").returncode == 0 and "WATCHOVER_SIZING=auto" in (d / ".env").read_text()
+    assert run(stage, "profile", "nope").returncode != 0
+
+
 def test_backup_rotation(stage):
     d, _ = stage
     run(stage, "install")
@@ -351,3 +370,25 @@ def test_update_reports_the_running_version(stage):
     (d / "bin" / "docker").write_text(fake.replace(f'"version": "{ver}"', '"version": "1.0.0"'))
     r = run(stage, "update")
     assert "WARNING: this folder is v" in r.stdout and "'1.0.0'" in r.stdout
+
+
+def test_demo_clean_counts_restarts_then_cleans(stage):
+    """demo-clean: --dry-run only counts; the real run restarts the dashboard (the simulator stops, the in-memory window forgets the
+    demo hosts) and then deletes inside the container; anything else is a usage error. WATCHOVER_DEMO=1 stays the Docker default."""
+    d, _ = stage
+    r = run(stage, "demo-clean", "--dry-run")
+    assert r.returncode == 0, r.stderr
+    calls = (d / "calls.log").read_text()
+    assert "compose exec -T dashboard python -m watchover.demo clean --dry-run" in calls and "compose restart" not in calls
+    (d / "calls.log").unlink()
+    r = run(stage, "demo-clean", "--yes")                                          # (stdin is no terminal here: no question either way)
+    assert r.returncode == 0, r.stderr
+    calls = (d / "calls.log").read_text().splitlines()
+    restart = calls.index("docker compose restart dashboard")
+    clean = calls.index("docker compose exec -T dashboard python -m watchover.demo clean")
+    assert restart < clean and not any("--dry-run" in c for c in calls)
+    assert "demo data removed" in r.stdout
+    r = run(stage, "demo-clean", "--everything")
+    assert r.returncode != 0 and "usage: ./watchover.sh demo-clean" in r.stderr
+    assert "demo-clean [--dry-run]" in run(stage, "help").stdout
+    assert "WATCHOVER_DEMO: ${WATCHOVER_DEMO:-1}" in (d / "docker-compose.yml").read_text()

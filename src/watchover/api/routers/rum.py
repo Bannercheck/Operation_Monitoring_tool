@@ -4,6 +4,7 @@ sensors; an audited lookup that turns a known user id into its pseudonym so supp
 the database ever holding the id itself."""
 from __future__ import annotations
 
+import os
 import re
 from typing import Optional
 
@@ -97,6 +98,9 @@ def session(sid: str, user=Depends(require("page.rum")), svc=Depends(services), 
 
 
 def _receiver_base(request: Request) -> str:
+    ingest = os.environ.get("WATCHOVER_INGEST_URL", "").strip().rstrip("/")   # the receiver's own public address (OpenShift ingest Route)
+    if ingest:
+        return ingest
     c = wo_settings.load()
     host = (c.get("public_host") or "").rstrip("/")
     if host:

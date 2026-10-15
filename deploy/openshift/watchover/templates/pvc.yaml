@@ -1,0 +1,30 @@
+{{- $root := . }}
+{{- $vols := list (list "data" .Values.persistence.data) (list "logs-hot" .Values.persistence.logsHot) (list "logs-cold" .Values.persistence.logsCold) }}
+{{- if .Values.trainer.enabled }}
+{{- $vols = append $vols (list "trainer-hf" (dict "size" .Values.trainer.hfStorage.size "storageClass" .Values.trainer.hfStorage.storageClass "accessMode" "ReadWriteOnce")) }}
+{{- $vols = append $vols (list "trainer-models" (dict "size" .Values.trainer.modelsStorage.size "storageClass" .Values.trainer.modelsStorage.storageClass "accessMode" "ReadWriteOnce")) }}
+{{- end }}
+{{- range $v := $vols }}
+{{- $name := index $v 0 }}{{ $p := index $v 1 }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "watchover.fullname" $root }}-{{ $name }}
+  namespace: {{ $root.Release.Namespace }}
+  labels:
+    {{- include "watchover.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: app
+  {{- if $root.Values.persistence.keepOnUninstall }}
+  annotations:
+    helm.sh/resource-policy: keep
+  {{- end }}
+spec:
+  accessModes: [{{ $p.accessMode | default "ReadWriteOnce" }}]
+  {{- if $p.storageClass }}
+  storageClassName: {{ $p.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ $p.size }}
+{{- end }}

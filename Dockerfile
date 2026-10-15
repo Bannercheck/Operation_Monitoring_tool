@@ -1,6 +1,9 @@
 # Watchover — dashboard, live receiver and built-in host agent in one image.
 #   ./watchover.sh install                    (builds this image on the server from the source tree; see docs/KURULUM_DOCKER.md)
 #   docker build -t watchover:local .         (plain build)
+# OpenShift (restricted-v2 SCC, deploy/openshift): the process runs as any UID with GID 0, so everything it writes (/data, $HOME)
+# belongs to group 0 with the owner's rights (chgrp 0 + chmod g=u); no port below 1024, no root step at start, the root file system
+# may be read-only (writes go to /data, the log volumes and /tmp). Docker keeps running it as UID 10001.
 # stage 1: the React interface (web/) -> web/dist, served by the API container
 FROM node:20-alpine AS web
 WORKDIR /web
@@ -15,9 +18,10 @@ ARG VERSION=dev
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 \
     WATCHOVER_DOCKER=1 WATCHOVER_GIT_REV=$GIT_REV \
     WATCHOVER_HOME=/data KNOWLEDGE_DB=/data/knowledge.db ACTIONS_DB=/data/actions.db PLAYBOOK_DB=/data/playbook.db \
-    LIVE_SPOOL=/data/live/events.jsonl WATCHOVER_LOG=/data/watchover.log LIVE_PORT=8600
+    LIVE_SPOOL=/data/live/events.jsonl WATCHOVER_LOG=/data/watchover.log LIVE_PORT=8600 HOME=/home/watchover
 RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends curl tini && rm -rf /var/lib/apt/lists/* \
-    && useradd --create-home --uid 10001 watchover && mkdir -p /app /data && chown -R watchover:watchover /app /data
+    && useradd --create-home --home-dir /home/watchover --uid 10001 --gid 0 watchover && mkdir -p /app /data \
+    && chown -R 10001:0 /app /data /home/watchover && chmod -R g=u /app /data /home/watchover
 WORKDIR /app
 COPY pyproject.toml README.md CHANGELOG.md requirements.txt ./
 COPY src ./src
@@ -29,8 +33,8 @@ COPY samples ./samples
 COPY scripts ./scripts
 COPY .streamlit ./.streamlit
 COPY --from=web /web/dist ./web/dist
-RUN chown -R watchover:watchover /app
-USER watchover
+RUN chown -R 10001:0 /app && chmod -R g=u /app
+USER 10001
 VOLUME ["/data"]
 EXPOSE 8501 8600 8765 8502
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 CMD curl -fsS http://127.0.0.1:8501/api/health >/dev/null || exit 1
