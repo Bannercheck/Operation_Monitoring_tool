@@ -54,6 +54,8 @@ def create_app(services=None) -> FastAPI:
         app.include_router(r.router, prefix="/api")
     from .routers import logs as logs_router                  # log explorer (docs/design/logs.md)
     app.include_router(logs_router.router, prefix="/api")
+    from .routers import dash as dash_router                  # the operations home's built-in dashboards (watchover.dash)
+    app.include_router(dash_router.router, prefix="/api")
 
     @app.exception_handler(KeyError)
     async def _not_found(_: Request, e: KeyError):

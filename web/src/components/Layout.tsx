@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
-import { NavLink, Outlet } from "react-router-dom";
-import { AlertTriangle, BellRing, Gauge, BookOpen, Bot, Brain, Bug, Route, ChevronDown, ChevronRight, ClipboardList, Database, FileText, GitBranch, Layers, LayoutDashboard, LogOut, Menu, Network, PanelLeftClose, PanelLeftOpen, Plug, Radar, ScrollText, Server, ShieldAlert, Settings2, Smartphone, Ticket, UserCog, Users, Workflow } from "lucide-react";
+import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
+import { LogOut, Menu, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { HubTabs, inHub, useNav, type Hub } from "./HubTabs";
 import { useAuth } from "../auth";
 import { useT } from "../i18n";
 import { Btn, Modal, Field, Err, LangTheme } from "./ui";
@@ -11,69 +12,25 @@ import { Wordmark } from "./Logo";
 import { get, post } from "../api";
 import { useQuery } from "@tanstack/react-query";
 
-/** SigNoz-style navigation: a home row, then signal-oriented sections (APM, signals, response, intelligence, security), each
- *  collapsible and remembered; settings and administration are pinned to the bottom, as in SigNoz. Items only show with their
- *  permission; `unless` hides an item for users who reach the same page another way (System holds Alerts and README). */
-type Item = { to: string; k: string; icon: any; perm: string; unless?: string; any?: string[] };   // any: shown when one of these is held
-type Section = { id: string; group?: string; items: Item[] };
-export const NAV: Section[] = [
-  { id: "home", items: [{ to: "/ops", k: "nav_home", icon: LayoutDashboard, perm: "page.ops" }] },
-  { id: "apm", group: "nav_group_apm", items: [
-    { to: "/services", k: "nav_services", icon: Layers, perm: "page.apm" }, { to: "/traces", k: "nav_traces", icon: GitBranch, perm: "page.apm" },
-    { to: "/rum", k: "nav_rum", icon: Smartphone, perm: "page.rum" }, { to: "/map", k: "nav_map", icon: Network, perm: "page.map" },
-    { to: "/integrations", k: "nav_integ", icon: Workflow, perm: "page.apm" }, { to: "/flows", k: "nav_flows", icon: Route, perm: "page.apm" },
-    { to: "/exceptions", k: "nav_exc", icon: Bug, perm: "page.apm" } ] },
-  { id: "signals", group: "nav_group_signals", items: [
-    { to: "/logs", k: "nav_logs", icon: ScrollText, perm: "page.logs" },
-    { to: "/datasets", k: "nav_data", icon: Database, perm: "page.data" }, { to: "/inventory", k: "nav_inv", icon: Server, perm: "page.inv" },
-    { to: "/anomalies", k: "nav_anom", icon: AlertTriangle, perm: "page.anom" } ] },
-  { id: "respond", group: "nav_group_respond", items: [
-    { to: "/actions", k: "nav_actions", icon: ClipboardList, perm: "page.actions" }, { to: "/thresholds", k: "nav_thr", icon: Gauge, perm: "page.thr" }, { to: "/playbook", k: "nav_pb", icon: BookOpen, perm: "page.pb" },
-    { to: "/itsm", k: "nav_itsm", icon: Ticket, perm: "page.itsm" }, { to: "/alerts", k: "nav_ntf", icon: BellRing, perm: "sys.notify", any: ["sys.notify", "act.alerts"], unless: "sys.status" } ] },
-  { id: "intel", group: "nav_group_intel", items: [
-    { to: "/knowledge", k: "nav_kb", icon: Brain, perm: "page.assist" }, { to: "/llm", k: "nav_llm", icon: Bot, perm: "page.llm" } ] },
-  { id: "security", group: "nav_group_security", items: [{ to: "/scan", k: "nav_scan", icon: ShieldAlert, perm: "page.scan" }] },
-];
-export const NAV_SETTINGS: Item[] = [
-  { to: "/connections", k: "nav_conn", icon: Plug, perm: "page.conn" }, { to: "/sources", k: "nav_sources", icon: Radar, perm: "page.src" },
-  { to: "/team", k: "tmr_my_team", icon: UserCog, perm: "team.manage", unless: "page.teams" },
-  { to: "/users", k: "nav_users", icon: Users, perm: "page.users" }, { to: "/system", k: "nav_sys", icon: Settings2, perm: "sys.status" },
-  { to: "/readme", k: "nav_readme", icon: FileText, perm: "page.readme", unless: "sys.status" },
-];
-
-function useFolded(key: string): [Record<string, boolean>, (id: string) => void] {
-  const [f, setF] = useState<Record<string, boolean>>(() => { try { return JSON.parse(localStorage.getItem(key) || "{}"); } catch { return {}; } });
-  const flip = (id: string) => setF((o) => { const n = { ...o, [id]: !o[id] }; try { localStorage.setItem(key, JSON.stringify(n)); } catch { /* ignore */ } return n; });
-  return [f, flip];
-}
-
 export default function Layout() {
   const { user, logout, can, reload } = useAuth();
   const { t } = useT();
+  const { pathname } = useLocation();
   const [collapsed, setCollapsed] = useState(() => { try { return localStorage.getItem("wo_side") === "1"; } catch { return false; } });
   const [open, setOpen] = useState(false);
   const [pw, setPw] = useState(!!user?.must_change);
-  const [folded, fold] = useFolded("wo_nav_fold");
-  const visible = (i: Item) => (i.any ? i.any.some(can) : can(i.perm)) && !(i.unless && can(i.unless));
-  const settings = NAV_SETTINGS.filter(visible);
-  const link = (i: Item) => <NavLink key={i.to} to={i.to} className={({ isActive }) => `tile ${isActive ? "active" : ""}`} onClick={() => setOpen(false)} title={t(i.k)}><i.icon size={15} /><span>{t(i.k)}</span></NavLink>;
+  const { hubs, settings } = useNav();          // one flat SigNoz-style list; the model and the per-page tab row live in HubTabs
+  const item = (h: Hub) => { const on = inHub(h, pathname); const more = h.tabs.length > 1 ? `: ${h.tabs.map((x) => t(x.k)).join(" · ")}` : "";
+    return <Link key={h.id} to={h.tabs[0].to} className={`tile ${on ? "active" : ""}`} aria-current={on ? "page" : undefined} onClick={() => setOpen(false)} title={t(h.k) + more}><h.icon size={17} /><span>{t(h.k)}</span></Link>; };
   const toggle = () => { setCollapsed((c) => { try { localStorage.setItem("wo_side", c ? "0" : "1"); } catch { /* ignore */ } return !c; }); };
   return (
     <div className="shell">
+      {open && <div className="side-veil" onClick={() => setOpen(false)} />}
       <aside className={`side ${collapsed ? "collapsed" : ""} ${open ? "open" : ""}`}>
         <button className="collapse" onClick={toggle} title={collapsed ? t("expand") : t("collapse")}>{collapsed ? <PanelLeftOpen size={14} /> : <PanelLeftClose size={14} />}</button>
         <div className="brand"><Wordmark size={40} /></div>
-        <nav className="nav-scroll">
-          {NAV.map((g) => { const items = g.items.filter(visible); if (!items.length) return null; const shut = !!g.group && !!folded[g.id] && !collapsed;
-            return <div key={g.id} className="nav-sec">
-              {g.group && <button className="group" onClick={() => fold(g.id)} title={t(g.group)}>{shut ? <ChevronRight size={11} /> : <ChevronDown size={11} />}<span>{t(g.group)}</span></button>}
-              {!shut && items.map(link)}
-            </div>; })}
-        </nav>
-        {settings.length > 0 && <div className="nav-sec nav-bottom">
-          <button className="group" onClick={() => fold("settings")} title={t("nav_group_settings")}>{folded.settings && !collapsed ? <ChevronRight size={11} /> : <ChevronDown size={11} />}<span>{t("nav_group_settings")}</span></button>
-          {!(folded.settings && !collapsed) && settings.map(link)}
-        </div>}
+        <nav className="nav-scroll nav-flat">{hubs.map(item)}</nav>
+        {settings.tabs.length > 0 && <div className="nav-bottom nav-flat">{item(settings)}</div>}
         <VersionTag />
         <div className="user"><div className="av">{(user?.name || user?.email || "?")[0].toUpperCase()}</div><div className="info"><b>{user?.name || user?.email}</b><span className="small muted">{user?.role === "member" && user.teams?.length ? user.teams.map((m) => m.role_label).join(", ") : user?.role}</span></div>
           <Btn kind="ghost" sm onClick={logout} title={t("signout")}><LogOut size={14} /></Btn></div>
@@ -81,6 +38,7 @@ export default function Layout() {
       <main className="main">
         <div className="topbar">
           <Btn kind="ghost menu-btn" sm onClick={() => setOpen((o) => !o)}><Menu size={18} /></Btn>
+          <HubTabs />
           <div className="grow" />
           <ScopeBadge />
           {(can("page.assist") || can("page.llm")) && <TokenMeter />}
