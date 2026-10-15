@@ -582,7 +582,9 @@ class LiveStore:
         per_min = [{"minute": k[0], "host": k[1], "metric": k[2], "env": host_env.get(k[1], "unknown"), "value": round(statistics.fmean(v), 1)}
                    for k, v in sorted(series.items())]
         thr = scenario.METRIC_THRESHOLDS
-        breaches = [{"metric": m, "host": h, "value": v, "threshold": thr[m]} for (m, h), v in latest.items() if m in thr and v >= thr[m]]
+        tf = getattr(self, "threshold_fn", None)                  # per-server levels (thresholds.py) when the app wired them
+        lim = {(m, h): (tf(h, m, host_env.get(h, "")) if tf else thr.get(m)) for (m, h) in latest}
+        breaches = [{"metric": m, "host": h, "value": v, "threshold": lim[(m, h)]} for (m, h), v in latest.items() if lim[(m, h)] is not None and v >= lim[(m, h)]]
         summary = {}
         for metric in METRICS:
             vals = [v for (m, _h), v in latest.items() if m == metric]

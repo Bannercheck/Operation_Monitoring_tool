@@ -2,6 +2,11 @@
 
 Numaralandırma: büyük sürüm **v1, v2** (ürün sahibinin kararı), küçük güncelleme **v1.1, v1.2** (her devreye alınan özellik adımı), düzeltme **v1.1.1**. Her sürüm `python -m watchover.release <major|minor|patch> "özet"` ile açılır; Sistem › Güncelleme sayfası bu dosyayı gösterir, anlık görüntüler sürüm numarasını taşır.
 
+## v1.43 · 2026-10-15 · güncelleme
+
+- Sunucu bazında eşik politikaları ve uyarı gönderimi (e-posta, SMS, webhook)
+
+
 ## v1.42.3 · 2026-10-15 · düzeltme
 
 - Güncelleme sonrası eski ekran: index.html önbelleksiz, sürüm etiketi ve yenile bildirimi, update çalışan sürümü doğrular

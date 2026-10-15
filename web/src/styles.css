@@ -282,3 +282,8 @@ tr.clickable { cursor: pointer; } tr.clickable:hover td { background: rgba(148, 
 th.clickable { cursor: pointer; user-select: none; } th.clickable:hover { color: var(--fg); }
 @media (max-width: 900px) { .rd-two, .rd-kpis { grid-template-columns: 1fr; } }
 .side .ver { padding: 4px 12px; font-size: 11px; } .side .ver-new { margin: 4px 10px; } .side.collapsed .ver { display: none; }
+.thr-table td.thr-cell { line-height: 1.15; } .thr-lim { font-size: 10.5px; color: var(--dim); }
+.thr-cell.warn { color: var(--amber); background: rgba(251, 191, 36, 0.08); } .thr-cell.crit { color: var(--red); background: rgba(248, 113, 113, 0.1); font-weight: 700; }
+.thr-ed { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 18px; } .thr-pv { border-left: 1px solid var(--line); padding-left: 16px; }
+.thr-pv-list { max-height: 260px; overflow-y: auto; margin-top: 6px; display: flex; flex-direction: column; gap: 3px; }
+@media (max-width: 900px) { .thr-ed { grid-template-columns: 1fr; } .thr-pv { border-left: 0; padding-left: 0; } }

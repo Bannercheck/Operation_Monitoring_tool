@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
-import { AlertTriangle, BellRing, BookOpen, Bot, Brain, Bug, Route, ChevronDown, ChevronRight, ClipboardList, Database, FileText, GitBranch, Layers, LayoutDashboard, LogOut, Menu, Network, PanelLeftClose, PanelLeftOpen, Plug, Radar, Server, ShieldAlert, Settings2, Smartphone, Ticket, Users, Workflow } from "lucide-react";
+import { AlertTriangle, BellRing, Gauge, BookOpen, Bot, Brain, Bug, Route, ChevronDown, ChevronRight, ClipboardList, Database, FileText, GitBranch, Layers, LayoutDashboard, LogOut, Menu, Network, PanelLeftClose, PanelLeftOpen, Plug, Radar, Server, ShieldAlert, Settings2, Smartphone, Ticket, Users, Workflow } from "lucide-react";
 import { useAuth } from "../auth";
 import { useT } from "../i18n";
 import { Btn, Modal, Field, Err, LangTheme } from "./ui";
@@ -27,7 +27,7 @@ export const NAV: Section[] = [
     { to: "/datasets", k: "nav_data", icon: Database, perm: "page.data" }, { to: "/inventory", k: "nav_inv", icon: Server, perm: "page.inv" },
     { to: "/anomalies", k: "nav_anom", icon: AlertTriangle, perm: "page.ops" } ] },
   { id: "respond", group: "nav_group_respond", items: [
-    { to: "/actions", k: "nav_actions", icon: ClipboardList, perm: "page.data" }, { to: "/playbook", k: "nav_pb", icon: BookOpen, perm: "page.pb" },
+    { to: "/actions", k: "nav_actions", icon: ClipboardList, perm: "page.data" }, { to: "/thresholds", k: "nav_thr", icon: Gauge, perm: "page.ops" }, { to: "/playbook", k: "nav_pb", icon: BookOpen, perm: "page.pb" },
     { to: "/itsm", k: "nav_itsm", icon: Ticket, perm: "page.itsm" }, { to: "/alerts", k: "nav_ntf", icon: BellRing, perm: "sys.notify", unless: "sys.status" } ] },
   { id: "intel", group: "nav_group_intel", items: [
     { to: "/knowledge", k: "nav_kb", icon: Brain, perm: "page.assist" }, { to: "/llm", k: "nav_llm", icon: Bot, perm: "page.llm" } ] },

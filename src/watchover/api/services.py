@@ -40,7 +40,8 @@ def notify_channels() -> dict:
     return {"email": {"host": c.get("smtp_host", ""), "port": c.get("smtp_port", 587), "security": c.get("smtp_security", "starttls"), "user": c.get("smtp_user", ""),
                       "password": c.get("smtp_password", ""), "from_addr": c.get("smtp_from", ""), "from_name": c.get("smtp_from_name", "Watchover")},
             "sms": {k[4:]: c.get(k, "") for k in ("sms_preset", "sms_url", "sms_method", "sms_auth", "sms_user", "sms_password", "sms_token", "sms_from",
-                                                  "sms_account", "sms_body", "sms_content_type", "sms_extra")}}
+                                                  "sms_account", "sms_body", "sms_content_type", "sms_extra")},
+            "webhook": {"url": c.get("webhook_url", ""), "kind": c.get("webhook_kind", "generic"), "secret": c.get("webhook_secret", "")}}
 
 
 class Services:
@@ -144,6 +145,10 @@ class Services:
         self.scanner = ScanStore(self.kb, home=os.environ.get("WATCHOVER_HOME", "") or None)
         self.anomalies.templates = self.templates
         self.alerts = wo_notify.AlertEngine(self.notifier, self.live, self.agents, self.sources); self.alerts.anomalies = self.anomalies
+        from ..thresholds import Thresholds                  # per-server threshold policies: warn / crit, sustained minutes, e-mail / SMS / webhook
+        self.thresholds = Thresholds(self.kb, self.live, self.notifier, self.anomalies, globals_fn=wo_anomaly.threshold_settings)
+        self.live.threshold_fn = self.thresholds.limit_for   # the operations screen's breach list and the anomaly scan use the same levels
+        self.anomalies.limit_fn = self.thresholds.limit_for
         self.poller = Poller(self.sources, self.live)
         self.receiver = None
         self.spool_consumer = None
@@ -155,7 +160,7 @@ class Services:
         llm_set_sink(self.kb.log_call)                       # every LLM call lands in the quality log
         self.refresh_llm()
         if bg:
-            self.history.start(); self.anomalies.start(); self.alerts.start(); self.poller.start(); self.memory.learner.start()
+            self.history.start(); self.anomalies.start(); self.alerts.start(); self.thresholds.start(); self.poller.start(); self.memory.learner.start()
             c = wo_settings.load()
             port = int(os.environ.get("LIVE_PORT", c.get("live_port", 8600)) or 8600)
             if os.environ.get("WATCHOVER_RECEIVER", "python") == "go":      # the Go receiver owns :8600 and spools; this process consumes the spool

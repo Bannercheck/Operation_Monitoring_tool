@@ -31,6 +31,7 @@ import RumSession from "./pages/rum/Session";
 import Integrations from "./pages/apm/Integrations";
 import Flows from "./pages/apm/Flows";
 import Exceptions from "./pages/apm/Exceptions";
+import Thresholds from "./pages/Thresholds";
 
 export default function App() {
   const { user, ready, acceptToken } = useAuth();
@@ -70,6 +71,7 @@ export default function App() {
         <Route path="/integrations" element={<Integrations />} />
         <Route path="/flows" element={<Flows />} />
         <Route path="/exceptions" element={<Exceptions />} />
+        <Route path="/thresholds" element={<Thresholds />} />
         <Route path="/rum/sessions/:id" element={<RumSession />} />
         <Route path="/assist" element={<Assist />} />
         <Route path="/llm" element={<Llm />} />

@@ -405,8 +405,9 @@ class AnomalyTracker:
             if k not in latest or r["minute"] > latest[k][0]:
                 latest[k] = (r["minute"], float(r["value"]), r.get("env", "unknown"))
         out = []
+        limit_fn = getattr(self, "limit_fn", None)                 # per-server policies (thresholds.py) when the app wired them
         for (host, metric), (_m, value, env) in latest.items():
-            limit = thr.get(metric)
+            limit = limit_fn(host, metric, env) if limit_fn is not None else thr.get(metric)
             if limit is None or value < limit:
                 continue
             out.append(self._upsert("metric", f"threshold:{env}:{host}:{metric}", env=env, host=host, metric=metric,

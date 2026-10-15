@@ -138,6 +138,10 @@ APM › İş akışları: "Yeni akış" → anahtar deseni (ör. `sipariş\s+(\d
 
 Pool'lar envanterdeki **küme** alanından gelir (Envanter › CSV içe aktarma, `cluster` sütunu); boş bırakılan sunucular adlarının numarasız köküyle gruplanır (`prd-sap-app-01` → `prd-sap-app`). Ek ayar gerekmez. Operasyon ekranında üstteki zaman seçiciyle (ya da zaman çizelgesinde sürükleyerek) herhangi bir aralık seçilir; son 48 saatin logları satır satır, daha eskisi sayı olarak görünür (`live_retention_h`, `history_retention_days` Sistem ayarlarından). Ölçülen kapasite (4 vCPU, PostgreSQL, Go alıcısı): 300 sunucu ve dakikada 100 bin satır rahat, dakikada ~290 bin satır sınırda; daha yüksek hacimde CPU sayısını değil düğüm / işçi sayısını artırmak gerekir. Ayrıntı ve kendi ortamınızda yük testi: `docs/LOAD_TEST.md`.
 
+## 2h. Sunucu bazında eşikler ve uyarılar
+
+Müdahale › Eşikler: "Yeni eşik" ile sunucu, ad deseni (`prd-sap-*`), pool ya da ortam için CPU / bellek / disk / GPU / hata oranı / hata/dk / p95 / sessizlik seviyesi tanımlanır. Bildirim için Uyarılar › Alıcılar'da kişi ve grup, Uyarılar › Kanallar'da SMTP, SMS ya da webhook (Teams kanalının "Incoming Webhook" adresi, Slack uygulama webhook'u) ayarlanır; "Test gönder" ile denenir.
+
 ## 3. Günlük işletim: watchover.sh
 
 | Komut | Ne yapar |

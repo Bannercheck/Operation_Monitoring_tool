@@ -1,6 +1,9 @@
 """Alerting: e-mail (SMTP) and SMS (HTTP gateway: Twilio, Netgsm, any template) to people and groups, driven by rules
 evaluated against the live feed every minute. Deduplicated per condition with a cooldown; every delivery is logged.
 
+Channels: e-mail, SMS and webhook (Microsoft Teams, Slack or any JSON endpoint). Per-server threshold policies live in thresholds.py
+and send through the same dispatch.
+
 Conditions: slo (availability under the SLO for the window), errors (ERROR+ per minute above a threshold),
 metric (CPU / memory / disk / GPU above the scenario threshold), agent_offline (an enrolled agent silent longer than N
 minutes), source_failing (a pull source in error), incident (a new incident card from live learning)."""
@@ -263,6 +266,16 @@ class Notifier:
                     sent.append(f"sms:{ph}")
                 except Exception as e:  # noqa: BLE001
                     errors.append(f"sms {ph}: {type(e).__name__}: {str(e)[:100]}")
+        if "webhook" in chans:
+            wh = cfg.get("webhook", {})
+            for url in [u.strip() for u in str(wh.get("url") or "").replace("\n", ",").split(",") if u.strip()]:
+                try:
+                    from .thresholds import post_webhook
+                    sent.append(f"webhook:{post_webhook(url, wh.get('kind') or 'generic', rule.get('severity', 'high'), title, body, wh.get('secret') or '')}")
+                except Exception as e:  # noqa: BLE001
+                    errors.append(f"webhook: {type(e).__name__}: {str(e)[:100]}")
+            if not wh.get("url"):
+                errors.append("webhook: no webhook URL configured (Alerts › Channels)")
         ok = bool(sent) and not errors
         row = {"ts": datetime.now(UTC).isoformat(timespec="seconds"), "rule_id": rule.get("id"), "key": key, "severity": rule.get("severity", "high"), "title": title[:200],
                "body": body[:1000], "channels": ",".join(chans), "recipients": ", ".join(emails + phones)[:500], "ok": int(ok), "detail": "; ".join(errors)[:400] if errors else ", ".join(sent)}
@@ -273,6 +286,11 @@ class Notifier:
     def test_channel(self, channel: str, target: str) -> tuple[bool, str]:
         cfg = self.channels_fn() or {}
         try:
+            if channel == "webhook":
+                from .thresholds import post_webhook
+                wh = cfg.get("webhook", {})
+                url = target or str(wh.get("url") or "").split(",")[0].strip()
+                return True, post_webhook(url, wh.get("kind") or "generic", "low", "Watchover test", "Watchover webhook alerting works.", wh.get("secret") or "")
             if channel == "email":
                 send_email(cfg.get("email", {}), [target], "[Watchover] test", "Watchover e-mail alerting works.", _html("Test", "Watchover e-mail alerting works.", "low"))
             else:
