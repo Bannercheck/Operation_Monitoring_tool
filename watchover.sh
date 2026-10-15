@@ -203,6 +203,9 @@ doctor() {
   hint() { printf '      → %s\n' "$*"; }
   say "Watchover v$(version) doctor$( [ $fix = 0 ] && echo ' (check only)')"
   ip=$(host_ip); ok "this machine's LAN address: $ip"
+  local rv; rv=$(running_version)
+  if [ "$rv" = "$(version)" ]; then ok "the dashboard runs v$rv (same as this folder)"
+  elif [ -n "$rv" ]; then no "the dashboard runs v$rv but this folder is v$(version)"; hint "finish the update: ./watchover.sh update"; fi
   # 1. containers
   local want missing=""; want="dashboard postgres receiver$( [ "$(env_get WATCHOVER_EDGE)" = "1" ] && echo ' edge')"
   svc_up() { echo "$st" | grep -Eq "^$1 running( healthy| starting)? *\$"; }      # running and not unhealthy
@@ -246,6 +249,14 @@ doctor() {
   [ $bad = 0 ] && say "all good: $(edge_url)" || say "problems remain (see above); run './watchover.sh doctor' again after the hints"
   return $bad
 }
+# the version the dashboard container is actually running (it can differ from this folder when an update did not finish)
+running_version() { $COMPOSE exec -T dashboard curl -fsS --max-time 5 http://127.0.0.1:8501/api/health 2>/dev/null | sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' || true; }
+# after update: wait for the new container and say plainly which version runs; the browser keeps an open tab on the old build until reloaded
+verify_running() {
+  local v="" i; for i in $(seq 1 "${WATCHOVER_VERIFY_TRIES:-45}"); do v=$(running_version); [ "$v" = "$(version)" ] && break; sleep 2; done
+  if [ "$v" = "$(version)" ]; then say "running v$v. In the browser reload the page once (Cmd+Shift+R / Ctrl+F5) if it still shows the old screens."
+  else say "WARNING: this folder is v$(version) but the dashboard reports '${v:-no answer}'. See ./watchover.sh logs dashboard, then ./watchover.sh update"; fi
+}
 edge_url() { local h p; h=$(env_get WATCHOVER_EDGE_HOST); p=$(env_get WATCHOVER_EDGE_HTTPS_PORT || echo 443); [ "$p" = "443" ] && echo "https://$h" || echo "https://$h:$p"; }
 up() { $COMPOSE $(profiles) up -d --remove-orphans; mdns_ensure; }
 
@@ -276,7 +287,8 @@ case "${1:-}" in
     done
     $COMPOSE ps; banner ;;
   update)
-    need_docker; write_env; build; up; docker image prune -f >/dev/null; say "updated to v$(version); data volumes untouched"; $COMPOSE ps ;;
+    need_docker; before=$(running_version); write_env; build; up; docker image prune -f >/dev/null
+    say "updated ${before:+from v$before }to v$(version); data volumes untouched"; $COMPOSE ps; verify_running ;;
   upgrade)   # fetch the new version into this folder, then update. Local edits to tracked files (the reason a plain 'git pull' refuses) are
              # stashed and re-applied; a folder with its own commits is left for a manual merge.
     need_docker

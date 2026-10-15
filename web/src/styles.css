@@ -281,3 +281,4 @@ tr.clickable { cursor: pointer; } tr.clickable:hover td { background: rgba(148, 
 .rd-list { max-height: 260px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
 th.clickable { cursor: pointer; user-select: none; } th.clickable:hover { color: var(--fg); }
 @media (max-width: 900px) { .rd-two, .rd-kpis { grid-template-columns: 1fr; } }
+.side .ver { padding: 4px 12px; font-size: 11px; } .side .ver-new { margin: 4px 10px; } .side.collapsed .ver { display: none; }

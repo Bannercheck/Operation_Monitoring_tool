@@ -72,20 +72,32 @@ def create_app(services=None) -> FastAPI:
 
         _dist_root = dist.resolve()
 
+        # index.html must be revalidated on every load: without a Cache-Control header browsers keep it heuristically for hours, so after
+        # an update they keep loading the previous build's bundle ("the update did not arrive"). The bundles under /assets carry a content
+        # hash in their names and may be cached for good.
+        NO_CACHE = {"Cache-Control": "no-cache, must-revalidate"}
+
+        @app.middleware("http")
+        async def _asset_cache(request: Request, call_next):
+            resp = await call_next(request)
+            if request.url.path.startswith("/assets/") and resp.status_code == 200:
+                resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+            return resp
+
         @app.get("/{path:path}", include_in_schema=False)
         def spa(path: str):
             if path.startswith("api/"):
                 return JSONResponse({"detail": "not found"}, status_code=404)
             index = _dist_root / "index.html"
             if not path:
-                return FileResponse(str(index))
+                return FileResponse(str(index), headers=NO_CACHE)
             try:
                 f = (_dist_root / path).resolve()
             except (OSError, ValueError):
-                return FileResponse(str(index))
+                return FileResponse(str(index), headers=NO_CACHE)
             if f.is_file() and f.is_relative_to(_dist_root):     # never serve a file outside the built SPA (path traversal)
-                return FileResponse(str(f))
-            return FileResponse(str(index))
+                return FileResponse(str(f), headers=NO_CACHE if f.name == "index.html" else None)
+            return FileResponse(str(index), headers=NO_CACHE)
     return app
 
 

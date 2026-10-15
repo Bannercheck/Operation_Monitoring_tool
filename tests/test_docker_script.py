@@ -25,7 +25,7 @@ def stage(tmp_path):
     for f in ("watchover.sh", "docker-compose.yml", "docker-compose.edge.yml", ".env.docker.example", "pyproject.toml"):
         shutil.copy(ROOT / f, tmp_path / f)
     (tmp_path / "bin").mkdir(); fake = tmp_path / "bin" / "docker"; fake.write_text(FAKE); fake.chmod(0o755)
-    env = dict(os.environ, PATH=f"{tmp_path / 'bin'}:{os.environ['PATH']}", FAKE_LOG=str(tmp_path / "calls.log"))
+    env = dict(os.environ, PATH=f"{tmp_path / 'bin'}:{os.environ['PATH']}", FAKE_LOG=str(tmp_path / "calls.log"), WATCHOVER_VERIFY_TRIES="1")
     return tmp_path, env
 
 
@@ -336,3 +336,18 @@ def test_doctor_checks_and_repairs(stage):
     r = run(stage, "help-me")
     assert "doctor [--check]" in r.stdout and "unbundle FILE" in r.stdout                  # usage lists every command
     subprocess.run(["bash", str(d / "watchover.sh"), "edge", "off"], cwd=d, env=env, capture_output=True, text=True, timeout=60)
+
+
+
+def test_update_reports_the_running_version(stage):
+    """After an update the script says which version the dashboard really runs, so "the update did not arrive" is visible at once."""
+    d, env = stage
+    ver = subprocess.run(["bash", "-c", "grep -m1 '^version' pyproject.toml | cut -d'\"' -f2"], cwd=d, capture_output=True, text=True).stdout.strip()
+    fake = (d / "bin" / "docker").read_text().replace("exit 0\n", f'[[ "$*" == *"exec -T dashboard curl"* ]] && echo \'{{"ok": true, "version": "{ver}"}}\'\nexit 0\n')
+    (d / "bin" / "docker").write_text(fake)
+    r = run(stage, "update")
+    assert r.returncode == 0, r.stderr
+    assert f"running v{ver}" in r.stdout and "Cmd+Shift+R" in r.stdout
+    (d / "bin" / "docker").write_text(fake.replace(f'"version": "{ver}"', '"version": "1.0.0"'))
+    r = run(stage, "update")
+    assert "WARNING: this folder is v" in r.stdout and "'1.0.0'" in r.stdout

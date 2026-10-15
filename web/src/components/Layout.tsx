@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { AlertTriangle, BellRing, BookOpen, Bot, Brain, Bug, Route, ChevronDown, ChevronRight, ClipboardList, Database, FileText, GitBranch, Layers, LayoutDashboard, LogOut, Menu, Network, PanelLeftClose, PanelLeftOpen, Plug, Radar, Server, ShieldAlert, Settings2, Smartphone, Ticket, Users, Workflow } from "lucide-react";
 import { useAuth } from "../auth";
@@ -72,6 +72,7 @@ export default function Layout() {
           <button className="group" onClick={() => fold("settings")} title={t("nav_group_settings")}>{folded.settings && !collapsed ? <ChevronRight size={11} /> : <ChevronDown size={11} />}<span>{t("nav_group_settings")}</span></button>
           {!(folded.settings && !collapsed) && settings.map(link)}
         </div>}
+        <VersionTag />
         <div className="user"><div className="av">{(user?.name || user?.email || "?")[0].toUpperCase()}</div><div className="info"><b>{user?.name || user?.email}</b><span className="small muted">{user?.role}</span></div>
           <Btn kind="ghost" sm onClick={logout} title={t("signout")}><LogOut size={14} /></Btn></div>
       </aside>
@@ -112,4 +113,15 @@ function ChangePassword({ onDone }: { onDone: () => void }) {
         <Err e={err} /><div className="row"><Btn kind="primary" type="submit">{t("save")}</Btn></div></form>
     </Modal>
   );
+}
+
+/** The running version, and a one-click reload when the server was updated while this tab stayed open (the tab would otherwise
+ *  keep showing the previous build). */
+function VersionTag() {
+  const { t } = useT(); const first = useRef<string | null>(null);
+  const q = useQuery({ queryKey: ["health-version"], queryFn: () => get("/health"), refetchInterval: 60000 });
+  const v: string | undefined = q.data?.version;
+  if (v && first.current === null) first.current = v;
+  if (v && first.current && v !== first.current) return <button className="btn sm primary ver-new" onClick={() => window.location.reload()}>{t("ver_new", { v })}</button>;
+  return v ? <div className="ver dim small" title={t("ver_tip")}>Watchover v{v}</div> : null;
 }
