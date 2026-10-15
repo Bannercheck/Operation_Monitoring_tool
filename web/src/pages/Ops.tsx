@@ -9,6 +9,7 @@ import { Card, Modal, Spark } from "../components/ui";
 import { TimeRange } from "../components/ops/TimeRange";
 import { Timeline } from "../components/ops/Timeline";
 import { FleetViews } from "../components/ops/FleetViews";
+import { LineChartCard, settled } from "../components/ops/LineChartCard";
 import { RangeDetail, type DTab } from "../components/ops/RangeDetail";
 import { Attention, buildAttention } from "../components/ops/Attention";
 import { LogExplorer } from "../components/ops/LogExplorer";
@@ -46,6 +47,7 @@ export default function Ops() {
   useEffect(() => { const el = sentinel.current; if (!el) return; const io = new IntersectionObserver(([e]) => setStuck(!e.isIntersecting)); io.observe(el); return () => io.disconnect(); }, []);
   const counts = { ok: 0, warn: 0, crit: 0, silent: 0 } as Record<string, number>;
   for (const h of hostsAll) counts[hostState(h)]++;
+  const zoom = (x: number, stepMin: number) => st.setAbs(new Date(x * 1000), new Date((x + stepMin * 60) * 1000));
   const goLogs = (f: any) => { setFocus({ ...f, n: Date.now() }); document.getElementById("ops-logs")?.scrollIntoView({ behavior: "smooth", block: "start" }); };
   const anomsInScope = (anom.data ?? []).filter((a: any) => !a.host || !st.hosts.length || st.hosts.includes(a.host));
   const items = useMemo(() => buildAttention(t, lang, fleet, errG.data?.groups ?? [], anomsInScope, (tickets.data?.tickets ?? []).slice().sort((a: any, b: any) => b.relevance - a.relevance), metrics.data?.breaches ?? [],
@@ -107,11 +109,14 @@ export default function Ops() {
       <Timeline series={s?.series ?? []} stepMin={s?.step_min ?? 1} spanMin={span} onSelect={(a, b) => st.setAbs(a, b)} />
     </Card>
 
+    {/* 4b. only with a pool or hosts in scope: latency, volume and active sessions of just that scope */}
+    {(st.pool || st.hosts.length > 0) && <ScopeCharts rq={rq} title={st.hosts.length ? st.hosts.slice(0, 3).join(", ") + (st.hosts.length > 3 ? ` +${st.hosts.length - 3}` : "") : st.pool} series={s?.series ?? []} step={s?.step_min ?? 1} span={span} onZoom={zoom} />}
+
     {/* 5. what needs a look, and the fleet */}
     <div className="ops-two">
       <Card title={t("ops_attention")}><Attention items={items} /></Card>
       <div id="ops-map"><Card title={<span>{t("ops_map")} <span className="dim small">· {mapHosts.length} {t("hm_hosts")} · {(fleetAll?.pools ?? []).length} pool</span></span>}>
-        {!mapHosts.length ? <div className="empty">{t("fl_empty")}</div> : <FleetViews rq={rq} pools={fleetAll?.pools ?? []} sel={st.hosts} pool={st.pool} onHost={st.toggleHost} onPool={st.setPool} onLogs={goLogs} />}
+        {!mapHosts.length ? <div className="empty">{t("fl_empty")}</div> : <FleetViews rq={rq} pools={fleetAll?.pools ?? []} sel={st.hosts} pool={st.pool} onHost={st.toggleHost} onPool={st.setPool} onLogs={goLogs} span={span} onZoom={zoom} />}
       </Card></div>
     </div>
 
@@ -127,6 +132,27 @@ export default function Ops() {
       <DetailPanel kind={detail} sq={scopeQs(st)} env={st.env} host={st.hosts.join(", ")} sl={null} m={metrics.data} s={null} files={[]} onClose={() => setDetail(null)} />
     </Modal>}
   </div>;
+}
+
+/** what a pool or a few hosts look like on their own: p50 / p90 / p99 (a click opens the traces of those minutes), lines and ERROR+
+ *  per bar (from the summary already loaded) and active client sessions */
+function ScopeCharts({ rq, title, series, step, span, onZoom }: { rq: string; title: string; series: any[]; step: number; span: number; onZoom: (t: number, stepMin: number) => void }) {
+  const { t, lang } = useT(); const nav = useNavigate(); const live = rq.includes("last=");
+  const lat = useQuery({ queryKey: ["range-latency", rq], queryFn: () => get(`/live/range/latency?${rq}`), refetchInterval: live ? 15000 : false });
+  const ses = useQuery({ queryKey: ["range-sessions-n", rq], queryFn: () => get(`/live/range/sessions?${rq}&limit=1`), refetchInterval: live ? 15000 : false });
+  const ms = (v: number) => `${v >= 10 || v === 0 ? Math.round(v) : v.toFixed(1)} ms`;
+  const traces = (x: number) => { const back = (Date.now() - x * 1000) / 60000; const env = new URLSearchParams(rq).get("env"); nav(`/traces?minutes=${[15, 60, 360, 1440, 10080].find((m) => m >= back) ?? 10080}&order=duration${env ? `&env=${encodeURIComponent(env)}` : ""}`); };
+  return <Card title={<span>{title} <span className="dim small">· {t("sd_detail")}</span></span>}>
+    <div className="lc-row">
+      <LineChartCard title={t("lc_latency")} span={span} data={settled(lat.data?.series ?? [], lat.data?.step_min ?? 1, live)} valueFormat={ms} onPick={traces} pickLabel={t("lc_traces")}
+        series={[{ key: "p99", label: "p99", color: "var(--lc-p99)" }, { key: "p90", label: "p90", color: "var(--lc-p90)" }, { key: "p50", label: "p50", color: "var(--lc-p50)" }]} />
+      <LineChartCard title={t("lc_volume")} span={span} data={series} valueFormat={(v) => fmtN(v, lang)} onPick={(x) => onZoom(x, step)} pickLabel={t("lc_zoom")}
+        series={[{ key: "total", label: t("lc_lines"), color: "var(--s1)" }, { key: "errors", label: "ERROR+", color: "var(--red)" }]} />
+      <LineChartCard title={t("lc_active")} sub={ses.data ? `${fmtN(ses.data.total, lang)} ${t("ses_total")}` : ""} span={span} data={settled(ses.data?.active_series ?? [], ses.data?.step_min ?? 1, live)} valueFormat={(v) => fmtN(v, lang)}
+        onPick={(x) => onZoom(x, ses.data?.step_min ?? 1)} pickLabel={t("lc_zoom")} empty={!ses.data ? t("loading") : ses.data.source === "history" ? t("ses_hist") : undefined}
+        series={[{ key: "n", label: t("lc_active"), color: "var(--s3)" }]} />
+    </div>
+  </Card>;
 }
 
 function scopeQs(st: ReturnType<typeof useOpsState>): string {

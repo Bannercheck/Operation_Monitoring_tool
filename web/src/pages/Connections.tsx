@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, del, get, patch, post, put } from "../api";
+import { api, del, get, patch, post } from "../api";
 import { useAuth } from "../auth";
 import { useT } from "../i18n";
 import { Badge, Btn, Card, Confirm, Empty, Err, Field, Modal, Table, Tabs, fmtTs } from "../components/ui";
+import DiscoveredHosts from "../components/DiscoveredHosts";
 
 type Tab = "agents" | "discovered";
 
@@ -39,11 +40,7 @@ function Agents() {
   </div>;
 }
 
+/** Discovered hosts: the shared pool view (one row per pool, bulk promote), same as Inventory → Discovered. */
 function Discovered() {
-  const { t } = useT(); const { can } = useAuth(); const qc = useQueryClient();
-  const q = useQuery({ queryKey: ["discovered"], queryFn: () => get("/inventory/discovered"), refetchInterval: 15000 });
-  const add = useMutation({ mutationFn: (r: any) => put("/inventory", { hostname: r.hostname, env: r.env ?? "", ip: r.ip ?? "", dc: r.dc ?? "" }), onSuccess: () => { qc.invalidateQueries({ queryKey: ["discovered"] }); qc.invalidateQueries({ queryKey: ["inventory"] }); } });
-  const rows = (q.data ?? []).map((r: any, i: number) => ({ id: i, ...r }));
-  return <Card><Table cols={[{ k: "hostname", label: t("host"), render: (r) => <b>{r.hostname}</b> }, { k: "env", label: t("env") }, { k: "ip", label: "IP" }, { k: "dc", label: t("inv_dc") }, { k: "source", label: "" },
-    { k: "x", label: "", render: (r) => can("act.inventory") ? <Btn sm onClick={() => add.mutate(r)}>{t("inv_add_from")}</Btn> : null }]} rows={rows} /><Err e={add.error} /></Card>;
+  return <Card><DiscoveredHosts /></Card>;
 }

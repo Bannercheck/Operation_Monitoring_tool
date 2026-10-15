@@ -7,6 +7,7 @@ import { useAuth } from "../../auth";
 import { useT } from "../../i18n";
 import { Btn, Card, Confirm, Empty, Err, Field, Kpi, Modal, Tabs } from "../../components/ui";
 import { fmtMs, pct } from "../apm/common";
+import { ServerSessions } from "../../components/ops/Sessions";
 
 /** User experience (web and mobile): sessions, crash-free and error-free rates, Web Vitals and app start, slow steps and top
  *  errors; the session list; and the apps whose keys the sensors carry, with ready-to-paste snippets per platform. */
@@ -26,7 +27,7 @@ export default function Rum() {
   return <div className="stack">
     <div className="row between"><div><h2><Smartphone size={20} style={{ verticalAlign: -3 }} /> {t("rum_title")}</h2><span className="muted small">{t("rum_sub")}</span></div>
       <div className="row" style={{ gap: 8 }}>
-        <select className="input" style={{ width: 170 }} value={app} onChange={(e) => set("app", e.target.value)}><option value="">{t("rum_all_apps")}</option>{(apps.data?.apps ?? []).map((a: any) => <option key={a.id} value={a.name}>{a.name}</option>)}</select>
+        {!(tab === "sessions" && sp.get("src") === "server") && <select className="input" style={{ width: 170 }} value={app} onChange={(e) => set("app", e.target.value)}><option value="">{t("rum_all_apps")}</option>{(apps.data?.apps ?? []).map((a: any) => <option key={a.id} value={a.name}>{a.name}</option>)}</select>}
         <select className="input" style={{ width: 130 }} value={minutes} onChange={(e) => set("minutes", e.target.value === "1440" ? "" : e.target.value)}>{RANGES.map((m) => <option key={m} value={m}>{t("apm_last")} {m < 1440 ? `${m / 60} sa` : `${m / 1440} gün`}</option>)}</select>
       </div></div>
     <Tabs value={tab} onChange={(k) => set("tab", k === "overview" ? "" : k)} tabs={[{ k: "overview", label: t("rum_tab_overview") }, { k: "sessions", label: t("rum_tab_sessions") }, { k: "apps", label: `${t("rum_tab_apps")} · ${apps.data?.apps?.length ?? 0}` }]} />
@@ -62,7 +63,8 @@ export default function Rum() {
         <div className="dim small">{t("rum_kvkk")}</div>
       </>}
     </>}
-    {tab === "sessions" && <Sessions app={app} minutes={minutes} apps={apps.data?.apps ?? []} />}
+    {tab === "sessions" && <div className="seg sm" style={{ alignSelf: "flex-start" }}>{(["", "server"] as const).map((k) => <button key={k} className={(sp.get("src") || "") === k ? "on" : ""} onClick={() => set("src", k)}>{t(k ? "rum_src_srv" : "rum_src_web")}</button>)}</div>}
+    {tab === "sessions" && (sp.get("src") === "server" ? <Card><ServerSessions minutes={minutes} /></Card> : <Sessions app={app} minutes={minutes} apps={apps.data?.apps ?? []} />)}
     {tab === "apps" && <Apps data={apps.data} />}
   </div>;
 }

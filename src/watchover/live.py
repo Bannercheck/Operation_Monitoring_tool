@@ -26,6 +26,7 @@ from pathlib import Path
 
 from .models import SEV_RANK, Observation
 from .pipeline import ingest_bytes
+from .rollup import session_of
 from . import scenario
 
 UTC = timezone.utc
@@ -100,6 +101,9 @@ class LiveStore:
             d["site"] = a["site"]
         if a.get("agent_id") is not None:
             d["aid"] = a["agent_id"]
+        ses = session_of(a) if a else None              # the client session, already pseudonymised: a past range can still list sessions
+        if ses:
+            d["ses"] = ses
         return d
 
     @staticmethod
@@ -109,6 +113,8 @@ class LiveStore:
             attrs["site"] = d["site"]
         if d.get("aid") is not None:
             attrs["agent_id"] = d["aid"]
+        if d.get("ses"):
+            attrs["_ses"] = tuple(d["ses"])             # a tuple: JSON never makes one, so a line cannot forge it (rollup.session_of)
         ts = datetime.fromisoformat(d["ts"])
         if ts.tzinfo is None:
             ts = ts.replace(tzinfo=UTC)
@@ -454,12 +460,12 @@ class LiveStore:
         out: dict[str, str] = {}
         with self.lock:
             recent = list(itertools.islice(reversed(self.buf), 5000))    # the newest events; the rollup knows every host of the last hour
-        for o in recent:
-            if o.host:
-                out.setdefault(o.host, o.environment or "unknown")
+        for o in recent:                                       # a known environment beats "unknown" (syslog lines carry none): a host must not flip between refreshes
+            if o.host and out.get(o.host) in (None, "unknown"):
+                out[o.host] = o.environment or "unknown"
         for h in list(self.rollup.last_seen):                  # the ring is seconds of data at high volume: hosts of the last hour
-            if h != "-":
-                out.setdefault(h, self.rollup.host_env.get(h) or "unknown")
+            if h != "-" and out.get(h) in (None, "unknown"):
+                out[h] = self.rollup.host_env.get(h) or "unknown"
         with self.lock:
             for r in self.metrics:
                 out.setdefault(r[1], r[4] or "unknown")

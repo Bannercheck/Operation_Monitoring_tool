@@ -41,6 +41,7 @@ ID_KEYS = {
     "http.request_id": "request", "correlation_id": "request", "correlationid": "request", "x-correlation-id": "request", "correlation": "request",
     "activity_id": "request", "activityid": "request", "transaction_id": "request", "txn_id": "request", "msgid": "request",
     "session_id": "session", "sessionid": "session", "jsessionid": "session", "session.id": "session", "sid": "session",
+    "session": "session", "phpsessid": "session", "asp.net_sessionid": "session",    # the operations screen's session keys (rollup.SES_ROLES): its links must find them
     "user": "user", "user_id": "user", "userid": "user", "username": "user", "user.id": "user", "uid": "user", "cs-username": "user",
     "enduser.id": "user", "sap.user": "user", "user.name": "user",
 }
@@ -56,6 +57,7 @@ MSG_MS = re.compile(r"\b(\d+(?:\.\d+)?)\s?ms\b")
 TRACEPARENT = re.compile(r"\b00-([0-9a-f]{32})-([0-9a-f]{16})-[0-9a-f]{2}\b")
 MSG_IDS = re.compile(r"\b(trace_?id|request_?id|req_?id|correlation_?id|x-request-id)[=:]\s*\"?([A-Za-z0-9\-_.]{6,64})", re.I)
 DB_HINT = re.compile(r"\b(select|insert|update|delete)\b.+\b(from|into|set)\b", re.I)
+SES_TOKEN = re.compile(r"^s_[0-9a-f]{16}$")             # a pseudonymised session (operations screen) instead of a raw session id
 
 
 def _f(v) -> float | None:
@@ -461,12 +463,23 @@ class TraceStore:
                 "slow_traces": self.search(service=service, minutes=minutes, env=env, order="duration", limit=15)}
 
     # ---------------------------------------------------------------- read: traces
+    def _session_ids(self, token: str, minutes: int | None) -> list[str]:
+        """Stored session ids whose pseudonym is `token` (rollup.session_token), so a link never has to carry the raw id."""
+        from .rollup import session_token
+        since = (datetime.now(UTC) - timedelta(minutes=minutes or 2880)).isoformat()
+        rows = self.db._exec("SELECT DISTINCT session_id FROM spans WHERE session_id <> '' AND ts >= ? LIMIT 200000", (since,))
+        return [r["session_id"] for r in rows if session_token(r["session_id"]) == token][:50]
+
     def search(self, service: str | None = None, operation: str | None = None, minutes: int | None = 60, env: str | None = None,
                min_ms: float | None = None, errors: bool = False, q: str | None = None, session: str | None = None, user: str | None = None,
                order: str = "recent", limit: int = 50) -> list[dict]:
         where, p = [], []
         if minutes:
             where.append("ts >= ?"); p.append((datetime.now(UTC) - timedelta(minutes=minutes)).isoformat())
+        if session and SES_TOKEN.match(session):     # a session from the operations screen arrives as its pseudonym: find the ids it stands for
+            sids = self._session_ids(session, minutes)
+            where.append(f"session_id IN ({', '.join('?' * len(sids))})" if sids else "1 = 0"); p += sids
+            session = None
         for col, v in (("service", service), ("operation", operation), ("env", env), ("session_id", session), ("user_ref", user)):
             if v:
                 where.append(f"{col} = ?"); p.append(v)

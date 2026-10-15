@@ -13,6 +13,8 @@ import threading
 import time
 from datetime import datetime, timezone
 
+from .rollup import pool_stem
+
 UTC = timezone.utc
 FIELDS = ("hostname", "ip", "aliases", "env", "dc", "rack", "vlan", "subnet", "os", "role", "application", "cluster", "owner", "criticality",
           "storage", "vendor_model", "serial", "monitoring", "status", "tags", "notes", "source")
@@ -63,8 +65,9 @@ class Inventory:
         rows = self.kb._exec("SELECT * FROM inventory WHERE hostname=?", (hostname.strip().lower(),))
         return dict(rows[0]) if rows else None
 
-    def upsert(self, rec: dict) -> dict:
-        """Insert or update by hostname (lower-cased); only known fields are stored."""
+    @staticmethod
+    def _clean(rec: dict) -> tuple[str, dict]:
+        """The one validation every write goes through (form, CSV, bulk promote): hostname required, known fields only."""
         h = str(rec.get("hostname", "")).strip().lower()
         if not h:
             raise ValueError("hostname is required")
@@ -72,6 +75,11 @@ class Inventory:
         vals["criticality"] = norm_crit(vals["criticality"])
         vals["status"] = vals["status"].lower() if vals["status"].lower() in STATUS else "active"
         vals["env"] = vals["env"].lower()
+        return h, vals
+
+    def upsert(self, rec: dict) -> dict:
+        """Insert or update by hostname (lower-cased); only known fields are stored."""
+        h, vals = self._clean(rec)
         now = datetime.now(UTC).isoformat(timespec="seconds")
         if self.get(h):
             sets = ", ".join(f"{k}=?" for k in vals)
@@ -81,6 +89,31 @@ class Inventory:
             self.kb._exec(f"INSERT INTO inventory ({cols}) VALUES ({', '.join('?' * (len(vals) + 3))})", (h, *vals.values(), now, now))
         self._index = None
         return self.get(h)
+
+    def promote(self, hosts: list, criticality: str = "normal") -> int:
+        """Discovered hosts into the inventory in one call: a pool of 20 is one click and one multi-row INSERT, not 20 PUTs.
+        Every row is validated before anything is written; a host the inventory already holds keeps what was typed into it
+        (discovery only fills its blanks)."""
+        if not isinstance(hosts, list) or len(hosts) > 5000:
+            raise ValueError("hosts must be a list of at most 5000 entries")
+        recs: dict[str, dict] = {}
+        for x in hosts:
+            if not isinstance(x, dict):
+                raise ValueError("hostname is required")
+            h, vals = self._clean({"hostname": x.get("hostname"), "env": x.get("env"), "ip": x.get("ip"), "dc": x.get("dc"), "criticality": criticality,
+                                   "monitoring": x.get("monitoring") or "discovered", "source": "discovered"})
+            recs[h] = vals
+        known = {r["hostname"]: r for r in self.kb._exec("SELECT * FROM inventory")} if recs else {}
+        now = datetime.now(UTC).isoformat(timespec="seconds")
+        new = [(h, *v.values(), now, now) for h, v in recs.items() if h not in known]
+        if new:
+            cols = ["hostname", *next(iter(recs.values())), "created_at", "updated_at"]
+            self.kb.executemany(f"INSERT INTO inventory ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})", new)
+        for h, v in recs.items():
+            if h in known:
+                self.upsert({**v, **{k: x for k, x in known[h].items() if x not in ("", None)}, "hostname": h})
+        self._index = None
+        return len(recs)
 
     def delete(self, hostname: str) -> None:
         self.kb._exec("DELETE FROM inventory WHERE hostname=?", (hostname.strip().lower(),))
@@ -168,14 +201,16 @@ class Inventory:
                 for r in self.list() if r.get("status") != "decommissioned"}
 
     def discovered(self, seen_hosts: dict[str, str], agents: list[dict] | None = None) -> list[dict]:
-        """Hosts seen in the live feed / agent registry that the inventory does not know yet."""
+        """Hosts seen in the live feed / agent registry that the inventory does not know yet. "pool" is the name stem (the
+        inventory has no cluster for them yet), so 300 servers arrive as ~15 pools the UI can promote one click each."""
         out = []
         for h, env in sorted(seen_hosts.items()):
             if h and not self.resolve(h):
-                out.append({"hostname": h, "env": env or "", "ip": h if _IP.match(h) else "", "source": "discovered"})
+                out.append({"hostname": h, "env": env or "", "ip": h if _IP.match(h) else "", "source": "discovered", "pool": pool_stem(h)})
         for a in agents or []:
             if a.get("name") and not self.resolve(a["name"]) and all(x["hostname"] != a["name"] for x in out):
-                out.append({"hostname": a["name"], "env": a.get("env", ""), "dc": a.get("site", ""), "ip": a.get("last_ip", "") if not _IP.match(a["name"]) else "", "source": "discovered"})
+                out.append({"hostname": a["name"], "env": a.get("env", ""), "dc": a.get("site", ""), "ip": a.get("last_ip", "") if not _IP.match(a["name"]) else "", "source": "discovered",
+                            "pool": pool_stem(a["name"])})
         return out
 
     def stats(self, seen_hosts: dict[str, str] | None = None) -> dict:

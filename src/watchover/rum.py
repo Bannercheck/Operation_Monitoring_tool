@@ -259,6 +259,13 @@ class RumStore:
         q = "SELECT * FROM rum_sessions" + (" WHERE " + " AND ".join(where) if where else "") + f" ORDER BY last DESC LIMIT {max(1, min(int(limit), 500))}"
         return [dict(r) for r in self.kb._exec(q, tuple(p))]
 
+    def range_summary(self, s: datetime, e: datetime) -> dict:
+        """Web / mobile sessions active in [s, e) (the operations screen's session view): sessions, distinct users, errors + crashes."""
+        r = self.kb._exec("SELECT COUNT(*) AS n, COUNT(DISTINCT CASE WHEN user_ref <> '' THEN user_ref END) AS u, COALESCE(SUM(errors + crashes), 0) AS e "
+                          "FROM rum_sessions WHERE last >= ? AND started < ?", (s.astimezone(UTC).isoformat(), e.astimezone(UTC).isoformat()))
+        r = dict(r[0]) if r else {}
+        return {"sessions": int(r.get("n") or 0), "users": int(r.get("u") or 0), "errors": int(r.get("e") or 0)}
+
     def session(self, sid: str) -> dict | None:
         rows = self.kb._exec("SELECT * FROM rum_sessions WHERE session_id=?", (sid,))
         if not rows:

@@ -242,7 +242,6 @@ def range_logs(last: int | None = None, start: str | None = None, end: str | Non
     return svc.ranges.logs(s, e, env or None, _hx(svc, sc, host, pool), severity or "INFO", q or "", service or "", limit, before)
 
 
-
 @router.get("/range/detail")
 def range_detail(last: int | None = None, start: str | None = None, end: str | None = None, env: str | None = None, host: str | None = None, pool: str | None = None,
                  user=Depends(require("page.ops")), svc=Depends(services), sc=Depends(user_scope)):
@@ -250,3 +249,30 @@ def range_detail(last: int | None = None, start: str | None = None, end: str | N
     that lower it, latency per service and the slowest lines, the services table."""
     s, e, live = _rng(last, start, end)
     return {**svc.ranges.detail(s, e, env or None, _hx(svc, sc, host, pool)), "live": live}
+
+
+@router.get("/range/sessions")
+def range_sessions(last: int | None = None, start: str | None = None, end: str | None = None, env: str | None = None, host: str | None = None, pool: str | None = None,
+                   q: str = "", limit: int = Query(200, ge=1, le=1000), user=Depends(require("page.ops")), svc=Depends(services), sc=Depends(user_scope)):
+    """Client sessions in the range (pseudonymised ids, users and addresses only): distinct total, active per bar, per host, the list.
+    The web / mobile figures of the user sensors are not tied to a server: left out (null) once hosts, a pool or a team narrow the scope."""
+    s, e, _ = _rng(last, start, end)
+    h = _hx(svc, sc, host, pool)
+    return svc.ranges.sessions(s, e, env or None, h, q or "", limit, getattr(svc, "rum", None) if h is None else None)
+
+
+@router.get("/range/latency")
+def range_latency(last: int | None = None, start: str | None = None, end: str | None = None, env: str | None = None, host: str | None = None, pool: str | None = None,
+                  user=Depends(require("page.ops")), svc=Depends(services), sc=Depends(user_scope)):
+    """p50 / p90 / p99 per bar (ms; null where a bar has no duration sample)."""
+    s, e, _ = _rng(last, start, end)
+    return svc.ranges.latency(s, e, env or None, _hx(svc, sc, host, pool))
+
+
+@router.get("/range/hostseries")
+def range_hostseries(last: int | None = None, start: str | None = None, end: str | None = None, env: str | None = None, host: str | None = None, pool: str | None = None,
+                     metric: str = Query("lines", pattern="^(lines|errors|error_rate|p95|sessions)$"), top: int = Query(6, ge=1, le=20),
+                     user=Depends(require("page.ops")), svc=Depends(services), sc=Depends(user_scope)):
+    """The top hosts in scope by one metric over the range and their value per bar (one line per host on the chart)."""
+    s, e, _ = _rng(last, start, end)
+    return svc.ranges.hostseries(s, e, env or None, _hx(svc, sc, host, pool), metric, top)

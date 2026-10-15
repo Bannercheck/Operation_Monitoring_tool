@@ -4,6 +4,7 @@ import { api, del, get, put } from "../api";
 import { useAuth } from "../auth";
 import { useT } from "../i18n";
 import { Badge, Btn, Card, Chip, Confirm, Err, Field, Modal, Table, Tabs } from "../components/ui";
+import DiscoveredHosts from "../components/DiscoveredHosts";
 
 /** Inventory (CMDB-lite): the Streamlit page as a route of its own — hosts, full add / edit form, discovered hosts with criticality, CSV import / export. */
 const FIELDS = ["hostname", "ip", "aliases", "env", "criticality", "dc", "rack", "vlan", "subnet", "os", "role", "application", "cluster", "owner", "storage", "vendor_model", "serial", "monitoring", "status", "tags", "notes"] as const;
@@ -23,7 +24,6 @@ export function InventoryPanel() {
   const disc = useQuery({ queryKey: ["discovered"], queryFn: () => get("/inventory/discovered"), refetchInterval: 15000 });
   const inv = () => { qc.invalidateQueries({ queryKey: ["inventory"] }); qc.invalidateQueries({ queryKey: ["inv-stats"] }); qc.invalidateQueries({ queryKey: ["discovered"] }); };
   const rm = useMutation({ mutationFn: (h: string) => del(`/inventory/${encodeURIComponent(h)}`), onSuccess: inv });
-  const promote = useMutation({ mutationFn: (r: any) => put("/inventory", { hostname: r.hostname, env: r.env ?? "", ip: r.ip ?? "", dc: r.dc ?? "", criticality: r.criticality ?? "normal", monitoring: r.source ?? "live" }), onSuccess: inv });
   const upload = async (files: FileList | null) => { if (!files?.length) return; const fd = new FormData(); fd.append("file", files[0]); try { setMsg(await api("/inventory/import", { method: "POST", form: fd })); inv(); } catch (x) { setMsg({ error: x }); } };
   const download = async (path: string, name: string) => { const txt = await api<string>(path, { text: true }); const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([txt], { type: "text/csv" })); a.download = name; a.click(); };
   const editable = can("act.inventory"); const s = stats.data; const rows: any[] = list.data ?? []; const found: any[] = disc.data ?? [];
@@ -42,9 +42,7 @@ export function InventoryPanel() {
     {tab === "add" && editable && <HostForm onDone={() => { inv(); setTab("list"); }} />}
     {tab === "disc" && <Card>
       <div className="muted small" style={{ marginBottom: 8 }}>{t("inv_disc_hint")}</div>
-      {!found.length ? <div className="ok">{t("inv_disc_none")}</div> : <Table cols={[{ k: "hostname", label: t("inv_f_hostname"), render: (r) => <b>{r.hostname}</b> }, { k: "env", label: t("inv_f_env") }, { k: "ip", label: "IP" }, { k: "dc", label: t("inv_f_dc") }, { k: "source", label: t("inv_f_monitoring") },
-        { k: "x", label: "", render: (r) => editable ? <DiscoveredRow r={r} onAdd={(crit) => promote.mutate({ ...r, criticality: crit })} /> : null }]} rows={found.map((r: any, i: number) => ({ id: i, ...r }))} />}
-      <Err e={promote.error} /></Card>}
+      <DiscoveredHosts /></Card>}
     {tab === "csv" && <div className="grid k2">
       <Card title={`⬆ ${t("inv_import")}`}><div className="muted small">{t("inv_import_hint")}</div>
         {editable && <div className="row" style={{ marginTop: 8 }}><label className="btn primary">{t("inv_import_go")}<input type="file" accept=".csv,.txt" style={{ display: "none" }} onChange={(e) => upload(e.target.files)} /></label><Btn onClick={() => download("/inventory/template", "watchover-envanter-sablon.csv")}>📄 {t("inv_template")}</Btn></div>}
@@ -53,11 +51,6 @@ export function InventoryPanel() {
     </div>}
     {edit && <Modal wide title={t("inv_edit_title", { h: edit.hostname })} onClose={() => setEdit(null)}><HostForm rec={edit} onDone={() => { setEdit(null); inv(); }} /></Modal>}
   </div>;
-}
-
-function DiscoveredRow({ r, onAdd }: { r: any; onAdd: (crit: string) => void }) {
-  const { t } = useT(); const [crit, setCrit] = useState("normal");
-  return <div className="row"><select className="input" style={{ width: 120 }} value={crit} onChange={(e) => setCrit(e.target.value)}>{CRIT.map((c) => <option key={c}>{c}</option>)}</select><Btn sm kind="primary" onClick={() => onAdd(crit)}>➕ {t("inv_add")}</Btn></div>;
 }
 
 function HostForm({ rec, onDone }: { rec?: any; onDone: () => void }) {

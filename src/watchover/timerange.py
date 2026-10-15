@@ -17,7 +17,7 @@ import time
 from datetime import datetime, timedelta, timezone
 
 from .models import SEV_RANK
-from .rollup import Rollup, _q, pools_of
+from .rollup import Rollup, _q, host_series_out, pools_of
 
 UTC = timezone.utc
 MAX_EVENTS = 250_000
@@ -89,14 +89,25 @@ class RangeView:
                 self._cache.pop(next(iter(self._cache)))
         return r, mm, info
 
-    def _hist_rows(self, s: datetime, e: datetime, env=None, host=None) -> list:
+    def _hist_cond(self, s: datetime, e: datetime, env=None, host=None) -> tuple[str, list]:
         hosts = None if not host else ([host] if isinstance(host, str) else list(host))
         cond, p = ["minute >= ?", "minute < ?"], [s.strftime("%Y-%m-%dT%H:%M"), (e + timedelta(minutes=1) - timedelta(seconds=1)).strftime("%Y-%m-%dT%H:%M")]
         if env:
             cond.append("env = ?"); p.append(env)
         if hosts:
             cond.append(f"host IN ({', '.join('?' * len(hosts))})"); p += hosts
-        return self.history.kb._exec(f"SELECT * FROM slo_minute WHERE {' AND '.join(cond)}", tuple(p))
+        return " AND ".join(cond), p
+
+    def _hist_rows(self, s: datetime, e: datetime, env=None, host=None) -> list:
+        cond, p = self._hist_cond(s, e, env, host)
+        return self.history.kb._exec(f"SELECT * FROM slo_minute WHERE {cond}", tuple(p))
+
+    def _hist_sum(self, s: datetime, e: datetime, env=None, host=None, by: str = "minute") -> list:
+        """slo_minute summed by `by` (minute | host | minute, host): total, errors and the latency buckets; the database does the adding."""
+        from .history import LAT_COLS
+        cond, p = self._hist_cond(s, e, env, host)
+        cols = ", ".join(f"SUM({c}) AS {c}" for c in ("total", "errors", *LAT_COLS))
+        return self.history.kb._exec(f"SELECT {by}, {cols} FROM slo_minute WHERE {cond} GROUP BY {by}", tuple(p))
 
     # ---------------------------------------------------------------- answers
     def summary(self, s: datetime, e: datetime, env=None, host=None) -> dict:
@@ -253,3 +264,103 @@ class RangeView:
                     by_h[x["host"]] = by_h.get(x["host"], 0) + x["errors"]
             out["by_host"] = sorted(by_h.items(), key=lambda x: -x[1])
         return out
+
+    # ---------------------------------------------------------------- client sessions, latency percentiles, top hosts per bar
+    def _step(self, s, e) -> int:
+        return step_minutes(max(1, round((e - s).total_seconds() / 60)))
+
+    def sessions(self, s, e, env=None, host=None, q: str = "", limit: int = 200, rum=None) -> dict:
+        """Client sessions named by the lines' attributes (rollup.py: pseudonymised at ingest), from the live counters or a rollup of the
+        stored batches. Lines and errors of a sampled range are scaled back up; distinct counts are what the sample holds. Older than the
+        stored batches only the per-minute history is left and it keeps no sessions: source history, nothing listed. `rum`: the user
+        sensors' store, for the web / mobile session figures (the caller passes None when hosts or a pool narrow the scope)."""
+        step = self._step(s, e)
+        r, mm, info = self.rollup_for(s, e)
+        k = info.get("sample", 1)
+        out = {"source": info["source"], "step_min": step, "sample": k, "total": 0, "matched": 0, "overflow": 0, "active_series": [], "by_host": [], "sessions": []}
+        if r is not None:
+            out.update(r.sessions(mm, env, host, step, q, limit))
+            if k > 1:
+                for x in out["sessions"]:
+                    x["lines"] *= k; x["errors"] *= k
+                for x in out["by_host"]:
+                    x["errors"] *= k
+        elif info["source"] == "history" and s >= datetime.now(UTC) - timedelta(hours=float(self.live.retention_h)):
+            out["source"] = "stored"                     # inside the stored window, just quiet: not "older than 48 h"
+        out["rum"] = rum.range_summary(s, e) if rum is not None else None
+        return out
+
+    def latency(self, s, e, env=None, host=None) -> dict:
+        """p50 / p90 / p99 per bar from the latency histograms in scope ("<n> ms" in the line, the p95 rule): the live counters or a
+        rollup of the stored batches, else the per-minute history (400 days, coarser buckets)."""
+        step = self._step(s, e)
+        r, mm, info = self.rollup_for(s, e)
+        if r is not None:
+            series = r.latency_series(mm, env, host, step)
+            k = info.get("sample", 1)
+            for x in series:
+                x["n"] *= k
+            return {"source": info["source"], "step_min": step, "sample": k, "series": series}
+        if info["source"] != "history":
+            return {"source": info["source"], "step_min": step, "series": []}
+        from .history import LAT_COLS, LAT_EDGES
+        acc: dict[int, list] = {}
+        for row in self._hist_sum(s, e, env, host):
+            b = (int(_dt(row["minute"] + ":00").timestamp() // 60) - mm[0]) // step
+            a = acc.setdefault(b, [0] * len(LAT_COLS))
+            for i, c in enumerate(LAT_COLS):
+                a[i] += int(row[c] or 0)
+        series = []
+        for i, t in enumerate(range(mm[0], mm[1] + 1, step)):
+            hst = acc.get(i, [0] * len(LAT_COLS))
+            series.append({"t": t * 60, "p50": _q(hst, 0.5, LAT_EDGES), "p90": _q(hst, 0.9, LAT_EDGES), "p99": _q(hst, 0.99, LAT_EDGES), "n": sum(hst)})
+        return {"source": "history", "step_min": step, "series": series}
+
+    def hostseries(self, s, e, env=None, host=None, metric: str = "lines", top: int = 6) -> dict:
+        """The top hosts in scope by `metric` (lines | errors | error_rate | p95 | sessions) over the range and their value per bar, from
+        the same sources as latency(); counts of a sampled range are scaled back up. The history keeps no sessions."""
+        step = self._step(s, e)
+        r, mm, info = self.rollup_for(s, e)
+        nb = -(-(mm[1] - mm[0] + 1) // step)
+        base = {"source": info["source"], "step_min": step, "metric": metric}
+        if r is not None:
+            out = r.host_series(mm, metric, env, host, step, top)
+            k = info.get("sample", 1)
+            if k > 1 and metric in ("lines", "errors"):
+                for x in out["hosts"]:
+                    x["total"] *= k
+                for row in out["series"]:
+                    for h in row:
+                        if h != "t" and row[h] is not None:
+                            row[h] *= k
+            return {**base, "sample": k, **out}
+        if info["source"] != "history" or metric == "sessions":
+            return {**base, "hosts": [], "series": []}
+        from .history import LAT_COLS, LAT_EDGES
+        tot: dict[str, list] = {}
+        for row in self._hist_sum(s, e, env, host, "host"):
+            h = row["host"] or "-"
+            t, er = int(row["total"] or 0), int(row["errors"] or 0)
+            if metric == "p95":
+                v = _q([int(row[c] or 0) for c in LAT_COLS], 0.95, LAT_EDGES)
+                tot[h] = [v, v]
+            elif metric == "lines":
+                tot[h] = [t, t]
+            elif metric == "errors":
+                tot[h] = [er, er]
+            else:
+                tot[h] = [er, round(er / t, 5) if t else None]
+        pick = [h for h, v in sorted(tot.items(), key=lambda x: (-(x[1][0] or 0), x[0])) if v[0]][:max(1, top)]
+        val: dict[tuple, object] = {}
+        if pick:
+            per: dict[tuple, list] = {}
+            for row in self._hist_sum(s, e, env, tuple(pick), "minute, host"):
+                key = (row["host"] or "-", (int(_dt(row["minute"] + ":00").timestamp() // 60) - mm[0]) // step)
+                a = per.setdefault(key, [0, 0] + [0] * len(LAT_COLS))
+                a[0] += int(row["total"] or 0); a[1] += int(row["errors"] or 0)
+                for i, c in enumerate(LAT_COLS):
+                    a[2 + i] += int(row[c] or 0)
+            for key, a in per.items():
+                val[key] = (a[0] if metric == "lines" else a[1] if metric == "errors" else _q(a[2:], 0.95, LAT_EDGES) if metric == "p95"
+                            else (round(a[1] / a[0], 5) if a[0] else None))
+        return {**base, **host_series_out({h: tot[h] for h in pick}, val, {h: h for h in pick}, nb, mm[0], step, metric, top)}

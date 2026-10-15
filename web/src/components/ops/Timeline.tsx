@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Bar, BarChart, CartesianGrid, ReferenceArea, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useT } from "../../i18n";
 import { fmtN, fmtTime } from "./util";
+import { TipCard } from "./LineChartCard";
 
 /** Log volume over the chosen range, errors and warnings stacked on the rest. Drag across the bars to zoom into that span. */
 export function Timeline({ series, stepMin, spanMin, onSelect, height = 170 }: { series: any[]; stepMin: number; spanMin: number; onSelect: (s: Date, e: Date) => void; height?: number }) {
@@ -11,10 +12,11 @@ export function Timeline({ series, stepMin, spanMin, onSelect, height = 170 }: {
   return <div style={{ height, userSelect: "none" }}>
     <ResponsiveContainer><BarChart data={data} barCategoryGap={1} onMouseDown={(e: any) => e?.activeLabel !== undefined && setA(e.activeLabel)} onMouseMove={(e: any) => a !== null && e?.activeLabel !== undefined && setB(e.activeLabel)} onMouseUp={end} onMouseLeave={() => { setA(null); setB(null); }}>
       <CartesianGrid vertical={false} stroke="var(--line)" />
-      <XAxis dataKey="t" tickFormatter={(v) => fmtTime(v, spanMin)} tick={{ fill: "var(--dim)", fontSize: 11 }} axisLine={false} tickLine={false} minTickGap={40} />
-      <YAxis tickFormatter={(v) => fmtN(v, lang)} tick={{ fill: "var(--dim)", fontSize: 11 }} axisLine={false} tickLine={false} width={44} />
-      <Tooltip cursor={{ fill: "rgba(148,163,184,0.08)" }} contentStyle={{ background: "var(--bg2)", border: "1px solid var(--line2)", borderRadius: 10, fontSize: 12 }} labelFormatter={(v) => fmtTime(v as number, spanMin + 2000)}
-        formatter={(v: any, n: any) => [fmtN(v, lang), n === "errors" ? t("tl_errors") : n === "warn" ? t("tl_warn") : t("tl_other")]} />
+      <XAxis dataKey="t" tickFormatter={(v) => fmtTime(v, spanMin)} tick={{ fill: "var(--dim)", fontSize: 10.5, fontFamily: "var(--mono)" }} axisLine={false} tickLine={false} minTickGap={40} />
+      <YAxis tickFormatter={(v) => fmtN(v, lang)} tick={{ fill: "var(--dim)", fontSize: 10.5, fontFamily: "var(--mono)" }} axisLine={false} tickLine={false} width={54} />
+      <Tooltip cursor={{ fill: "rgba(148,163,184,0.08)" }} isAnimationActive={false} wrapperStyle={{ outline: "none", zIndex: 5 }} content={(p: any) => { const d = p.payload?.[0]?.payload; return p.active && d ? <TipCard ts={Number(p.label)}
+        rows={[{ color: "var(--red)", label: t("tl_errors"), value: fmtN(d.errors, lang) }, { color: "var(--amber)", label: t("tl_warn"), value: fmtN(d.warn, lang) }, { color: "var(--sev-info)", label: t("tl_other"), value: fmtN(d.other, lang) }]}
+        foot={`${t("tl_total")}: ${fmtN(d.total, lang)}`} plain /> : null; }} />
       <Bar dataKey="other" stackId="a" fill="var(--sev-info)" isAnimationActive={false} />
       <Bar dataKey="warn" stackId="a" fill="var(--amber)" isAnimationActive={false} />
       <Bar dataKey="errors" stackId="a" fill="var(--red)" radius={[2, 2, 0, 0]} isAnimationActive={false} />
