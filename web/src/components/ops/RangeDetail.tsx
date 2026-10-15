@@ -13,7 +13,7 @@ export type DTab = "volume" | "errors" | "avail" | "latency";
 const TT = { contentStyle: { background: "var(--bg2)", border: "1px solid var(--line2)", borderRadius: 10, fontSize: 12 } };
 const AX = { tick: { fill: "var(--dim)", fontSize: 11 }, axisLine: false, tickLine: false } as const;
 
-export function RangeDetail({ rq, span, tab0, onClose, onLogs }: { rq: string; span: number; tab0: DTab; onClose: () => void; onLogs: (f: any) => void }) {
+export function RangeDetail({ rq, span, tab0, onClose, onLogs, onHost }: { rq: string; span: number; tab0: DTab; onClose: () => void; onLogs: (f: any) => void; onHost?: (h: string) => void }) {
   const { t, lang } = useT(); const [tab, setTab] = useState<DTab>(tab0);
   const q = useQuery({ queryKey: ["range-detail", rq], queryFn: () => get(`/live/range/detail?${rq}`), refetchInterval: rq.includes("last=") ? 15000 : false });
   const d = q.data;
@@ -34,11 +34,11 @@ export function RangeDetail({ rq, span, tab0, onClose, onLogs }: { rq: string; s
           <div><h4>{t("od_err_by_service")}</h4>{!d.by_service.length ? <Empty>{t("rd_no_errors")}</Empty> :
             <div style={{ height: Math.max(120, Math.min(10, d.by_service.length) * 28) }}><ResponsiveContainer><BarChart layout="vertical" data={d.by_service.slice(0, 10).map((x: any) => ({ s: x[0], n: x[1] }))}>
               <XAxis type="number" {...AX} tickFormatter={(v) => fmtN(v, lang)} /><YAxis type="category" dataKey="s" width={150} {...AX} tickFormatter={(v) => (String(v).length > 22 ? `…${String(v).slice(-21)}` : v)} /><Tooltip {...TT} /><Bar dataKey="n" fill="var(--red)" isAnimationActive={false} /></BarChart></ResponsiveContainer></div>}</div>
-          <div><h4>{t("od_err_by_host")}</h4><div className="rd-list">{d.by_host.slice(0, 12).map((x: any) => <div key={x[0]} className="row between small"><span>{x[0]}</span><b>{fmtN(x[1], lang)}</b></div>)}</div></div>
+          <div><h4>{t("od_err_by_host")}</h4><div className="rd-list">{d.by_host.slice(0, 12).map((x: any) => <div key={x[0]} className={`row between small ${onHost ? "rd-host" : ""}`} onClick={() => onHost?.(x[0])}><span>{x[0]}</span><b>{fmtN(x[1], lang)}</b></div>)}</div></div>
         </div>
         <div className="row between"><h4>{t("rd_recent_err")}</h4><button className="btn sm" onClick={() => onLogs({ tab: "raw", sev: "ERROR" })}>{t("rd_to_logs")}</button></div>
         <div className="lx-raw" style={{ maxHeight: 300 }}>{d.recent.map((l: any, i: number) => <div key={i} className="lx-l"><span className="mono dim">{fmtTime(l.ts, span)}</span><span className={`sev-dot ${l.severity}`} />
-          <span className="lx-host small">{l.host}</span><span className="lx-svc small">{l.service}</span><span className="mono lx-msg">{l.message}</span></div>)}</div>
+          <span className="lx-host small" onClick={() => onHost?.(l.host)}>{l.host}</span><span className="lx-svc small">{l.service}</span><span className="mono lx-msg">{l.message}</span></div>)}</div>
       </div>}
       {tab === "avail" && <div className="stack">
         <div className="rd-kpis">

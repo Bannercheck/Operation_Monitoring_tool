@@ -8,7 +8,8 @@ import { TipCard } from "./LineChartCard";
 export function Timeline({ series, stepMin, spanMin, onSelect, height = 170 }: { series: any[]; stepMin: number; spanMin: number; onSelect: (s: Date, e: Date) => void; height?: number }) {
   const { t, lang } = useT(); const [a, setA] = useState<number | null>(null); const [b, setB] = useState<number | null>(null);
   const data = series.map((x) => ({ t: x.t, other: Math.max(0, x.total - x.errors - (x.warn ?? 0)), warn: x.warn ?? 0, errors: x.errors, total: x.total }));
-  const end = () => { if (a !== null && b !== null && a !== b) { const lo = Math.min(a, b), hi = Math.max(a, b) + stepMin * 60; onSelect(new Date(lo * 1000), new Date(hi * 1000)); } setA(null); setB(null); };
+  const end = () => { if (a !== null && (b === null || b === a)) { onSelect(new Date(a * 1000), new Date((a + stepMin * 60) * 1000)); }   // a click on one bar: that bar
+    else if (a !== null && b !== null && a !== b) { const lo = Math.min(a, b), hi = Math.max(a, b) + stepMin * 60; onSelect(new Date(lo * 1000), new Date(hi * 1000)); } setA(null); setB(null); };
   return <div style={{ height, userSelect: "none" }}>
     <ResponsiveContainer><BarChart data={data} barCategoryGap={1} onMouseDown={(e: any) => e?.activeLabel !== undefined && setA(e.activeLabel)} onMouseMove={(e: any) => a !== null && e?.activeLabel !== undefined && setB(e.activeLabel)} onMouseUp={end} onMouseLeave={() => { setA(null); setB(null); }}>
       <CartesianGrid vertical={false} stroke="var(--line)" />

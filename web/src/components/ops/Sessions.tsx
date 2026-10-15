@@ -42,7 +42,7 @@ export function SessionTable({ rows, day = false, max = 420, loading = false, co
 
 /** the fleet card's "Sessions" view: active sessions per bar, the web / mobile line when no server scope is set, the busiest
  *  hosts, and the list with a search */
-export function SessionsView({ rq, span, onZoom }: { rq: string; span: number; onZoom: (t: number, stepMin: number) => void }) {
+export function SessionsView({ rq, span, onZoom, onHost }: { rq: string; span: number; onZoom: (t: number, stepMin: number) => void; onHost?: (h: string) => void }) {
   const { t, lang } = useT(); const [q, setQ] = useState("");
   const r = useQuery({ queryKey: ["range-sessions", rq, q], queryFn: () => get(`/live/range/sessions?${rq}&limit=200${q ? `&q=${encodeURIComponent(q)}` : ""}`), refetchInterval: rq.includes("last=") ? 15000 : false });
   const d = r.data; const hosts: any[] = (d?.by_host ?? []).slice(0, 8); const top = Math.max(1, ...hosts.map((h) => h.sessions));
@@ -52,7 +52,7 @@ export function SessionsView({ rq, span, onZoom }: { rq: string; span: number; o
       <LineChartCard title={t("lc_active")} sub={d ? `${fmtN(d.total, lang)} ${t("ses_total")}${d.overflow ? ` · ${t("ses_overflow", { n: fmtN(d.overflow, lang) })}` : ""}` : ""} height={196} span={span}
         series={[{ key: "n", label: t("lc_active"), color: "var(--s1)" }]} data={settled(d?.active_series ?? [], d?.step_min ?? 1, rq.includes("last="))} valueFormat={(v) => fmtN(v, lang)} onPick={(x) => onZoom(x, d?.step_min ?? 1)} pickLabel={t("lc_zoom")} empty={d ? undefined : t("loading")} />
       <div className="ses-hosts"><div className="lc-t" style={{ marginBottom: 6 }}>{t("ses_by_host")}</div>
-        {!hosts.length ? <div className="dim small">–</div> : hosts.map((h) => <div key={h.host} className="ses-hb" title={`${h.users} ${t("ses_users")} · ${h.errors} ${t("ses_col_err").toLowerCase()}`}>
+        {!hosts.length ? <div className="dim small">–</div> : hosts.map((h) => <div key={h.host} className={`ses-hb ${onHost && !h.host.startsWith("rum:") ? "clickable" : ""}`} onClick={() => onHost && !h.host.startsWith("rum:") && onHost(h.host)} title={`${h.users} ${t("ses_users")} · ${h.errors} ${t("ses_col_err").toLowerCase()}`}>
           <span className="mono">{h.host}</span><b>{fmtN(h.sessions, lang)}</b><i style={{ width: `${(h.sessions / top) * 100}%` }} /></div>)}</div>
     </div>
     {d?.rum?.sessions > 0 && <div className="small muted">{t("ses_rum", { s: fmtN(d.rum.sessions, lang), u: fmtN(d.rum.users, lang), e: fmtN(d.rum.errors, lang) })} · <Link to="/rum?tab=sessions">{t("ses_to_rum_page")}</Link></div>}

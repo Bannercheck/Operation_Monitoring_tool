@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { AlertOctagon, AlertTriangle, BellOff, CheckCircle2, Cpu, Sparkles, Ticket, TrendingUp } from "lucide-react";
 import { useT } from "../../i18n";
 import { fmtN, fmtPct } from "./util";
@@ -37,9 +37,10 @@ function rising(tr: number[] = []): boolean {
 export function Attention({ items }: { items: Item[] }) {
   const { t } = useT();
   if (!items.length) return <div className="at-ok"><CheckCircle2 size={28} color="var(--green)" /><div><b>{t("at_none")}</b><div className="muted small">{t("at_none_sub")}</div></div></div>;
-  return <div className="at">{items.map((it, i) => <div key={i} className={`at-i l${it.level}`}>
+  const nav = useNavigate();
+  return <div className="at">{items.map((it, i) => <div key={i} className={`at-i l${it.level} ${it.act ? "clickable" : ""}`} onClick={() => it.act && (it.act.to ? nav(it.act.to) : it.act.run?.())}>
     <it.icon size={17} className="at-ic" />
     <div className="at-b"><div className="at-t">{it.title}</div>{it.sub && <div className="at-s">{it.sub}</div>}</div>
-    {it.act && (it.act.to ? <Link className="btn sm" to={it.act.to}>{it.act.label}</Link> : <button className="btn sm" onClick={it.act.run}>{it.act.label}</button>)}
+    {it.act && (it.act.to ? <Link className="btn sm" to={it.act.to} onClick={(e) => e.stopPropagation()}>{it.act.label}</Link> : <button className="btn sm" onClick={(e) => { e.stopPropagation(); it.act!.run?.(); }}>{it.act.label}</button>)}
   </div>)}</div>;
 }
