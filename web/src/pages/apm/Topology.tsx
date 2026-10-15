@@ -58,8 +58,10 @@ function Graph({ nodes, edges, mode }: { nodes: N[]; edges: E[]; mode: "traffic"
       const col = mode === "network" ? "#60a5fa" : health(e.error_rate);
       const dim = hover && !(hover === e.source || hover === e.target);
       const label = mode === "network" ? `${e.protocol} · ${e.connections} ${t("topo_conn")}` : `${e.calls} ${t("apm_calls")} · P95 ${fmtMs(e.p95_ms)}${e.errors ? ` · ${pct(e.error_rate, 1)} ${t("apm_err")}` : ""}`;
-      return <g key={i} opacity={dim ? 0.15 : 1}><path d={d} fill="none" stroke={col} strokeWidth={w} strokeOpacity={0.75} strokeDasharray={e.evidence === "explicit" ? undefined : "6 5"} markerEnd="url(#arr)">
+      const open = mode === "network" ? () => nav(`/integrations?host=${encodeURIComponent(e.source)}&ix=${encodeURIComponent(`out:${e.port}:${e.target}`)}`) : undefined;   // network edge -> its technology drawer
+      return <g key={i} opacity={dim ? 0.15 : 1} onClick={open} style={open ? { cursor: "pointer" } : undefined}><path d={d} fill="none" stroke={col} strokeWidth={w} strokeOpacity={0.75} strokeDasharray={e.evidence === "explicit" ? undefined : "6 5"} markerEnd="url(#arr)">
         <title>{`${e.source} → ${e.target}\n${label}\n${t(`topo_ev_${e.evidence}`)}`}</title></path>
+        {open && <path d={d} fill="none" stroke="transparent" strokeWidth={12} style={{ pointerEvents: "stroke" }}><title>{`${e.source} → ${e.target}:${e.port}\n${label}`}</title></path>}
         {!hover || hover === e.source || hover === e.target ? <text x={(x1 + x2) / 2} y={(a.y + b.y) / 2 - 6} className="topo-el">{label}</text> : null}</g>; })}
     {nodes.map((n) => { const p = pos[n.id]; if (!p) return null; const col = n.kind === "db" ? "#a78bfa" : n.kind === "app" ? "#60a5fa" : health(n.error_rate);
       const r = n.kind === "service" ? 14 + Math.min(16, 3 * Math.log1p(n.calls ?? 0)) : 22;

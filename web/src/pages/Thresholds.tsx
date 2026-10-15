@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Gauge, Plus, Trash2 } from "lucide-react";
 import { del, get, post, put } from "../api";
 import { useAuth } from "../auth";
+import { TeamChip, TeamPick } from "../components/TeamPick";
 import { useT } from "../i18n";
 import { Btn, Card, Empty, Err, Field, Modal } from "../components/ui";
 
@@ -16,14 +17,14 @@ const fmt = (m: string, v: any) => (v === null || v === undefined ? "–" : `${N
 const EMPTY = { name: "", scope: "host", scope_value: "", metric: "cpu", warn: 80 as number | null, crit: 90 as number | null, for_min: 3, channels: "email", targets: "", cooldown_min: 30, notify_resolved: true, enabled: true, note: "" };
 
 export default function Thresholds() {
-  const { t } = useT(); const { can } = useAuth(); const qc = useQueryClient(); const [sp, setSp] = useSearchParams();
+  const { t } = useT(); const { can, user, teamsWith } = useAuth(); const qc = useQueryClient(); const [sp, setSp] = useSearchParams();
   const tab = (sp.get("tab") || "hosts") as "hosts" | "policies" | "open";
   const [edit, setEdit] = useState<any>(null); const [f, setF] = useState(sp.get("host") || "");
   const ov = useQuery({ queryKey: ["thr-ov"], queryFn: () => get("/thresholds/overview"), refetchInterval: 30000 });
   const pol = useQuery({ queryKey: ["thr-pol"], queryFn: () => get("/thresholds") });
   const open = useQuery({ queryKey: ["thr-open"], queryFn: () => get("/thresholds/state"), refetchInterval: 30000 });
   const rm = useMutation({ mutationFn: (id: number) => del(`/thresholds/${id}`), onSuccess: () => qc.invalidateQueries({ queryKey: ["thr-pol"] }) });
-  const editable = can("sys.notify");
+  const editable = (can("sys.notify") && user?.all !== false) || teamsWith("act.thresholds").length > 0;   // installation-wide policies, or the team's own
   const hosts: any[] = (ov.data?.hosts ?? []).filter((h: any) => !f || h.host.toLowerCase().includes(f.toLowerCase()) || h.pool.toLowerCase().includes(f.toLowerCase()));
   const nBad = (ov.data?.hosts ?? []).filter((h: any) => h.worst !== "ok").length;
   const setTab = (k: string) => { const n = new URLSearchParams(sp); n.set("tab", k); setSp(n, { replace: true }); };
@@ -45,11 +46,11 @@ export default function Thresholds() {
           <div className="dim small" style={{ padding: 8 }}>{t("thr_hosts_foot")}</div></div>}
     </Card>}
     {tab === "policies" && <Card>{!(pol.data ?? []).length ? <Empty>{t("thr_no_policies")}</Empty> :
-      <div className="table-wrap"><table className="table"><thead><tr><th>{t("name")}</th><th>{t("thr_scope")}</th><th>{t("thr_metric")}</th><th className="right">{t("thr_warn")}</th><th className="right">{t("thr_crit")}</th><th className="right">{t("thr_for")}</th><th>{t("ntf_channels")}</th><th>{t("ntf_targets")}</th><th /></tr></thead>
+      <div className="table-wrap"><table className="table"><thead><tr><th>{t("name")}</th><th>{t("thr_scope")}</th><th>{t("thr_metric")}</th><th className="right">{t("thr_warn")}</th><th className="right">{t("thr_crit")}</th><th className="right">{t("thr_for")}</th><th>{t("ntf_channels")}</th><th>{t("ntf_targets")}</th><th>{t("tmr_team")}</th><th /></tr></thead>
         <tbody>{(pol.data ?? []).map((p: any) => <tr key={p.id} style={p.enabled ? undefined : { opacity: 0.5 }}>
           <td><b>{p.name}</b>{p.note && <div className="dim small">{p.note}</div>}</td><td>{t(`thr_scope_${p.scope}`)} <span className="mono small">{p.scope_value}</span></td><td>{t(`thr_m_${p.metric}`)}</td>
-          <td className="num">{fmt(p.metric, p.warn)}</td><td className="num">{fmt(p.metric, p.crit)}</td><td className="num">{p.for_min} {t("tr_min")}</td><td className="small">{p.channels || "–"}</td><td className="small">{p.targets || "–"}</td>
-          <td>{editable && <div className="row"><Btn sm onClick={() => setEdit({ ...p, notify_resolved: !!p.notify_resolved, enabled: !!p.enabled })}>{t("edit")}</Btn><Btn sm kind="danger" onClick={() => rm.mutate(p.id)}><Trash2 size={13} /></Btn></div>}</td></tr>)}</tbody></table></div>}
+          <td className="num">{fmt(p.metric, p.warn)}</td><td className="num">{fmt(p.metric, p.crit)}</td><td className="num">{p.for_min} {t("tr_min")}</td><td className="small">{p.channels || "–"}</td><td className="small">{p.targets || "–"}</td><td><TeamChip name={p.team} /></td>
+          <td>{p.editable !== false && editable && <div className="row"><Btn sm onClick={() => setEdit({ ...p, notify_resolved: !!p.notify_resolved, enabled: !!p.enabled })}>{t("edit")}</Btn><Btn sm kind="danger" onClick={() => rm.mutate(p.id)}><Trash2 size={13} /></Btn></div>}</td></tr>)}</tbody></table></div>}
       <div className="dim small" style={{ marginTop: 8 }}>{t("thr_order")}</div></Card>}
     {tab === "open" && <Card>{!(open.data ?? []).length ? <Empty>{t("thr_none_open")}</Empty> :
       <div className="table-wrap"><table className="table"><thead><tr><th>{t("host")}</th><th>{t("thr_metric")}</th><th>{t("status")}</th><th className="right">{t("thr_value")}</th><th className="right">{t("thr_level")}</th><th>{t("thr_since")}</th><th>{t("thr_notified")}</th></tr></thead>
@@ -72,9 +73,11 @@ function Editor({ init, onClose, onSaved }: { init: any; onClose: () => void; on
   const toggleCh = (c: string) => setP({ ...p, channels: (chans.includes(c) ? chans.filter((x) => x !== c) : [...chans, c]).join(",") });
   const names = [...(grp.data ?? []).map((g: any) => g.name), ...(rec.data ?? []).map((r: any) => r.name)];
   const unit = UNIT[p.metric] ?? "";
+  const teamRow = p.team_id != null;
   return <Modal wide title={p.id ? t("thr_edit") : t("thr_new")} onClose={onClose}>
     <div className="thr-ed">
       <div className="stack">
+        {!p.id && <TeamPick perm="act.thresholds" value={p.team_id ?? null} onChange={(v) => setP({ ...p, team_id: v, channels: v != null ? chans.filter((c) => c !== "webhook").join(",") : p.channels })} />}
         <div className="grid k2">
           <Field label={t("thr_metric")}><select className="input" value={p.metric} onChange={set("metric")}>{Object.keys(meta.data?.metrics ?? UNIT).map((m) => <option key={m} value={m}>{t(`thr_m_${m}`)}</option>)}</select></Field>
           <Field label={t("thr_scope")}><select className="input" value={p.scope} onChange={set("scope")}>{["host", "glob", "pool", "env", "all"].map((s) => <option key={s} value={s}>{t(`thr_scope_${s}`)}</option>)}</select></Field>
@@ -85,7 +88,7 @@ function Editor({ init, onClose, onSaved }: { init: any; onClose: () => void; on
           <Field label={`${t("thr_crit")} (${unit})`}><input className="input" type="number" value={p.crit ?? ""} onChange={set("crit")} /></Field>
           <Field label={t("thr_for_label")} hint={t("thr_for_hint")}><input className="input" type="number" min={0} value={p.for_min} onChange={set("for_min")} /></Field>
         </div>
-        <Field label={t("ntf_channels")}><div className="row" style={{ gap: 6 }}>{["email", "sms", "webhook"].map((c) => <button key={c} type="button" className={`chip ${chans.includes(c) ? "on" : ""}`} onClick={() => toggleCh(c)}>{t(`thr_ch_${c}`)}</button>)}</div></Field>
+        <Field label={t("ntf_channels")}><div className="row" style={{ gap: 6 }}>{["email", "sms", "webhook"].filter((c) => !(teamRow && c === "webhook")).map((c) => <button key={c} type="button" className={`chip ${chans.includes(c) ? "on" : ""}`} onClick={() => toggleCh(c)}>{t(`thr_ch_${c}`)}</button>)}</div></Field>
         <Field label={t("ntf_targets")} hint={t("thr_targets_hint")}><input className="input" list="thr-names" value={p.targets} onChange={set("targets")} placeholder="noc, Ayşe Yılmaz" /><datalist id="thr-names">{names.map((n) => <option key={n} value={n} />)}</datalist></Field>
         <div className="grid k2">
           <Field label={t("ntf_cooldown")}><input className="input" type="number" min={1} value={p.cooldown_min} onChange={set("cooldown_min")} /></Field>

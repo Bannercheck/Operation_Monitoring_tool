@@ -292,6 +292,12 @@ class TraceStore:
         slow = self._cfg("trace_slow_ms", 1000)
         rows = []
         spans = list(spans)
+        hook = getattr(self, "on_spans", None)              # techstack: which services run on which host (integration map)
+        if hook is not None:
+            try:
+                hook(spans)
+            except Exception:  # noqa: BLE001
+                pass
         with self.lock:
             cut = time.time() - 120
             while self._held and (self._held_n > 50000 or next(iter(self._held.values()))[0]["_held_at"] < cut):

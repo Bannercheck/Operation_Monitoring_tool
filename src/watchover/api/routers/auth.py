@@ -95,7 +95,10 @@ def mfa(body: MfaIn, svc=Depends(services)):
 
 @router.get("/me")
 def me(user: dict = Depends(current_user), svc=Depends(services)):
-    return {**user, "permissions": sorted(svc.roles.perms(user["role"]))}
+    """The account, its effective permissions (installation role ∪ team roles), the installation role's own permissions and one
+    row per team membership (team, team role, its permissions, host count, whether the user manages the team)."""
+    acc = svc.access_of(user)
+    return {**user, "permissions": sorted(acc.perms), **acc.summary()}
 
 
 @router.post("/password")

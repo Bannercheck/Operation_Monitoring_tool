@@ -27,6 +27,7 @@ class Observation:
     template: str = ""                # volatile values masked, filled by analysis
     fingerprint: str = ""             # sha1(template|severity|service), filled by analysis
     raw: str = ""                     # the original line / record text as it appears in the dataset
+    seq: int = 0                      # live feed: monotonic line id given on arrival (LiveStore._accept), the log explorer's line id
 
     @property
     def ref(self) -> str:

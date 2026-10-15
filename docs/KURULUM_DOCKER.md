@@ -92,6 +92,7 @@ Ajanların bağlandığı 8600 portu v1.35'ten itibaren ayrı bir konteynerde, G
 - Kuyruk sınırı `.env` içinde `WATCHOVER_SPOOL_MAX_MB` (varsayılan 2048). Aşılırsa alıcı 503 ve Retry-After döner, ajan paketi kendi diskinde saklar.
 - Durum: `curl http://<sunucu>:8600/health`, Prometheus için `/metrics`; log: `./watchover.sh logs receiver`.
 - Yükseltme `./watchover.sh upgrade` ile kendiliğinden olur: panel 8600'ü bırakır, alıcı servisi devralır. Güvenlik duvarı kuralı değişmez.
+- **Go ile ayrıştırma (v1.46):** alıcı, Python'la aynı sonucu verdiği kanıtlanmış biçimleri kendisi ayrıştırır (`.env` içinde `WATCHOVER_GO_PARSE=1`, varsayılan). Kullanıcı grok kalıpları, öğrenilmiş sütun eşlemeleri ve tanınmayan biçimler yine panelde ayrıştırılır. `WATCHOVER_GO_PARSE=0` eski davranışa birebir döner, `shadow` yalnız karşılaştırır. Ayrıştırılmış segmentler ham halin yaklaşık 3 katı yer kaplar ve kuyruk sınırına dahildir; disk elveriyorsa `WATCHOVER_SPOOL_MAX_MB` değerini 4096-6144 yapın. İşçi sayısı `WO_PARSE_WORKERS` (varsayılan: çekirdek sayısı); 4 çekirdekli makinede ekran yanıtları yavaşlarsa 2 yapın.
 
 ## 2c. Web ve mobil uygulamaları izlemek (Kullanıcı deneyimi)
 
@@ -106,6 +107,7 @@ Ajanların bağlandığı 8600 portu v1.35'ten itibaren ayrı bir konteynerde, G
 
 - **Trafik (izler):** APM › Servis haritası. Kim kimi çağırıyor, çağrı sayısı, P95 gecikme ve hata oranı izlerden ölçülür; düz çizgi loglarda üst adım kimliğiyle, kesikli çizgi zaman örtüşmesinden bilinir.
 - **Ağ (ajan bağlantıları):** ajan `--flows` ile (kurulum betiği bunu varsayılan açar, `--no-flows` kapatır) dakikada bir sunucunun açık TCP bağlantılarını gönderir. Hiçbir logun söylemediği bağımlılıklar görünür: uygulama sunucusundan veritabanına, Kafka'ya, SAP RFC'ye, dış API'ye. Süreç adlarını görmek için ajan root çalışmalıdır (systemd servisi öyle çalışır).
+- **Entegrasyonun teknolojisi (v1.46):** her bağlantı "REST API · FastAPI", "Oracle Net · Oracle Database 19c", "SAP RFC · SAP ECC (SAP JCo)" gibi teknolojisiyle ve güven derecesiyle (kesin / yüksek / olası) görünür; tıklayınca kanıtlar açılır, yanlışsa "Elle düzelt" ile düzeltilir. En iyi sonuç için ajanları 0.6.0'a güncelleyin: bölüm 5'teki kurulum komutunu (`agent/install.sh … --url … --token …`, Bağlantılar › Ajanlar'dan) aynı değerlerle yeniden çalıştırmak yeter; ajan süreçlerin çalışma zamanı, çatı ve istemci kütüphanesi etiketlerini gönderir; komut satırının kendisi sunucudan çıkmaz.
 - **Entegrasyonlar menüsü:** her sunucu için tek ekran: ona bağlananlar, üzerinde çalışan süreçler ve dinlenen portlar, izlerde görülen servisler, gittiği sistemler tür türüne (veritabanı, mesajlaşma, HTTP API, SAP, kimlik, e-posta, dosya aktarımı). Hedefler envanterdeki IP'lerle adlandırılır; envanterde olmayan adres IP olarak ve kesikli çerçeveyle görünür, envantere eklenince adıyla görünür.
 - **Gateway / nginx'te istek kimliği:** izlerin kimlikle birleşmesi için önerilen log biçimi:
 
@@ -128,7 +130,7 @@ Kullanıcılar › Ekipler sekmesinde her ekip için kurallar tanımlanır; ekib
 | İK | Envanter uygulaması `HR*`, servis / uygulama adı `ik-*` (İK mobil ve web uygulamaları) |
 | Veritabanı | Ajan etiketi `dba`, ya da IP ağı `10.40.0.0/16` |
 
-Merkezi NOC ekibine "Tüm sunucuları gör" yetkili bir rol verilir. Ekibe girmemiş kullanıcılar her şeyi görmeye devam eder; kurumda herkesin bir ekibe bağlı olması isteniyorsa Sistem › Ayarlar'da `teams_strict` açılır.
+v1.46'dan itibaren her yeni ekip üç hazır rolle gelir (Ekip yöneticisi, Operatör, İzleyici); ekibin Roller bölümünde her rolün görebileceği özellikler menü gruplarına göre işaretlenir, üyeye ekip rolü atanır. Ekip yalnız kendi sunucularının verisini görür (envanter, ajanlar, eşikler, bildirimler, veri setleri, loglar); ekip üyesinin eklediği sunucu ekibe ait olur. Ekip yöneticisi "Ekibim" sayfasından yalnız kendi ekibini, kendi yetkisini aşmadan yönetir. Ekip kayıt anahtarıyla kurulan ajanların sunucuları ekibe katılır; ajan başka ekibin sunucu adıyla log gönderemez. Merkezi NOC ekibine "Tüm sunucuları gör" yetkili bir rol verilir. Ekibe girmemiş kullanıcılar her şeyi görmeye devam eder; kurumda herkesin bir ekibe bağlı olması isteniyorsa Sistem › Ayarlar'da `teams_strict` açılır.
 
 ## 2f. İş akışları ve hatalar
 
@@ -141,6 +143,10 @@ Pool'lar envanterdeki **küme** alanından gelir (Envanter › CSV içe aktarma,
 ## 2h. Sunucu bazında eşikler ve uyarılar
 
 Müdahale › Eşikler: "Yeni eşik" ile sunucu, ad deseni (`prd-sap-*`), pool ya da ortam için CPU / bellek / disk / GPU / hata oranı / hata/dk / p95 / sessizlik seviyesi tanımlanır. Bildirim için Uyarılar › Alıcılar'da kişi ve grup, Uyarılar › Kanallar'da SMTP, SMS ya da webhook (Teams kanalının "Incoming Webhook" adresi, Slack uygulama webhook'u) ayarlanır; "Test gönder" ile denenir.
+
+## 2i. Log gezgini
+
+Sinyaller › Loglar. Üstteki sorgu çubuğuna `level:err OR level:crit`, `host:prd-sap-* -service:nginx`, `pool:prd-crm level>=warn "timeout"` gibi sorgular yazılır; soldaki filtrelere tıklamak sorguyu kendisi yazar. **Canlı** düğmesi akışı 2 saniyede bir getirir; aşağı kaydırınca durur ve "N yeni satır" gösterir. Satıra tıklayınca Ayrıntı / Bağlam / Ham / JSON açılır; her değerde süz, dışla, kopyala vardır. **Kaydet** aramayı kişiye (istenirse ekibe) kaydeder, **Uyarı** "M dakikada eşleşen satır ≥ N" kuralını mevcut bildirim kanallarına bağlar (`act.logalert` yetkisi). Son 48 saat satır satır aranır (`live_retention_h`); yoğun yükte uzun aralıklardaki serbest metin aramaları "≈ tahmini" sayı gösterir ve "Daha geriye tara" ile devam eder. Kişisel veri (e-posta, TCKN, kart, IBAN, telefon) içeren aramalar reddedilir; satırlar maskeli görünür.
 
 ## 3. Günlük işletim: watchover.sh
 
@@ -336,6 +342,7 @@ Gecelik yedek: `crontab -e` → `0 2 * * * cd /home/kullanici/watchover && ./wat
 | `unhealthy` | `./watchover.sh logs dashboard`; bellek sınırı düşükse `WATCHOVER_MEMORY` |
 | `password authentication failed` | `.env` parolası birim oluşturulduktan sonra değişti: bölüm 6'daki `ALTER USER` |
 | Giriş yapılamıyor | `./watchover.sh user list`, `user password EMAIL`, `user unlock EMAIL` |
+| Entegrasyonlarda teknoloji "olası" ya da yalnız protokol görünüyor | Ajan 0.6.0'dan eski: ajanı yeniden kurun (bölüm 2d); ajan root çalışmıyorsa süreç adları ve parmak izleri okunamaz. Kesin bilgi için "Elle düzelt" |
 | Ajan gönderemiyor | Sunucudan `curl -s http://<watchover>:8600/health`; 8600 açık mı; token / kayıt anahtarı Bağlantı ayarları › Ajanlar'da geçerli mi |
 
 ## Ölçek: 100+ sunucu, 50+ uygulama (Faz 1)

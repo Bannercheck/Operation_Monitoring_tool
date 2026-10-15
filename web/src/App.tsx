@@ -32,9 +32,11 @@ import Integrations from "./pages/apm/Integrations";
 import Flows from "./pages/apm/Flows";
 import Exceptions from "./pages/apm/Exceptions";
 import Thresholds from "./pages/Thresholds";
+import MyTeam from "./pages/MyTeam";
+import Logs from "./pages/Logs";
 
 export default function App() {
-  const { user, ready, acceptToken } = useAuth();
+  const { user, ready, acceptToken, can } = useAuth();
   const loc = useLocation();
   const nav = useNavigate();
   useEffect(() => {                                   // SSO callback lands on /#sso=<token>
@@ -48,6 +50,7 @@ export default function App() {
       <Route element={<Layout />}>
         <Route index element={<Navigate to="/ops" replace />} />
         <Route path="/ops" element={<Ops />} />
+        <Route path="/logs" element={can("page.logs") ? <Logs /> : <Navigate to="/ops" replace />} />
         <Route path="/anomalies" element={<Anomalies />} />
         <Route path="/datasets" element={<Datasets />} />
         <Route path="/datasets/:key" element={<DatasetDetail />} />
@@ -61,6 +64,7 @@ export default function App() {
         <Route path="/knowledge" element={<Knowledge />} />
         <Route path="/alerts" element={<Notify />} />
         <Route path="/users" element={<Users />} />
+        <Route path="/team" element={<MyTeam />} />
         <Route path="/system" element={<System />} />
         <Route path="/map" element={<MapPage />} />
         <Route path="/services" element={<Services />} />

@@ -37,6 +37,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -50,6 +51,14 @@ type config struct {
 	maxBody, segBytes, maxBacklog               int64
 	segEvery                                    time.Duration
 	fsync                                       bool
+	// parse stage (parsestage.go): WATCHOVER_GO_PARSE, WO_PARSE_WORKERS, WO_PARSE_BATCH_TIMEOUT_MS, WATCHOVER_GO_PARSE_FORMATS,
+	// WATCHOVER_GO_PARSE_DENY, WO_PROFILES, WO_SHADOW_MAX_MB. The zero value is off (tests build config literals).
+	parse                parseMode
+	parseWorkers         int
+	parseTimeout         time.Duration
+	parseOnly, parseDeny []string
+	profiles             string
+	shadowMax            int64
 }
 
 func env(k, d string) string {
@@ -73,6 +82,10 @@ func loadConfig() config {
 		upstream: env("WO_UPSTREAM", "http://dashboard:8601"), agentDir: env("WO_AGENT_DIR", "/app/agent"),
 		maxBody: envInt("WO_MAX_BODY_MB", 16) << 20, segBytes: envInt("WO_SEGMENT_MB", 8) << 20, maxBacklog: envInt("WO_MAX_BACKLOG_MB", 2048) << 20,
 		segEvery: time.Duration(envInt("WO_SEGMENT_MS", 1000)) * time.Millisecond, fsync: env("WO_FSYNC", "rotate") != "off",
+		parse: parseModeOf(os.Getenv("WATCHOVER_GO_PARSE")), parseWorkers: int(envInt("WO_PARSE_WORKERS", 0)),
+		parseTimeout: time.Duration(envInt("WO_PARSE_BATCH_TIMEOUT_MS", 2000)) * time.Millisecond,
+		parseOnly:    csvList(os.Getenv("WATCHOVER_GO_PARSE_FORMATS")), parseDeny: csvList(os.Getenv("WATCHOVER_GO_PARSE_DENY")),
+		profiles: env("WO_PROFILES", filepath.Join(spool, "profiles.json")), shadowMax: envInt("WO_SHADOW_MAX_MB", 256) << 20,
 	}
 }
 
@@ -184,32 +197,55 @@ type spool struct {
 	segments atomic.Int64
 	written  atomic.Int64
 	records  atomic.Int64
+	// parse stage: raw segments not parsed yet (seg-*.raw) and parsed segments not consumed yet (pseg-*.wo)
+	rawBacklog, rawSegments, psegBacklog atomic.Int64
+	onClose                              func() // wakes the parse stage
 }
 
 func newSpool(cfg config) (*spool, error) {
 	if err := os.MkdirAll(cfg.spool, 0o750); err != nil {
 		return nil, err
 	}
+	s := &spool{cfg: cfg, in: make(chan record, 4096)}
 	matches, _ := filepath.Glob(filepath.Join(cfg.spool, "seg-*.tmp")) // a crash left an open segment: close it, the reader tolerates a torn tail
 	for _, m := range matches {
-		_ = os.Rename(m, strings.TrimSuffix(m, ".tmp")+".wo")
+		_ = os.Rename(m, strings.TrimSuffix(m, ".tmp")+s.closedExt())
 	}
-	s := &spool{cfg: cfg, in: make(chan record, 4096)}
+	recoverParseSpool(cfg.spool, cfg.parse)
 	s.scan()
 	return s, nil
 }
 
+// closedExt: a closed segment is .wo (the dashboard parses it) or, with the parse stage on, .raw (the stage parses it).
+func (s *spool) closedExt() string {
+	if s.cfg.parse == parseOn {
+		return rawExt
+	}
+	return ".wo"
+}
+
+// scan refreshes the backlog: every closed segment not yet consumed, raw or parsed (the 503 threshold covers both).
 func (s *spool) scan() {
 	var n, b int64
-	matches, _ := filepath.Glob(filepath.Join(s.cfg.spool, "seg-*.wo"))
-	for _, m := range matches {
-		if fi, err := os.Stat(m); err == nil {
-			n++
-			b += fi.Size()
+	size := func(glob string) (int64, int64) {
+		var c, t int64
+		matches, _ := filepath.Glob(filepath.Join(s.cfg.spool, glob))
+		for _, m := range matches {
+			if fi, err := os.Stat(m); err == nil {
+				c++
+				t += fi.Size()
+			}
 		}
+		return c, t
 	}
-	s.segments.Store(n)
-	s.backlog.Store(b)
+	n, b = size("seg-*.wo")
+	rc, rb := size("seg-*" + rawExt)
+	pc, pb := size("pseg-*.wo")
+	s.rawSegments.Store(rc)
+	s.rawBacklog.Store(rb)
+	s.psegBacklog.Store(pb)
+	s.segments.Store(n + rc + pc)
+	s.backlog.Store(b + rb + pb)
 }
 
 func (s *spool) rotate() {
@@ -220,10 +256,25 @@ func (s *spool) rotate() {
 		_ = s.f.Sync()
 	}
 	_ = s.f.Close()
-	_ = os.Rename(s.name, strings.TrimSuffix(s.name, ".tmp")+".wo")
+	base := strings.TrimSuffix(s.name, ".tmp")
+	if s.cfg.parse == parseShadow { // the shadow stage gets its own name for the segment before the dashboard can delete it
+		if os.Link(s.name, base+shadowExt) != nil {
+			if b, err := os.ReadFile(s.name); err == nil {
+				_ = os.WriteFile(base+shadowExt, b, 0o640)
+			}
+		}
+	}
+	_ = os.Rename(s.name, base+s.closedExt())
 	s.backlog.Add(s.size)
 	s.segments.Add(1)
+	if s.cfg.parse == parseOn {
+		s.rawBacklog.Add(s.size)
+		s.rawSegments.Add(1)
+	}
 	s.f, s.name, s.size = nil, "", 0
+	if s.onClose != nil {
+		s.onClose()
+	}
 }
 
 func (s *spool) run(ctx context.Context) {
@@ -285,6 +336,7 @@ type server struct {
 	cfg   config
 	auth  *auth
 	sp    *spool
+	stage *parseStage // nil when WATCHOVER_GO_PARSE is off
 	proxy *httputil.ReverseProxy
 	start time.Time
 	stats struct{ batches, bytes, rejected, busy, unauth, sensor atomic.Int64 }
@@ -504,10 +556,16 @@ func (s *server) health() map[string]any {
 	if st != nil {
 		agents = len(st.Agents)
 	}
-	return map[string]any{"status": "ok", "engine": "go", "uptime_s": int(time.Since(s.start).Seconds()), "auth_ready": ready, "agents": agents,
+	h := map[string]any{"status": "ok", "engine": "go", "uptime_s": int(time.Since(s.start).Seconds()), "auth_ready": ready, "agents": agents,
 		"batches": s.stats.batches.Load(), "sensor_batches": s.stats.sensor.Load(), "bytes": s.stats.bytes.Load(), "unauthorized": s.stats.unauth.Load(), "busy": s.stats.busy.Load(),
 		"write_errors": s.stats.rejected.Load(), "backlog_bytes": s.sp.backlog.Load(), "backlog_segments": s.sp.segments.Load(),
 		"max_backlog_bytes": s.cfg.maxBacklog, "queue": len(s.sp.in)}
+	if s.stage != nil {
+		s.stage.health(h)
+	} else {
+		h["parse_mode"], h["parse_enabled"] = parseOff.String(), 0
+	}
+	return h
 }
 
 func (s *server) routes() http.Handler {
@@ -521,6 +579,13 @@ func (s *server) routes() http.Handler {
 				fmt.Fprintf(w, "watchover_receiver_%s %d\n", k, x)
 			case int:
 				fmt.Fprintf(w, "watchover_receiver_%s %d\n", k, x)
+			case map[string]map[string]int64: // parse_by_format
+				for _, f := range sortedKeys(x) {
+					for _, res := range []string{"parsed", "forwarded"} {
+						fmt.Fprintf(w, "watchover_receiver_parse_batches{format=%q,result=%q} %d\n", f, res, x[f][res])
+					}
+					fmt.Fprintf(w, "watchover_receiver_parse_observations_by_format{format=%q} %d\n", f, x[f]["obs"])
+				}
 			}
 		}
 	})
@@ -556,7 +621,40 @@ func (s *server) routes() http.Handler {
 	return mux
 }
 
+func sortedKeys[V any](m map[string]V) []string {
+	ks := make([]string, 0, len(m))
+	for k := range m {
+		ks = append(ks, k)
+	}
+	sort.Strings(ks)
+	return ks
+}
+
+// parseSpool is `wo-receiver parse-spool DIR`: parse every seg-*.raw in DIR into pseg-*.wo once and exit (with
+// WATCHOVER_GO_PARSE=shadow: seg-*.shd into shadow-*.wo). Used by tests and for debugging a spool by hand.
+func parseSpool(dir string) {
+	cfg := loadConfig()
+	cfg.spool = dir
+	if cfg.parse != parseShadow { // shadow: seg-*.shd -> shadow-*.wo; otherwise seg-*.raw -> pseg-*.wo
+		cfg.parse = parseOn
+	}
+	if os.Getenv("WO_PROFILES") == "" {
+		cfg.profiles = filepath.Join(dir, "profiles.json")
+	}
+	recoverParseSpool(dir, cfg.parse)
+	st := newParseStage(cfg, nil)
+	n := st.drainOnce(context.Background())
+	h := map[string]any{"records": n}
+	st.health(h)
+	b, _ := json.Marshal(h)
+	fmt.Println(string(b))
+}
+
 func main() {
+	if len(os.Args) == 3 && os.Args[1] == "parse-spool" {
+		parseSpool(os.Args[2])
+		return
+	}
 	cfg := loadConfig()
 	sp, err := newSpool(cfg)
 	if err != nil {
@@ -569,6 +667,11 @@ func main() {
 	a := &auth{path: cfg.authFile}
 	a.reload()
 	s := &server{cfg: cfg, auth: a, sp: sp, proxy: httputil.NewSingleHostReverseProxy(up), start: time.Now()}
+	if cfg.parse != parseOff {
+		s.stage = newParseStage(cfg, sp)
+		s.stage.needExport = true // parse only once the dashboard has exported profiles.json (see parseStage.needExport)
+		sp.onClose = s.stage.wake
+	}
 	s.proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
 		w.Header().Set("Retry-After", "5")
 		s.json(w, http.StatusBadGateway, map[string]string{"error": "dashboard not reachable for enrolment: retry"})
@@ -590,6 +693,12 @@ func main() {
 	wctx, wcancel := context.WithCancel(context.Background())
 	wdone := make(chan struct{})
 	go func() { sp.run(wctx); close(wdone) }()
+	pdone := make(chan struct{})
+	if s.stage != nil {
+		go func() { s.stage.run(wctx); close(pdone) }()
+	} else {
+		close(pdone)
+	}
 	srv := &http.Server{Addr: cfg.listen, Handler: s.routes(), ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 60 * time.Second,
 		WriteTimeout: 30 * time.Second, IdleTimeout: 120 * time.Second, MaxHeaderBytes: 64 << 10}
 	go func() {
@@ -598,10 +707,11 @@ func main() {
 		defer cancel()
 		_ = srv.Shutdown(sh)
 	}()
-	log.Printf("watchover receiver (go) on %s, spool %s, upstream %s", cfg.listen, cfg.spool, cfg.upstream)
+	log.Printf("watchover receiver (go) on %s, spool %s, upstream %s, go parse %s", cfg.listen, cfg.spool, cfg.upstream, cfg.parse)
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatalf("listen: %v", err)
 	}
 	wcancel()
 	<-wdone
+	<-pdone
 }

@@ -1,19 +1,24 @@
-"""Ask Watchover: grounded answers over the loaded dataset and the knowledge base (LLM optional, deterministic fallback)."""
+"""Ask Watchover: grounded answers over the loaded dataset and the knowledge base (LLM optional, deterministic fallback). A
+team-scoped account asks over its own teams' datasets and live hosts, and its answers cite only the knowledge it may read."""
 from __future__ import annotations
+
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from ... import assistant as wo_assistant
-from ..security import require, services, user_scope
+from ... import ownership
+from ..security import access, require, services, user_scope
+from .datasets import dataset_for, dataset_visible
 
 router = APIRouter(prefix="/assist", tags=["assist"])
 
 
 class AskIn(BaseModel):
     question: str
-    history: list[dict] = []
-    dataset: str | None = None
+    history: List[dict] = []
+    dataset: Optional[str] = None
     lang: str = "tr"
 
 
@@ -26,21 +31,31 @@ class RateIn(BaseModel):
 class SaveIn(BaseModel):
     question: str
     answer: str
+    team_id: Optional[int] = None
 
 
-def _analysis(svc, dataset: str | None, sc=None):
+def _analysis(svc, acc, dataset: Optional[str], sc=None):
+    """The analysis to answer over: the live buffer (scoped), a dataset the caller may open, or the newest such dataset."""
     if dataset == "live":
         return svc.live_analysis(sc)
     if dataset:
-        return svc.datasets.get(dataset)["analysis"]
-    items = list(svc.datasets.items.values())
-    return items[-1]["analysis"] if items else None
+        return dataset_for(svc, acc, dataset)["analysis"]
+    keys = [k for k in list(svc.datasets.items) if dataset_visible(svc, acc, k)]
+    return svc.datasets.items[keys[-1]]["analysis"] if keys else None
+
+
+def _team(acc, team_id: Optional[int]) -> Optional[int]:
+    """Notes and saved answers of a team-scoped account belong to its team (the given one, else its first)."""
+    if acc.wide:
+        return team_id if team_id is not None and acc.can_in(team_id, "page.assist") else None
+    ids = acc.team_ids("page.assist")
+    return team_id if team_id in ids else (ids[0] if ids else None)
 
 
 @router.post("/ask")
-def ask(body: AskIn, user=Depends(require("page.assist")), svc=Depends(services), sc=Depends(user_scope)):
+def ask(body: AskIn, acc=Depends(access), user=Depends(require("page.assist")), svc=Depends(services), sc=Depends(user_scope)):
     cfg = svc.llm_cfg("ops")
-    res = wo_assistant.answer(cfg, body.question, body.history[-6:], _analysis(svc, body.dataset, sc), svc.kb, body.lang)
+    res = wo_assistant.answer(cfg, body.question, body.history[-6:], _analysis(svc, acc, body.dataset, sc), ownership.kb_for(svc, acc, sc), body.lang)
     return {**res, "model": cfg.model if cfg.enabled else ""}
 
 
@@ -51,13 +66,18 @@ def rate(body: RateIn, user=Depends(require("page.assist")), svc=Depends(service
 
 
 @router.post("/save", status_code=201)
-def save(body: SaveIn, user=Depends(require("page.assist")), svc=Depends(services)):
-    return {"id": svc.kb.add("chat", body.question[:80] or "chat", f"Q: {body.question}\nA: {body.answer}", tags=["chat"])}
+def save(body: SaveIn, acc=Depends(access), user=Depends(require("page.assist")), svc=Depends(services)):
+    lid = svc.kb.add("chat", body.question[:80] or "chat", f"Q: {body.question}\nA: {body.answer}", tags=["chat"])
+    tid = _team(acc, body.team_id)
+    if tid is not None:
+        svc.kb._exec("UPDATE lessons SET team_id=? WHERE id=? AND team_id IS NULL", (tid, lid))
+    return {"id": lid}
 
 
 @router.post("/propose-rules")
-def propose_rules(dataset: str | None = None, lang: str = "tr", user=Depends(require("page.assist")), svc=Depends(services)):
+def propose_rules(dataset: Optional[str] = None, lang: str = "tr", acc=Depends(access), user=Depends(require("page.assist")), svc=Depends(services),
+                  sc=Depends(user_scope)):
     cfg = svc.llm_cfg()
     if not cfg.enabled:
         raise ValueError("no LLM configured")
-    return wo_assistant.propose_rules(cfg, _analysis(svc, dataset), svc.kb, lang)
+    return wo_assistant.propose_rules(cfg, _analysis(svc, acc, dataset, sc), ownership.kb_for(svc, acc, sc), lang)

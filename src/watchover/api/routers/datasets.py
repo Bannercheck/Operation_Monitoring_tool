@@ -7,7 +7,9 @@ import re
 import zipfile
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from typing import Optional
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
@@ -16,20 +18,66 @@ from ... import connectors as wo_conn
 from ...analysis import incident_dict, llm_prompt, postmortem_md, signal_dict, suggested_owner
 from ...enrich import enrich, summary, to_csv, to_jsonl
 from ...i18n import narrative_text, reason_text
-from ..security import require, services
+from ... import ownership
+from ..security import access, access_of, current_user, pick_team, require, services
 
-router = APIRouter(prefix="/datasets", tags=["datasets"])
+
+def _guard(request: Request, user=Depends(current_user)):
+    """Every /datasets/{key}/... route: a team-scoped account opens only its teams' datasets (404 for the others, no hint that
+    they exist). Installation-wide accounts open every dataset."""
+    key = request.path_params.get("key")
+    if key is None:
+        return
+    svc = request.app.state.services
+    acc = access_of(request, user)
+    if acc.wide or key not in svc.datasets.items:
+        return
+    if not dataset_visible(svc, acc, key):
+        raise KeyError(key)
+
+
+def dataset_visible(svc, acc, key: str) -> bool:
+    """May this account open the dataset (also used by APM, map, assistant, ITSM, parser and LLM routes taking a dataset id)?"""
+    if acc.wide:
+        return True
+    tid = ownership.dataset_team(svc, key)
+    return tid is not None and tid in acc.team_ids("page.data")
+
+
+def dataset_for(svc, acc, key: str) -> dict:
+    """The dataset, or KeyError (404) when it does not exist or belongs to another team."""
+    d = svc.datasets.get(key)
+    if not dataset_visible(svc, acc, key):
+        raise KeyError(key)
+    return d
+
+
+def _team(acc, team_id: Optional[int]) -> Optional[int]:
+    """The owning team of a new dataset: the caller's team (team_id when several), None for installation-wide callers."""
+    if acc.wide:
+        return team_id if team_id is not None and acc.can_in(team_id, "page.data") else None
+    return pick_team(acc, "page.data", team_id)
+
+
+router = APIRouter(prefix="/datasets", tags=["datasets"], dependencies=[Depends(_guard)])
 ROOT = Path(__file__).resolve().parents[4]
 
 
 @router.get("")
-def list_datasets(user=Depends(require("page.data")), svc=Depends(services)):
-    return svc.datasets.list()
+def list_datasets(acc=Depends(access), svc=Depends(services), _u=Depends(require("page.data"))):
+    names = {t["id"]: t["name"] for t in svc.teams.list()}
+    out = []
+    for k in list(svc.datasets.items):
+        if not dataset_visible(svc, acc, k):
+            continue
+        tid = ownership.dataset_team(svc, k)
+        out.append({**svc.datasets.summary(k), "team_id": tid, "team": names.get(tid, "") if tid is not None else ""})
+    return out
 
 
 @router.post("", status_code=202)
 async def upload(files: list[UploadFile] = File(...), combine: bool = Query(True, description="several files -> one dataset (ZIP in memory)"),
-                 mapping: str = Form(""), user=Depends(require("page.data")), svc=Depends(services)):
+                 mapping: str = Form(""), team_id: Optional[int] = Form(None), acc=Depends(access), user=Depends(require("page.data")), svc=Depends(services)):
     """Starts a background load per dataset; poll GET /datasets/jobs/{id} for pct / stage, then GET /datasets/{dataset}.
     `mapping` (JSON, optional) pins column roles for tabular files: {"timestamp": "ts", "message": "msg", "severity": "level", ...}."""
     import json
@@ -47,12 +95,13 @@ async def upload(files: list[UploadFile] = File(...), combine: bool = Query(True
             for n, d in blobs:
                 zf.writestr(os.path.basename(n), d)
         blobs = [(f"{len(blobs)} files.zip", buf.getvalue())]
-    return {"jobs": [svc.datasets.submit(n, d, mp) for n, d in blobs]}
+    tid = _team(acc, team_id)
+    return {"jobs": [ownership.submit(svc, tid, n, d, mp) for n, d in blobs]}
 
 
 @router.post("/demo")
-def load_demo(user=Depends(require("page.data")), svc=Depends(services)):
-    return svc.datasets.load_path(str(ROOT / "samples" / "demo_mixed.zip"))
+def load_demo(team_id: Optional[int] = None, acc=Depends(access), user=Depends(require("page.data")), svc=Depends(services)):
+    return ownership.load_path(svc, _team(acc, team_id), str(ROOT / "samples" / "demo_mixed.zip"))
 
 
 @router.get("/samples")
@@ -62,11 +111,11 @@ def samples(user=Depends(require("page.data"))):
 
 
 @router.post("/samples/{name}", status_code=202)
-def load_sample(name: str, user=Depends(require("page.data")), svc=Depends(services)):
+def load_sample(name: str, team_id: Optional[int] = None, acc=Depends(access), user=Depends(require("page.data")), svc=Depends(services)):
     p = ROOT / "samples" / os.path.basename(name)
     if not p.is_file() or p.suffix != ".zip":
         raise KeyError(name)
-    return svc.datasets.submit(p.name, p.read_bytes())
+    return ownership.submit(svc, _team(acc, team_id), p.name, p.read_bytes())
 
 
 class FetchIn(BaseModel):
@@ -78,10 +127,11 @@ class FetchIn(BaseModel):
     path: str = ""                # JSON path to the record list (http)
     tool: str = ""                # MCP tool name
     arguments: dict = {}
+    team_id: Optional[int] = None
 
 
 @router.post("/fetch", status_code=202)
-def fetch_remote(body: FetchIn, user=Depends(require("page.data")), svc=Depends(services)):
+def fetch_remote(body: FetchIn, acc=Depends(access), user=Depends(require("page.data")), svc=Depends(services)):
     """Pull a dataset from an HTTP endpoint (JSON / text) or an MCP tool and load it as a background job."""
     headers = wo_conn.parse_headers(body.headers)
     try:
@@ -91,23 +141,26 @@ def fetch_remote(body: FetchIn, user=Depends(require("page.data")), svc=Depends(
             name, data = wo_conn.fetch_http(body.url, body.method, headers, body.body or None, body.path)
     except Exception as e:  # noqa: BLE001 - a remote that cannot be reached is the caller's problem, not a server error
         raise ValueError(f"fetch failed: {type(e).__name__}: {str(e)[:200]}")
-    return svc.datasets.submit(name, data)
+    return ownership.submit(svc, _team(acc, body.team_id), name, data)
 
 
 class FromSourceIn(BaseModel):
     id: int
     minutes: int = 60              # window before now
     limit: int = 20000
+    team_id: Optional[int] = None
 
 
 @router.post("/from-source", status_code=202)
-def from_source(body: FromSourceIn, user=Depends(require("page.data")), svc=Depends(services)):
+def from_source(body: FromSourceIn, acc=Depends(access), user=Depends(require("page.data")), svc=Depends(services)):
     """Pull a window from a saved pull source (Elasticsearch, Loki, Splunk, Graylog, HTTP) and load it as a dataset."""
     from datetime import datetime, timedelta, timezone
     from ... import sources as wo_src
     src = svc.sources.get(body.id)
     if not src:
         raise KeyError(body.id)
+    if not acc.wide and ownership.team_of(svc.kb, "sources", body.id) not in acc.team_ids(None):
+        raise KeyError(body.id)                               # another team's (or an installation-wide) source
     since = datetime.now(timezone.utc) - timedelta(minutes=max(1, min(body.minutes, 7 * 1440)))
     try:
         rows, _cursor = wo_src.fetch(src, since=since, limit=max(1, min(body.limit, 200000)))
@@ -116,7 +169,7 @@ def from_source(body: FromSourceIn, user=Depends(require("page.data")), svc=Depe
     if not rows:
         raise ValueError("the source returned no records for that window")
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M")
-    return svc.datasets.submit(f"{src.name}-{stamp}.jsonl", wo_src.to_jsonl(rows, src.env))
+    return ownership.submit(svc, _team(acc, body.team_id), f"{src.name}-{stamp}.jsonl", wo_src.to_jsonl(rows, src.env))
 
 
 @router.post("/mcp-tools")
@@ -128,25 +181,30 @@ def list_mcp_tools(body: FetchIn, user=Depends(require("page.data"))):
 
 
 @router.get("/compare")
-def compare(a: str, b: str, user=Depends(require("page.data")), svc=Depends(services)):
+def compare(a: str, b: str, acc=Depends(access), user=Depends(require("page.data")), svc=Depends(services)):
     """Two datasets side by side: the same KPIs and what changed (same engine, so a difference is a difference in the data)."""
-    da, db = svc.datasets.get(a), svc.datasets.get(b)
+    da, db = dataset_for(svc, acc, a), dataset_for(svc, acc, b)
     return wo_compare.compare(da["analysis"], da["profile"], db["analysis"], db["profile"])
 
 
 @router.get("/jobs")
-def jobs(user=Depends(require("page.data")), svc=Depends(services)):
-    return svc.datasets.list_jobs()
+def jobs(acc=Depends(access), user=Depends(require("page.data")), svc=Depends(services)):
+    mine = None if acc.wide else set(acc.team_ids("page.data"))
+    return [svc.datasets.job_view(j) | {"team_id": j.get("team_id")} for j in list(svc.datasets.jobs.values()) if mine is None or j.get("team_id") in mine]
 
 
 @router.get("/jobs/{jid}")
-def job(jid: str, user=Depends(require("page.data")), svc=Depends(services)):
+def job(jid: str, acc=Depends(access), user=Depends(require("page.data")), svc=Depends(services)):
+    j = svc.datasets.jobs[jid]
+    if not acc.wide and j.get("team_id") not in acc.team_ids("page.data"):
+        raise KeyError(jid)
     return svc.datasets.job(jid)
 
 
 @router.get("/{key}")
 def dataset(key: str, user=Depends(require("page.data")), svc=Depends(services)):
-    return svc.datasets.summary(key)
+    tid = ownership.dataset_team(svc, key)
+    return {**svc.datasets.summary(key), "team_id": tid}
 
 
 @router.delete("/{key}")
@@ -235,16 +293,21 @@ def feedback(key: str, iid: str, body: FeedbackIn, user=Depends(require("page.da
     else:
         correct_txt = {"__keep__": "", "__noise__": "noise", "__other__": body.comment}.get(body.correct, body.comment)
     out = svc.kb.add_feedback(d["name"], inc, root, body.verdict, correct=correct_txt, comment=body.comment, alt_type=alt_type, root_type=root_type, mark_noise=(body.correct == "__noise__"))
+    tid = ownership.dataset_team(svc, key)
+    if tid is not None:                                        # the verdict and its rule proposals belong to the dataset's team
+        svc.kb._exec("UPDATE lessons SET team_id=? WHERE id=?", (tid, out.get("lesson")))
+        for rid in out.get("proposals") or []:
+            svc.kb._exec("UPDATE rules SET team_id=? WHERE id=?", (tid, rid))
     return {"ok": True, "proposals": len(out.get("proposals", []))}
 
 
 @router.get("/{key}/incidents/{iid}/related")
-def related(key: str, iid: str, user=Depends(require("page.data")), svc=Depends(services)):
+def related(key: str, iid: str, acc=Depends(access), user=Depends(require("page.data")), svc=Depends(services)):
     a = svc.datasets.get(key)["analysis"]
     inc = a.incident_by_id.get(iid)
     if not inc:
         raise KeyError(iid)
-    return svc.kb.related(inc, a.signal_by_id[inc.root_cause_signal])
+    return ownership.kb_for(svc, acc, acc.scope("page.assist")).related(inc, a.signal_by_id[inc.root_cause_signal])
 
 
 @router.get("/{key}/incidents/{iid}/prompt", response_class=PlainTextResponse)
@@ -358,7 +421,7 @@ def _review_bundle(a, scope: str, incident: str, query: str, lang: str, kb=None)
 
 
 @router.post("/{key}/review")
-def review(key: str, body: ReviewIn, user=Depends(require("page.data")), svc=Depends(services)):
+def review(key: str, body: ReviewIn, acc=Depends(access), user=Depends(require("page.data")), svc=Depends(services)):
     """Ask the configured LLM (Ollama or an API) to review an incident, the whole dataset or searched log lines.
     The deterministic verdicts are never changed by the answer; it is an opinion with citations."""
     from ...llm import chat_messages, last_call
@@ -367,7 +430,7 @@ def review(key: str, body: ReviewIn, user=Depends(require("page.data")), svc=Dep
     if not cfg.enabled:
         raise ValueError("no LLM configured: set one up on the LLM page (Ollama runs fully offline)")
     lang = svc.lang if svc.lang in REVIEW_SYSTEM else "en"
-    bundle = _review_bundle(a, body.scope, body.incident, body.query, lang, kb=svc.kb)
+    bundle = _review_bundle(a, body.scope, body.incident, body.query, lang, kb=ownership.kb_for(svc, acc, acc.scope("page.assist")))
     ask = body.question.strip() or ("Bu kanıtı incele." if lang == "tr" else "Review this evidence.")
     msgs = [{"role": "system", "content": REVIEW_SYSTEM[lang]}, {"role": "user", "content": f"{ask}\n\nEVIDENCE\n{bundle}"}]
     try:
@@ -462,7 +525,7 @@ def _parse_query(q: str) -> list[tuple[bool, str | None, str]]:
 
 
 @router.get("/{key}/search")
-def search(key: str, q: str = "", regex: bool = False, severity: str | None = None, limit: int = Query(200, le=2000), user=Depends(require("page.data")), svc=Depends(services)):
+def search(key: str, q: str = "", regex: bool = False, severity: Optional[str] = None, limit: int = Query(200, le=2000), user=Depends(require("page.data")), svc=Depends(services)):
     """Log search over the dataset: AND of terms, field:term narrows one field, -term excludes, quotes keep phrases; optional regex."""
     from ... import grok
     a = svc.datasets.get(key)["analysis"]
@@ -499,3 +562,14 @@ def search(key: str, q: str = "", regex: bool = False, severity: str | None = No
             out.append({"ref": o.ref, "timestamp": o.timestamp.isoformat(), "severity": o.severity, "service": o.service, "host": o.host, "environment": o.environment,
                         "source": o.source, "line_no": o.line_no, "message": o.message[:400]})
     return {"total": total, "rows": out}
+
+
+def dataset_query_guard(request: Request, user=Depends(current_user)):
+    """Router dependency for views that take `?dataset=<id>` (APM, map, ITSM, LLM benchmark): another team's dataset is a 404,
+    exactly as on /datasets/{key}."""
+    ds = request.query_params.get("dataset")
+    if not ds or ds == "live":
+        return
+    svc = request.app.state.services
+    if ds in svc.datasets.items and not dataset_visible(svc, access_of(request, user), ds):
+        raise KeyError(ds)

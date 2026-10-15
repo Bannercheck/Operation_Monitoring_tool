@@ -125,7 +125,8 @@ class Inventory:
         return (",".join(FIELDS[:-1]) + "\n" + "db-01,10.20.1.15,db01.corp.local,prod,IST-DC1,R12,VLAN-120,10.20.1.0/24,RHEL 9,database,Oracle ERP,ora-rac-1,DBA,critical,"
                 "SAN LUN-042 2TB,Dell R760,ABC123,agent:db-01,active,\"oracle,core\",\n").encode()
 
-    def import_csv(self, data: bytes) -> tuple[int, list[str]]:
+    def import_csv(self, data: bytes, check=None) -> tuple[int, list[str]]:
+        """CSV rows upserted by hostname; `check(record)` (optional) may refuse a row with ValueError (team scope)."""
         text = data.decode("utf-8-sig", "replace")
         dialect = csv.Sniffer().sniff(text[:2000], delimiters=",;\t") if text.strip() else csv.excel
         rd = csv.DictReader(io.StringIO(text), dialect=dialect)
@@ -141,16 +142,21 @@ class Inventory:
                     rec[key] = v
             rec.setdefault("source", "csv")
             try:
+                if check is not None:
+                    check(rec)
                 self.upsert(rec); n += 1
             except ValueError as e:
                 errors.append(f"line {i}: {e}")
         return n, errors
 
-    def export_csv(self) -> bytes:
+    def export_csv(self, allow=None) -> bytes:
+        """All records, or only those whose hostname `allow(hostname)` accepts (a team's scope)."""
         buf = io.StringIO()
         w = csv.writer(buf)
         w.writerow(FIELDS)
         for r in self.list():
+            if allow is not None and not allow(r["hostname"]):
+                continue
             w.writerow([r.get(f, "") for f in FIELDS])
         return buf.getvalue().encode("utf-8-sig")
 
@@ -213,9 +219,12 @@ class Inventory:
                             "pool": pool_stem(a["name"])})
         return out
 
-    def stats(self, seen_hosts: dict[str, str] | None = None) -> dict:
+    def stats(self, seen_hosts: dict[str, str] | None = None, allow=None) -> dict:
         rows = self.list()
         seen = seen_hosts or {}
+        if allow is not None:                                   # a team's scope: its own records and its own seen hosts
+            rows = [r for r in rows if allow(r["hostname"])]
+            seen = {h: e for h, e in seen.items() if allow(h)}
         matched = sum(1 for h in seen if self.resolve(h))
         return {"hosts": len(rows), "critical": sum(1 for r in rows if r.get("criticality") == "critical"), "dcs": len({r.get("dc") for r in rows if r.get("dc")}),
                 "seen": len(seen), "matched": matched, "unmatched": len(seen) - matched}

@@ -33,8 +33,14 @@ class AgentRegistry:
         kb._exec(f"""CREATE TABLE IF NOT EXISTS agents (
             id {pk}, name TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, env TEXT DEFAULT '', site TEXT DEFAULT '', tags TEXT DEFAULT '',
             status TEXT DEFAULT 'active', created_at TEXT, last_seen TEXT DEFAULT '', last_ip TEXT DEFAULT '', events INTEGER DEFAULT 0, note TEXT DEFAULT '')""")
+        try:
+            if "team_id" not in kb.columns("agents"):
+                kb._exec("ALTER TABLE agents ADD COLUMN team_id INTEGER")      # the team that enrolled it (NULL: installation-wide)
+        except Exception:  # noqa: BLE001
+            pass
         self._cache: dict[str, dict] = {}
         self._active: tuple[int, float] | None = None
+        self.team_hooks = None                         # Teams (set by access.wire): team enrolment keys and host claims
 
     def enroll(self, name: str, env: str = "", site: str = "", tags: str = "", note: str = "") -> tuple[dict, str]:
         """Returns (agent record, plaintext token). The token is shown once and never stored."""
@@ -70,11 +76,29 @@ class AgentRegistry:
         self.kb._exec("INSERT INTO agent_settings (key, value) VALUES ('enroll_key', ?)", (value,))
 
     def self_enroll(self, key: str, name: str, env: str = "", site: str = "", tags: str = "") -> tuple[dict, str]:
-        """Enrol a server that presents the fleet key. Raises PermissionError (bad/disabled key) or ValueError (name taken)."""
+        """Enrol a server that presents the fleet key or a team's enrolment key (the server then joins that team: the agent row
+        carries the team and its name becomes the team's host). Raises PermissionError (bad/disabled key) or ValueError (name
+        taken, or the name is another team's host / a known host no team owns)."""
         cur = self.enroll_key(create=False)
-        if not cur or not key or not hmac.compare_digest(key.encode(), cur.encode()):
+        if cur and key and hmac.compare_digest(key.encode(), cur.encode()):
+            return self.enroll(name, env, site, tags, note="self-enrolled")
+        teams = self.team_hooks
+        tid = teams.team_for_key(key) if (teams is not None and key) else None
+        if tid is None:
             raise PermissionError("enrolment key is wrong or disabled")
-        return self.enroll(name, env, site, tags, note="self-enrolled")
+        if any(r["name"].lower() == name.strip().lower() and r["status"] == "active" for r in self.list()):
+            raise ValueError(f"an active agent named '{name.strip()}' already exists: rotate its token instead of enrolling it twice")
+        _added, rejected = teams.claim(tid, [name.strip()], "agent")
+        if rejected:
+            raise ValueError("this server name is not available for this team")
+        rec, token = self.enroll(name, env, site, tags, note="self-enrolled (team key)")
+        self.set_team(rec["id"], tid)
+        return self.get(rec["id"]), token
+
+    def set_team(self, aid: int, team_id: int | None) -> None:
+        self.kb._exec("UPDATE agents SET team_id=? WHERE id=?", (team_id, aid))
+        self._cache.clear()
+        self.team_version = getattr(self, "team_version", 0) + 1     # the ingest guard re-reads the agent's team at once
 
     def get(self, aid: int) -> dict | None:
         rows = self.kb._exec("SELECT * FROM agents WHERE id=?", (aid,))

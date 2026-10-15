@@ -7,7 +7,9 @@ from ...graph import build_map, to_html
 from ...i18n import t as _tr
 from ..security import require, services, user_scope
 
-router = APIRouter(prefix="/map", tags=["map"])
+from .datasets import dataset_query_guard
+
+router = APIRouter(prefix="/map", tags=["map"], dependencies=[Depends(dataset_query_guard)])   # another team's dataset -> 404
 SEV_COLORS = {"CRITICAL": "#f87171", "ERROR": "#fb923c", "WARN": "#fbbf24", "INFO": "#60a5fa", "DEBUG": "#64748b"}
 
 

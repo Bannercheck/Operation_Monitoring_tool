@@ -8,7 +8,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 from ... import report as wo_report
-from ..security import require, services, user_scope
+from ..security import require, require_install, services, user_scope
 
 router = APIRouter(prefix="/live", tags=["live"])
 UTC = timezone.utc
@@ -62,6 +62,8 @@ def _iso(rows):
 def stats(window: int = 15, env: str | None = None, host: str | None = None, pool: str | None = None, user=Depends(require("page.ops")), svc=Depends(services), sc=Depends(user_scope)):
     s = svc.live.stats(window, env or None, _hp(svc, sc, host, pool))
     s["rows"] = _iso(s.get("rows", []))
+    if sc is not None and isinstance(s.get("agents"), dict):     # the fleet roster: a team sees only its own agents (as on /live/hosts)
+        s["agents"] = {k: v for k, v in s["agents"].items() if sc.allows(k)}
     return s
 
 
@@ -117,21 +119,30 @@ class SimIn(BaseModel):
 
 
 @router.post("/simulate")
-def simulate(body: SimIn, user=Depends(require("act.sim")), svc=Depends(services)):
+def simulate(body: SimIn, user=Depends(require_install("act.sim")), svc=Depends(services)):    # installation-wide: fake hosts for everyone
     return {"simulator": svc.simulate(body.on)}
 
 
 @router.post("/analyze", status_code=202)
-def analyze(user=Depends(require("page.data")), svc=Depends(services)):
-    """Snapshot the live buffer into a dataset load job."""
+def analyze(team_id: int | None = None, user=Depends(require("page.data")), svc=Depends(services), sc=Depends(user_scope)):
+    """Snapshot the live buffer into a dataset load job. A team-scoped account snapshots only its own hosts' lines, and the
+    dataset belongs to its team."""
+    from ... import ownership
+    from ..security import pick_team
     if not svc.live.received:
         raise ValueError("the live buffer is empty")
     name, data = svc.live.to_dataset()
-    return svc.datasets.submit(name, data)
+    acc = svc.access_of(user)
+    if sc is not None:
+        data = ownership.scoped_jsonl(data, sc.allows)
+        if not data:
+            raise ValueError("the live buffer holds no line of your team's hosts")
+    tid = pick_team(acc, "page.data", team_id) if not acc.wide else None
+    return ownership.submit(svc, tid, name, data)
 
 
 @router.post("/clear")
-def clear(user=Depends(require("act.sim")), svc=Depends(services)):
+def clear(user=Depends(require_install("act.sim")), svc=Depends(services)):    # empties every team's live buffer: installation-wide
     svc.live.clear()
     return {"ok": True}
 

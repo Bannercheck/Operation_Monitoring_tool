@@ -12,7 +12,7 @@ const ROLES = ["timestamp", "severity", "host", "service", "message", "status"];
 const EMPTY = { name: "", pattern: "", family: "", description: "", roles: {} as Record<string, string>, enabled: true };
 
 export function ParserPanel({ embedded = false }: { embedded?: boolean }) {
-  const { t } = useT(); const { can } = useAuth(); const qc = useQueryClient(); const [sp] = useSearchParams();
+  const { t } = useT(); const { can, user } = useAuth(); const qc = useQueryClient(); const [sp] = useSearchParams();
   const TABS: Tab[] = ["lib", "test", "unparsed", "templates", "profiles", "base"]; const [tab, setTab] = useState<Tab>(TABS.includes(sp.get("tab") as Tab) ? (sp.get("tab") as Tab) : "lib"); const [q, setQ] = useState(""); const [edit, setEdit] = useState<any>(null);
   const [sample, setSample] = useState(sp.get("sample") ?? ""); const [pattern, setPattern] = useState(sp.get("pattern") ?? "%{TIMESTAMP_ISO8601:timestamp} %{LOGLEVEL:severity} %{GREEDYDATA:message}"); const [res, setRes] = useState<any>(null);
   const list = useQuery({ queryKey: ["grok"], queryFn: () => get("/grok") });
@@ -21,7 +21,7 @@ export function ParserPanel({ embedded = false }: { embedded?: boolean }) {
   const toggle = useMutation({ mutationFn: (p: any) => patch(`/grok/${p.id}`, { enabled: !p.enabled }), onSuccess: inv });
   const rm = useMutation({ mutationFn: (id: string) => del(`/grok/${id}`), onSuccess: inv });
   const run = async () => { setRes(await post("/grok/test", { pattern, sample })); };
-  const editable = can("act.parser");
+  const editable = can("act.parser") && user?.all !== false;      // patterns parse every team's lines: installation-wide only
   const rows: any[] = (list.data ?? []).filter((r: any) => !q || r.name.toLowerCase().includes(q.toLowerCase()) || r.family.includes(q.toLowerCase()) || (r.description ?? "").toLowerCase().includes(q.toLowerCase()));
   const users = (list.data ?? []).filter((r: any) => !r.builtin).length;
   return <div className="stack">

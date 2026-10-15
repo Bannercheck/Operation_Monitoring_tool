@@ -15,19 +15,19 @@ import { Attention, buildAttention } from "../components/ops/Attention";
 import { LogExplorer } from "../components/ops/LogExplorer";
 import { DetailPanel, type Kind } from "../components/ops/Details";
 import { delta, fmtN, fmtPct, hostState, rangeLabel, useOpsState } from "../components/ops/util";
+import { opsToQuery } from "../components/logs/lib";
 
 /** Live operations, built to be read in five seconds: one sentence on health, four numbers, the timeline, what needs a look,
  *  the fleet at a glance and the logs. One time range (quick, custom, or dragged on the timeline) and one scope (environment,
  *  pool, hosts) drive every card and live in the URL, so a view can be shared as a link. */
 export default function Ops() {
-  const { t, lang } = useT(); const { can } = useAuth(); const qc = useQueryClient(); const nav = useNavigate();
+  const { t, lang } = useT(); const { can, user } = useAuth(); const qc = useQueryClient(); const nav = useNavigate();
   const st = useOpsState(); const rq = st.rq();
   const refresh = st.live ? 10000 : false;
   const sum = useQuery({ queryKey: ["range-sum", rq], queryFn: () => get(`/live/range/summary?${rq}`), refetchInterval: st.live ? 5000 : false });
   const fleetQ = useQuery({ queryKey: ["range-fleet", rq.replace(/&?(pool|host)=[^&]*/g, "")], queryFn: () => get(`/live/range/fleet?${rq.replace(/&?(pool|host)=[^&]*/g, "")}`), refetchInterval: refresh });
   const errG = useQuery({ queryKey: ["range-groups-err", rq], queryFn: () => get(`/live/range/groups?${rq}&severity=ERROR&limit=40`), refetchInterval: refresh });
-  const anom = useQuery({ queryKey: ["ops-anoms"], queryFn: () => get("/anomalies?status=open"), refetchInterval: 30000 });
-  const tickets = useQuery({ queryKey: ["ops-tickets"], queryFn: () => get("/itsm/tickets"), enabled: can("page.itsm"), refetchInterval: 60000 });
+  const anom = useQuery({ queryKey: ["ops-anoms"], queryFn: () => get("/anomalies?status=open"), refetchInterval: 30000, enabled: can("page.anom") });
   const sys = useQuery({ queryKey: ["sys-status-lite"], queryFn: () => get("/system/status"), enabled: can("sys.status"), refetchInterval: 15000 });
   const hostsQ = useQuery({ queryKey: ["live-hosts"], queryFn: () => get("/live/hosts"), refetchInterval: 30000 });
   const metrics = useQuery({ queryKey: ["live-metrics", rq], queryFn: () => get(`/live/metrics?window=15${scopeQs(st)}`), refetchInterval: refresh });
@@ -50,10 +50,22 @@ export default function Ops() {
   const zoom = (x: number, stepMin: number) => st.setAbs(new Date(x * 1000), new Date((x + stepMin * 60) * 1000));
   const [hd, setHd] = useState<string | null>(null);                       // the server whose detail is open (any click on a server)
   const base = rq.split("&").filter((x) => !/^(pool|host)=/.test(x)).join("&");
-  const goLogs = (f: any) => { setFocus({ ...f, n: Date.now() }); document.getElementById("ops-logs")?.scrollIntoView({ behavior: "smooth", block: "start" }); };
+  // "to the logs" anywhere on this screen (attention, fleet, server and range details) opens the log explorer with the same range,
+  // scope, level, service and text as query text; without the explorer permission it scrolls to the compact card as before
+  const goLogs = (f: any) => {
+    if (can("page.logs")) {
+      const p = new URLSearchParams(rq); const o = new URLSearchParams();
+      if (p.get("start")) { o.set("start", p.get("start")!); o.set("end", p.get("end") || new Date().toISOString()); } else o.set("last", p.get("last") || "15");
+      const qt = opsToQuery({ env: p.get("env") || "", pool: f.host ? "" : p.get("pool") || "", hosts: f.host ? [f.host] : (p.get("host") || "").split(",").filter(Boolean),
+        sev: f.sev, service: f.service, text: f.q });
+      if (qt) o.set("q", qt); if (f.tab === "groups") o.set("group", "1");
+      nav(`/logs?${o}`); return;
+    }
+    setFocus({ ...f, n: Date.now() }); document.getElementById("ops-logs")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
   const anomsInScope = (anom.data ?? []).filter((a: any) => !a.host || !st.hosts.length || st.hosts.includes(a.host));
-  const items = useMemo(() => buildAttention(t, lang, fleet, errG.data?.groups ?? [], anomsInScope, (tickets.data?.tickets ?? []).slice().sort((a: any, b: any) => b.relevance - a.relevance), metrics.data?.breaches ?? [],
-    { pool: st.setPool, hosts: (hs) => { st.clearScope(); setTimeout(() => hs.forEach((h) => st.toggleHost(h)), 0); }, group: (g) => goLogs({ tab: "groups", sev: "ERROR", q: "", service: g.service === "-" ? "" : g.service }) }), [fleet, errG.data, anom.data, tickets.data, metrics.data, lang]);  // eslint-disable-line
+  const items = useMemo(() => buildAttention(t, lang, fleet, errG.data?.groups ?? [], anomsInScope, metrics.data?.breaches ?? [],
+    { pool: st.setPool, hosts: (hs) => { st.clearScope(); setTimeout(() => hs.forEach((h) => st.toggleHost(h)), 0); }, group: (g) => goLogs({ tab: "groups", sev: "ERROR", q: "", service: g.service === "-" ? "" : g.service }) }), [fleet, errG.data, anom.data, metrics.data, lang]);  // eslint-disable-line
   const nCrit = items.filter((i) => i.level === 3).length; const crit = nCrit > 0;
   const health = !s ? "" : !s.total ? t("ops_h_nodata") : !items.length ? t("ops_h_ok") : crit ? t("ops_h_crit", { n: items.length, c: nCrit }) : t("ops_h_warn", { n: items.length });
   const simOn = !!sys.data?.live?.simulator;
@@ -82,7 +94,7 @@ export default function Ops() {
         {menu && <div className="menu card" onMouseLeave={() => setMenu(false)}>
           {can("act.report") && <button onClick={() => { setMenu(false); report(); }}>📄 {t("ops_report")}</button>}
           {can("act.connect") && <Link to="/connections">🔗 {t("ops_connect")}</Link>}
-          {can("act.sim") && <button onClick={async () => { setMenu(false); await post("/live/simulate", { on: !simOn }); qc.invalidateQueries(); }}>🧪 {t("ops_sim")} {simOn ? "ON → OFF" : "OFF → ON"}</button>}
+          {can("act.sim") && user?.all !== false && <button onClick={async () => { setMenu(false); await post("/live/simulate", { on: !simOn }); qc.invalidateQueries(); }}>🧪 {t("ops_sim")} {simOn ? "ON → OFF" : "OFF → ON"}</button>}
           {can("page.data") && <button onClick={async () => { setMenu(false); await post("/live/analyze"); nav("/datasets"); }}>🗂 {t("ops_analyze")}</button>}
           <button onClick={() => { setMenu(false); setDetail("files"); }}>📁 {t("od_files")}</button>
         </div>}

@@ -3,6 +3,8 @@
 FROM golang:1.24-alpine AS build
 WORKDIR /src
 COPY receiver/ ./
+# the parse package's parity tests read the corpus inputs next to their goldens (../../samples/corpus from /src/parse)
+COPY samples/corpus/ /samples/corpus/
 RUN go test ./... && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/wo-receiver .
 
 FROM alpine:3.20

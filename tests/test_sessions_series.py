@@ -107,8 +107,12 @@ def test_live_sessions_per_host_series_and_privacy(tmp_path):
     text = json.dumps([x, rv.hostseries(*parse_range(15)[:2], metric="sessions"), rv.latency(*parse_range(15)[:2])])
     for raw in RAW:
         assert raw.lower() not in text.lower(), raw
-    for row in st.db._exec("SELECT payload FROM live_batches"):                                         # stored batches carry the pseudonyms only
-        assert '"ses"' in row["payload"] and not any(r in row["payload"] for r in RAW[:4] + RAW[5:])
+    from watchover.logstore import row_bytes
+    for row in st.db._exec("SELECT payload, pz FROM live_batches"):                                     # stored batches carry the pseudonyms only
+        text = row_bytes(row).decode()                                                                 # (v2 rows: compressed, with raw + attributes)
+        stored = [json.loads(x) for x in text.split("\n") if x]
+        assert '"ses"' in text and not any(r in json.dumps([{k: v for k, v in d.items() if k != "msg"} for d in stored]) for r in RAW)
+        assert not any(r in text for r in RAW[:4] + RAW[5:])
 
 
 def test_overflow_cap(monkeypatch):
@@ -203,7 +207,7 @@ def test_history_only_range(tmp_path):
     for i in range(4):
         _ingest(st, [_rec(datetime.now(UTC) - timedelta(minutes=1), "prd-web-01", "recent") for _ in range(50)])
     h.flush()
-    assert st.prune() == 2                                                  # the batches are older than the 48 h kept
+    assert st.prune() == 0          # stamped 3 days ago but received now: kept 48 h after arrival (log detail), never listed for a range
     rv = RangeView(st, h)
     s, e = old - timedelta(minutes=2), old + timedelta(minutes=3)
     x = rv.sessions(s, e)

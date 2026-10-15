@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import List, Optional
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
@@ -14,13 +16,15 @@ class UserIn(BaseModel):
     email: str
     password: str
     name: str = ""
-    role: str = "operator"
+    role: Optional[str] = None             # default: operator; "member" (Ekip üyesi) when a team is given
+    team_id: Optional[int] = None
+    team_role_id: Optional[int] = None
 
 
 class UserPatch(BaseModel):
-    role: str | None = None
-    status: str | None = None
-    name: str | None = None
+    role: Optional[str] = None
+    status: Optional[str] = None
+    name: Optional[str] = None
 
 
 class PasswordIn(BaseModel):
@@ -28,22 +32,41 @@ class PasswordIn(BaseModel):
 
 
 class RoleIn(BaseModel):
-    perms: list[str]
+    perms: List[str]
     label: str = ""
     description: str = ""
 
 
 @router.get("/users")
 def list_users(user=Depends(require("sys.users" if "sys.users" in wo_rbac.PERMISSIONS else "page.users")), svc=Depends(services)):
-    return svc.users.list()
+    """Accounts, each with its team memberships ({"id", "name", "role_label"})."""
+    mem: dict = {}
+    for t in svc.teams.list():
+        labels = {r["id"]: r["label"] for r in t["roles"]}
+        for m in t["memberships"]:
+            mem.setdefault(m["email"], []).append({"id": t["id"], "name": t["name"], "role_id": m["role_id"], "role_label": labels.get(m["role_id"], "")})
+    return [{**u, "teams": mem.get((u.get("email") or "").lower(), [])} for u in svc.users.list()]
 
 
 @router.post("/users", status_code=201)
 def add_user(body: UserIn, user=Depends(require("page.users")), svc=Depends(services)):
+    if body.team_id is not None:
+        if "page.teams" not in svc.access_of(user).global_perms:      # team membership (and its role) is the teams page's business
+            raise HTTPException(403, "permission required: page.teams")
+        svc.teams.get(body.team_id)
+        if body.team_role_id is not None:
+            svc.teams.role(body.team_id, body.team_role_id)
+        svc.roles.ensure_member()
+    role = body.role or ("member" if body.team_id is not None else "operator")
+    if user["role"] != "admin" and role == "admin":
+        raise HTTPException(403, "only an administrator may create administrator accounts")
     u = svc.users.register(body.email, body.password, body.name)
     svc.users.activate(int(u["id"]))
-    if body.role in svc.roles.names():
-        svc.users.set_role(int(u["id"]), body.role, svc.roles.names())
+    if role in svc.roles.names():
+        svc.users.set_role(int(u["id"]), role, svc.roles.names())
+    if body.team_id is not None:
+        svc.teams.set_member(body.team_id, body.email, body.team_role_id)
+        svc.users._event(user.get("email", ""), "team", True, f"{svc.teams.get(body.team_id)['name']}: +member (new account)")
     return svc.users.get(body.email) | {"pw_hash": "•••"}
 
 
@@ -98,13 +121,16 @@ def delete_user(uid: int, user=Depends(require("page.users")), svc=Depends(servi
 
 
 @router.get("/users/events")
-def events(n: int = 100, email: str | None = None, user=Depends(require("sys.security")), svc=Depends(services)):
+def events(n: int = 100, email: Optional[str] = None, user=Depends(require("sys.security")), svc=Depends(services)):
     return svc.users.events(n, email or None)
 
 
 @router.get("/roles")
 def roles(user=Depends(require("page.users")), svc=Depends(services)):
-    return {"roles": svc.roles.list(), "permissions": {k: {"group": v[0], "tr": v[1], "en": v[2]} for k, v in wo_rbac.PERMISSIONS.items()}}
+    """Installation roles, the flat permission map (compatibility) and the catalogue grouped like the sidebar (`sections`)."""
+    cat = wo_rbac.catalogue()
+    return {"roles": svc.roles.list(), "permissions": {k: {"group": v[0], "tr": v[1], "en": v[2]} for k, v in wo_rbac.PERMISSIONS.items()},
+            "sections": cat["sections"]}
 
 
 @router.put("/roles/{name}")
@@ -113,7 +139,7 @@ def save_role(name: str, body: RoleIn, user=Depends(require("page.users")), svc=
         if name == "admin":
             raise HTTPException(403, "only an administrator may edit the administrator role")
         held = svc.roles.perms(user["role"])
-        extra = set(body.perms) - set(held)
+        extra = wo_rbac.normalize(body.perms) - set(held)
         if extra:                                            # no privilege escalation: cannot grant a permission you do not hold
             raise HTTPException(403, f"you cannot grant permissions you do not hold: {', '.join(sorted(extra))}")
     return svc.roles.save(name, body.perms, body.label, body.description)

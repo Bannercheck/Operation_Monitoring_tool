@@ -1,8 +1,10 @@
 """ITSM: tickets from ServiceNow / Jira / OneDesk / a generic REST endpoint (or the demo set), correlated with live evidence and incidents."""
 from __future__ import annotations
 
+import copy
 import json
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
@@ -11,7 +13,8 @@ from ... import itsm as wo_itsm
 from ... import settings as wo_settings
 from ...analysis import template_of
 from ...models import SEV_RANK
-from ..security import require, services
+from ..security import access, require, require_install, services, user_scope
+from .datasets import dataset_for
 
 router = APIRouter(prefix="/itsm", tags=["itsm"])
 UTC = timezone.utc
@@ -22,14 +25,14 @@ _cache: dict = {"tickets": None, "at": 0.0, "system": ""}
 
 
 class ConfigIn(BaseModel):
-    system: str | None = None
-    base: str | None = None
-    user: str | None = None
-    password: str | None = None
-    token: str | None = None
-    query: str | None = None
-    path: str | None = None
-    mapping: str | None = None
+    system: Optional[str] = None
+    base: Optional[str] = None
+    user: Optional[str] = None
+    password: Optional[str] = None
+    token: Optional[str] = None
+    query: Optional[str] = None
+    path: Optional[str] = None
+    mapping: Optional[str] = None
 
 
 def _cfg() -> dict:
@@ -38,11 +41,13 @@ def _cfg() -> dict:
             "token": c.get("x_itsm_token", ""), "query": c.get("x_itsm_query", ""), "path": c.get("x_itsm_path", ""), "mapping": c.get("x_itsm_mapping", "")}
 
 
-def live_signals(ls, window_min: int = 15) -> list[dict]:
+def live_signals(ls, window_min: int = 15, allow=None) -> list[dict]:
     start = datetime.now(UTC) - timedelta(minutes=window_min)
     groups: dict[str, dict] = {}
     for o in ls.snapshot():
         if o.timestamp < start or SEV_RANK[o.severity] < 3:
+            continue
+        if allow is not None and not allow(o.host):
             continue
         tpl = template_of(o.message)
         g = groups.setdefault(tpl, {"id": f"L{len(groups) + 1}", "template": tpl, "services": set(), "hosts": set(), "severity": o.severity, "onset": o.timestamp, "count": 0})
@@ -74,13 +79,17 @@ def _dict(x) -> dict:
 
 
 @router.get("/config")
-def get_config(user=Depends(require("page.itsm"))):
+def get_config(acc=Depends(access), user=Depends(require("page.itsm"))):
+    """The integration is installation-wide: a team-scoped account sees only which system is connected (no endpoint, user, query)."""
     c = _cfg()
+    if not acc.install("act.itsm"):
+        return {"system": c["system"], "base": "", "user": "", "password": "", "token": "", "query": "", "path": "", "mapping": "",
+                "systems": ["demo", *SYSTEMS, "generic"], "readonly": True}
     return {**c, "password": MASK if c["password"] else "", "token": MASK if c["token"] else "", "systems": ["demo", *SYSTEMS, "generic"]}
 
 
 @router.put("/config")
-def put_config(body: ConfigIn, user=Depends(require("act.itsm"))):
+def put_config(body: ConfigIn, user=Depends(require_install("act.itsm"))):
     m = {"system": "x_itsm_system", "base": "x_itsm_base", "user": "x_itsm_user", "password": "x_itsm_pass", "token": "x_itsm_token", "query": "x_itsm_query", "path": "x_itsm_path", "mapping": "x_itsm_mapping"}
     vals = {m[k]: v for k, v in body.model_dump().items() if v is not None and v != MASK}
     cur = _cfg()
@@ -93,16 +102,24 @@ def put_config(body: ConfigIn, user=Depends(require("act.itsm"))):
 
 
 @router.get("/tickets")
-def tickets(dataset: str | None = None, refresh: bool = False, user=Depends(require("page.itsm")), svc=Depends(services)):
-    if refresh and not svc.roles.can(user["role"], "act.itsm"):
+def tickets(dataset: Optional[str] = None, refresh: bool = False, acc=Depends(access), user=Depends(require("page.itsm")), svc=Depends(services),
+            sc=Depends(user_scope)):
+    """Tickets scored against the last 15 minutes of live signals, metric breaches and (optionally) a dataset's incidents. A
+    team-scoped account correlates with its own hosts' evidence only and sees only tickets that correlate with it (a ticket with
+    no correlated host is installation-wide)."""
+    if refresh and not acc.install("act.itsm"):
         refresh = False                                       # only integration managers trigger a live fetch to the configured endpoint
-    """Tickets scored against the last 15 minutes of live signals, metric breaches and (optionally) a dataset's incidents."""
     import time
     c = _cfg()
     if refresh or _cache["tickets"] is None or _cache["system"] != c["system"] or time.time() - _cache["at"] > 300:
         _cache.update({"tickets": fetch(c), "at": time.time(), "system": c["system"]})
-    a = svc.datasets.get(dataset)["analysis"] if dataset else None
+    a = dataset_for(svc, acc, dataset)["analysis"] if dataset else None
     incs = [{"id": i.id, "title": i.title, "services": i.affected_services, "hosts": i.affected_hosts, "started_at": i.started_at} for i in a.incidents] if a else []
     breaches = svc.live.metric_stats(15).get("breaches", [])
-    out = wo_itsm.correlate(_cache["tickets"], live_signals(svc.live), breaches, incs)
+    allow = None if sc is None else sc.allows
+    if allow is not None:
+        breaches = [b for b in breaches if allow(b.get("host"))]
+    out = wo_itsm.correlate([copy.copy(t) for t in _cache["tickets"]], live_signals(svc.live, 15, allow), breaches, incs)
+    if allow is not None:
+        out = [x for x in out if getattr(x, "related_ids", None)]
     return {"system": c["system"], "fetched_at": _cache["at"], "tickets": [_dict(x) for x in out]}

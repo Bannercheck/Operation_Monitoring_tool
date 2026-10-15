@@ -6,6 +6,8 @@ import { useAuth } from "../auth";
 import { useT } from "../i18n";
 import { Badge, Btn, Card, Confirm, Empty, Err, Field, Modal, Table, Tabs, fmtTs } from "../components/ui";
 import DiscoveredHosts from "../components/DiscoveredHosts";
+import { TeamChip, TeamPick } from "../components/TeamPick";
+import { EnrollKeyCard } from "./Teams";
 
 type Tab = "agents" | "discovered";
 
@@ -17,21 +19,25 @@ export default function Connections() {
 }
 
 function Agents() {
-  const { t } = useT(); const { can } = useAuth(); const qc = useQueryClient(); const [name, setName] = useState(""); const [env, setEnv] = useState("prod"); const [tok, setTok] = useState<any>(null);
+  const { t } = useT(); const { can, user, teamsWith } = useAuth(); const qc = useQueryClient(); const [name, setName] = useState(""); const [env, setEnv] = useState("prod"); const [tok, setTok] = useState<any>(null);
+  const [team, setTeam] = useState<number | null>(null);
+  const wide = user?.all !== false;                                // the fleet key is installation-wide; a team member uses the team's own key
   const list = useQuery({ queryKey: ["agents"], queryFn: () => get("/agents"), refetchInterval: 15000 });
-  const key = useQuery({ queryKey: ["enroll-key"], queryFn: () => get("/agents/enroll-key"), enabled: can("act.connect") });
+  const key = useQuery({ queryKey: ["enroll-key"], queryFn: () => get("/agents/enroll-key"), enabled: can("act.connect") && wide });
   const inv = () => { qc.invalidateQueries({ queryKey: ["agents"] }); qc.invalidateQueries({ queryKey: ["enroll-key"] }); };
-  const enroll = useMutation({ mutationFn: () => post("/agents", { name, env }), onSuccess: (r: any) => { setTok(r); setName(""); inv(); } });
+  const enroll = useMutation({ mutationFn: () => post("/agents", { name, env, team_id: team }), onSuccess: (r: any) => { setTok(r); setName(""); inv(); } });
   const act = useMutation({ mutationFn: (p: { id: number; op: string }) => (p.op === "delete" ? del(`/agents/${p.id}`) : post(`/agents/${p.id}/${p.op}`)), onSuccess: (r: any, p) => { if (p.op === "rotate") setTok({ agent: { name: "" }, token: r.token }); inv(); } });
   const rotateKey = useMutation({ mutationFn: () => post("/agents/enroll-key/rotate"), onSuccess: inv });
   const host = window.location.host.replace(/:\d+$/, "");
   const editable = can("act.connect");
   return <div className="stack">
     {editable && <div className="grid k2">
-      <Card title={t("agent_enroll")}><div className="row"><input className="input" placeholder={t("name")} value={name} onChange={(e) => setName(e.target.value)} /><input className="input" style={{ width: 120 }} value={env} onChange={(e) => setEnv(e.target.value)} /><Btn kind="primary" onClick={() => enroll.mutate()} disabled={!name}>{t("add")}</Btn></div><Err e={enroll.error} /></Card>
+      <Card title={t("agent_enroll")}><div className="row"><input className="input" placeholder={t("name")} value={name} onChange={(e) => setName(e.target.value)} /><input className="input" style={{ width: 120 }} value={env} onChange={(e) => setEnv(e.target.value)} />
+        <TeamPick perm="act.connect" value={team} onChange={setTeam} style={{ width: 170 }} /><Btn kind="primary" onClick={() => enroll.mutate()} disabled={!name}>{t("add")}</Btn></div><Err e={enroll.error} /></Card>
+      {!wide ? <div className="stack">{teamsWith("act.connect").map((id) => <EnrollKeyCard key={id} tid={id} title={(user?.teams ?? []).find((m) => m.id === id)?.name} />)}</div> :
       <Card title={t("agent_key")}><div className="row"><span className="mono">{key.data?.key || "-"}</span><Btn sm onClick={() => rotateKey.mutate()}>{t("agent_key_rotate")}</Btn></div>
-        <pre className="code" style={{ marginTop: 8 }}>{`curl -fsSL http://${host}:8600/agent/install.sh | sudo bash -s -- --url http://${host}:8600/ingest --enroll-key ${key.data?.key || "wk_…"} --env prod`}</pre></Card></div>}
-    <Card><Table cols={[{ k: "name", label: t("name"), render: (r) => <b>{r.name}</b> }, { k: "env", label: t("env") }, { k: "site", label: "site" }, { k: "status", label: t("status"), render: (r) => <Badge v={r.status} /> },
+        <pre className="code" style={{ marginTop: 8 }}>{`curl -fsSL http://${host}:8600/agent/install.sh | sudo bash -s -- --url http://${host}:8600/ingest --enroll-key ${key.data?.key || "wk_…"} --env prod`}</pre></Card>}</div>}
+    <Card><Table cols={[{ k: "name", label: t("name"), render: (r) => <div><b>{r.name}</b>{(r.team || wide) && <div><TeamChip name={r.team} /></div>}</div> }, { k: "env", label: t("env") }, { k: "site", label: "site" }, { k: "status", label: t("status"), render: (r) => <Badge v={r.status} /> },
       { k: "last_seen", label: t("agent_last"), render: (r) => <span className="muted small">{fmtTs(r.last_seen)} {r.last_ip}</span> }, { k: "events", label: t("agent_events"), num: true },
       { k: "x", label: "", render: (r) => editable ? <div className="row">{r.status === "active" ? <Btn sm onClick={() => act.mutate({ id: r.id, op: "revoke" })}>{t("agent_revoke")}</Btn> : <Btn sm onClick={() => act.mutate({ id: r.id, op: "reactivate" })}>{t("agent_reactivate")}</Btn>}
         <Btn sm onClick={() => act.mutate({ id: r.id, op: "rotate" })}>{t("agent_rotate")}</Btn><Confirm onConfirm={() => act.mutate({ id: r.id, op: "delete" })}>{t("delete")}</Confirm></div> : null }]} rows={list.data ?? []} /></Card>

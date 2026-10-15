@@ -12,8 +12,8 @@ export function setToken(t: string | null) { try { t ? localStorage.setItem(TOKE
 let onUnauthorized: (() => void) | null = null;
 export function setUnauthorizedHandler(fn: () => void) { onUnauthorized = fn; }
 
-export async function api<T = any>(path: string, opts: { method?: string; body?: any; form?: FormData; text?: boolean; auth?: boolean } = {}): Promise<T> {
-  const headers: Record<string, string> = {};
+export async function api<T = any>(path: string, opts: { method?: string; body?: any; form?: FormData; text?: boolean; auth?: boolean; headers?: Record<string, string> } = {}): Promise<T> {
+  const headers: Record<string, string> = { ...(opts.headers ?? {}) };
   const tok = getToken();
   if (tok && opts.auth !== false) headers.Authorization = `Bearer ${tok}`;
   let body: any = opts.form;

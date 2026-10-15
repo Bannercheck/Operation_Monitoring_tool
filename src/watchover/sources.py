@@ -373,7 +373,11 @@ class Poller:
             seen.append(h); keep.append(r)
         n = 0
         if keep:
-            n = self.live.ingest(f"{src.name}.jsonl", to_jsonl(keep, src.env), agent=src.name, env=src.env, site=src.site)
+            try:                                             # a team's source posts only for the team's hosts (ingest_guard)
+                tid = (self.store.kb._exec("SELECT team_id FROM sources WHERE id=?", (src.id,)) or [{}])[0].get("team_id")
+            except Exception:  # noqa: BLE001 - no team column (installation without role-based teams)
+                tid = None
+            n = self.live.ingest(f"{src.name}.jsonl", to_jsonl(keep, src.env), agent=src.name, env=src.env, site=src.site, **({"team_id": tid} if tid is not None else {}))
         self.store.update(src.id, cursor=cursor, last_ok=datetime.now(UTC).isoformat(timespec="seconds"), last_err="", events=src.events + n, polls=src.polls + 1)
         if self.on_rows:
             self.on_rows(src, keep)

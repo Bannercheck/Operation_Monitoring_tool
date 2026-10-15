@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, del, get, put } from "../api";
 import { useAuth } from "../auth";
+import { TeamPick } from "../components/TeamPick";
 import { useT } from "../i18n";
 import { Badge, Btn, Card, Chip, Confirm, Err, Field, Modal, Table, Tabs } from "../components/ui";
 import DiscoveredHosts from "../components/DiscoveredHosts";
@@ -18,7 +19,7 @@ export default function InventoryPage() {
 }
 
 export function InventoryPanel() {
-  const { t } = useT(); const { can } = useAuth(); const qc = useQueryClient(); const [tab, setTab] = useState<Tab>("list"); const [q, setQ] = useState(""); const [edit, setEdit] = useState<any>(null); const [msg, setMsg] = useState<any>(null);
+  const { t } = useT(); const { can, canIn, user } = useAuth(); const qc = useQueryClient(); const [tab, setTab] = useState<Tab>("list"); const [q, setQ] = useState(() => new URLSearchParams(window.location.search).get("q") ?? ""); const [edit, setEdit] = useState<any>(null); const [msg, setMsg] = useState<any>(null);
   const list = useQuery({ queryKey: ["inventory", q], queryFn: () => get(`/inventory?q=${encodeURIComponent(q)}`) });
   const stats = useQuery({ queryKey: ["inv-stats"], queryFn: () => get("/inventory/stats"), refetchInterval: 15000 });
   const disc = useQuery({ queryKey: ["discovered"], queryFn: () => get("/inventory/discovered"), refetchInterval: 15000 });
@@ -26,7 +27,9 @@ export function InventoryPanel() {
   const rm = useMutation({ mutationFn: (h: string) => del(`/inventory/${encodeURIComponent(h)}`), onSuccess: inv });
   const upload = async (files: FileList | null) => { if (!files?.length) return; const fd = new FormData(); fd.append("file", files[0]); try { setMsg(await api("/inventory/import", { method: "POST", form: fd })); inv(); } catch (x) { setMsg({ error: x }); } };
   const download = async (path: string, name: string) => { const txt = await api<string>(path, { text: true }); const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([txt], { type: "text/csv" })); a.download = name; a.click(); };
-  const editable = can("act.inventory"); const s = stats.data; const rows: any[] = list.data ?? []; const found: any[] = disc.data ?? [];
+  const editable = can("act.inventory"); const s = stats.data;
+  const mayEdit = (r: any) => editable && (user?.all !== false || (r.team_ids ?? []).some((id: number) => canIn(id, "act.inventory")));
+  const rows: any[] = list.data ?? []; const found: any[] = disc.data ?? [];
   return <div className="stack">
     {s && <div className="chips"><Chip color="#60a5fa">{s.hosts} {t("inv_hosts")}</Chip><Chip color="#f87171">{s.critical} {t("inv_critical")}</Chip><Chip color="#a78bfa">{s.dcs} DC</Chip><Chip color={s.unmatched ? "#fbbf24" : "#2dd4bf"}>{s.matched}/{s.seen} {t("inv_matched")}</Chip></div>}
     <div className="muted small">{t("inv_intro")}</div>
@@ -34,10 +37,11 @@ export function InventoryPanel() {
     {tab === "list" && <Card>
       <div className="row" style={{ marginBottom: 8 }}><input className="input grow" placeholder={t("inv_search")} value={q} onChange={(e) => setQ(e.target.value)} /></div>
       {!rows.length ? <div className="muted small">{t("inv_none")}</div> : <Table cols={[
-        { k: "hostname", label: t("inv_f_hostname"), render: (r) => <b style={{ cursor: editable ? "pointer" : undefined }} onClick={() => editable && setEdit(r)}>{r.hostname}</b> }, { k: "ip", label: "IP" }, { k: "env", label: t("inv_f_env") }, { k: "dc", label: t("inv_f_dc") },
+        { k: "hostname", label: t("inv_f_hostname"), render: (r) => <div><b style={{ cursor: mayEdit(r) ? "pointer" : undefined }} onClick={() => mayEdit(r) && setEdit(r)}>{r.hostname}</b>
+          {r.teams && (r.teams.length ? <div className="dim small">👥 {r.teams.join(", ")}</div> : r.unowned ? <div className="small" style={{ color: "var(--amber)" }}>{t("tmr_unowned")}</div> : null)}</div> }, { k: "ip", label: "IP" }, { k: "env", label: t("inv_f_env") }, { k: "dc", label: t("inv_f_dc") },
         { k: "role", label: t("inv_f_role") }, { k: "application", label: t("inv_f_application") }, { k: "owner", label: t("inv_f_owner") }, { k: "criticality", label: t("inv_f_criticality"), render: (r) => <Badge v={r.criticality} /> },
         { k: "os", label: t("inv_f_os") }, { k: "status", label: t("inv_f_status"), render: (r) => <Badge v={r.status} /> }, { k: "monitoring", label: t("inv_f_monitoring") },
-        { k: "x", label: "", render: (r) => editable ? <div className="row"><Btn sm onClick={() => setEdit(r)}>✏️</Btn><Confirm onConfirm={() => rm.mutate(r.hostname)}>🗑</Confirm></div> : null }]} rows={rows.map((r) => ({ id: r.hostname, ...r }))} />}
+        { k: "x", label: "", render: (r) => mayEdit(r) ? <div className="row"><Btn sm onClick={() => setEdit(r)}>✏️</Btn><Confirm onConfirm={() => rm.mutate(r.hostname)}>🗑</Confirm></div> : null }]} rows={rows.map((r) => ({ id: r.hostname, ...r }))} />}
     </Card>}
     {tab === "add" && editable && <HostForm onDone={() => { inv(); setTab("list"); }} />}
     {tab === "disc" && <Card>
@@ -54,9 +58,9 @@ export function InventoryPanel() {
 }
 
 function HostForm({ rec, onDone }: { rec?: any; onDone: () => void }) {
-  const { t } = useT(); const [f, setF] = useState<Record<string, string>>({ ...EMPTY, ...(rec ?? {}) }); const [err, setErr] = useState<any>(null);
+  const { t } = useT(); const [f, setF] = useState<Record<string, string>>({ ...EMPTY, ...(rec ?? {}) }); const [err, setErr] = useState<any>(null); const [team, setTeam] = useState<number | null>(null);
   const set = (k: string) => (e: any) => setF({ ...f, [k]: e.target.value });
-  const save = async (e: React.FormEvent) => { e.preventDefault(); setErr(null); try { await put("/inventory", { ...f, source: rec?.source || "manual" }); onDone(); } catch (x) { setErr(x); } };
+  const save = async (e: React.FormEvent) => { e.preventDefault(); setErr(null); try { const { team_ids: _a, teams: _b, unowned: _c, ...rest } = f as any; await put("/inventory", { ...rest, source: rec?.source || "manual", ...(rec ? {} : { team_id: team }) }); onDone(); } catch (x) { setErr(x); } };
   const rm = async () => { try { await del(`/inventory/${encodeURIComponent(rec.hostname)}`); onDone(); } catch (x) { setErr(x); } };
   const T = (k: string, extra: any = {}) => <Field key={k} label={t("inv_f_" + k)}><input className="input" value={f[k] ?? ""} onChange={set(k)} {...extra} /></Field>;
   return <Card title={rec ? undefined : `➕ ${t("inv_tab_add")}`}><form className="stack" onSubmit={save}>
@@ -67,6 +71,6 @@ function HostForm({ rec, onDone }: { rec?: any; onDone: () => void }) {
     <div className="grid k4">{T("cluster", { placeholder: "ora-rac-1" })}{T("owner", { placeholder: "DBA" })}{T("storage", { placeholder: "SAN LUN-042 2TB" })}{T("vendor_model", { placeholder: "Dell R760" })}</div>
     <div className="grid k4">{T("serial")}{T("monitoring", { placeholder: "agent:db-01 / es-prod" })}<Field label={t("inv_f_status")}><select className="input" value={f.status} onChange={set("status")}>{STATUS.map((x) => <option key={x}>{x}</option>)}</select></Field>{T("tags", { placeholder: "oracle, core" })}</div>
     <Field label={t("inv_f_notes")}><textarea className="input" style={{ minHeight: 56 }} value={f.notes ?? ""} onChange={set("notes")} /></Field>
-    <Err e={err} /><div className="row"><Btn kind="primary" type="submit">💾 {t("inv_save")}</Btn>{rec && <Confirm onConfirm={rm}>🗑 {t("inv_delete")}</Confirm>}</div>
+    <Err e={err} /><div className="row">{!rec && <TeamPick perm="act.inventory" value={team} onChange={setTeam} style={{ width: 200 }} />}<Btn kind="primary" type="submit">💾 {t("inv_save")}</Btn>{rec && <Confirm onConfirm={rm}>🗑 {t("inv_delete")}</Confirm>}</div>
   </form></Card>;
 }

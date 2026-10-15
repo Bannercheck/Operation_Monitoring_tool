@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import threading
+from typing import Optional
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import PlainTextResponse
@@ -12,7 +13,8 @@ from ... import llm as wo_llm
 from ... import llm_eval as wo_eval
 from ... import ollama as wo_ollama
 from ... import settings as wo_settings
-from ..security import require, services, current_user
+from ..security import access, current_user, require, require_install, services
+from .datasets import dataset_for, dataset_visible
 
 router = APIRouter(prefix="/llm", tags=["llm"])
 KEYS = ("llm_provider", "llm_base", "llm_model", "llm_key", "llm_embed")
@@ -43,8 +45,10 @@ def get_llm(user=Depends(require("page.llm")), svc=Depends(services)):
     return _view(svc)
 
 
+# The LLM endpoint, its models and training are installation-wide: every team's incidents go through it (a team member whose
+# installation role holds page.llm could otherwise point it at their own server). Reads and tests stay on page.llm.
 @router.put("")
-def put_llm(body: LlmIn, user=Depends(require("page.llm")), svc=Depends(services)):
+def put_llm(body: LlmIn, user=Depends(require_install("page.llm")), svc=Depends(services)):
     vals = {k: v for k, v in body.model_dump().items() if v is not None and not (k == "llm_key" and v == MASK)}
     wo_settings.save(vals)
     svc.refresh_llm()
@@ -76,7 +80,7 @@ def ollama(user=Depends(require("page.llm")), svc=Depends(services)):
 
 
 @router.post("/ollama/pull", status_code=202)
-def pull(body: PullIn, user=Depends(require("page.llm")), svc=Depends(services)):
+def pull(body: PullIn, user=Depends(require_install("page.llm")), svc=Depends(services)):
     cfg = svc.llm_cfg()
     base = cfg.root if cfg.kind == "ollama" and cfg.root else wo_ollama.discover()
     if not base:
@@ -99,14 +103,14 @@ def pull(body: PullIn, user=Depends(require("page.llm")), svc=Depends(services))
 
 
 @router.delete("/ollama/{name:path}")
-def remove(name: str, user=Depends(require("page.llm")), svc=Depends(services)):
+def remove(name: str, user=Depends(require_install("page.llm")), svc=Depends(services)):
     cfg = svc.llm_cfg()
     base = cfg.root if cfg.kind == "ollama" and cfg.root else wo_ollama.discover()
     return {"ok": bool(base) and wo_ollama.remove(base, name)}
 
 
 @router.get("/quality")
-def quality(user=Depends(require("page.llm")), svc=Depends(services)):
+def quality(user=Depends(require_install("page.llm")), svc=Depends(services)):
     return {"stats": svc.kb.llm_stats(), "calls": svc.kb.llm_calls(200), "evals": svc.kb.eval_runs(20)}
 
 
@@ -117,11 +121,12 @@ def tokens(user=Depends(current_user), svc=Depends(services)):
 
 
 @router.post("/benchmark")
-def benchmark(dataset: str | None = None, lang: str = "tr", user=Depends(require("page.llm")), svc=Depends(services)):
+def benchmark(dataset: Optional[str] = None, lang: str = "tr", acc=Depends(access), user=Depends(require("page.llm")), svc=Depends(services)):
     cfg = svc.llm_cfg()
     if not cfg.enabled:
         raise ValueError("no LLM configured")
-    a = svc.datasets.get(dataset)["analysis"] if dataset else (list(svc.datasets.items.values())[-1]["analysis"] if svc.datasets.items else None)
+    keys = [k for k in list(svc.datasets.items) if dataset_visible(svc, acc, k)]
+    a = dataset_for(svc, acc, dataset)["analysis"] if dataset else (svc.datasets.items[keys[-1]]["analysis"] if keys else None)
     if a is None:
         raise ValueError("load a dataset first")
     res = wo_eval.run_benchmark(cfg, a, lang)
@@ -130,14 +135,15 @@ def benchmark(dataset: str | None = None, lang: str = "tr", user=Depends(require
 
 
 @router.get("/training-stats")
-def training_stats(lang: str = "tr", user=Depends(require("page.llm")), svc=Depends(services)):
+def training_stats(lang: str = "tr", user=Depends(require_install("page.llm")), svc=Depends(services)):
     """How many fine-tuning examples the memory yields today, by source (patterns, anomalies, resolutions, notes, rules …)."""
     return wo_learn.training_bundle(svc.kb, lang)["stats"]
 
 
 @router.get("/training-export", response_class=PlainTextResponse)
-def training_export(lang: str = "tr", part: str = "all", user=Depends(require("page.llm")), svc=Depends(services)):
-    """Chat-format JSONL for scripts/train_lora.py: part=all (default), train or eval (held-out 10 %)."""
+def training_export(lang: str = "tr", part: str = "all", user=Depends(require_install("page.llm")), svc=Depends(services)):
+    """Chat-format JSONL for scripts/train_lora.py: part=all (default), train or eval (held-out 10 %). Built from the whole memory,
+    so installation-wide only (a team-scoped account would export other teams' lessons)."""
     if part in ("train", "eval"):
         body = wo_learn.training_bundle(svc.kb, lang)[part]
     else:
@@ -150,13 +156,13 @@ TRAIN_KEYS = ("train_auto", "train_every_h", "train_min_examples", "train_min_ne
 
 
 class TrainIn(BaseModel):
-    train_auto: bool | None = None
-    train_every_h: int | None = None
-    train_min_examples: int | None = None
-    train_min_new: int | None = None
-    train_base: str | None = None
-    train_gate_min: float | None = None
-    train_use_ops: bool | None = None
+    train_auto: Optional[bool] = None
+    train_every_h: Optional[int] = None
+    train_min_examples: Optional[int] = None
+    train_min_new: Optional[int] = None
+    train_base: Optional[str] = None
+    train_gate_min: Optional[float] = None
+    train_use_ops: Optional[bool] = None
 
 
 @router.get("/autotrain")
@@ -170,7 +176,7 @@ def autotrain_state(user=Depends(require("page.llm")), svc=Depends(services)):
 
 
 @router.put("/autotrain")
-def autotrain_settings(body: TrainIn, user=Depends(require("page.llm")), svc=Depends(services)):
+def autotrain_settings(body: TrainIn, user=Depends(require_install("page.llm")), svc=Depends(services)):
     vals = {k: v for k, v in body.model_dump().items() if v is not None and k in TRAIN_KEYS}
     wo_settings.save(vals)
     svc._ops_at = 0
@@ -178,7 +184,7 @@ def autotrain_settings(body: TrainIn, user=Depends(require("page.llm")), svc=Dep
 
 
 @router.post("/autotrain/run")
-def autotrain_run(user=Depends(require("page.llm")), svc=Depends(services)):
+def autotrain_run(user=Depends(require_install("page.llm")), svc=Depends(services)):
     """Ask the trainer service to train at its next poll (even below the thresholds)."""
     from ... import autotrain as wo_at
     return {"ok": True, "flag": wo_at.request_run()}

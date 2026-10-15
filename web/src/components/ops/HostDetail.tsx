@@ -49,7 +49,7 @@ export function HostDetail({ host, base, row, span, onClose, onFocus, focused, o
   const s = sum.data; const th = (thr.data?.hosts ?? []).find((h: any) => h.host === host);
   const state = row ? hostState(row) : "ok";
   const series = settled(s?.series ?? [], s?.step_min ?? 1, live);
-  const go = (f: any) => { onClose(); if (!focused) onFocus(host); onLogs(f); };
+  const go = (f: any) => { onClose(); if (!focused) onFocus(host); onLogs({ ...f, host }); };
   return <Modal wide title={<span className="row" style={{ gap: 8 }}><Server size={16} /> {host} <span className={`hm-c ${state}`} style={{ width: 10, height: 10 }} />
     <span className="dim small">{row?.pool ?? th?.pool ?? ""}{(row?.env ?? th?.env) ? ` · ${row?.env ?? th?.env}` : ""}</span></span>} onClose={onClose}>
     <div className="stack">

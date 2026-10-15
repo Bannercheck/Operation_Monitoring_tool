@@ -19,7 +19,7 @@ import time
 from datetime import datetime, timedelta, timezone
 
 UTC = timezone.utc
-ROLES = ("admin", "operator", "viewer")
+ROLES = ("admin", "operator", "viewer", "member")          # member: "Ekip üyesi", no installation-wide permission (team roles decide)
 PROVIDERS = ("local", "google", "oidc")
 SCRYPT = {"n": 2 ** 15, "r": 8, "p": 2}
 LOCK_FAILURES, LOCK_MINUTES = 5, 15

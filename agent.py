@@ -30,7 +30,7 @@ import ssl
 from datetime import datetime, timezone
 from pathlib import Path
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 
 
 def host_metrics() -> dict:
@@ -263,23 +263,130 @@ def _hexaddr(h: str) -> str:
     return f"{addr}:{int(port, 16)}"
 
 
+PROC = "/proc"
+_INODE_PID: dict = {}          # socket inode -> pid, filled by the last _inode_process() walk (for the fingerprints)
+
+
 def _inode_process() -> dict:
     """socket inode -> process name (needs read access to /proc/<pid>/fd: root, or the same user)."""
-    out = {}
-    for pid in os.listdir("/proc"):
+    out, pids = {}, {}
+    for pid in os.listdir(PROC):
         if not pid.isdigit():
             continue
         try:
-            name = Path(f"/proc/{pid}/comm").read_text().strip()
-            for fd in os.listdir(f"/proc/{pid}/fd"):
+            name = Path(f"{PROC}/{pid}/comm").read_text().strip()
+            for fd in os.listdir(f"{PROC}/{pid}/fd"):
                 try:
-                    link = os.readlink(f"/proc/{pid}/fd/{fd}")
+                    link = os.readlink(f"{PROC}/{pid}/fd/{fd}")
                 except OSError:
                     continue
                 if link.startswith("socket:["):
                     out[link[8:-1]] = name
+                    pids[link[8:-1]] = int(pid)
         except OSError:
             continue
+    _INODE_PID.clear(); _INODE_PID.update(pids)
+    return out
+
+
+# Technology fingerprints of a process: a FIXED dictionary matched on the server itself against the process's command line and
+# the shared libraries / assemblies it has mapped. Only the tag names leave the host ("flow.tech": "uvicorn,fastapi,oracledb"):
+# never the command line, a path, an argument or a user name. Tags are read once per process (pid + start time) and cached.
+#   (tag, where, needle)  where: "arg0" the program's own name starts with the needle ("x*": any name starting with x);
+#   "prog" the program itself: its own name, or for an interpreter the script / `-m` module it runs (so `pip install fastapi`
+#   is not FastAPI); "tok" any argument (or its base name) equals it; "cmd" an argument contains it (Java class names, jar
+#   names); "map" a mapped file's path contains it.
+FINGERPRINTS = (
+    ("python", "arg0", "python"), ("java", "arg0", "java"), ("java", "map", "libjvm.so"), ("node", "arg0", "node"), ("node", "map", "libnode.so"),
+    ("dotnet", "arg0", "dotnet"), ("dotnet", "map", "libcoreclr.so"), ("php", "arg0", "php"), ("php", "arg0", "php-fpm"), ("php", "map", "libphp"), ("erlang", "arg0", "beam"),
+    ("uvicorn", "prog", "uvicorn"), ("uvicorn", "cmd", "uvicorn.workers"), ("gunicorn", "prog", "gunicorn"), ("hypercorn", "prog", "hypercorn"),
+    ("uwsgi", "prog", "uwsgi"), ("fastapi", "prog", "fastapi"),
+    ("django", "prog", "manage.py"), ("django", "prog", "django-admin"), ("flask", "prog", "flask"), ("celery", "prog", "celery"),
+    ("pydantic_core", "map", "pydantic_core"), ("uvloop", "map", "/uvloop/"), ("httptools", "map", "/httptools/"), ("aiohttp", "map", "/aiohttp/"), ("tornado", "map", "/tornado/"),
+    ("spring-boot", "cmd", "org.springframework.boot"), ("spring-boot", "cmd", "spring-boot"), ("tomcat", "cmd", "org.apache.catalina"), ("tomcat", "cmd", "catalina.base"),
+    ("tomcat", "cmd", "tomcat-embed"), ("weblogic", "cmd", "weblogic.server"), ("weblogic", "cmd", "weblogic.jar"), ("jboss", "cmd", "jboss-modules"), ("jboss", "cmd", "org.jboss.as"),
+    ("websphere", "cmd", "com.ibm.ws."), ("jetty", "cmd", "org.eclipse.jetty"), ("sap-java", "cmd", "com.sap.engine"), ("keycloak", "cmd", "-dkc.home.dir="),
+    ("kafka-broker", "tok", "kafka.kafka"), ("zookeeper", "cmd", "org.apache.zookeeper.server"), ("elasticsearch", "cmd", "org.elasticsearch.bootstrap"),
+    ("rabbitmq", "tok", "rabbit"), ("rabbitmq", "cmd", "rabbitmq_server"), ("activemq", "cmd", "activemq.jar"),
+    ("ojdbc", "cmd", "ojdbc"), ("oci", "map", "libclntsh"), ("oracledb", "map", "/oracledb/"), ("cx_oracle", "map", "cx_oracle"), ("odp.net", "map", "oracle.manageddataaccess"),
+    ("libpq", "map", "libpq.so"), ("psycopg", "map", "/psycopg"), ("pgjdbc", "cmd", "postgresql-42"), ("npgsql", "map", "npgsql.dll"),
+    ("mysqlclient", "map", "libmysqlclient"), ("mariadb-client", "map", "libmariadb"), ("mysql-connector-j", "cmd", "mysql-connector"),
+    ("msodbcsql", "map", "libmsodbcsql"), ("odbc", "map", "libodbc.so"), ("pyodbc", "map", "pyodbc"), ("mssql-jdbc", "cmd", "mssql-jdbc"), ("sqlclient", "map", "data.sqlclient.dll"),
+    ("sapnwrfc", "map", "libsapnwrfc"), ("sapjco", "map", "libsapjco3"), ("sapjco", "cmd", "sapjco3"), ("pyrfc", "map", "/pyrfc/"),
+    ("hana-client", "map", "libdbcapihdb"), ("hana-jdbc", "cmd", "ngdbc"),
+    ("librdkafka", "map", "librdkafka"), ("kafka-clients", "cmd", "kafka-clients"), ("spring-kafka", "cmd", "spring-kafka"), ("amqp-client", "cmd", "amqp-client"),
+    ("spring-rabbit", "cmd", "spring-rabbit"), ("grpc", "map", "cygrpc"), ("grpc", "map", "libgrpc"), ("grpc", "cmd", "grpc-netty"),
+    ("cxf", "cmd", "cxf-"), ("axis2", "cmd", "axis2"), ("jaxws", "cmd", "jaxws"), ("wcf", "map", "system.servicemodel"),
+    ("aspnetcore", "map", "microsoft.aspnetcore"), ("kestrel", "map", "server.kestrel"),
+    ("libldap", "map", "libldap"), ("jsch", "cmd", "jsch"), ("libssh", "map", "libssh"), ("sftp", "tok", "sftp"),
+    ("nginx", "arg0", "nginx"), ("apache-httpd", "arg0", "httpd"), ("apache-httpd", "arg0", "apache2"), ("haproxy", "arg0", "haproxy"), ("envoy", "arg0", "envoy"),
+    ("traefik", "arg0", "traefik"), ("postgres", "arg0", "postgres"), ("postgres", "arg0", "postmaster"), ("mysql", "arg0", "mysqld"), ("mariadb", "arg0", "mariadbd"),
+    ("redis", "arg0", "redis-server"), ("mongodb", "arg0", "mongod"), ("memcached", "arg0", "memcached"), ("sqlserver", "arg0", "sqlservr"),
+    ("oracle-db", "arg0", "tnslsnr"), ("oracle-db", "arg0", "ora_"), ("hana", "arg0", "hdbindexserver"), ("hana", "arg0", "hdbnameserver"),
+    ("sap-abap", "arg0", "disp+work"), ("sap-abap", "arg0", "dw.sap*"), ("sap-gateway", "arg0", "gwrd"), ("sap-gateway", "arg0", "gw.sap*"), ("sap-ms-server", "arg0", "msg_server"),
+    ("sap-ms-server", "arg0", "ms.sap*"), ("sap-icm", "arg0", "icman"),
+    ("sap-java", "arg0", "jstart"), ("openssh", "arg0", "sshd"), ("openssh", "arg0", "sftp-server"), ("openldap", "arg0", "slapd"), ("samba", "arg0", "smbd"),
+)
+_FP_CACHE: dict = {}           # pid -> (start time, tags)
+
+
+def _start_time(pid: int) -> str:
+    try:
+        stat = Path(f"{PROC}/{pid}/stat").read_text()
+        return stat.rsplit(")", 1)[1].split()[19]               # field 22 (starttime): the pid's identity across reuse
+    except (OSError, IndexError):
+        return ""
+
+
+def fingerprint(pid: int) -> str:
+    """Comma-joined technology tags of one process (FINGERPRINTS), '' when nothing matched or nothing is readable."""
+    st = _start_time(pid)
+    hit = _FP_CACHE.get(pid)
+    if hit is not None and hit[0] == st:
+        return hit[1]
+    try:
+        raw = Path(f"{PROC}/{pid}/cmdline").read_bytes()
+    except OSError:
+        raw = b""
+    args = [a.lower() for a in raw.decode("utf-8", "replace").split("\0") if a]
+    first = args[0].split(" ")[0] if args else ""               # nginx / sshd / postgres rewrite argv into one string: "nginx: master process ..."
+    arg0 = first.rsplit("/", 1)[-1].rstrip(":")
+    words = [w for a in args for w in a.split(" ")] if args else []
+    toks = {w.rsplit("/", 1)[-1] for w in words} | set(words)
+    prog = {arg0}
+    i = 1
+    while i < len(args):                                       # python [-opts] script | -m module: the script or module it runs
+        a = args[i]
+        if a == "-m" and i + 1 < len(args):
+            prog.add(args[i + 1]); break
+        if a == "-c":
+            break
+        if a.startswith("-"):
+            i += 2 if a in ("-w", "-x") else 1                  # -W / -X take a value
+            continue
+        prog.add(a.rsplit("/", 1)[-1]); break
+    maps: set = set()
+    if any(w == "map" for _, w, _ in FINGERPRINTS):
+        try:
+            with open(f"{PROC}/{pid}/maps", "rb") as f:
+                for ln in f:
+                    p = ln.split(None, 5)
+                    if len(p) == 6 and p[5].startswith(b"/"):
+                        maps.add(p[5].strip().decode("utf-8", "replace").lower())
+        except OSError:
+            pass
+    tags = set()
+    for tag, where, nd in FINGERPRINTS:
+        if tag in tags:
+            continue
+        if (where == "arg0" and (arg0 == nd or (nd[-1] == "*" and arg0.startswith(nd[:-1]))
+                                 or (arg0.startswith(nd) and (nd[-1] in "_." or arg0[len(nd)] in "0123456789.")))) \
+                or (where == "prog" and nd in prog) or (where == "tok" and nd in toks) or (where == "cmd" and any(nd in a for a in args)) or (where == "map" and any(nd in m for m in maps)):
+            tags.add(tag)
+    out = ",".join(sorted(tags))
+    if len(_FP_CACHE) > 4096:
+        _FP_CACHE.clear()
+    _FP_CACHE[pid] = (st, out)
     return out
 
 
@@ -287,7 +394,7 @@ def tcp_flows() -> list[dict]:
     """Established TCP connections grouped as (direction, process, remote endpoint): outbound calls to a remote ip:port and
     inbound use of each listening port. Loopback is skipped. Returns [] where /proc/net/tcp does not exist (macOS, Windows)."""
     rows = []
-    for f in ("/proc/net/tcp", "/proc/net/tcp6"):
+    for f in (f"{PROC}/net/tcp", f"{PROC}/net/tcp6"):
         try:
             rows += Path(f).read_text().splitlines()[1:]
         except OSError:
@@ -304,8 +411,11 @@ def tcp_flows() -> list[dict]:
             listen.add(int(local.split(":")[1], 16))
         elif st == "01":
             est.append((_hexaddr(local), _hexaddr(remote), inode))
+    _INODE_PID.clear()
     procs = _inode_process()
     agg: dict = {}
+    tech: dict = {}
+    fps: dict = {}
     for local, remote, inode in est:
         rip = remote.rsplit(":", 1)[0]
         if rip.startswith("127.") or rip in ("::1", "0000:0000:0000:0000:0000:0000:0000:0001"):
@@ -317,7 +427,16 @@ def tcp_flows() -> list[dict]:
         else:
             key = ("out", proc, remote)
         agg[key] = agg.get(key, 0) + 1
-    return [{"msg": f"flow {d} {pr or '?'} {ep}", "kind": "flow", "flow.dir": d, "flow.process": pr or "?", ("flow.port" if d == "in" else "flow.remote"): ep, "flow.count": n}
+        pid = _INODE_PID.get(inode)
+        if pid is not None:
+            if pid not in fps:
+                fps[pid] = fingerprint(pid)
+            if fps[pid]:
+                tech.setdefault(key, set()).update(fps[pid].split(","))
+    for pid in [p for p in _FP_CACHE if p not in fps and not os.path.exists(f"{PROC}/{p}")]:
+        _FP_CACHE.pop(pid, None)                                 # exited processes
+    return [{"msg": f"flow {d} {pr or '?'} {ep}", "kind": "flow", "flow.dir": d, "flow.process": pr or "?", ("flow.port" if d == "in" else "flow.remote"): ep, "flow.count": n,
+             **({"flow.tech": ",".join(sorted(tech[(d, pr, ep)]))} if (d, pr, ep) in tech else {})}
             for (d, pr, ep), n in sorted(agg.items(), key=lambda x: -x[1])[:400]]
 
 

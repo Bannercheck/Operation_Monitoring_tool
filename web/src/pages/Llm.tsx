@@ -5,8 +5,10 @@ import { useT } from "../i18n";
 import { Btn, Card, Confirm, Empty, Err, Field, Kpi, Table, Tabs, fmtTs } from "../components/ui";
 import { useSearchParams } from "react-router-dom";
 import { ParserPanel } from "./Parser";
+import { useAuth } from "../auth";
 
 export default function Llm() {
+  const ro = useAuth().user?.all === false;                       // the LLM endpoint, models and training are installation-wide
   const { t } = useT(); const qc = useQueryClient(); const [sp] = useSearchParams(); const [tab, setTab] = useState<"conn" | "models" | "quality" | "parser">((sp.get("tab") as any) || "conn");
   const cfg = useQuery({ queryKey: ["llm"], queryFn: () => get("/llm") });
   const [f, setF] = useState<any>(null); const [msg, setMsg] = useState<any>(null); const [models, setModels] = useState<string[]>([]);
@@ -20,22 +22,22 @@ export default function Llm() {
     <div className="row between"><div><h2>🧠 {t("llm_title")}</h2><span className="muted small">{t("llm_sub")}</span></div>
       <div className="row"><span className="chip"><span className="d" style={{ background: cfg.data?.enabled ? "#2dd4bf" : "#64748b" }} />{cfg.data?.kind} · {cfg.data?.llm_model || "—"}</span><span className="chip">{st.calls ?? 0} {t("llm_calls")}</span>
         <span className="chip">{t("llm_success")} {st.success != null ? `${Math.round(st.success * 100)}%` : "-"}</span><span className="chip">{t("llm_ground")} {st.grounding_rate != null ? `${Math.round(st.grounding_rate * 100)}%` : "-"}</span></div></div>
-    <Tabs value={tab} onChange={setTab} tabs={[{ k: "conn", label: t("llm_tab_conn") }, { k: "models", label: t("llm_tab_models") }, { k: "quality", label: t("llm_tab_quality") }, { k: "parser", label: `🧩 ${t("llm_tab_parser")}` }]} />
+    <Tabs value={tab} onChange={setTab} tabs={[{ k: "conn", label: t("llm_tab_conn") }, { k: "models", label: t("llm_tab_models") }, ...(ro ? [] : [{ k: "quality" as const, label: t("llm_tab_quality") }]), { k: "parser", label: `🧩 ${t("llm_tab_parser")}` }]} />
     {tab === "conn" && f && <Card><div className="grid k2">
       <Field label={t("llm_provider")}><select className="input" value={f.llm_provider} onChange={set("llm_provider")}>{(cfg.data?.providers ?? []).map((p: string) => <option key={p}>{p}</option>)}</select></Field>
       <Field label={t("llm_base")}><input className="input" value={f.llm_base} onChange={set("llm_base")} placeholder="http://localhost:11434 · https://api.openai.com/v1" /></Field>
       <Field label={t("llm_model")}><div className="row"><input className="input grow" value={f.llm_model} onChange={set("llm_model")} placeholder="qwen2.5:7b-instruct" list="llm-models" /><datalist id="llm-models">{models.map((m) => <option key={m} value={m} />)}</datalist><Btn sm onClick={() => list.mutate()}>{t("llm_list")}</Btn></div></Field>
       <Field label={t("llm_key")}><input className="input" type="password" value={f.llm_key} onChange={set("llm_key")} autoComplete="off" /></Field>
       <Field label={t("llm_embed")}><input className="input" value={f.llm_embed} onChange={set("llm_embed")} placeholder="bge-m3" /></Field></div>
-      <div className="row" style={{ marginTop: 12 }}><Btn kind="primary" onClick={() => save.mutate()}>{t("save")}</Btn><Btn onClick={() => test.mutate()} disabled={test.isPending}>{t("llm_test")}</Btn></div>
+      <div className="row" style={{ marginTop: 12 }}>{ro ? <span className="dim small">{t("llm_install_only")}</span> : <Btn kind="primary" onClick={() => save.mutate()}>{t("save")}</Btn>}<Btn onClick={() => test.mutate()} disabled={test.isPending}>{t("llm_test")}</Btn></div>
       {msg && <div className={msg.ok ? "ok" : "err"} style={{ marginTop: 8 }}>{msg.info}</div>}<Err e={save.error || test.error || list.error} /></Card>}
-    {tab === "models" && <OllamaModels />}
-    {tab === "quality" && <Quality />}
+    {tab === "models" && <OllamaModels ro={ro} />}
+    {tab === "quality" && !ro && <Quality />}
     {tab === "parser" && <ParserPanel embedded />}
   </div>;
 }
 
-function OllamaModels() {
+function OllamaModels({ ro }: { ro: boolean }) {
   const { t } = useT(); const qc = useQueryClient(); const [custom, setCustom] = useState("");
   const o = useQuery({ queryKey: ["ollama"], queryFn: () => get("/llm/ollama"), refetchInterval: (q) => ((q.state.data as any)?.pulls?.some((p: any) => p.state === "running") ? 2000 : 15000) });
   const inv = () => { qc.invalidateQueries({ queryKey: ["ollama"] }); qc.invalidateQueries({ queryKey: ["llm"] }); };
@@ -50,9 +52,9 @@ function OllamaModels() {
     <div className="grid k3"><Kpi value={d.installed.length} label={t("llm_installed")} accent="#60a5fa" sub={`${d.installed.reduce((a: number, m: any) => a + (m.size_gb || 0), 0).toFixed(1)} GB · ${d.base}`} /><Kpi value={d.running.length} label={t("llm_loaded")} sub={d.running.map((m: any) => m.name).join(", ") || "-"} /><Kpi value={(d.pulls ?? []).filter((p: any) => p.state === "running").length} label={t("llm_pull")} accent="#a78bfa" /></div>
     {!!d.pulls?.length && <Card>{d.pulls.map((p: any) => <div key={p.name} className="stack" style={{ gap: 4 }}><div className="row between"><b>{p.name}</b><span className="mono">{p.state} {p.pct}% {p.status}</span></div><div className="progress"><div style={{ width: `${p.pct}%` }} /></div>{p.error && <div className="err">{p.error}</div>}</div>)}</Card>}
     <Card title={t("llm_installed")}><Table cols={[{ k: "name", label: t("name"), render: (r) => <span><b>{r.name}</b> {running.has(r.name) && <span className="badge green">{t("llm_loaded")}</span>}</span> }, { k: "size_gb", label: "GB", num: true }, { k: "params", label: "params", render: (r) => r.params || r.family }, { k: "quant", label: "quant" },
-      { k: "x", label: "", render: (r) => <div className="row"><Btn sm onClick={() => use.mutate(r.name)}>{t("llm_use")}</Btn><Confirm onConfirm={() => rm.mutate(r.name)}>{t("delete")}</Confirm></div> }]} rows={d.installed} /></Card>
-    <Card title={t("llm_recommended")}><Table cols={[{ k: "name", label: t("name"), render: (r) => <b>{r.name}</b> }, { k: "role", label: "", render: (r) => t("llm_role_" + r.role) }, { k: "note", label: t("note") }, { k: "x", label: "", render: (r) => have.has(norm(r.name)) ? <span className="badge green">{t("llm_have")}</span> : <Btn sm onClick={() => pull.mutate(r.name)}>⬇ {t("llm_pull")}</Btn> }]} rows={d.recommended.map((r: any) => ({ id: r.name, ...r }))} />
-      <div className="row" style={{ marginTop: 8 }}><input className="input" style={{ width: 260 }} placeholder={t("llm_pull_custom")} value={custom} onChange={(e) => setCustom(e.target.value)} /><Btn sm onClick={() => pull.mutate(custom)} disabled={!custom}>⬇ {t("llm_pull")}</Btn></div></Card>
+      { k: "x", label: "", render: (r) => ro ? null : <div className="row"><Btn sm onClick={() => use.mutate(r.name)}>{t("llm_use")}</Btn><Confirm onConfirm={() => rm.mutate(r.name)}>{t("delete")}</Confirm></div> }]} rows={d.installed} /></Card>
+    <Card title={t("llm_recommended")}><Table cols={[{ k: "name", label: t("name"), render: (r) => <b>{r.name}</b> }, { k: "role", label: "", render: (r) => t("llm_role_" + r.role) }, { k: "note", label: t("note") }, { k: "x", label: "", render: (r) => have.has(norm(r.name)) ? <span className="badge green">{t("llm_have")}</span> : ro ? null : <Btn sm onClick={() => pull.mutate(r.name)}>⬇ {t("llm_pull")}</Btn> }]} rows={d.recommended.map((r: any) => ({ id: r.name, ...r }))} />
+      {!ro && <div className="row" style={{ marginTop: 8 }}><input className="input" style={{ width: 260 }} placeholder={t("llm_pull_custom")} value={custom} onChange={(e) => setCustom(e.target.value)} /><Btn sm onClick={() => pull.mutate(custom)} disabled={!custom}>⬇ {t("llm_pull")}</Btn></div>}</Card>
     <Err e={use.error || pull.error || rm.error} />
   </div>;
 }

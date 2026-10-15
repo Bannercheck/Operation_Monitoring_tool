@@ -4,12 +4,14 @@ import { Link } from "react-router-dom";
 import { api, del, get, post } from "../api";
 import { useT } from "../i18n";
 import { Badge, Btn, Card, Confirm, Empty, Err, Field, Modal, Table, fmtTs } from "../components/ui";
+import { TeamChip, TeamPick } from "../components/TeamPick";
 
 export default function Datasets() {
-  const { t } = useT(); const qc = useQueryClient();
+  const { t } = useT(); const qc = useQueryClient(); const [team, setTeam] = useState<number | null>(null);   // the owning team of what is loaded next
+  const tq = team != null ? `team_id=${team}` : "";
   const [drag, setDrag] = useState(false); const [combine, setCombine] = useState(true); const [err, setErr] = useState<any>(null); const [cmp, setCmp] = useState<string[]>([]); const [fetchOpen, setFetchOpen] = useState(""); const [mapping, setMapping] = useState("");
   const samples = useQuery({ queryKey: ["samples"], queryFn: () => get("/datasets/samples") });
-  const loadSample = useMutation({ mutationFn: (name: string) => post(`/datasets/samples/${encodeURIComponent(name)}`), onSuccess: () => qc.invalidateQueries({ queryKey: ["jobs"] }) });
+  const loadSample = useMutation({ mutationFn: (name: string) => post(`/datasets/samples/${encodeURIComponent(name)}${tq ? `?${tq}` : ""}`), onSuccess: () => qc.invalidateQueries({ queryKey: ["jobs"] }) });
   const fileRef = useRef<HTMLInputElement>(null);
   const list = useQuery({ queryKey: ["datasets"], queryFn: () => get("/datasets") });
   const jobs = useQuery({ queryKey: ["jobs"], queryFn: () => get("/datasets/jobs"), refetchInterval: (q) => ((q.state.data as any[])?.some((j) => j.state === "running") ? 1000 : 5000) });
@@ -19,13 +21,14 @@ export default function Datasets() {
     const fd = new FormData(); Array.from(files).forEach((f) => fd.append("files", f));
     setErr(null);
     if (mapping.trim()) fd.append("mapping", mapping);
+    if (team != null) fd.append("team_id", String(team));
     try { await api(`/datasets?combine=${combine}`, { method: "POST", form: fd }); qc.invalidateQueries({ queryKey: ["jobs"] }); } catch (e) { setErr(e); }
   };
-  const demo = useMutation({ mutationFn: () => post("/datasets/demo"), onSuccess: () => qc.invalidateQueries({ queryKey: ["datasets"] }) });
+  const demo = useMutation({ mutationFn: () => post(`/datasets/demo${tq ? `?${tq}` : ""}`), onSuccess: () => qc.invalidateQueries({ queryKey: ["datasets"] }) });
   const remove = useMutation({ mutationFn: (k: string) => del(`/datasets/${k}`), onSuccess: () => qc.invalidateQueries({ queryKey: ["datasets"] }) });
   return (
     <div className="stack">
-      <div className="row between"><h2>{t("ds_title")}</h2><div className="row">{(list.data?.length ?? 0) >= 2 && <Btn onClick={() => setCmp([list.data[0].id, list.data[1].id])}>{t("ds_compare")}</Btn>}<Btn onClick={() => demo.mutate()} disabled={demo.isPending}>{t("ds_demo")}</Btn></div></div>
+      <div className="row between"><h2>{t("ds_title")}</h2><div className="row"><TeamPick perm="page.data" value={team} onChange={setTeam} style={{ width: 200 }} />{(list.data?.length ?? 0) >= 2 && <Btn onClick={() => setCmp([list.data[0].id, list.data[1].id])}>{t("ds_compare")}</Btn>}<Btn onClick={() => demo.mutate()} disabled={demo.isPending}>{t("ds_demo")}</Btn></div></div>
       <Card title={t("ds_upload")}>
         <div className={`drop ${drag ? "on" : ""}`} onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)} onDrop={(e) => { e.preventDefault(); setDrag(false); upload(e.dataTransfer.files); }} onClick={() => fileRef.current?.click()}>
           📂 {t("ds_drop")}<input ref={fileRef} type="file" multiple style={{ display: "none" }} onChange={(e) => e.target.files && upload(e.target.files)} /></div>
@@ -43,10 +46,11 @@ export default function Datasets() {
           { k: "name", label: t("name"), render: (r) => <Link to={`/datasets/${r.id}`}><b>{r.name}</b></Link> },
           { k: "events", label: t("ds_events"), num: true, render: (r) => r.events.toLocaleString() }, { k: "signals", label: t("ds_signals"), num: true }, { k: "incidents", label: t("ds_incidents"), num: true },
           { k: "elapsed", label: t("time"), num: true, render: (r) => `${r.elapsed}${t("ds_elapsed")}` }, { k: "loaded_at", label: "", render: (r) => <span className="muted small">{fmtTs(r.loaded_at)} · {r.stamp?.result?.slice(0, 10)}</span> },
+          ...((list.data ?? []).some((r: any) => r.team) ? [{ k: "team", label: t("tmr_team"), render: (r: any) => <TeamChip name={r.team} /> }] : []),
           { k: "x", label: "", render: (r) => <div className="row"><Link className="btn sm" to={`/datasets/${r.id}`}>{t("ds_open")}</Link><Confirm onConfirm={() => remove.mutate(r.id)}>{t("delete")}</Confirm></div> }]} rows={list.data} />}
       </Card>
       {cmp.length === 2 && <CompareModal list={list.data ?? []} a={cmp[0]} b={cmp[1]} onPick={setCmp} onClose={() => setCmp([])} />}
-      {fetchOpen && <FetchModal kind={fetchOpen} onClose={() => { setFetchOpen(""); qc.invalidateQueries({ queryKey: ["jobs"] }); }} />}
+      {fetchOpen && <FetchModal kind={fetchOpen} team={team} onClose={() => { setFetchOpen(""); qc.invalidateQueries({ queryKey: ["jobs"] }); }} />}
     </div>
   );
 }
@@ -65,15 +69,15 @@ function CompareModal({ list, a, b, onPick, onClose }: { list: any[]; a: string;
 }
 
 
-function FetchModal({ kind: k0, onClose }: { kind?: string; onClose: () => void }) {
+function FetchModal({ kind: k0, team, onClose }: { kind?: string; team?: number | null; onClose: () => void }) {
   const { t } = useT(); const [f, setF] = useState({ kind: k0 ?? "http", url: "", headers: "", method: "GET", body: "", path: "", tool: "", arguments: "{}", source: "", minutes: 60, limit: 20000 }); const [tools, setTools] = useState<string[]>([]); const [err, setErr] = useState<any>(null); const [busy, setBusy] = useState(false);
   const set = (k: string) => (e: any) => setF({ ...f, [k]: e.target.value });
   const srcs = useQuery({ queryKey: ["sources"], queryFn: () => get("/sources"), enabled: f.kind === "source" });
   const live = useQuery({ queryKey: ["live-stats-mini"], queryFn: () => get("/live/stats?window=60"), enabled: f.kind === "live" });
   const go = async () => { setErr(null); setBusy(true); try {
-    if (f.kind === "live") await post("/live/analyze");
-    else if (f.kind === "source") await post("/datasets/from-source", { id: Number(f.source), minutes: Number(f.minutes), limit: Number(f.limit) });
-    else await post("/datasets/fetch", { ...f, arguments: JSON.parse(f.arguments || "{}") });
+    if (f.kind === "live") await post(`/live/analyze${team != null ? `?team_id=${team}` : ""}`);
+    else if (f.kind === "source") await post("/datasets/from-source", { id: Number(f.source), minutes: Number(f.minutes), limit: Number(f.limit), team_id: team ?? null });
+    else await post("/datasets/fetch", { ...f, arguments: JSON.parse(f.arguments || "{}"), team_id: team ?? null });
     onClose(); } catch (x) { setErr(x); } finally { setBusy(false); } };
   const listTools = async () => { setErr(null); try { setTools(await post("/datasets/mcp-tools", { ...f, arguments: {} })); } catch (x) { setErr(x); } };
   const KINDS = [["http", "🌐", t("ds_fetch_http"), "REST / JSON / text"], ["mcp", "🧩", t("ds_fetch_mcp"), "tools/call"], ["live", "📡", t("ds_fetch_live"), t("ops_analyze")], ["source", "🔎", t("ds_fetch_source"), "Elasticsearch · Loki · Splunk · Graylog"]];

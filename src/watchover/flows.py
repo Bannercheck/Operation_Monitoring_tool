@@ -19,6 +19,7 @@ PORTS = {22: "ssh", 25: "smtp", 53: "dns", 80: "http", 88: "kerberos", 110: "pop
          9000: "http", 9042: "cassandra", 9092: "kafka", 9200: "elasticsearch", 9300: "elasticsearch", 11211: "memcached", 15672: "rabbitmq",
          27017: "mongodb", 30015: "hana", 30013: "hana", 30041: "hana", 50000: "sap-http", 50001: "sap-https", 1414: "ibm-mq"}
 DB_PORTS = {1433, 1521, 1522, 3306, 5432, 6379, 9042, 27017, 30013, 30015, 30041, 11211}
+PROXY_PROCS = {"nginx", "httpd", "apache2", "haproxy", "envoy", "traefik", "caddy"}
 
 
 CATEGORY = {"postgres": "db", "oracle": "db", "mysql": "db", "sqlserver": "db", "hana": "db", "mongodb": "db", "redis": "cache", "memcached": "cache",
@@ -37,6 +38,30 @@ def port_name(port: int) -> str:
     return PORTS.get(port) or (f"hana" if 30000 <= port < 40000 and str(port).endswith("15") else f"tcp/{port}")
 
 
+_TAG = re.compile(r"^[a-z0-9][a-z0-9_.+-]{0,31}$")
+
+
+_KNOWN: frozenset = frozenset()
+
+
+def clean_tags(v) -> str:
+    """The agent's flow.tech (comma-joined fingerprint tags) as stored: tags of the fixed dictionary only (techstack.TECH and its
+    helper tags), sorted, at most 24, read from the first 2 KB. Anything else an agent might send (a list, a number, free text, a
+    user name, markup) is dropped, so nothing but known tag names ever reaches the database."""
+    global _KNOWN
+    if not v or not isinstance(v, str):
+        return ""
+    if not _KNOWN:
+        from .techstack import AMBIGUOUS_TAGS, HELPER_TAGS, TECH   # techstack imports this module: resolved at first use
+        _KNOWN = frozenset(TECH) | HELPER_TAGS | AMBIGUOUS_TAGS
+    tags = sorted({t for t in (x.strip().lower() for x in v[:2048].split(",")) if t in _KNOWN and _TAG.match(t)})
+    return ",".join(tags[:24])
+
+
+def _tags(v) -> frozenset:
+    return frozenset(v.split(",")) if v else frozenset()
+
+
 class FlowStore:
     def __init__(self, kb, agents=None, inventory=None):
         self.kb, self.agents, self.inventory = kb, agents, inventory
@@ -44,8 +69,15 @@ class FlowStore:
         kb._exec("""CREATE TABLE IF NOT EXISTS net_flows (host TEXT, process TEXT, dir TEXT, endpoint TEXT, env TEXT DEFAULT '', last_count INTEGER,
             samples INTEGER DEFAULT 1, first_seen TEXT, last_seen TEXT, PRIMARY KEY (host, process, dir, endpoint))""")
         kb._exec("CREATE INDEX IF NOT EXISTS net_flows_seen ON net_flows(last_seen)")
+        kb._exec("CREATE INDEX IF NOT EXISTS net_flows_endpoint ON net_flows(endpoint)")   # who calls a host: flows ending at its addresses
+        try:
+            if "tech" not in kb.columns("net_flows"):        # agent fingerprints (flow.tech), older tables get the column
+                kb._exec("ALTER TABLE net_flows ADD COLUMN tech TEXT DEFAULT ''")
+        except Exception:  # noqa: BLE001 - another process added it first
+            pass
         self._names: dict[str, str] = {}
         self._names_at = 0.0
+        self.tech = None                                     # TechStack (set by Services): technology of each integration
 
     def add(self, events) -> int:
         """Flow observations (attributes flow.dir / flow.process / flow.remote | flow.port / flow.count) -> upserts."""
@@ -64,12 +96,13 @@ class FlowStore:
             except (TypeError, ValueError):
                 n = 1
             ts = (o.timestamp if o.timestamp.tzinfo else o.timestamp.replace(tzinfo=UTC)).isoformat()
-            rows.append((o.host[:120], str(a.get("flow.process") or "?")[:60], d, str(ep)[:80], o.environment or "", n, ts, ts))
+            rows.append((o.host[:120], str(a.get("flow.process") or "?")[:60], d, str(ep)[:80], o.environment or "", n, ts, ts, clean_tags(a.get("flow.tech"))))
         if not rows:
             return 0
         with self.lock:
-            sql = ("INSERT INTO net_flows (host, process, dir, endpoint, env, last_count, samples, first_seen, last_seen) VALUES (?,?,?,?,?,?,1,?,?)"
-                   + self.kb.upsert_suffix("host, process, dir, endpoint", "last_count=excluded.last_count, samples=net_flows.samples+1, last_seen=excluded.last_seen, env=excluded.env"))
+            sql = ("INSERT INTO net_flows (host, process, dir, endpoint, env, last_count, samples, first_seen, last_seen, tech) VALUES (?,?,?,?,?,?,1,?,?,?)"
+                   + self.kb.upsert_suffix("host, process, dir, endpoint", "last_count=excluded.last_count, samples=net_flows.samples+1, last_seen=excluded.last_seen, "
+                                           "env=excluded.env, tech=CASE WHEN excluded.tech <> '' THEN excluded.tech ELSE net_flows.tech END"))
             self.kb.executemany(sql, rows)
         return len(rows)
 
@@ -126,19 +159,26 @@ class FlowStore:
         return {"nodes": [{**n, "processes": sorted(n["processes"]), "listens": listens.get(n["id"], [])} for n in nodes.values()],
                 "edges": [{**e, "processes": sorted(e["processes"]), "evidence": "flow"} for e in edges.values()]}
 
-    def _rows(self, minutes: int | None, env: str | None = None) -> list[dict]:
+    def _rows(self, minutes: int | None, env: str | None = None, cols: str = "*") -> list[dict]:
         where, p = [], []
         if minutes:
             where.append("last_seen >= ?"); p.append((datetime.now(UTC) - timedelta(minutes=minutes)).isoformat())
         if env:
             where.append("env = ?"); p.append(env)
-        return self.kb._exec("SELECT * FROM net_flows" + (" WHERE " + " AND ".join(where) if where else ""), tuple(p))
+        return self.kb._exec(f"SELECT {cols} FROM net_flows" + (" WHERE " + " AND ".join(where) if where else ""), tuple(p))
 
     def hosts(self, minutes: int | None = 1440, env: str | None = None) -> list[dict]:
-        """Every host seen in flows (as a sender or as a named target) with how many integrations it has each way."""
+        """Every host seen in flows (as a sender or as a named target) with how many integrations it has each way, and (with a
+        TechStack attached) the top technologies running on it."""
         names = self._ip_names()
         out: dict[str, dict] = {}
-        for r in self._rows(minutes, env):
+        agents: set = set()
+        procs: dict[str, dict] = {}
+        for r in self._rows(minutes, env, "host, process, dir, endpoint, env, last_seen, tech"):
+            agents.add(r["host"])
+            pt = procs.setdefault(r["host"], {}).setdefault(r["process"], set())
+            if r.get("tech"):
+                pt.update(_tags(r["tech"]))
             h = out.setdefault(r["host"], {"host": r["host"], "env": r["env"], "agent": True, "outbound": set(), "inbound": set(), "protocols": set(), "last_seen": r["last_seen"]})
             h["last_seen"] = max(h["last_seen"], r["last_seen"])
             if r["dir"] == "in":
@@ -151,25 +191,35 @@ class FlowStore:
             h["outbound"].add((tgt, port)); h["protocols"].add(proto)
             t = out.setdefault(tgt, {"host": tgt, "env": "", "agent": False, "outbound": set(), "inbound": set(), "protocols": set(), "last_seen": r["last_seen"]})
             t["inbound"].add((r["host"], port)); t["protocols"].add(proto)
-        agents = {r["host"] for r in self._rows(minutes, env)}
-        return sorted(({**h, "agent": h["host"] in agents, "outbound": len(h["outbound"]), "inbound": len(h["inbound"]), "protocols": sorted(h["protocols"])}
+        tops = self.tech.host_names(procs, list(out), key=(minutes, env)) if self.tech is not None else {}
+        return sorted(({**h, "agent": h["host"] in agents, "outbound": len(h["outbound"]), "inbound": len(h["inbound"]), "protocols": sorted(h["protocols"]),
+                        **({"tech": tops.get(h["host"], [])} if self.tech is not None else {})}
                        for h in out.values()), key=lambda x: (not x["agent"], -(x["outbound"] + x["inbound"]), x["host"]))
 
-    def host_map(self, host: str, minutes: int | None = 1440) -> dict:
+    def host_map(self, host: str, minutes: int | None = 1440, visible=None, manual_ok=None) -> dict:
         """One host's integrations: who connects to it (other agents' flows that end at its address, plus its listening ports),
-        and what it connects to, grouped by category (database, messaging, API, SAP, identity, mail, file transfer ...)."""
+        and what it connects to, grouped by category (database, messaging, API, SAP, identity, mail, file transfer ...). With a
+        TechStack attached every integration carries "tech" (which technology it runs on) and the host its "stack"; `visible`
+        (host -> bool) limits the evidence to hosts the reader may see, `manual_ok` (team_id -> bool) the manual overrides."""
         names = self._ip_names()
         my_ips = {ip for ip, n in names.items() if n == host}
-        rows = self._rows(minutes)
+        rows = self._where(minutes, "host = ?", (host,))     # indexed reads only: this host's rows and the flows that end at its addresses
+        for ip in sorted(my_ips | {host}):
+            rows += [r for r in self._where(minutes, "dir = 'out' AND endpoint >= ? AND endpoint < ?", (ip + ":", ip + ";")) if r["host"] != host]
         listens, outbound, inbound = [], {}, {}
         procs: set[str] = set()
+        ctx = {"listen": {}, "proxy": {}, "procs": {}, "names": names, "minutes": minutes}   # what the TechStack needs: listeners and proxy upstreams of the peers
+        if self.tech is not None:
+            self._peer_ctx(ctx, rows, host, minutes)
         for r in rows:
+            tg = _tags(r.get("tech"))
             if r["host"] == host:
                 procs.add(r["process"])
+                ctx["procs"].setdefault(r["process"], set()).update(tg)
                 if r["dir"] == "in":
                     port = int(r["endpoint"]) if str(r["endpoint"]).isdigit() else 0
                     listens.append({"port": r["endpoint"], "protocol": port_name(port) if port else r["endpoint"], "process": r["process"], "peers": r["last_count"],
-                                    "last_seen": r["last_seen"]})
+                                    "last_seen": r["last_seen"], "_tags": tg})
                     continue
                 ip, _, port = r["endpoint"].rpartition(":")
                 port_i = int(port) if port.isdigit() else 0
@@ -177,8 +227,9 @@ class FlowStore:
                 tgt = names.get(ip) or ip
                 k = (tgt, port_i)
                 o = outbound.setdefault(k, {"target": tgt, "ip": ip, "port": port_i, "protocol": proto, "category": category(proto), "known": tgt != ip,
-                                            "processes": set(), "connections": 0, "samples": 0, "first_seen": r["first_seen"], "last_seen": r["last_seen"]})
+                                            "processes": set(), "connections": 0, "samples": 0, "first_seen": r["first_seen"], "last_seen": r["last_seen"], "_procs": {}})
                 o["processes"].add(r["process"]); o["connections"] += int(r["last_count"] or 0); o["samples"] += int(r["samples"] or 0)
+                o["_procs"].setdefault(r["process"], set()).update(tg)
                 o["first_seen"] = min(o["first_seen"], r["first_seen"]); o["last_seen"] = max(o["last_seen"], r["last_seen"])
             elif r["dir"] == "out":
                 ip, _, port = r["endpoint"].rpartition(":")
@@ -186,15 +237,60 @@ class FlowStore:
                     port_i = int(port) if port.isdigit() else 0
                     k = (r["host"], port_i)
                     i = inbound.setdefault(k, {"source": r["host"], "port": port_i, "protocol": port_name(port_i), "category": category(port_name(port_i)),
-                                               "processes": set(), "connections": 0, "last_seen": r["last_seen"]})
+                                               "processes": set(), "connections": 0, "last_seen": r["last_seen"], "_procs": {}})
                     i["processes"].add(r["process"]); i["connections"] += int(r["last_count"] or 0); i["last_seen"] = max(i["last_seen"], r["last_seen"])
+                    i["_procs"].setdefault(r["process"], set()).update(tg)
         fix = lambda d: {**d, "processes": sorted(d["processes"])}   # noqa: E731
         out_l = sorted((fix(o) for o in outbound.values()), key=lambda x: (x["category"], -x["connections"]))
         by_cat: dict[str, int] = {}
         for o in out_l:
             by_cat[o["category"]] = by_cat.get(o["category"], 0) + 1
-        return {"host": host, "ips": sorted(my_ips), "processes": sorted(procs), "listens": sorted(listens, key=lambda x: str(x["port"])),
-                "outbound": out_l, "inbound": sorted((fix(i) for i in inbound.values()), key=lambda x: -x["connections"]), "categories": by_cat}
+        m = {"host": host, "ips": sorted(my_ips), "processes": sorted(procs), "listens": sorted(listens, key=lambda x: str(x["port"])),
+             "outbound": out_l, "inbound": sorted((fix(i) for i in inbound.values()), key=lambda x: -x["connections"]), "categories": by_cat}
+        if self.tech is not None:
+            try:
+                self.tech.annotate(m, ctx, visible=visible, manual_ok=manual_ok)
+            except Exception:  # noqa: BLE001 - the map never fails because of the technology guess
+                import logging
+                logging.getLogger(__name__).exception("techstack annotate failed")
+        for d in (*m["outbound"], *m["inbound"], *m["listens"]):
+            d.pop("_procs", None); d.pop("_tags", None)
+        return m
+
+    def _where(self, minutes: int | None, cond: str, params: tuple) -> list[dict]:
+        where, p = [cond], list(params)
+        if minutes:
+            where.append("last_seen >= ?"); p.append((datetime.now(UTC) - timedelta(minutes=minutes)).isoformat())
+        return self.kb._exec("SELECT * FROM net_flows WHERE " + " AND ".join(where), tuple(p))
+
+    def _peer_ctx(self, ctx: dict, rows: list, host: str, minutes: int | None) -> None:
+        """Listening processes and proxy upstreams of this host, of the hosts it calls and (two hops deep) of what their proxies
+        forward to: the server side of every integration, read by host (primary key) instead of scanning the window."""
+        names = ctx["names"]
+        need, loaded, extra = {host}, set(), list(rows)
+        for depth in range(4):
+            for r in extra:
+                if r["host"] not in need:
+                    continue
+                if r["dir"] == "in":
+                    ctx["listen"].setdefault((r["host"], str(r["endpoint"])), {}).setdefault(r["process"], set()).update(_tags(r.get("tech")))
+                elif r["process"] in PROXY_PROCS:
+                    ctx["proxy"].setdefault(r["host"], []).append((r["process"], r["endpoint"], int(r["last_count"] or 0), _tags(r.get("tech"))))
+            loaded |= need
+            nxt = set()
+            for r in extra:
+                if r["host"] in need and r["dir"] == "out" and (r["host"] == host or r["process"] in PROXY_PROCS):
+                    ip = str(r["endpoint"]).rpartition(":")[0]
+                    nxt.add(names.get(ip) or ip)
+            need = nxt - loaded
+            if not need or depth == 3:
+                break
+            extra = []
+            hs = sorted(need)
+            for i in range(0, len(hs), 200):
+                chunk = hs[i:i + 200]
+                extra += self._where(minutes, f"host IN ({','.join('?' * len(chunk))}) AND (dir = 'in' OR process IN ({','.join('?' * len(PROXY_PROCS))}))",
+                                     (*chunk, *sorted(PROXY_PROCS)))
 
     def prune(self, days: int = 7) -> None:
         self.kb._exec("DELETE FROM net_flows WHERE last_seen < ?", ((datetime.now(UTC) - timedelta(days=days)).isoformat(),))

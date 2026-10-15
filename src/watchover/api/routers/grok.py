@@ -10,7 +10,11 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from ... import drain, grok
-from ..security import require, services
+from ..security import access, require, require_install, services
+from .datasets import dataset_for
+
+# patterns, learned column mappings and Drain templates parse every team's lines: changing them is installation-wide (act.parser
+# from the installation role and admin / scope.all / no team); a team member's installation role does not reach them.
 
 router = APIRouter(prefix="/grok", tags=["grok"])
 CORPUS = Path(__file__).resolve().parents[4] / "samples" / "corpus"
@@ -70,7 +74,7 @@ def patterns(user=Depends(require("page.parser"))):
 
 
 @router.post("", status_code=201)
-def add(body: PatternIn, user=Depends(require("act.parser"))):
+def add(body: PatternIn, user=Depends(require_install("act.parser"))):
     _validate(body)
     items = grok.user_patterns()
     if any(x.name == body.name for x in items) or any(x.name == body.name for x in grok.LINES):
@@ -81,7 +85,7 @@ def add(body: PatternIn, user=Depends(require("act.parser"))):
 
 
 @router.patch("/{pid}")
-def update(pid: str, body: PatternPatch, user=Depends(require("act.parser"))):
+def update(pid: str, body: PatternPatch, user=Depends(require_install("act.parser"))):
     _validate(body)
     items = grok.user_patterns()
     for x in items:
@@ -101,7 +105,7 @@ def update(pid: str, body: PatternPatch, user=Depends(require("act.parser"))):
 
 
 @router.delete("/{pid}")
-def delete(pid: str, user=Depends(require("act.parser"))):
+def delete(pid: str, user=Depends(require_install("act.parser"))):
     items = grok.user_patterns()
     keep = [x for x in items if x.id != pid]
     if len(keep) == len(items):
@@ -116,9 +120,9 @@ def test(body: TestIn, user=Depends(require("page.parser"))):
 
 
 @router.get("/unparsed/{key}")
-def unparsed(key: str, limit: int = 200, user=Depends(require("page.parser")), svc=Depends(services)):
+def unparsed(key: str, limit: int = 200, acc=Depends(access), user=Depends(require("page.parser")), svc=Depends(services)):
     """Lines of a dataset the parser understood least: no timestamp and no explicit level, grouped by their template."""
-    a = svc.datasets.get(key)["analysis"]
+    a = dataset_for(svc, acc, key)["analysis"]
     groups: dict[str, dict] = {}
     for o in a.observations:
         at = o.attributes
@@ -134,14 +138,18 @@ def unparsed(key: str, limit: int = 200, user=Depends(require("page.parser")), s
 
 # ------------------------------------------------------------------ Drain templates (learned from the live feed and every dataset)
 @router.get("/templates")
-def templates(q: str = "", limit: int = 200, user=Depends(require("page.parser")), svc=Depends(services)):
+def templates(q: str = "", limit: int = 200, acc=Depends(access), user=Depends(require("page.parser")), svc=Depends(services)):
+    """Drain templates are learned from every team's lines (live feed and datasets): only installation-wide accounts see them; a
+    team-scoped account gets the counts and no template text or sample (they would carry other teams' log content)."""
+    if not acc.wide:
+        return {"stats": svc.templates.stats(), "rows": [], "scoped": True}
     return {"stats": svc.templates.stats(), "rows": svc.templates.list(q, limit)}
 
 
 @router.post("/templates/{cid}/propose")
-def propose(cid: int, user=Depends(require("page.parser")), svc=Depends(services)):
+def propose(cid: int, acc=Depends(access), user=Depends(require("page.parser")), svc=Depends(services)):
     """A grok pattern drafted from a cluster: literal tokens kept, variables typed from the sample (IP, NUMBER, path, URI, UUID, ISO time)."""
-    c = svc.templates.get(cid)
+    c = svc.templates.get(cid) if acc.wide else None
     if not c:
         raise KeyError(cid)
     pat = drain.propose_grok(c.template, c.sample)
@@ -150,8 +158,8 @@ def propose(cid: int, user=Depends(require("page.parser")), svc=Depends(services
 
 
 @router.delete("/templates/{cid}")
-def forget_template(cid: int, user=Depends(require("act.parser")), svc=Depends(services)):
-    c = svc.templates.get(cid)
+def forget_template(cid: int, acc=Depends(access), user=Depends(require_install("act.parser")), svc=Depends(services)):
+    c = svc.templates.get(cid) if acc.wide else None
     if not c:
         raise KeyError(cid)
     with svc.templates.drain.lock:
@@ -176,7 +184,7 @@ def profiles_list(user=Depends(require("page.parser"))):
 
 
 @router.patch("/profiles/{sig}")
-def profiles_update(sig: str, body: ProfilePatch, user=Depends(require("act.parser"))):
+def profiles_update(sig: str, body: ProfilePatch, user=Depends(require_install("act.parser"))):
     from ... import profiles as wo_profiles
     rec = wo_profiles.update(sig, body.mapping, body.name)
     if not rec:
@@ -185,7 +193,7 @@ def profiles_update(sig: str, body: ProfilePatch, user=Depends(require("act.pars
 
 
 @router.delete("/profiles/{sig}")
-def profiles_delete(sig: str, user=Depends(require("act.parser"))):
+def profiles_delete(sig: str, user=Depends(require_install("act.parser"))):
     from ... import profiles as wo_profiles
     if not wo_profiles.delete(sig):
         raise KeyError(sig)

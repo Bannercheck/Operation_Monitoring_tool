@@ -23,7 +23,7 @@ from email.message import EmailMessage
 from email.utils import formataddr
 
 UTC = timezone.utc
-CONDITIONS = ("slo", "errors", "metric", "agent_offline", "source_failing", "incident", "anomaly")
+CONDITIONS = ("slo", "errors", "metric", "agent_offline", "source_failing", "incident", "anomaly", "query")   # query: log explorer (logwatch.py)
 SEVERITIES = ("critical", "high", "medium", "low")
 # SMS gateways. fields: which inputs the settings form shows; number: how the recipient number is written (e164 +90…, digits 90…, national 0…);
 # custom: the URL and body come from the provider's own integration document (operator corporate SMS contracts carry a per-customer endpoint);
@@ -159,12 +159,26 @@ class Notifier:
         kb._exec(f"""CREATE TABLE IF NOT EXISTS alerts (id {pk}, ts TEXT, rule_id INTEGER, key TEXT, severity TEXT, title TEXT, body TEXT, channels TEXT, recipients TEXT,
             ok INTEGER, detail TEXT DEFAULT '')""")
         kb._exec("CREATE INDEX IF NOT EXISTS alerts_key ON alerts(key, ts)")
+        for t in ("recipients", "notify_groups", "notify_rules", "alerts"):      # team-owned rows (NULL: installation-wide)
+            try:
+                if "team_id" not in kb.columns(t):
+                    kb._exec(f"ALTER TABLE {t} ADD COLUMN team_id INTEGER")
+            except Exception:  # noqa: BLE001
+                pass
+        try:                                                     # condition "query": matching log lines in window_min minutes op threshold
+            have = set(kb.columns("notify_rules"))
+            for c, ddl in (("query", "TEXT DEFAULT ''"), ("window_min", "INTEGER DEFAULT 5"), ("op", "TEXT DEFAULT '>='"), ("owner", "TEXT DEFAULT ''")):
+                if c not in have:
+                    kb._exec(f"ALTER TABLE notify_rules ADD COLUMN {c} {ddl}")
+        except Exception:  # noqa: BLE001
+            pass
 
     # ---- recipients / groups
-    def add_recipient(self, name: str, email: str = "", phone: str = "", groups: str = "", note: str = "") -> int:
+    def add_recipient(self, name: str, email: str = "", phone: str = "", groups: str = "", note: str = "", team_id: int | None = None) -> int:
         if not (email or phone):
             raise ValueError("an e-mail address or a phone number is required")
-        return self.kb._insert("INSERT INTO recipients (name, email, phone, groups, note) VALUES (?,?,?,?,?)", (name.strip(), email.strip().lower(), phone.strip(), groups.strip().lower(), note.strip()))
+        return self.kb._insert("INSERT INTO recipients (name, email, phone, groups, note, team_id) VALUES (?,?,?,?,?,?)",
+                               (name.strip(), email.strip().lower(), phone.strip(), groups.strip().lower(), note.strip(), team_id))
 
     def recipients(self) -> list[dict]:
         return [dict(r) for r in self.kb._exec("SELECT * FROM recipients ORDER BY name")]
@@ -179,9 +193,9 @@ class Notifier:
     def delete_recipient(self, rid: int) -> None:
         self.kb._exec("DELETE FROM recipients WHERE id=?", (rid,))
 
-    def add_group(self, name: str, email: str = "", note: str = "") -> int:
+    def add_group(self, name: str, email: str = "", note: str = "", team_id: int | None = None) -> int:
         """A group is a label on recipients and optionally a distribution list address of its own (ops-team@corp.com)."""
-        return self.kb._insert("INSERT INTO notify_groups (name, email, note) VALUES (?,?,?)", (name.strip().lower(), email.strip().lower(), note.strip()))
+        return self.kb._insert("INSERT INTO notify_groups (name, email, note, team_id) VALUES (?,?,?,?)", (name.strip().lower(), email.strip().lower(), note.strip(), team_id))
 
     def groups(self) -> list[dict]:
         return [dict(r) for r in self.kb._exec("SELECT * FROM notify_groups ORDER BY name")]
@@ -189,16 +203,24 @@ class Notifier:
     def delete_group(self, gid: int) -> None:
         self.kb._exec("DELETE FROM notify_groups WHERE id=?", (gid,))
 
-    def resolve(self, targets: str) -> tuple[list[str], list[str]]:
-        """'ops, @dba, ali@corp.com, +90555...' -> (emails, phones): names / group labels / literal addresses."""
+    def resolve(self, targets: str, team_id: int | None = None) -> tuple[list[str], list[str]]:
+        """'ops, @dba, ali@corp.com, +90555...' -> (emails, phones): names / group labels / literal addresses. With a team: only that
+        team's recipients and groups, and no literal address (a team's alert never leaves the team's own list)."""
         emails, phones = [], []
         recs, grps = self.recipients(), {g["name"]: g for g in self.groups()}
+        if team_id is not None:
+            recs = [r for r in recs if r.get("team_id") == team_id]
+            grps = {k: g for k, g in grps.items() if g.get("team_id") == team_id}
         for tok in [x.strip() for x in (targets or "").split(",") if x.strip()]:
             low = tok.lower().lstrip("@")
             if "@" in tok and not tok.startswith("@"):
-                emails.append(tok.lower()); continue
+                if team_id is None:
+                    emails.append(tok.lower())
+                continue
             if tok.startswith("+") or tok.replace(" ", "").isdigit():
-                phones.append(tok.replace(" ", "")); continue
+                if team_id is None:
+                    phones.append(tok.replace(" ", ""))
+                continue
             members = [r for r in recs if r["enabled"] and low in [g.strip() for g in r["groups"].split(",")]]
             if low in grps or members:                       # a group record, or just a label people carry
                 if low in grps and grps[low]["email"]:
@@ -213,17 +235,62 @@ class Notifier:
                     if r["phone"]: phones.append(r["phone"])
         return sorted(set(emails)), sorted(set(phones))
 
+    def check_team_targets(self, targets: str, channels: str, team_id: int) -> None:
+        """A team's rule / policy: e-mail and SMS only, and every target must be one of the team's own recipients or groups."""
+        bad = [c.strip() for c in (channels or "").split(",") if c.strip() and c.strip() not in ("email", "sms")]
+        if bad:
+            raise ValueError("team alerts use e-mail or SMS only (no webhook)")
+        names = {r["name"].lower() for r in self.recipients() if r.get("team_id") == team_id}
+        labels = {g.strip() for r in self.recipients() if r.get("team_id") == team_id for g in (r.get("groups") or "").split(",") if g.strip()}
+        groups = {g["name"] for g in self.groups() if g.get("team_id") == team_id}
+        for tok in [x.strip() for x in (targets or "").split(",") if x.strip()]:
+            low = tok.lower().lstrip("@")
+            if ("@" in tok and not tok.startswith("@")) or tok.startswith("+") or tok.replace(" ", "").isdigit():
+                raise ValueError("team alerts go to the team's recipients or groups, not to a literal address")
+            if low not in names and low not in labels and low not in groups:
+                raise ValueError(f"'{tok}' is not a recipient or group of this team")
+
     # ---- rules
-    def add_rule(self, name: str, condition: str, threshold: float = 0, env: str = "", severity: str = "high", channels: str = "email", targets: str = "", cooldown_min: int = 30) -> int:
+    def add_rule(self, name: str, condition: str, threshold: float = 0, env: str = "", severity: str = "high", channels: str = "email", targets: str = "", cooldown_min: int = 30,
+                 team_id: int | None = None) -> int:
         if condition not in CONDITIONS:
             raise ValueError("unknown condition")
-        return self.kb._insert("INSERT INTO notify_rules (name, condition, threshold, env, severity, channels, targets, cooldown_min) VALUES (?,?,?,?,?,?,?,?)",
-                               (name.strip(), condition, float(threshold or 0), env.strip().lower(), severity, channels, targets.strip(), int(cooldown_min)))
+        return self.kb._insert("INSERT INTO notify_rules (name, condition, threshold, env, severity, channels, targets, cooldown_min, team_id) VALUES (?,?,?,?,?,?,?,?,?)",
+                               (name.strip(), condition, float(threshold or 0), env.strip().lower(), severity, channels, targets.strip(), int(cooldown_min), team_id))
+
+    def set_query(self, rid: int, query: str, window_min: int = 5, op: str = ">=", owner: str = "") -> None:
+        """The log-query part of a rule (condition "query"): the query text, the window, >= (burst) or < (absence), the owner whose
+        team scope the count runs under."""
+        if op not in (">=", "<"):
+            raise ValueError("op must be >= or <")
+        self.kb._exec("UPDATE notify_rules SET query=?, window_min=?, op=?, owner=? WHERE id=?", (query, max(1, min(int(window_min), 60)), op, owner.strip().lower(), rid))
 
     def rules(self) -> list[dict]:
         return [dict(r) for r in self.kb._exec("SELECT * FROM notify_rules ORDER BY id")]
 
     _RULE_COLS = ("name", "condition", "threshold", "env", "severity", "channels", "targets", "cooldown_min", "enabled")
+
+    def recipient(self, rid: int) -> dict:
+        rows = self.kb._exec("SELECT * FROM recipients WHERE id=?", (rid,))
+        if not rows:
+            raise KeyError(rid)
+        return dict(rows[0])
+
+    def group(self, gid: int) -> dict:
+        rows = self.kb._exec("SELECT * FROM notify_groups WHERE id=?", (gid,))
+        if not rows:
+            raise KeyError(gid)
+        return dict(rows[0])
+
+    def rule(self, rid: int) -> dict:
+        rows = self.kb._exec("SELECT * FROM notify_rules WHERE id=?", (rid,))
+        if not rows:
+            raise KeyError(rid)
+        return dict(rows[0])
+
+    def set_team(self, table: str, rid: int, team_id: int | None) -> None:
+        if table in ("recipients", "notify_groups", "notify_rules"):
+            self.kb._exec(f"UPDATE {table} SET team_id=? WHERE id=?", (team_id, rid))
 
     def update_rule(self, rid: int, **f) -> None:
         f = {k: v for k, v in f.items() if k in self._RULE_COLS}      # column allowlist: never interpolate a request-supplied identifier
@@ -245,8 +312,11 @@ class Notifier:
         """Send one alert for a rule unless the same key fired within the cooldown; returns the log row."""
         if not force and self.recent(key, int(rule.get("cooldown_min") or 30)):
             return {"skipped": "cooldown"}
-        emails, phones = self.resolve(rule.get("targets", ""))
+        team = rule.get("team_id")
+        emails, phones = self.resolve(rule.get("targets", ""), team)
         chans = [c.strip() for c in (rule.get("channels") or "email").split(",") if c.strip()]
+        if team is not None:                                    # a team's alert: e-mail / SMS to its own recipients, never a webhook URL
+            chans = [c for c in chans if c in ("email", "sms")]
         cfg = self.channels_fn() or {}
         sent, errors = [], []
         if "email" in chans and emails:
@@ -279,8 +349,9 @@ class Notifier:
         ok = bool(sent) and not errors
         row = {"ts": datetime.now(UTC).isoformat(timespec="seconds"), "rule_id": rule.get("id"), "key": key, "severity": rule.get("severity", "high"), "title": title[:200],
                "body": body[:1000], "channels": ",".join(chans), "recipients": ", ".join(emails + phones)[:500], "ok": int(ok), "detail": "; ".join(errors)[:400] if errors else ", ".join(sent)}
-        self.kb._exec("INSERT INTO alerts (ts, rule_id, key, severity, title, body, channels, recipients, ok, detail) VALUES (?,?,?,?,?,?,?,?,?,?)",
-                      tuple(row[k] for k in ("ts", "rule_id", "key", "severity", "title", "body", "channels", "recipients", "ok", "detail")))
+        row["team_id"] = team
+        self.kb._exec("INSERT INTO alerts (ts, rule_id, key, severity, title, body, channels, recipients, ok, detail, team_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                      tuple(row[k] for k in ("ts", "rule_id", "key", "severity", "title", "body", "channels", "recipients", "ok", "detail", "team_id")))
         return row
 
     def test_channel(self, channel: str, target: str) -> tuple[bool, str]:
@@ -318,6 +389,8 @@ class AlertEngine:
         self.runs = 0
         self.last_run = ""
         self.last_fired: list[str] = []
+        self.logwatch = None                                    # LogWatch, set by the app: rule condition "query" (log explorer)
+        self.team_hosts_fn = None                               # team id -> its hosts (set by access.wire): a team's rule sees only them
 
     def evaluate(self, now_iso: str | None = None) -> list[dict]:
         from . import scenario
@@ -327,45 +400,67 @@ class AlertEngine:
                 continue
             env = rule["env"] or None
             cond, thr = rule["condition"], float(rule["threshold"] or 0)
+            team = rule.get("team_id")
+            hs: set | None = None
+            if team is not None:                                # a team's rule: only the team's hosts, its own cooldown keys
+                hs = set(self.team_hosts_fn(team)) if self.team_hosts_fn else set()
+            hf = (tuple(sorted(hs)) or ("\x00no-host-in-scope",)) if hs is not None else None
+            pre = f"t{team}:" if team is not None else ""   # its own cooldown keys (two teams watching one host both get told)
             try:
                 if cond == "slo":
-                    s = self.live.slo(15, env)
+                    s = self.live.slo(15, env, hf) if hf is not None else self.live.slo(15, env)
                     if s["availability"] is not None and s["total"] >= 20 and s["availability"] < (thr or s["slo"]["availability"]):
-                        fired.append(self.n.dispatch(rule, f"slo:{env or 'all'}", f"Availability {s['availability']*100:.2f}% below SLO ({(thr or s['slo']['availability'])*100:.1f}%)" + (f" · {env}" if env else ""),
+                        fired.append(self.n.dispatch(rule, pre + f"slo:{env or 'all'}", f"Availability {s['availability']*100:.2f}% below SLO ({(thr or s['slo']['availability'])*100:.1f}%)" + (f" · {env}" if env else ""),
                                                      f"{s['errors']} ERROR+ of {s['total']} events in the last 15 minutes; error budget left {(s['error_budget'] or 0)*100:.0f}%."))
                 elif cond == "errors":
-                    st_ = self.live.stats(5, env)
+                    st_ = self.live.stats(5, env, hf) if hf is not None else self.live.stats(5, env)
                     per_min = st_["errors"] / 5 if st_.get("errors") is not None else 0
                     if per_min >= (thr or 10):
-                        fired.append(self.n.dispatch(rule, f"errors:{env or 'all'}", f"{per_min:.0f} ERROR+ per minute" + (f" · {env}" if env else ""),
+                        fired.append(self.n.dispatch(rule, pre + f"errors:{env or 'all'}", f"{per_min:.0f} ERROR+ per minute" + (f" · {env}" if env else ""),
                                                      f"{st_['errors']} ERROR+ events in 5 minutes; busiest services: " + ", ".join(f"{a} ({b})" for a, b in list(st_.get("services", []))[:5])))
                 elif cond == "metric":
-                    ms = self.live.metric_stats(5, env)
+                    ms = self.live.metric_stats(5, env, hf) if hf is not None else self.live.metric_stats(5, env)
                     for b in ms.get("breaches", []):
+                        if hs is not None and b.get("host") not in hs:
+                            continue
                         limit = thr or scenario.METRIC_THRESHOLDS.get(b["metric"], 90)
                         if b["value"] >= limit:
-                            fired.append(self.n.dispatch(rule, f"metric:{b['host']}:{b['metric']}", f"{b['host']} {b['metric']} {b['value']:.0f}% (limit {limit:.0f}%)", f"Host {b['host']} · {b['metric']} at {b['value']:.0f}% in the last 5 minutes."))
+                            fired.append(self.n.dispatch(rule, pre + f"metric:{b['host']}:{b['metric']}", f"{b['host']} {b['metric']} {b['value']:.0f}% (limit {limit:.0f}%)", f"Host {b['host']} · {b['metric']} at {b['value']:.0f}% in the last 5 minutes."))
                 elif cond == "anomaly" and self.anomalies is not None:
                     for a in self.anomalies.list("open"):
+                        if hs is not None and a.get("host") not in hs:
+                            continue
                         if a["hits"] == 1 and float(a["score"]) >= (thr or 0):
-                            fired.append(self.n.dispatch(rule, f"anomaly:{a['key']}", f"Anomaly · {a['title']}", f"{a['detail']} · score {a['score']} · kind {a['kind']}"))
+                            fired.append(self.n.dispatch(rule, pre + f"anomaly:{a['key']}", f"Anomaly · {a['title']}", f"{a['detail']} · score {a['score']} · kind {a['kind']}"))
                 elif cond == "agent_offline" and self.registry is not None:
                     from datetime import datetime as _dt
                     for a in self.registry.list():
+                        if hs is not None and a.get("name") not in hs:
+                            continue
                         if a["status"] != "active" or not a["last_seen"]:
                             continue
                         silent = (datetime.now(UTC) - _dt.fromisoformat(a["last_seen"])).total_seconds() / 60
                         if silent >= (thr or 5):
-                            fired.append(self.n.dispatch(rule, f"offline:{a['name']}", f"Agent {a['name']} silent for {silent:.0f} min", f"Last seen {a['last_seen'][:16]} from {a['last_ip'] or '-'} · env {a['env'] or '-'} · site {a['site'] or '-'}."))
+                            fired.append(self.n.dispatch(rule, pre + f"offline:{a['name']}", f"Agent {a['name']} silent for {silent:.0f} min", f"Last seen {a['last_seen'][:16]} from {a['last_ip'] or '-'} · env {a['env'] or '-'} · site {a['site'] or '-'}."))
                 elif cond == "source_failing" and self.sources is not None:
+                    owners = {}
+                    if team is not None:
+                        owners = {r["id"]: r.get("team_id") for r in self.n.kb._exec("SELECT id, team_id FROM sources")}
                     for s_ in self.sources.list():
+                        if team is not None and owners.get(s_.id) != team:
+                            continue
                         if s_.enabled and s_.last_err:
-                            fired.append(self.n.dispatch(rule, f"source:{s_.name}", f"Source {s_.name} failing", f"{s_.kind} at {s_.url}: {s_.last_err[:200]}"))
+                            fired.append(self.n.dispatch(rule, pre + f"source:{s_.name}", f"Source {s_.name} failing", f"{s_.kind} at {s_.url}: {s_.last_err[:200]}"))
+                elif cond == "query" and self.logwatch is not None:
+                    fired.extend(self.logwatch.evaluate(rule, self.n))
                 elif cond == "incident":
-                    rows = self.n.kb._exec("SELECT id, title, text, key FROM lessons WHERE kind='pattern' AND updated_at >= ? ORDER BY id DESC LIMIT 5",
-                                           ((datetime.now(UTC) - timedelta(minutes=max(int(self.every // 60) * 2, 20))).isoformat(timespec="seconds"),))
+                    since = (datetime.now(UTC) - timedelta(minutes=max(int(self.every // 60) * 2, 20))).isoformat(timespec="seconds")
+                    if team is not None:
+                        rows = self.n.kb._exec("SELECT id, title, text, key FROM lessons WHERE kind='pattern' AND team_id=? AND updated_at >= ? ORDER BY id DESC LIMIT 5", (team, since))
+                    else:
+                        rows = self.n.kb._exec("SELECT id, title, text, key FROM lessons WHERE kind='pattern' AND updated_at >= ? ORDER BY id DESC LIMIT 5", (since,))
                     for r in rows:
-                        fired.append(self.n.dispatch(rule, f"incident:{r['key']}", f"Incident pattern: {r['title'][:120]}", r["text"][:600]))
+                        fired.append(self.n.dispatch(rule, pre + f"incident:{r['key']}", f"Incident pattern: {r['title'][:120]}", r["text"][:600]))
             except Exception as e:  # noqa: BLE001
                 fired.append({"error": f"{cond}: {type(e).__name__}: {str(e)[:120]}"})
         self.runs += 1

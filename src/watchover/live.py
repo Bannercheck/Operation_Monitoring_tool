@@ -42,6 +42,7 @@ METRICS = ("cpu", "gpu", "memory", "disk")
 ENV_ORDER = ["prod", "staging", "test", "qa", "dev", "unknown"]   # stable tile order on the operations page
 LATENCY_RE = re.compile(r"(\d+(?:\.\d+)?)\s?ms\b")
 BAD_HOST = re.compile(r"^\[.*\]$|:$|\s|^-$")
+LOCAL_AHEAD = timedelta(minutes=15)                  # a stamp this far ahead of its arrival is a local clock without an offset (_accept)
 
 
 class LiveStore:
@@ -58,6 +59,7 @@ class LiveStore:
         self.on_ingest = None                    # optional hook(events): service-level history rollups
         self.on_flows = None                     # optional hook(flow observations): network edges from agents (--flows)
         self.enricher = None                     # optional hook(observation) -> bool: inventory match (IP → hostname, dc, criticality)
+        self.host_guard = None                   # optional fn(agent_id, team_id, sender, hosts) -> {host: replacement}: team senders (ingest_guard)
         self.metric_hosts: dict[str, set] = {}   # sender -> hosts it reported metrics for (purge on simulation off)
         self.matched = 0                         # events matched to the inventory
         self.started = time.time()
@@ -70,8 +72,12 @@ class LiveStore:
         self.db_served = 0                       # windows answered from the database instead of the ring
         self.last_db_window: tuple | None = None
         self.last_db_window_ms = 0.0
+        self.seq = 0                             # last line id given (logs explorer: line identity, live tail cursor)
+        self.arrivals: deque[tuple[int, float]] = deque(maxlen=200_000)   # (first seq, arrival epoch) per accepted batch
+        self._v2 = False                         # live_batches has the v2 columns (logstore.migrate)
         self._ingest_ms: deque[float] = deque(maxlen=500)   # per-batch ingest time (parse + ring + hooks + db)
         self._detect: dict[tuple[str, str], dict] = {}       # (agent, file) -> format/family decided once; re-checked every 200 batches
+        self._remembered: dict[str, float] = {}             # profile signature -> last profiles.remember for a Go-parsed batch
         from .rollup import Rollup
         self.rollup = Rollup()                               # per-minute counters for the operations screen (100k+ lines / min)
         if self.spool:
@@ -83,7 +89,11 @@ class LiveStore:
         is complete whatever the event rate. One row per agent POST, JSONL payload, pruned after `retention_h` hours."""
         db._exec(f"""CREATE TABLE IF NOT EXISTS live_batches (id {db.pk}, ts_min TEXT, ts_max TEXT, received_at TEXT, agent TEXT DEFAULT '',
             env TEXT DEFAULT '', n INTEGER DEFAULT 0, payload TEXT DEFAULT '')""")
-        db._exec("CREATE INDEX IF NOT EXISTS live_batches_ts ON live_batches(ts_max)")
+        from . import logstore
+        self._v2 = logstore.migrate(db)                      # v2 rows: compressed, line ids, raw, attributes (log explorer)
+        if not self._v2:                                     # v2 replaces this index with (ts_max, ts_min): one index less to update per row
+            db._exec("CREATE INDEX IF NOT EXISTS live_batches_ts ON live_batches(ts_max)")
+        self.seq = max(self.seq, logstore.last_seq(db)) if self._v2 else self.seq   # line ids survive a restart
         self.db = db
 
     @staticmethod
@@ -119,12 +129,22 @@ class LiveStore:
         if ts.tzinfo is None:
             ts = ts.replace(tzinfo=UTC)
         return Observation(timestamp=ts, message=d.get("msg", ""), kind=d.get("kind", "log"), severity=d.get("sev", "INFO"), service=d.get("svc", ""),
-                           host=d.get("host", ""), environment=d.get("env", ""), origin=d.get("org", ""), attributes=attrs, source=d.get("src", ""))
+                           host=d.get("host", ""), environment=d.get("env", ""), origin=d.get("org", ""), attributes=attrs, source=d.get("src", ""),
+                           line_no=d.get("ln", 0), seq=d.get("q", 0))
 
     def _persist(self, events: list[Observation], agent: str, env: str) -> None:
         if not self.db or not events:
             return
         try:
+            if self._v2:                                     # v2 rows (logstore): compressed, split by 10 minutes of line time
+                from . import logstore
+                now = datetime.now(UTC)                      # lines older than the retention when they arrive: kept by arrival (logstore)
+                self.db.executemany(logstore.INSERT_V2, logstore.encode_rows(events, agent, env, self._utc_iso(now), self._pack,
+                                                                             now.timestamp() - float(self.retention_h) * 3600))
+                self._persist_n += 1
+                if self._persist_n % 200 == 0:
+                    self.prune()
+                return
             tss = [self._utc_iso(o.timestamp) for o in events]
             payload = "\n".join(json.dumps(self._pack(o, agent), ensure_ascii=False) for o in events)
             self.db._insert("INSERT INTO live_batches (ts_min, ts_max, received_at, agent, env, n, payload) VALUES (?,?,?,?,?,?,?)",
@@ -152,15 +172,14 @@ class LiveStore:
             self.last_db_window_ms = round((time.perf_counter() - t0) * 1000, 1)
 
     def _window_from_db_inner(self, since: datetime) -> list[Observation]:
-        rows = self.db._exec("SELECT payload FROM live_batches WHERE ts_max >= ? ORDER BY id", (self._utc_iso(since),))
+        from .logstore import row_dicts
+        rows = self.db._exec(f"SELECT payload{', pz' if self._v2 else ''} FROM live_batches WHERE ts_max >= ? ORDER BY id", (self._utc_iso(since),))
         s_utc = since if since.tzinfo else since.replace(tzinfo=UTC)
         out: list[Observation] = []
         for r in rows:
-            for line in (r["payload"] or "").split("\n"):
-                if not line:
-                    continue
+            for d in row_dicts(r):
                 try:
-                    o = self._unpack(json.loads(line))
+                    o = self._unpack(d)
                 except (ValueError, KeyError):
                     continue
                 if o.timestamp >= s_utc:
@@ -171,13 +190,26 @@ class LiveStore:
         self.last_db_window = (self._utc_iso(since), len(out))
         return out
 
+    def arrival_of(self, seq: int) -> float | None:
+        """Arrival epoch of the line with this id (None when its batch marker is gone)."""
+        import bisect
+        a = self.arrivals
+        i = bisect.bisect_right(a, (seq, float("inf"))) - 1
+        return a[i][1] if i >= 0 and (i + 1 < len(a) or seq <= self.seq) else None
+
+    def _ring_covers_locked(self, s: datetime) -> bool:
+        """The ring holds every event that ARRIVED since a minute before `s` (by arrival, not by buf[0]'s stamp: one 23-day-old
+        line at the head of the ring made every range look covered and searches came back empty, D2). Caller holds the lock."""
+        if not self.db:
+            return True
+        if not self.buf:
+            return False
+        oldest = self.arrival_of(self.buf[0].seq)
+        return oldest is not None and oldest <= (s if s.tzinfo else s.replace(tzinfo=UTC)).timestamp() - 60
+
     def _ring_covers(self, s: datetime) -> bool:
         with self.lock:
-            if not self.buf:
-                return not self.db
-            oldest = self.buf[0].timestamp
-        oldest = oldest if oldest.tzinfo else oldest.replace(tzinfo=UTC)
-        return oldest <= s or not self.db
+            return self._ring_covers_locked(s)
 
     def events_between(self, s: datetime, e: datetime, cap: int = 250_000) -> tuple[list[Observation], int]:
         """Events stamped in [s, e) and the sampling factor k: a range holding more than `cap` events is read as every k-th stored batch."""
@@ -189,17 +221,17 @@ class LiveStore:
         k = max(1, math.ceil(total / cap)) if total > cap else 1
         ids = [r["id"] for r in rows][::k]
         out: list[Observation] = []
+        from .logstore import row_dicts
         for i in range(0, len(ids), 400):
             chunk = ids[i:i + 400]
-            for r in self.db._exec(f"SELECT payload FROM live_batches WHERE id IN ({', '.join('?' * len(chunk))})", tuple(chunk)):
-                for line in (r["payload"] or "").split("\n"):
-                    if line:
-                        try:
-                            o = self._unpack(json.loads(line))
-                        except (ValueError, KeyError):
-                            continue
-                        if s <= o.timestamp < e:
-                            out.append(o)
+            for r in self.db._exec(f"SELECT payload{', pz' if self._v2 else ''} FROM live_batches WHERE id IN ({', '.join('?' * len(chunk))})", tuple(chunk)):
+                for d in row_dicts(r):
+                    try:
+                        o = self._unpack(d)
+                    except (ValueError, KeyError):
+                        continue
+                    if s <= o.timestamp < e:
+                        out.append(o)
         return out, k
 
     def lines_between(self, s: datetime, e: datetime, ok, limit: int = 200, max_batches: int = 4000) -> tuple[list[Observation], int, bool]:
@@ -218,16 +250,15 @@ class LiveStore:
             return found[:limit], scanned, len(found) > limit
         off, more = 0, False
         while off < max_batches:
-            rows = self.db._exec("SELECT payload FROM live_batches WHERE ts_min < ? AND ts_max >= ? ORDER BY id DESC LIMIT 200 OFFSET ?",
+            rows = self.db._exec(f"SELECT payload{', pz' if self._v2 else ''} FROM live_batches WHERE ts_min < ? AND ts_max >= ? ORDER BY id DESC LIMIT 200 OFFSET ?",
                                  (self._utc_iso(e), self._utc_iso(s), off))
             if not rows:
                 break
+            from .logstore import row_dicts
             for r in rows:
-                for line in (r["payload"] or "").split("\n"):
-                    if not line:
-                        continue
+                for d in row_dicts(r):
                     try:
-                        o = self._unpack(json.loads(line))
+                        o = self._unpack(d)
                     except (ValueError, KeyError):
                         continue
                     if s <= o.timestamp < e:
@@ -247,7 +278,8 @@ class LiveStore:
         if not self.db:
             return {"enabled": False}
         try:
-            r = self.db._exec("SELECT COUNT(*) AS batches, COALESCE(SUM(n), 0) AS events, MIN(ts_min) AS oldest, MAX(ts_max) AS newest, COALESCE(SUM(LENGTH(payload)), 0) AS bytes FROM live_batches")[0]
+            pz = " + COALESCE(SUM(LENGTH(pz)), 0)" if self._v2 else ""
+            r = self.db._exec(f"SELECT COUNT(*) AS batches, COALESCE(SUM(n), 0) AS events, MIN(ts_min) AS oldest, MAX(ts_max) AS newest, COALESCE(SUM(LENGTH(payload)), 0){pz} AS bytes FROM live_batches")[0]
             return {"enabled": True, "batches": int(r["batches"] or 0), "events": int(r["events"] or 0), "oldest": r["oldest"] or "", "newest": r["newest"] or "", "bytes": int(r["bytes"] or 0)}
         except Exception:  # noqa: BLE001
             return {"enabled": True, "error": True}
@@ -293,43 +325,122 @@ class LiveStore:
                 "covers_window": bool(span >= need or n < maxlen)}, "window_min": window_min, "db": db, "db_served": self.db_served, "last_db_window": self.last_db_window,
                 "spool_bytes": spool_bytes, "disk": disk, "retention_h": self.retention_h, "window_max_events": self.window_max_events, "warnings": warnings}
 
-    def ingest(self, name: str, data: bytes, agent: str = "unknown", env: str = "", site: str = "", agent_id: int | None = None) -> int:
+    def ingest(self, name: str, data: bytes, agent: str = "unknown", env: str = "", site: str = "", agent_id: int | None = None, team_id: int | None = None) -> int:
         t0 = time.perf_counter()
         try:
-            return self._ingest(name, data, agent, env, site, agent_id)
+            return self._ingest(name, data, agent, env, site, agent_id, team_id)
         finally:
             self._ingest_ms.append((time.perf_counter() - t0) * 1000)
 
-    def _ingest(self, name: str, data: bytes, agent: str, env: str, site: str, agent_id: int | None) -> int:
-        key = (agent, name)
+    def _ingest(self, name: str, data: bytes, agent: str, env: str, site: str, agent_id: int | None, team_id: int | None = None) -> int:
+        return self._accept(self._parse(name, data, agent), agent, env, site, agent_id, team_id)
+
+    def _hint_next(self, key: tuple[str, str]) -> dict | None:
         hint = self._detect.get(key)
         if hint is not None:
             hint["n"] += 1
             if hint["n"] % 200 == 0:                          # a stream can change shape: re-detect now and then
                 hint = None
-        obs, rep = ingest_bytes(name, data, hint=hint)
-        if rep and rep[0].get("format") not in (None, "table") and (hint is None or hint.get("n", 0) % 200 == 0):
-            fmt = rep[0]["format"]
-            if fmt == "json" and data.strip().count(b"\n") == 0 and data.lstrip()[:1] == b"{":
-                fmt = "jsonl"           # one object in the first batch of a stream is one JSON line: later batches carry many
-            self._detect[key] = {"format": fmt, "confidence": rep[0].get("confidence", 0.9), "family": rep[0].get("family", ""), "n": 1}
+        return hint
+
+    def _hint_learn(self, key: tuple[str, str], hint: dict | None, rep0: dict | None, fmt: str | None = None) -> None:
+        if rep0 and rep0.get("format") not in (None, "table") and (hint is None or hint.get("n", 0) % 200 == 0):
+            self._detect[key] = {"format": fmt or rep0["format"], "confidence": rep0.get("confidence", 0.9), "family": rep0.get("family", ""), "n": 1}
             if len(self._detect) > 5000:
                 self._detect.clear()
+
+    def _parse(self, name: str, data: bytes, agent: str) -> list[Observation]:
+        key = (agent, name)
+        hint = self._hint_next(key)
+        obs, rep = ingest_bytes(name, data, hint=hint)
+        fmt = rep[0].get("format") if rep else None
+        if fmt == "json" and data.strip().count(b"\n") == 0 and data.lstrip()[:1] == b"{":
+            fmt = "jsonl"               # one object in the first batch of a stream is one JSON line: later batches carry many
+        self._hint_learn(key, hint, rep[0] if rep else None, fmt)
+        return obs
+
+    # ---------------------------------------------------------------- Go-parsed batches (WATCHOVER_GO_PARSE)
+    def ingest_parsed(self, body: bytes, h: dict) -> int:
+        """A batch the Go receiver already parsed (spool record v=2): `body` holds one canonical observation per line, exactly
+        what ingest_bytes would have returned for the raw batch (receiver/parse, golden parity). Everything after parsing is
+        the same code as ingest(). The per-stream hint is advanced as if this process had parsed the batch, so switching the
+        Go parser off continues the stream as before."""
+        t0 = time.perf_counter()
+        try:
+            agent = h.get("agent") or "unknown"
+            name = h.get("file") or "agent.log"
+            key = (agent, name)
+            hint = self._hint_next(key)
+            rep0 = {"format": h.get("format"), "confidence": h.get("confidence", 0.9), "family": h.get("family", "")}
+            self._hint_learn(key, hint, rep0, h.get("hint_format") or h.get("format"))
+            self._remember_parsed(h)
+            fi = datetime.fromisoformat
+            obs = []
+            for ln in body.split(b"\n"):
+                if not ln:
+                    continue
+                d = json.loads(ln)
+                obs.append(Observation(timestamp=fi(d["ts"]), message=d["message"], kind=d["kind"], severity=d["severity"], service=d["service"],
+                                       host=d["host"], environment=d["environment"], origin=d["origin"], attributes=d["attributes"],
+                                       source=d["source"], line_no=d["line_no"], parser=d["parser"], parser_confidence=d["parser_confidence"],
+                                       raw=d["raw"]))
+            return self._accept(obs, agent, h.get("env") or "", h.get("site") or "", h.get("agent_id"))
+        finally:
+            self._ingest_ms.append((time.perf_counter() - t0) * 1000)
+
+    _PROFILE_FORMATS = ("json", "jsonl", "csv", "kv", "grok")
+
+    def _remember_parsed(self, h: dict) -> None:
+        """profiles.remember for a Go-parsed batch (pipeline._parse_one does it for batches parsed here), at most once a
+        minute per shape: it rewrites profiles.json, and repeated calls only move hits/last."""
+        rep = h.get("report") or {}
+        fmt, keys = rep.get("format"), rep.get("keys") or []
+        if fmt not in self._PROFILE_FORMATS or not keys:
+            return
+        from . import profiles as wo_profiles
+        sig = wo_profiles.signature(fmt, keys)
+        now = time.time()
+        if now - self._remembered.get(sig, 0.0) < 60:
+            return
+        if len(self._remembered) > 5000:
+            self._remembered.clear()
+        self._remembered[sig] = now
+        roles = rep.get("roles") or {}
+        try:                                                 # role order of auto_map, as _parse_one passes it
+            wo_profiles.remember(fmt, keys, {r: roles.get(r) for r in ("timestamp", "severity", "service", "environment", "origin", "host", "message") if roles.get(r)},
+                                 name=rep.get("file") or h.get("file") or "", source="auto")
+        except Exception:  # noqa: BLE001 - _parse_one swallows these too
+            pass
+
+    def _accept(self, obs: list[Observation], agent: str, env: str, site: str, agent_id: int | None, team_id: int | None = None) -> int:
         now = datetime.now(UTC)
         metric_rows: list[tuple] = []
         events: list[Observation] = []
         flows: list[Observation] = []
         horizon = now + timedelta(days=1)
+        moved: dict = {}                                     # a team sender posts only for its team's hosts (ingest_guard): host -> replacement
+        if self.host_guard is not None and (agent_id is not None or team_id is not None) and obs:
+            dflt = agent if agent and agent != "unknown" else ""
+            moved = self.host_guard(agent_id, team_id, dflt, {(o.host if o.host and not BAD_HOST.search(o.host) else dflt) for o in obs})
         for o in obs:
             ts = o.timestamp if o.timestamp.tzinfo else o.timestamp.replace(tzinfo=UTC)
             if o.attributes.pop("_no_ts", False) or o.timestamp.year < 2000 or ts > horizon:   # missing, ancient or absurdly future stamp: arrival time
                 o.timestamp = now
+            elif ts - now >= LOCAL_AHEAD:                    # a server logging local time without an offset (Türkiye: +3 h) lands hours in the
+                ahead = (ts - now).total_seconds()           # future and no live range shows it (D9): back by the whole quarter hours, when
+                off = -(-int(ahead) // 900) * 900            # the rest is a plausible transport delay; the detail shows clock_offset_s
+                if ahead <= 14 * 3600 and off - ahead <= 300:
+                    o.timestamp = ts - timedelta(seconds=off)
+                    o.attributes["clock_offset_s"] = -off
             o.attributes["agent"] = agent
             if o.host and BAD_HOST.search(o.host):           # "Ax32Serv:", "[NavServer]": a process or component taken for a host
                 o.attributes.setdefault("component", o.host.strip("[]:"))
                 o.host = ""
             if not o.host and agent and agent != "unknown":  # a line without a host name came from the server the agent runs on
                 o.host = agent
+            if moved and o.host in moved:                    # another team's (or an unclaimable) host: the line stays the sender's
+                o.attributes["host.reported"] = o.host
+                o.host = moved[o.host]
             if self.enricher is not None:
                 try:
                     if self.enricher(o):
@@ -351,6 +462,13 @@ class LiveStore:
             else:
                 events.append(o)
         with self.lock:
+            if events:                                       # line ids: contiguous per batch, monotonic, in ring order (log explorer)
+                q = self.seq
+                for o in events:
+                    q += 1
+                    o.seq = q
+                self.arrivals.append((self.seq + 1, time.time()))
+                self.seq = q
             self.buf.extend(events)
             self.metrics.extend(metric_rows)
             if metric_rows:
@@ -408,8 +526,11 @@ class LiveStore:
             else:
                 s_cmp = since if since.tzinfo else since.replace(tzinfo=UTC)
                 oldest = self.buf[0].timestamp if self.buf else None
-                if oldest is not None and oldest.tzinfo is None:
-                    oldest = oldest.replace(tzinfo=UTC)
+                if oldest is not None:
+                    oldest = oldest if oldest.tzinfo else oldest.replace(tzinfo=UTC)
+                    arr = self.arrival_of(self.buf[0].seq)                  # a stale or skewed stamp at the head (23-day-old EBS line) made
+                    if arr is not None and abs(arr - oldest.timestamp()) > 120:   # the ring look deep enough (D2): use its arrival
+                        oldest = datetime.fromtimestamp(arr, UTC)
                 from_db = bool(self.db) and (oldest is None or oldest > s_cmp)      # the ring no longer reaches back to `since`
                 obs, stale = [], 0
                 if not from_db:
@@ -1105,10 +1226,16 @@ SIM_FLOWS_MAP = [("prd-api-01", "java", "172.16.1.55:5432"), ("prd-api-02", "jav
 
 def simulate_flows(rng) -> bytes:
     """What `agent.py --flows` would send from the simulated hosts: outbound connections and the database's listening port."""
+    from .techstack import SIM_TECH_FLOWS, SIM_TECH_LISTENS, SIM_TECH_TAGS      # agent fingerprints (flow.tech) and the technology demo's hosts
     now = datetime.now(UTC).isoformat()
-    lines = [json.dumps({"ts": now, "host": h, "env": "prod", "msg": f"flow out {p} {r}", "kind": "flow", "flow.dir": "out", "flow.process": p, "flow.remote": r, "flow.count": rng.randint(2, 40)})
+    tech = lambda h, p: {"flow.tech": SIM_TECH_TAGS[(h, p)]} if (h, p) in SIM_TECH_TAGS else {}   # noqa: E731
+    lines = [json.dumps({"ts": now, "host": h, "env": "prod", "msg": f"flow out {p} {r}", "kind": "flow", "flow.dir": "out", "flow.process": p, "flow.remote": r, "flow.count": rng.randint(2, 40), **tech(h, p)})
              for h, p, r in SIM_FLOWS_MAP]
-    lines.append(json.dumps({"ts": now, "host": "db-01", "env": "prod", "msg": "flow in postgres 5432", "kind": "flow", "flow.dir": "in", "flow.process": "postgres", "flow.port": "5432", "flow.count": rng.randint(20, 90)}))
+    lines.append(json.dumps({"ts": now, "host": "db-01", "env": "prod", "msg": "flow in postgres 5432", "kind": "flow", "flow.dir": "in", "flow.process": "postgres", "flow.port": "5432", "flow.count": rng.randint(20, 90), **tech("db-01", "postgres")}))
+    lines += [json.dumps({"ts": now, "host": h, "env": "prod", "msg": f"flow out {p} {r}", "kind": "flow", "flow.dir": "out", "flow.process": p, "flow.remote": r, "flow.count": rng.randint(2, 40), **tech(h, p)})
+              for h, p, r in SIM_TECH_FLOWS]
+    lines += [json.dumps({"ts": now, "host": h, "env": "prod", "msg": f"flow in {p} {port}", "kind": "flow", "flow.dir": "in", "flow.process": p, "flow.port": port, "flow.count": rng.randint(3, 60), **tech(h, p)})
+              for h, p, port in SIM_TECH_LISTENS]
     return ("\n".join(lines) + "\n").encode()
 
 

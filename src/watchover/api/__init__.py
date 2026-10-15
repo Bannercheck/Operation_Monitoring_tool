@@ -52,6 +52,8 @@ def create_app(services=None) -> FastAPI:
         return resp
     for r in (auth, datasets, live, actions, anomalies, playbook, agents, sources, inventory, knowledge, notify, users, system, map_, assist, llm, itsm, grok, memory, scan, apm, rum, teams, bizflow, thresholds):
         app.include_router(r.router, prefix="/api")
+    from .routers import logs as logs_router                  # log explorer (docs/design/logs.md)
+    app.include_router(logs_router.router, prefix="/api")
 
     @app.exception_handler(KeyError)
     async def _not_found(_: Request, e: KeyError):

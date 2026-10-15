@@ -182,6 +182,20 @@ def versions_dir() -> Path:
     return p
 
 
+def _sqlite_copy(src: Path, dst: Path) -> None:
+    """A consistent copy of a live SQLite file, including what still sits in its write-ahead log (db.py runs SQLite in WAL mode)."""
+    import sqlite3
+    try:
+        a = sqlite3.connect(f"file:{src}?mode=ro", uri=True, timeout=30)
+        b = sqlite3.connect(str(dst))
+        try:
+            a.backup(b)
+        finally:
+            b.close(); a.close()
+    except sqlite3.Error:
+        shutil.copy2(src, dst)
+
+
 def _db_paths() -> list[Path]:
     out = []
     for env, name in (("KNOWLEDGE_DB", "knowledge.db"), ("ACTIONS_DB", "actions.db"), ("PLAYBOOK_DB", "playbook.db")):
@@ -221,7 +235,7 @@ def snapshot(reason: str, code: bool = True, db: bool = True, root: Path | None 
         dbs.append("postgresql")
     elif db:
         for p in _db_paths():
-            shutil.copy2(p, d / p.name)
+            _sqlite_copy(p, d / p.name)
             dbs.append(p.name)
     st_ = stamp.stamp()
     meta = {"id": sid, "ts": datetime.now(UTC).isoformat(timespec="seconds"), "reason": reason, "version": st_["version"], "git": st_["git"], "engine": st_["engine"],
@@ -265,7 +279,14 @@ def rollback(sid: str, code: bool = True, db: bool = True, root: Path | None = N
         targets = {p.name: p for p in _db_paths()}
         for f in d.glob("*.db"):
             target = targets.get(f.name) or (Path.cwd() / f.name)
-            shutil.copy2(f, target)
+            tmp = target.with_name(target.name + ".restore")
+            shutil.copy2(f, tmp)
+            os.replace(tmp, target)                      # a new file: the running connection keeps the old one until the restart
+            for side in ("-wal", "-shm"):                # the old file's write-ahead log must never be replayed onto the restored one
+                try:
+                    target.with_name(target.name + side).unlink()
+                except FileNotFoundError:
+                    pass
             msgs.append(f"{f.name} restored")
     return True, "; ".join(msgs) or "nothing to restore"
 

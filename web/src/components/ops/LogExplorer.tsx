@@ -1,8 +1,11 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Pause, Play, Search } from "lucide-react";
+import { ArrowUpRight, Pause, Play, Search } from "lucide-react";
 import { get } from "../../api";
+import { useAuth } from "../../auth";
 import { useT } from "../../i18n";
+import { opsToQuery } from "../logs/lib";
 import { Empty, Spark } from "../ui";
 import { TailModal } from "./Details";
 import { fmtN, fmtTime } from "./util";
@@ -10,7 +13,7 @@ import { fmtN, fmtTime } from "./util";
 /** The logs of the chosen range and scope. "Grouped" folds identical lines (numbers, ids, IPs masked) into one row per message
  *  and service; "Raw" lists the lines newest first and pages further back. Both follow the same severity / text / service filter. */
 export function LogExplorer({ rq, live, spanMin, services, focus, onHost }: { rq: string; live: boolean; spanMin: number; services: string[]; focus: any; onHost: (h: string) => void }) {
-  const { t, lang } = useT();
+  const { t, lang } = useT(); const { can } = useAuth();
   const [tab, setTab] = useState<"groups" | "raw" | "files">("groups"); const [tail, setTail] = useState<any>(null); const [sev, setSev] = useState("WARN"); const [q, setQ] = useState(""); const [qq, setQq] = useState(""); const [svc, setSvc] = useState("");
   const [open, setOpen] = useState<number | null>(null); const [paused, setPaused] = useState(false); const [pages, setPages] = useState<any[]>([]); const [show, setShow] = useState(25);
   useEffect(() => { const h = setTimeout(() => setQq(q), 350); return () => clearTimeout(h); }, [q]);
@@ -27,6 +30,11 @@ export function LogExplorer({ rq, live, spanMin, services, focus, onHost }: { rq
   const nextCursor = pages.length ? pages[pages.length - 1].next : r.data?.next;
   const rows: any[] = g.data?.groups ?? [];
   const src = tab === "groups" ? g.data : null;
+  // the same range, scope, severity, service and text as query text in the log explorer (/logs)
+  const explorer = () => { const p = new URLSearchParams(rq); const o = new URLSearchParams();
+    if (p.get("start")) { o.set("start", p.get("start")!); o.set("end", p.get("end") || new Date().toISOString()); } else o.set("last", p.get("last") || "15");
+    const qt = opsToQuery({ env: p.get("env") || "", pool: p.get("pool") || "", hosts: (p.get("host") || "").split(",").filter(Boolean), sev, service: svc, text: qq });
+    if (qt) o.set("q", qt); if (tab === "groups") o.set("group", "1"); return `/logs?${o}`; };
   return <div>
     <div className="lx-bar">
       <div className="seg"><button className={tab === "groups" ? "on" : ""} onClick={() => setTab("groups")}>{t("lx_grouped")}</button><button className={tab === "raw" ? "on" : ""} onClick={() => setTab("raw")}>{t("lx_raw")}</button><button className={tab === "files" ? "on" : ""} onClick={() => setTab("files")}>{t("lx_files")}</button></div>
@@ -37,6 +45,7 @@ export function LogExplorer({ rq, live, spanMin, services, focus, onHost }: { rq
       <span className="grow" />
       <span className="dim small">{tab === "groups" ? (g.data ? t("lx_fold", { n: fmtN(g.data.total, lang), g: fmtN(g.data.distinct, lang) }) : "") : r.data ? t("lx_lines", { n: lines.length }) : ""}
         {src?.sample > 1 ? ` · ${t("lx_sample", { k: src.sample })}` : ""}{src?.source === "history" ? ` · ${t("lx_hist_only")}` : ""}</span>
+      {can("page.logs") && <Link className="btn sm" to={explorer()} title={t("lg_open_in_explorer")}>{t("lg_open_in_explorer")} <ArrowUpRight size={13} /></Link>}
     </div>
     {tab === "files" ? (!(files.data ?? []).length ? <Empty>{files.isLoading ? t("loading") : t("lx_no_files")}</Empty> :
       <div className="table-wrap" style={{ maxHeight: 520 }}><table className="table"><thead><tr><th>{t("ds_files")}</th><th>{t("host")}</th><th>{t("ops_agents")}</th><th className="right">{t("ds_events")}</th><th className="right">ERROR+</th><th>{t("service")}</th><th>{t("message")}</th></tr></thead>

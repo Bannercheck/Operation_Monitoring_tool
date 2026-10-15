@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
-import { AlertTriangle, BellRing, Gauge, BookOpen, Bot, Brain, Bug, Route, ChevronDown, ChevronRight, ClipboardList, Database, FileText, GitBranch, Layers, LayoutDashboard, LogOut, Menu, Network, PanelLeftClose, PanelLeftOpen, Plug, Radar, Server, ShieldAlert, Settings2, Smartphone, Ticket, Users, Workflow } from "lucide-react";
+import { AlertTriangle, BellRing, Gauge, BookOpen, Bot, Brain, Bug, Route, ChevronDown, ChevronRight, ClipboardList, Database, FileText, GitBranch, Layers, LayoutDashboard, LogOut, Menu, Network, PanelLeftClose, PanelLeftOpen, Plug, Radar, ScrollText, Server, ShieldAlert, Settings2, Smartphone, Ticket, UserCog, Users, Workflow } from "lucide-react";
 import { useAuth } from "../auth";
 import { useT } from "../i18n";
 import { Btn, Modal, Field, Err, LangTheme } from "./ui";
@@ -14,7 +14,7 @@ import { useQuery } from "@tanstack/react-query";
 /** SigNoz-style navigation: a home row, then signal-oriented sections (APM, signals, response, intelligence, security), each
  *  collapsible and remembered; settings and administration are pinned to the bottom, as in SigNoz. Items only show with their
  *  permission; `unless` hides an item for users who reach the same page another way (System holds Alerts and README). */
-type Item = { to: string; k: string; icon: any; perm: string; unless?: string };
+type Item = { to: string; k: string; icon: any; perm: string; unless?: string; any?: string[] };   // any: shown when one of these is held
 type Section = { id: string; group?: string; items: Item[] };
 export const NAV: Section[] = [
   { id: "home", items: [{ to: "/ops", k: "nav_home", icon: LayoutDashboard, perm: "page.ops" }] },
@@ -24,17 +24,19 @@ export const NAV: Section[] = [
     { to: "/integrations", k: "nav_integ", icon: Workflow, perm: "page.apm" }, { to: "/flows", k: "nav_flows", icon: Route, perm: "page.apm" },
     { to: "/exceptions", k: "nav_exc", icon: Bug, perm: "page.apm" } ] },
   { id: "signals", group: "nav_group_signals", items: [
+    { to: "/logs", k: "nav_logs", icon: ScrollText, perm: "page.logs" },
     { to: "/datasets", k: "nav_data", icon: Database, perm: "page.data" }, { to: "/inventory", k: "nav_inv", icon: Server, perm: "page.inv" },
-    { to: "/anomalies", k: "nav_anom", icon: AlertTriangle, perm: "page.ops" } ] },
+    { to: "/anomalies", k: "nav_anom", icon: AlertTriangle, perm: "page.anom" } ] },
   { id: "respond", group: "nav_group_respond", items: [
-    { to: "/actions", k: "nav_actions", icon: ClipboardList, perm: "page.data" }, { to: "/thresholds", k: "nav_thr", icon: Gauge, perm: "page.ops" }, { to: "/playbook", k: "nav_pb", icon: BookOpen, perm: "page.pb" },
-    { to: "/itsm", k: "nav_itsm", icon: Ticket, perm: "page.itsm" }, { to: "/alerts", k: "nav_ntf", icon: BellRing, perm: "sys.notify", unless: "sys.status" } ] },
+    { to: "/actions", k: "nav_actions", icon: ClipboardList, perm: "page.actions" }, { to: "/thresholds", k: "nav_thr", icon: Gauge, perm: "page.thr" }, { to: "/playbook", k: "nav_pb", icon: BookOpen, perm: "page.pb" },
+    { to: "/itsm", k: "nav_itsm", icon: Ticket, perm: "page.itsm" }, { to: "/alerts", k: "nav_ntf", icon: BellRing, perm: "sys.notify", any: ["sys.notify", "act.alerts"], unless: "sys.status" } ] },
   { id: "intel", group: "nav_group_intel", items: [
     { to: "/knowledge", k: "nav_kb", icon: Brain, perm: "page.assist" }, { to: "/llm", k: "nav_llm", icon: Bot, perm: "page.llm" } ] },
   { id: "security", group: "nav_group_security", items: [{ to: "/scan", k: "nav_scan", icon: ShieldAlert, perm: "page.scan" }] },
 ];
 export const NAV_SETTINGS: Item[] = [
   { to: "/connections", k: "nav_conn", icon: Plug, perm: "page.conn" }, { to: "/sources", k: "nav_sources", icon: Radar, perm: "page.src" },
+  { to: "/team", k: "tmr_my_team", icon: UserCog, perm: "team.manage", unless: "page.teams" },
   { to: "/users", k: "nav_users", icon: Users, perm: "page.users" }, { to: "/system", k: "nav_sys", icon: Settings2, perm: "sys.status" },
   { to: "/readme", k: "nav_readme", icon: FileText, perm: "page.readme", unless: "sys.status" },
 ];
@@ -52,7 +54,7 @@ export default function Layout() {
   const [open, setOpen] = useState(false);
   const [pw, setPw] = useState(!!user?.must_change);
   const [folded, fold] = useFolded("wo_nav_fold");
-  const visible = (i: Item) => can(i.perm) && !(i.unless && can(i.unless));
+  const visible = (i: Item) => (i.any ? i.any.some(can) : can(i.perm)) && !(i.unless && can(i.unless));
   const settings = NAV_SETTINGS.filter(visible);
   const link = (i: Item) => <NavLink key={i.to} to={i.to} className={({ isActive }) => `tile ${isActive ? "active" : ""}`} onClick={() => setOpen(false)} title={t(i.k)}><i.icon size={15} /><span>{t(i.k)}</span></NavLink>;
   const toggle = () => { setCollapsed((c) => { try { localStorage.setItem("wo_side", c ? "0" : "1"); } catch { /* ignore */ } return !c; }); };
@@ -73,7 +75,7 @@ export default function Layout() {
           {!(folded.settings && !collapsed) && settings.map(link)}
         </div>}
         <VersionTag />
-        <div className="user"><div className="av">{(user?.name || user?.email || "?")[0].toUpperCase()}</div><div className="info"><b>{user?.name || user?.email}</b><span className="small muted">{user?.role}</span></div>
+        <div className="user"><div className="av">{(user?.name || user?.email || "?")[0].toUpperCase()}</div><div className="info"><b>{user?.name || user?.email}</b><span className="small muted">{user?.role === "member" && user.teams?.length ? user.teams.map((m) => m.role_label).join(", ") : user?.role}</span></div>
           <Btn kind="ghost" sm onClick={logout} title={t("signout")}><LogOut size={14} /></Btn></div>
       </aside>
       <main className="main">
@@ -82,7 +84,7 @@ export default function Layout() {
           <div className="grow" />
           <ScopeBadge />
           {(can("page.assist") || can("page.llm")) && <TokenMeter />}
-          {can("page.ops") && <NotifyBell />}
+          {can("page.anom") && <NotifyBell />}
           <LangTheme />
         </div>
         <Outlet />
@@ -93,12 +95,23 @@ export default function Layout() {
   );
 }
 
-/** A team member sees only the team's hosts: say so in the top bar, so nobody mistakes the view for the whole estate. */
+/** A team member sees only the team's hosts: say so in the top bar, so nobody mistakes the view for the whole estate. One team:
+ *  "EA · Operatör · 12 sunucu"; several: "EA, İK · 18 sunucu". A click lists every membership (team, role, hosts, manage link). */
 function ScopeBadge() {
-  const { t } = useT();
-  const q = useQuery({ queryKey: ["scope-mine"], queryFn: () => get("/teams/mine"), staleTime: 60000 });
-  if (!q.data || q.data.all) return null;
-  return <span className="badge blue" style={{ textTransform: "none" }} title={t("tm_scope_hint")}>👥 {q.data.teams.join(", ") || t("tm_scope_none")} · {q.data.hosts ?? 0} {t("tm_hosts").toLowerCase()}</span>;
+  const { t } = useT(); const { user } = useAuth(); const [open, setOpen] = useState(false);
+  const q = useQuery({ queryKey: ["scope-mine"], queryFn: () => get("/teams/mine"), staleTime: 60000, enabled: !!user && user.all === false });
+  if (!user || user.all !== false) return null;
+  const ms = user.teams ?? [];
+  if (!ms.length) return <span className="badge amber" style={{ textTransform: "none" }} title={t("tm_scope_hint")}>👥 {t("tm_scope_none")} · {t("tmr_hosts_n", { n: 0 })}</span>;
+  const hosts = q.data?.hosts ?? Math.max(...ms.map((m) => m.hosts));
+  const text = ms.length === 1 ? `${ms[0].name} · ${ms[0].role_label} · ${t("tmr_hosts_n", { n: hosts })}` : `${ms.map((m) => m.name).join(", ")} · ${t("tmr_hosts_n", { n: hosts })}`;
+  return <span className="scope-wrap">
+    <button className="badge blue scope-badge" onClick={() => setOpen((o) => !o)} title={t("tm_scope_hint")}>👥 {text}</button>
+    {open && <><div className="scope-veil" onClick={() => setOpen(false)} /><div className="scope-pop card">
+      {ms.map((m) => <div key={m.id} className="scope-row"><b>{m.name}</b><span className="muted">{m.role_label}</span><span className="dim">{t("tmr_hosts_n", { n: m.hosts })}</span>
+        {m.manage && <NavLink to="/team" onClick={() => setOpen(false)} className="small">{t("tmr_manage")}</NavLink>}</div>)}
+      <div className="dim small" style={{ marginTop: 6 }}>{t("tm_scope_hint")}</div></div></>}
+  </span>;
 }
 
 function ChangePassword({ onDone }: { onDone: () => void }) {

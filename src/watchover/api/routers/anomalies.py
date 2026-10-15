@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Optional
+
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
@@ -10,8 +12,8 @@ router = APIRouter(prefix="/anomalies", tags=["anomalies"])
 
 class StatusIn(BaseModel):
     status: str
-    owner: str | None = None
-    note: str | None = None
+    owner: Optional[str] = None
+    note: Optional[str] = None
 
 
 class StepIn(BaseModel):
@@ -19,14 +21,14 @@ class StepIn(BaseModel):
 
 
 @router.get("")
-def list_anomalies(status: str | None = "active", env: str | None = None, kind: str | None = None, limit: int = 200,
-                   user=Depends(require("page.ops")), svc=Depends(services), sc=Depends(user_scope)):
+def list_anomalies(status: Optional[str] = "active", env: Optional[str] = None, kind: Optional[str] = None, limit: int = 200,
+                   user=Depends(require("page.anom")), svc=Depends(services), sc=Depends(user_scope)):
     rows = svc.anomalies.list(None if status in (None, "", "all") else status, env or None, kind or None, limit if sc is None else 2000)
     return rows if sc is None else [r for r in rows if sc.allows(r["host"]) or sc.allows_service(r.get("service") or "")][:limit]
 
 
 @router.get("/stats")
-def stats(user=Depends(require("page.ops")), svc=Depends(services), sc=Depends(user_scope)):
+def stats(user=Depends(require("page.anom")), svc=Depends(services), sc=Depends(user_scope)):
     st = svc.anomalies.stats()
     if sc is None:
         return st
@@ -44,12 +46,16 @@ def stats(user=Depends(require("page.ops")), svc=Depends(services), sc=Depends(u
 
 
 @router.post("/scan")
-def scan(user=Depends(require("act.anomaly")), svc=Depends(services)):
-    return {"found": svc.anomalies.scan(), "stats": svc.anomalies.stats()}
+def scan(user=Depends(require("act.anomaly")), svc=Depends(services), sc=Depends(user_scope)):
+    """Run the anomaly scan now (it covers every host, as the background loop does); a team sees its own figures."""
+    found = svc.anomalies.scan()
+    if sc is not None:
+        found = [f for f in found if isinstance(f, dict) and (sc.allows(f.get("host")) or sc.allows_service(f.get("service") or ""))]
+    return {"found": found, "stats": stats(svc=svc, sc=sc)}
 
 
 class LearnIn(BaseModel):
-    host: str | None = None
+    host: Optional[str] = None
     env: str = ""
 
 
@@ -80,7 +86,7 @@ def _mine(svc, sc, aid: int) -> dict:
 
 
 @router.get("/{aid}")
-def get(aid: int, user=Depends(require("page.ops")), svc=Depends(services), sc=Depends(user_scope)):
+def get(aid: int, user=Depends(require("page.anom")), svc=Depends(services), sc=Depends(user_scope)):
     return _mine(svc, sc, aid)
 
 
@@ -101,6 +107,8 @@ def create_action(aid: int, user=Depends(require("act.anomaly")), svc=Depends(se
     _mine(svc, sc, aid)
     a = svc.anomalies.get(aid)
     act = svc.actions.create(f"ANOM-{aid}", a["title"][:120], "P1" if a["score"] >= 8 else "P2", a["owner"] or user["name"], recommendation=a["detail"][:400], evidence=a["key"])
+    from .actions import tag
+    act = tag(svc, act["id"], None, a.get("host") or "")             # the action follows the anomaly's host (and so its teams)
     return {"action": act, "anomaly": svc.anomalies.attach_action(aid, act["id"])}
 
 

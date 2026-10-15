@@ -37,12 +37,17 @@ from .models import SEV_RANK
 from .privacy import pseudonym
 
 UTC = timezone.utc
+_SEVS = ("DEBUG", "INFO", "WARN", "ERROR", "CRITICAL", "INFO", "INFO", "INFO")
 
 KEEP = 61                          # minutes of minute buckets (windows up to 60 minutes answer from here)
 LATENCY_RE = re.compile(r"(\d+(?:\.\d+)?)\s?ms\b")
 BOUNDS = [1, 2, 5, 10, 20, 50, 100, 200, 300, 500, 750, 1000, 1500, 2000, 3000, 5000, 7500, 10000, 20000, 30000, 60000, 120000]
 STEM = re.compile(r"^(.*?)[-_.]?\d+[a-z]?$", re.I)
 MAX_GROUPS = 60_000
+FC_MAX = 60_000                    # facet cube keys per minute; beyond that the minute is marked fc_over and its counts are a floor
+SVC_CAP = 500_000                  # service / source id tables (cube keys pack them in 20 / 17 bits)
+SRC_CAP = 100_000
+AK_CAP = 2000                      # attribute keys sampled per hour (log explorer autocomplete)
 SES_CAP = 5000                     # sessions kept per host per 5-minute bucket
 SES_BUCKET_CAP = 50_000            # sessions kept per 5-minute bucket over all hosts (~0.5 KB each): a cookie-less bot getting a new session
                                    # id per request on 300 hosts would otherwise keep 300 x 5000 records per bucket (gigabytes over the hour)
@@ -194,6 +199,8 @@ class Rollup:
         self.slow: dict[int, list] = {}
         self.g1: dict[int, Counter] = {}
         self.g5: dict[int, Counter] = {}
+        self.gx: dict[int, dict] = {}               # minute -> (host << 23 | group << 3 | severity rank) -> lines (log explorer: exact
+                                                    # group counts for any level / service / host / env / pool clause and team scope)
         self.ses: dict[int, dict[int, dict]] = {}   # 5-minute bucket -> host id -> session id -> [lines, errors, first, last, minute mask, service(s), info]
         self.ses_over: dict[int, dict[int, set]] = {}   # 5-minute bucket -> host id -> hashes of the sessions beyond SES_CAP
         self.ses_n: dict[int, list] = {}            # 5-minute bucket -> [records kept, overflow hashes kept] (the per-bucket caps)
@@ -207,6 +214,18 @@ class Rollup:
         self.added = 0
         self.started = time.time()                 # "new" message groups only mean something once the counters predate the range
         self.add_ms: deque = deque(maxlen=500)
+        # facet cube (log explorer): minute -> key -> lines, key = host id << 40 | service id << 20 | source id << 3 | severity rank.
+        # Every key fixes level, service, file and host (env and pool follow from the host), so any boolean mix of those is exact.
+        self.fc: dict[int, dict] = {}
+        self.fc_over: dict[int, int] = {}           # minute -> lines not counted because the minute had FC_MAX keys
+        self.sid: dict[str, int] = {}
+        self.svcs: list[str] = []
+        self.fid: dict[str, int] = {}
+        self.srcs: list[str] = []
+        self._ak: dict[str, list] = {}              # attribute key -> [lines seen, numeric values, host ids] (every 50th line, this hour)
+        self._ak_prev: dict[str, list] = {}         # the previous hour
+        self._ak_hour = 0
+        self._gk: tuple = (0, {})                   # (groups when built, group key -> group id)
 
     # ---------------------------------------------------------------- ingest
     def _h(self, host: str) -> int:
@@ -214,6 +233,24 @@ class Rollup:
         if i is None:
             i = self.hid[host] = len(self.hosts)
             self.hosts.append(host)
+        return i
+
+    def _svc_id(self, s: str) -> int:
+        i = self.sid.get(s)
+        if i is None:
+            if len(self.svcs) >= SVC_CAP:
+                return self._svc_id("…")
+            i = self.sid[s] = len(self.svcs)
+            self.svcs.append(s)
+        return i
+
+    def _src_id(self, s: str) -> int:
+        i = self.fid.get(s)
+        if i is None:
+            if len(self.srcs) >= SRC_CAP:
+                return self._src_id("…")
+            i = self.fid[s] = len(self.srcs)
+            self.srcs.append(s)
         return i
 
     def pool_of(self, host: str) -> str:
@@ -238,7 +275,11 @@ class Rollup:
         now_min = int(time.time() // 60)
         lo = now_min - (self.keep or 10 ** 9)
         cnt, svcc, svce, lat, g1, g5, ses, hid, sevr = self.cnt, self.svc, self.svc_err, self.lat, self.g1, self.g5, self.ses, self.hid, SEV_RANK
+        fc, sidd, fidd, gx = self.fc, self.sid, self.fid, self.gx
         pb = ph = pd = None                                # last bucket and host -> its session dict: a batch is mostly one host
+        nseen = self.added
+        if now_min // 60 != self._ak_hour:
+            self._ak_prev, self._ak, self._ak_hour = (self._ak if self._ak_hour == now_min // 60 - 1 else {}), {}, now_min // 60
         with self.lock:
             for o in events:
                 ts = o.timestamp if o.timestamp.tzinfo else o.timestamp.replace(tzinfo=UTC)
@@ -256,6 +297,27 @@ class Rollup:
                 if c is None:
                     c = cnt[m] = Counter()
                 c[(h, sev)] += 1
+                sv = sidd.get(service)
+                if sv is None:
+                    sv = self._svc_id(service)
+                src = o.source or "-"
+                sr = fidd.get(src)
+                if sr is None:
+                    sr = self._src_id(src)
+                fk = (h << 40) | (sv << 20) | (sr << 3) | sevr[sev]
+                fm = fc.get(m)
+                if fm is None:
+                    fm = fc[m] = {}
+                x = fm.get(fk)
+                if x is not None:
+                    fm[fk] = x + 1
+                elif len(fm) < FC_MAX:
+                    fm[fk] = 1
+                else:
+                    self.fc_over[m] = self.fc_over.get(m, 0) + 1
+                nseen += 1
+                if nseen % 50 == 0 and o.attributes:
+                    self._sample_keys(o.attributes, h)
                 if o.service:
                     c = svcc.get(m)
                     if c is None:
@@ -344,6 +406,11 @@ class Rollup:
                 if c is None:
                     c = g1[m] = Counter()
                 c[g] += 1
+                c = gx.get(m)
+                if c is None:
+                    c = gx[m] = {}
+                k = (h << 23) | (g << 3) | sevr[sev]
+                c[k] = c.get(k, 0) + 1
                 c = g5.get(m // 5)
                 if c is None:
                     c = g5[m // 5] = Counter()
@@ -355,8 +422,122 @@ class Rollup:
                 self._expire(lo)
         self.add_ms.append((time.perf_counter() - t0) * 1000)
 
+    def _sample_keys(self, a: dict, h: int) -> None:
+        ak = self._ak
+        for k, v in a.items():
+            if k.__class__ is not str or k in ("agent", "site", "agent_id", "component") or k.startswith(("_", "discovery_")):
+                continue
+            r = ak.get(k)
+            if r is None:
+                if len(ak) >= AK_CAP:
+                    continue
+                r = ak[k] = [0, 0, set()]
+            r[0] += 1
+            if v.__class__ in (int, float) or (v.__class__ is str and v[:1].isdigit() and v.replace(".", "", 1).isdigit()):
+                r[1] += 1
+            if len(r[2]) < 1000:
+                r[2].add(h)
+
+    def attr_keys(self, allow=None) -> list[dict]:
+        """Attribute keys of the last hour (sampled every 50th line): name, lines seen (x50), number or string, only keys some
+        allowed host sent (allow(host) -> bool, the team scope)."""
+        out: dict[str, list] = {}
+        with self.lock:
+            for d in (self._ak_prev, self._ak):
+                for k, r in d.items():
+                    hs = r[2] if allow is None else {h for h in r[2] if allow(self.hosts[h])}
+                    if not hs:
+                        continue
+                    o = out.setdefault(k, [0, 0])
+                    o[0] += r[0]; o[1] += r[1]
+        return sorted(({"name": k, "seen": v[0] * 50, "type": "number" if v[1] * 2 >= v[0] else "string"} for k, v in out.items()),
+                      key=lambda x: (-x["seen"], x["name"]))
+
+    def cube(self, m0: int, m1: int) -> tuple:
+        """([(minute, {key: lines})], lines not counted) for minutes m0..m1; dict copies taken under the lock, read outside it."""
+        with self.lock:
+            out = [(m, dict(self.fc[m])) for m in range(m0, m1 + 1) if m in self.fc]
+            over = sum(self.fc_over.get(m, 0) for m in range(m0, m1 + 1))
+        return out, over
+
+    def cube_key(self, k: int) -> tuple:
+        """(severity, service, source, host) of a cube key."""
+        sevs = _SEVS
+        return sevs[k & 7], self.svcs[(k >> 20) & 0xFFFFF], self.srcs[(k >> 3) & 0x1FFFF], self.hosts[k >> 40]
+
+    def group_id(self, key: str):
+        """Group id of a group key (logstore.group_key of template and service), None when unknown."""
+        from .logstore import group_key
+        with self.lock:
+            n0, m, lst = self._gk if len(self._gk) == 3 else (0, {}, None)
+            if lst is not self.ginfo or n0 > len(self.ginfo):          # compacted: a new list, rebuild
+                n0, m = 0, {}
+            for i in range(n0, len(self.ginfo)):                       # append-only otherwise: hash only the new groups
+                g = self.ginfo[i]
+                m[group_key(g["template"], g["service"])] = i
+            self._gk = (len(self.ginfo), m, self.ginfo)
+            return m.get(key)
+
+    def group_counts(self, g: int, window) -> int:
+        with self.lock:
+            return sum(self.g1.get(m, {}).get(g, 0) for m in self._mins(window))
+
+    def group_lines(self, m0: int, m1: int, gids) -> list:
+        """[(severity, service, host, lines)] of the groups `gids` over minutes m0..m1: the exact count behind group:<key>."""
+        want = set(gids)
+        out: Counter = Counter()
+        with self.lock:
+            for m in range(m0, m1 + 1):
+                for k, n in (self.gx.get(m) or {}).items():
+                    if (k >> 3) & 0xFFFFF in want:
+                        out[k] += n
+            info, names = self.ginfo, list(self.hosts)
+        return [(_SEVS[k & 7], info[(k >> 3) & 0xFFFFF]["service"], names[k >> 23], n) for k, n in out.items()]
+
+    def groups_where(self, window, ok, need_host: bool = True, limit: int = 100) -> dict:
+        """Message groups of the lines whose (severity, service, host) pass ok(...): count, hosts, trend, per minute, exact. Each
+        line's own level counts (a group holds lines of several levels: an access-log pattern has its 200s and its 500s); the
+        5-minute host buckets and the group's highest level made `level:error` count INFO lines and a 1-minute range count five.
+        need_host is kept for callers; the answer is the same either way."""
+        from .logstore import group_key
+        mins = self._mins(window)
+        counts: Counter = Counter()
+        hosts_of: dict = {}
+        trend: dict = {}
+        memo: dict = {}
+        lvl: dict = {}
+        with self.lock:                                 # copies under the lock (C speed), the work outside it: ingestion is not held up
+            info = self.ginfo
+            names = list(self.hosts)
+            gx = [(i, dict(self.gx[m])) for i, m in enumerate(mins) if m in self.gx]
+        step = -(-len(mins) // 60)
+        width = -(-len(mins) // step)
+        for i, d in gx:
+            for k, n in d.items():
+                r = memo.get(k)
+                if r is None:
+                    r = memo[k] = ok(_SEVS[k & 7], info[(k >> 3) & 0xFFFFF]["service"], names[k >> 23])
+                if r:
+                    g = (k >> 3) & 0xFFFFF
+                    counts[g] += n
+                    trend.setdefault(g, [0] * width)[i // step] += n
+                    hs = hosts_of.get(g)
+                    if hs is None:
+                        hs = hosts_of[g] = Counter()
+                    hs[k >> 23] += n
+                    if (k & 7) > lvl.get(g, -1):
+                        lvl[g] = k & 7
+        rows = []
+        for g, c in counts.most_common(limit):
+            gi = info[g]
+            hs = hosts_of.get(g, Counter())
+            rows.append({"key": group_key(gi["template"], gi["service"]), "template": gi["template"], "service": gi["service"], "level": _SEVS[lvl[g]] if g in lvl else gi["severity"],
+                         "count": c, "hosts": len(hs), "top_hosts": [names[h] for h, _n in hs.most_common(5)], "first": gi["first"].isoformat(timespec="seconds"),
+                         "last": gi["last"].isoformat(timespec="seconds"), "trend": trend.get(g, []), "sample": gi["sample"], "ref": gi["ref"]})
+        return {"groups": rows, "distinct": len(counts), "total": sum(counts.values())}
+
     def _expire(self, lo: int) -> None:
-        for d in (self.cnt, self.svc, self.svc_err, self.lat, self.slow, self.g1):
+        for d in (self.cnt, self.svc, self.svc_err, self.lat, self.slow, self.g1, self.gx, self.fc, self.fc_over):
             for k in [k for k in d if k < lo]:
                 del d[k]
         for d in (self.g5, self.ses, self.ses_over, self.ses_n):
@@ -374,6 +555,8 @@ class Rollup:
         self.gid = {k: remap[v] for k, v in self.gid.items() if v in remap}
         for m, c in list(self.g1.items()):
             self.g1[m] = Counter({remap[g]: n for g, n in c.items() if g in remap})
+        for m, c in list(self.gx.items()):
+            self.gx[m] = {((k >> 23) << 23) | (remap[(k >> 3) & 0xFFFFF] << 3) | (k & 7): n for k, n in c.items() if (k >> 3) & 0xFFFFF in remap}
         for b, c in list(self.g5.items()):
             self.g5[b] = Counter({((k >> 20) << 20) | remap[k & 0xFFFFF]: n for k, n in c.items() if (k & 0xFFFFF) in remap})
 

@@ -50,12 +50,25 @@ class Services:
         from ..live import simulate_rum
         if not getattr(self, "_sim_inventory", False):          # name the simulated peers once (only when they are not in the inventory yet)
             self._sim_inventory = True
+            from ..techstack import SIM_TECH_EXTRA_INVENTORY, SIM_TECH_INVENTORY
             for h, ip, role in (("db-01", "172.16.1.55", "PostgreSQL"), ("cache-01", "172.16.1.60", "Redis"), ("kafka-01", "172.16.1.70", "Kafka"), ("hr-db", "172.16.2.10", "Oracle")):
                 try:
                     if self.inventory.get(h) is None:
-                        self.inventory.upsert({"hostname": h, "ip": ip, "env": "prod", "role": role, "owner": "demo (simulator)"})
+                        self.inventory.upsert({"hostname": h, "ip": ip, "env": "prod", "role": role, "application": SIM_TECH_EXTRA_INVENTORY.get(h, ""), "owner": "demo (simulator)"})
                 except Exception:  # noqa: BLE001
                     pass
+            for h, ip, os_, app, role in SIM_TECH_INVENTORY:        # the integration map's technology demo: varied stacks
+                try:
+                    if self.inventory.get(h) is None:
+                        self.inventory.upsert({"hostname": h, "ip": ip, "env": "prod", "os": os_, "application": app, "role": role, "owner": "demo (simulator)"})
+                except Exception:  # noqa: BLE001
+                    pass
+        if not hasattr(self, "_sim_tech_n"):
+            self._sim_tech_n = 0
+        self._sim_tech_n += 1
+        if self._sim_tech_n % 10 == 1:                               # instrumented requests of two demo services (traces confirm FastAPI / Spring)
+            from ..techstack import simulate_tech_lines
+            self.live.ingest("otel.jsonl", simulate_tech_lines(rng), "simulator")
         if not getattr(self, "_sim_flow", False):
             self._sim_flow = True
             if not any(f["name"] == "Sipariş → Fatura" for f in self.bizflows.list()):
@@ -99,6 +112,18 @@ class Services:
             self.bizflows.add_events(events)
         except Exception:  # noqa: BLE001
             pass
+        ts = getattr(self, "techstack", None)                # technology evidence per host (trace attributes, log formats)
+        if ts is not None:
+            try:
+                ts.observe(events)
+            except Exception:  # noqa: BLE001
+                pass
+        lw = getattr(self, "logwatch", None)                 # alerts from a log query: stream counters
+        if lw is not None:
+            try:
+                lw.add_events(events)
+            except Exception:  # noqa: BLE001
+                pass
 
     def __init__(self, background: bool | None = None):
         bg = (os.environ.get("WATCHOVER_API_BACKGROUND", "1") != "0") if background is None else background
@@ -143,8 +168,15 @@ class Services:
         self.memory = Memory(self.kb, self.live, self.lang, interval_min=int(c0.get("learn_min", 15) or 0), inventory_fn=None)
         self.anomalies.on_open = self.memory.remember_anomaly
         self.scanner = ScanStore(self.kb, home=os.environ.get("WATCHOVER_HOME", "") or None)
+        from ..techstack import TechStack                    # which technology each integration runs on (integration map)
+        self.techstack = TechStack(self.kb, self.live); self.flows.tech = self.techstack; self.traces.on_spans = self.techstack.observe_spans
+        self.techstack.attach_teams(self.teams)
         self.anomalies.templates = self.templates
         self.alerts = wo_notify.AlertEngine(self.notifier, self.live, self.agents, self.sources); self.alerts.anomalies = self.anomalies
+        from ..logsearch import LogSearch                    # log explorer (docs/design/logs.md): search, tail, detail, alerts from a query
+        from ..logwatch import LogWatch, owner_scope
+        self.logs = LogSearch(self.live, self.ranges, self.history, self.traces, self.kb, self.users, wo_settings.load)
+        self.logwatch = LogWatch(self.logs, self.notifier, lambda email: owner_scope(self, email)); self.alerts.logwatch = self.logwatch
         from ..thresholds import Thresholds                  # per-server threshold policies: warn / crit, sustained minutes, e-mail / SMS / webhook
         self.thresholds = Thresholds(self.kb, self.live, self.notifier, self.anomalies, globals_fn=wo_anomaly.threshold_settings)
         self.live.threshold_fn = self.thresholds.limit_for   # the operations screen's breach list and the anomaly scan use the same levels
@@ -156,6 +188,8 @@ class Services:
         self.selfmon = None
         self._live_an: tuple[int, object] | None = None
         self.datasets = DatasetRegistry(self)
+        from ..access import wire as _wire_access
+        _wire_access(self)                                   # role-based teams: effective permissions, team hooks on agents / thresholds / alerts
         self.started = time.time()
         llm_set_sink(self.kb.log_call)                       # every LLM call lands in the quality log
         self.refresh_llm()
@@ -237,7 +271,11 @@ class Services:
 
     def scope_of(self, user: dict):
         """None (everything) or the Scope of hosts / services this user may see."""
-        return self.teams.scope(user, self.roles.can(user.get("role", ""), "scope.all"), bool(wo_settings.load().get("teams_strict")))
+        return self.access_of(user).scope(None)
+
+    def access_of(self, user: dict):
+        """Effective permissions and per-permission team scopes of one account (watchover.access, cached)."""
+        return self.access.of(user)
 
     def live_analysis(self, scope=None):
         """Analysis over the live buffer, recomputed only when new events arrived."""

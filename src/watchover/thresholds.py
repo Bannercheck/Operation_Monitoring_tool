@@ -55,7 +55,13 @@ class Thresholds:
             cooldown_min INTEGER DEFAULT 30, notify_resolved INTEGER DEFAULT 1, enabled INTEGER DEFAULT 1, note TEXT DEFAULT '', updated_at TEXT)""")
         kb._exec("""CREATE TABLE IF NOT EXISTS threshold_state (host TEXT NOT NULL, metric TEXT NOT NULL, level TEXT NOT NULL, since TEXT, value REAL,
             limit_value REAL, policy_id INTEGER, notified_level TEXT DEFAULT '', notified_at TEXT DEFAULT '', updated_at TEXT, PRIMARY KEY (host, metric))""")
+        try:
+            if "team_id" not in kb.columns("threshold_policies"):
+                kb._exec("ALTER TABLE threshold_policies ADD COLUMN team_id INTEGER")   # a team's policy (NULL: installation-wide)
+        except Exception:  # noqa: BLE001
+            pass
         self._cache: tuple[float, list[dict]] = (0.0, [])
+        self.team_hosts_fn = None                      # team id -> its hosts (set by access.wire): a team's policy covers only them
 
     # ---------------------------------------------------------------- policies
     def list(self) -> list[dict]:
@@ -92,7 +98,11 @@ class Thresholds:
                 "notify_resolved": int(bool(p.get("notify_resolved", True))), "enabled": int(bool(p.get("enabled", True))), "note": str(p.get("note") or "")[:300]}
 
     def save(self, p: dict, pid: int | None = None) -> dict:
+        """Insert / update. `team_id` in `p` (None: installation-wide) is stored with the row in the same statement, so a team's
+        policy never covers other hosts, not even for one evaluation."""
         row = self._check(p)
+        if "team_id" in p:
+            row["team_id"] = None if p.get("team_id") in (None, "") else int(p["team_id"])
         cols = list(row)
         if pid is None:
             pid = self.kb._insert(f"INSERT INTO threshold_policies ({', '.join(cols)}, updated_at) VALUES ({', '.join('?' * len(cols))}, ?)", (*row.values(), _now()))
@@ -120,7 +130,17 @@ class Thresholds:
         except Exception:  # noqa: BLE001
             return ""
 
+    def _team_hosts(self, tid) -> set:
+        if self.team_hosts_fn is None:
+            return set()
+        try:
+            return self.team_hosts_fn(tid)
+        except Exception:  # noqa: BLE001
+            return set()
+
     def matches(self, p: dict, host: str, env: str, pool: str | None = None) -> bool:
+        if p.get("team_id") is not None and host not in self._team_hosts(p["team_id"]):
+            return False                                # a team's policy: only the team's hosts ("all" = all of them)
         v = (p.get("scope_value") or "").strip().lower()
         h = (host or "").lower()
         if p["scope"] == "all":
@@ -143,7 +163,7 @@ class Thresholds:
             if not self.matches(p, host, env, pool):
                 continue
             cur = out.get(p["metric"])
-            if cur is None or SPECIFICITY[p["scope"]] > SPECIFICITY[cur["scope"]] or (SPECIFICITY[p["scope"]] == SPECIFICITY[cur["scope"]] and p["id"] > cur["id"]):
+            if cur is None or self._rank(p) > self._rank(cur):  # the owning team's policy beats installation defaults, then specificity, then newest
                 out[p["metric"]] = p
         g = self.globals_fn() if self.globals_fn else {}
         for m in ("cpu", "memory", "disk", "gpu"):
@@ -151,6 +171,10 @@ class Thresholds:
                 out[m] = {"id": None, "name": "System › Settings", "scope": "global", "scope_value": "", "metric": m, "warn": None, "crit": float(g[m]),
                           "for_min": 0, "channels": "", "targets": "", "cooldown_min": 30, "notify_resolved": 0}
         return out
+
+    @staticmethod
+    def _rank(p: dict) -> tuple:
+        return (1 if p.get("team_id") is not None else 0, SPECIFICITY[p["scope"]], p.get("id") or 0)
 
     def limit_for(self, host: str, metric: str, env: str = "") -> float | None:
         """The level a reading is compared with for the operations screen's breach list: the warning level, else the critical one."""
@@ -295,7 +319,7 @@ class Thresholds:
                     f"Policy: {p['name']} ({p['scope']} {p.get('scope_value') or ''}).")
         if self.notifier is None:
             return {"skipped": "no notifier", "title": title}
-        rule = {"id": None, "severity": sev, "channels": p.get("channels") or "email", "targets": p.get("targets") or "", "cooldown_min": 0}
+        rule = {"id": None, "severity": sev, "channels": p.get("channels") or "email", "targets": p.get("targets") or "", "cooldown_min": 0, "team_id": p.get("team_id")}
         try:
             return self.notifier.dispatch(rule, f"thr:{host}:{metric}:{lvl}", title, body, force=True)
         except Exception as e:  # noqa: BLE001
@@ -338,7 +362,7 @@ class Thresholds:
                 p = eff.get(m)
                 st = state.get((host, m))
                 ms[m] = {"value": d.get(m), "warn": p.get("warn") if p else None, "crit": p.get("crit") if p else None,
-                         "source": ({"scope": p["scope"], "value": p.get("scope_value") or "", "policy": p.get("id"), "name": p.get("name")} if p else None),
+                         "source": ({"scope": p["scope"], "value": p.get("scope_value") or "", "policy": p.get("id"), "name": p.get("name"), "team_id": p.get("team_id")} if p else None),
                          "level": (st["level"] if st else "ok") if p else None}
             rows.append({"host": host, "env": d.get("env", ""), "pool": d.get("pool", ""), "metrics": ms,
                          "worst": max((x["level"] or "ok" for x in ms.values()), key=lambda lv: {"ok": 0, "warn": 1, "crit": 2}.get(lv, 0))})
@@ -347,6 +371,8 @@ class Thresholds:
     def preview(self, p: dict) -> dict:
         """Which servers a draft policy would cover (and win for), and which of them are beyond its levels right now."""
         row = self._check(p)
+        row["team_id"] = p.get("team_id")
+        row["id"] = 10 ** 9                            # a draft is the newest
         vals = self.values()
         covered, wins, beyond = [], [], []
         for host, d in sorted(vals.items()):
@@ -354,7 +380,7 @@ class Thresholds:
                 continue
             covered.append(host)
             cur = self.effective(host, d.get("env", ""), d.get("pool")).get(row["metric"])
-            if cur is None or SPECIFICITY[row["scope"]] >= SPECIFICITY[cur["scope"]]:
+            if cur is None or self._rank(row) >= self._rank(cur):
                 wins.append(host)
                 v = d.get(row["metric"])
                 if v is not None and self._level(row, float(v)) != "ok":
