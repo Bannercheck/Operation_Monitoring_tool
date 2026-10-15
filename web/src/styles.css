@@ -572,3 +572,12 @@ button.ops-health { border: 0; background: transparent; cursor: pointer; padding
 /* integration evidence: a direct line that disagrees with the chosen technology */
 .tev li.conflict .tev-ic, .tev li.conflict .tev-tx { color: var(--amber); }
 .tlegend-box { margin-top: 4px; } .lgbox { display: inline-block; width: 20px; height: 11px; border-radius: 3px; border: 1.5px solid var(--muted); } .lgbox.dashed { border-style: dashed; }
+
+/* trace detail: client session card */
+.ts-facts { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: baseline; }
+.ts-facts .red { color: var(--red); }
+.ts-steps { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.ts-strip { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.ts-step { font-size: 12px; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--line2); color: var(--muted); max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ts-step.on { border-color: var(--accent); color: var(--fg); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.ts-step.err { border-color: var(--red); }

@@ -9,6 +9,48 @@ import { LinkBadge, fmtMs, svcColor, useScope } from "./common";
 /** One trace as a waterfall: every span on a common time axis, indented under its parent. Parents given by the logs are solid;
  *  parents inferred from time containment are marked, and each span says how it joined the trace, so nothing inferred looks
  *  like a measured fact. A span opens its details (attributes, message, evidence line). */
+const STEP_ICON: Record<string, string> = { start: "🚀", view: "📄", action: "👆", http: "🌐", error: "⚠️", crash: "💥", user: "👤", mobile: "📱" };
+const hhmmss = (s?: string | null) => (s ? new Date(s).toLocaleTimeString() : "-");
+
+/** The client session behind this trace, in one calm card: the app / browser session and the user step that started this request
+ *  (with the steps around it), or the server-side session seen in the logs. Hidden when the trace has no session. */
+function SessionCard({ id, dataset, link }: { id: string; dataset: string; link: string }) {
+  const { t } = useT();
+  const q = useQuery({ queryKey: ["trace-session", id, dataset], queryFn: () => get(`/traces/${encodeURIComponent(id)}/session${dataset !== "live" ? `?dataset=${dataset}` : ""}`), retry: false });
+  const s = q.data;
+  if (!s?.session) return null;
+  const traces = `/traces?session=${encodeURIComponent(s.session)}${link.replace("?", "&")}`;
+  const right = <div className="row" style={{ gap: 6 }}>
+    {s.kind === "rum" && <Link className="btn sm" to={`/rum/sessions/${encodeURIComponent(s.session)}`}>{t("ts_open")}</Link>}
+    <Link className="btn sm" to={traces}>{t("ts_traces")}</Link></div>;
+  if (s.kind !== "rum") return <Card title={t("ts_server")} right={right}>
+    <div className="ts-facts small">
+      <span><span className="dim">{t("apm_session")}</span> <span className="mono">{s.session}</span></span>
+      {s.user_ref && <span><span className="dim">{t("apm_user")}</span> <span className="mono">{s.user_ref}</span></span>}
+      <span>{hhmmss(s.started)} – {hhmmss(s.last)}</span>
+      <span>{s.position ? t("ts_req_pos", { n: s.position, m: s.requests }) : t("ts_reqs", { m: s.requests })}{s.capped ? "+" : ""}</span>
+      {s.errors > 0 && <span className="red">{t("ts_err_reqs", { n: s.errors })}</span>}
+      {s.hosts?.length > 0 && <span><span className="dim">{t("apm_host")}</span> {s.hosts.join(", ")}</span>}
+      {s.services?.length > 0 && <span><span className="dim">{t("ts_services")}</span> {s.services.join(", ")}</span>}
+    </div></Card>;
+  const dev = [s.version && `v${s.version}`, s.os, s.browser, s.model, s.net, s.carrier].filter(Boolean).join(" · ");
+  return <Card title={`${s.platform === "web" ? "🖥" : "📱"} ${t("ts_title")} · ${s.app}`} right={right}>
+    <div className="ts-facts small">
+      {dev && <span><span className="dim">{t("rum_col_device")}</span> {dev}</span>}
+      {s.user_ref && <span><span className="dim">{t("apm_user")}</span> <span className="mono">{s.user_ref}</span></span>}
+      <span>{hhmmss(s.started)} · {fmtMs(s.duration_ms)}</span>
+      <span>{s.views} {t("rum_col_views").toLowerCase()} · {s.actions} {t("rum_actions")} · {s.requests} {t("rum_calls")}</span>
+      {(s.errors > 0 || s.crashes > 0) && <span className="red">{s.errors} {t("apm_errors").toLowerCase()}{s.crashes ? ` · ${s.crashes} 💥` : ""}</span>}
+    </div>
+    {s.around?.length > 0 && <div className="ts-steps">
+      <span className="dim small">{s.trigger ? t("ts_trigger", { n: s.position, m: s.steps_total }) : t("ts_last_steps")}</span>
+      <div className="ts-strip">{s.around.map((x: any, i: number) => <span key={i} className={`ts-step ${x.this ? "on" : ""} ${x.error ? "err" : ""}`} title={hhmmss(x.ts)}>
+        {x.this ? <b>{STEP_ICON[x.step] ?? "•"} {x.name}</b> : x.trace_id ? <Link to={`/traces/${x.trace_id}`}>{STEP_ICON[x.step] ?? "•"} {x.name}</Link> : <>{STEP_ICON[x.step] ?? "•"} {x.name}</>}
+      </span>)}</div>
+    </div>}
+  </Card>;
+}
+
 export default function TraceDetail() {
   const { t } = useT(); const sc = useScope(); const { id = "" } = useParams();
   const [sel, setSel] = useState<any>(null);
@@ -26,6 +68,7 @@ export default function TraceDetail() {
       <Kpi value={d.errors} label={t("apm_errors")} accent="#f87171" sub={d.errors ? t("apm_has_err") : t("apm_no_err")} />
       <Kpi value={Object.entries(d.links).map(([k, v]) => `${t(`apm_link_${k}`)} ${v}`).join(" · ")} label={t("apm_k_evidence")} accent="#2dd4bf" sub={t("apm_k_inferred", { n: d.inferred_parents })} />
     </div>
+    <SessionCard id={id} dataset={sc.dataset} link={sc.link()} />
     <Card title={t("apm_time_by_svc")}>
       <div className="stackbar">{d.services.map(([s, v]: any) => <div key={s} title={`${s} · ${fmtMs(v)}`} style={{ width: `${(v / tot) * 100}%`, background: svcColor(s) }} />)}</div>
       <div className="row" style={{ gap: 12, marginTop: 6 }}>{d.services.map(([s, v]: any) => <span key={s} className="small"><span className="dot" style={{ background: svcColor(s) }} /> {s} <b>{fmtMs(v)}</b> <span className="dim">({Math.round((v / tot) * 100)}%)</span></span>)}</div>

@@ -154,6 +154,11 @@ def test_rum_api_and_audited_lookup(tmp_path, monkeypatch):
         ss = c.get("/api/rum/sessions", params={"errors": "true"}, headers=h).json()
         assert ss and ss[0]["session_id"] == "sess-1"
         assert c.get("/api/rum/sessions/sess-1", headers=h).json()["steps"]
+        ts = c.get(f"/api/traces/{'ab' * 16}/session", headers=h).json()          # trace detail -> its client session
+        assert ts["kind"] == "rum" and ts["session"] == "sess-1" and ts["model"] == "SM-S911B" and ts["version"] == "3.4.1"
+        assert ts["trigger"]["name"] == "view Bordro" and ts["trigger"]["this"] and 1 <= ts["position"] <= ts["steps_total"]
+        assert "P48213" not in str(ts) and "10000000146" not in str(ts)
+        assert c.get("/api/traces/nope/session", headers=h).status_code == 404
         assert c.post("/api/rum/lookup", json={"user": "P48213", "reason": ""}, headers=h).status_code == 400
         lk = c.post("/api/rum/lookup", json={"user": "P48213", "reason": "destek talebi 1234"}, headers=h).json()
         assert lk["user_ref"] == ss[0]["user_ref"] and lk["sessions"] == 1

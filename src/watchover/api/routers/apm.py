@@ -227,6 +227,55 @@ def trace_detail(trace_id: str, dataset: str | None = None, user=Depends(require
     return t
 
 
+_STEP_KINDS = ("user", "mobile")
+
+
+@router.get("/traces/{trace_id}/session")
+def trace_session(trace_id: str, dataset: str | None = None, user=Depends(require("page.apm")), svc=Depends(services), sc=Depends(user_scope)):
+    """The client session behind one trace: the browser / app session (device, the user step that started this request and the
+    steps around it) when the sensors saw it, otherwise the server-side session from the logs (its requests, hosts, services).
+    Ids stay pseudonyms; on the live store a team sees only its own spans of the session (as in trace_detail)."""
+    import json
+    from datetime import datetime, timezone
+    st, _ = _store(svc, dataset)
+    live = not dataset or dataset == "live"
+    own = (lambda r: True) if sc is None or not live else (lambda r: _own_span(sc, r))
+    mine = [r for r in st.db._exec("SELECT session_id, kind, host, service FROM spans WHERE trace_id = ?", (trace_id,)) if own(r)]
+    if not mine:
+        raise HTTPException(404, "trace not found")
+    sid = next((r["session_id"] for r in sorted(mine, key=lambda r: r["kind"] not in _STEP_KINDS) if r["session_id"]), "")
+    if not sid:
+        return {"session": None}
+    rows = [r for r in st.db._exec("SELECT trace_id, start_ms, duration_ms, service, operation, kind, host, error, user_ref, attrs FROM spans "
+                                   "WHERE session_id = ? ORDER BY start_ms LIMIT 3000", (sid,)) if own(r)]
+    iso = lambda ms: datetime.fromtimestamp(ms / 1000, timezone.utc).isoformat() if ms else None   # noqa: E731
+    out: dict = {"session": sid, "user_ref": next((r["user_ref"] for r in rows if r["user_ref"]), ""), "kind": "server", "capped": len(rows) >= 3000}
+    rum = svc.rum.kb._exec("SELECT * FROM rum_sessions WHERE session_id = ?", (sid,)) if live else []
+    if rum:
+        steps = []
+        for r in rows:
+            if r["kind"] not in _STEP_KINDS:
+                continue
+            a = json.loads(r["attrs"]) if r.get("attrs") else {}
+            steps.append({"step": a.get("step") or r["kind"], "name": r["operation"], "ts": iso(r["start_ms"]), "error": int(r["error"] or 0),
+                          "trace_id": r["trace_id"], "this": r["trace_id"] == trace_id})
+        at = next((i for i, s in enumerate(steps) if s["this"]), None)
+        r0 = rum[0]
+        out.update({k: r0[k] for k in ("app", "platform", "version", "os", "browser", "model", "net", "carrier", "started", "last", "duration_ms",
+                                       "views", "actions", "requests", "errors", "crashes", "entry", "exit")})
+        out.update({"kind": "rum", "user_ref": r0["user_ref"] or out["user_ref"], "trigger": steps[at] if at is not None else None,
+                    "position": at + 1 if at is not None else None, "steps_total": len(steps),
+                    "around": steps[max(0, at - 3):at + 4] if at is not None else steps[-5:]})
+        return out
+    order = list(dict.fromkeys(r["trace_id"] for r in rows))
+    out.update({"started": iso(rows[0]["start_ms"]) if rows else None,
+                "last": iso(max(r["start_ms"] + (r["duration_ms"] or 0) for r in rows)) if rows else None,
+                "requests": len(order), "errors": len({r["trace_id"] for r in rows if r["error"]}),
+                "hosts": sorted({r["host"] for r in rows if r["host"]})[:6], "services": sorted({r["service"] for r in rows if r["service"]})[:6],
+                "position": order.index(trace_id) + 1 if trace_id in order else None})
+    return out
+
+
 @router.get("/apm/exceptions")
 def exceptions(minutes: int = 60, service: str | None = None, env: str | None = None, user=Depends(require("page.apm")), svc=Depends(services), sc=Depends(user_scope)):
     """Error lines of the live window grouped by exception type and service."""
