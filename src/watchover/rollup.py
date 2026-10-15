@@ -71,6 +71,7 @@ class Rollup:
         self._pool_cache: dict[str, tuple[float, str]] = {}
         self.cnt: dict[int, Counter] = {}
         self.svc: dict[int, Counter] = {}
+        self.svc_err: dict[int, Counter] = {}       # minute -> (host, service) -> ERROR+ lines
         self.lat: dict[int, dict[tuple, list[int]]] = {}   # minute -> (host, service) -> histogram
         self.slow: dict[int, list] = {}
         self.g1: dict[int, Counter] = {}
@@ -125,6 +126,8 @@ class Rollup:
                 self.cnt.setdefault(m, Counter())[(h, sev)] += 1
                 if o.service:
                     self.svc.setdefault(m, Counter())[(h, o.service)] += 1
+                    if SEV_RANK[sev] >= 3:
+                        self.svc_err.setdefault(m, Counter())[(h, o.service)] += 1
                 if o.environment:
                     self.host_env[host] = o.environment
                 self.last_seen[host] = ts.timestamp()
@@ -161,7 +164,7 @@ class Rollup:
         self.add_ms.append((time.perf_counter() - t0) * 1000)
 
     def _expire(self, lo: int) -> None:
-        for d in (self.cnt, self.svc, self.lat, self.slow, self.g1):
+        for d in (self.cnt, self.svc, self.svc_err, self.lat, self.slow, self.g1):
             for k in [k for k in d if k < lo]:
                 del d[k]
         for k in [k for k in self.g5 if k < lo // 5]:
@@ -296,6 +299,27 @@ class Rollup:
         return {"by_host": by_host.most_common(), "by_service": by_service, "errors_recent": errs[-40:][::-1],
                 "latency": sorted(({"service": k, "n": sum(v), "p50": _q(v, .5), "p95": _q(v, .95), "max": _q(v, 1.0)} for k, v in lat_svc.items()), key=lambda r: -(r["p95"] or 0)),
                 "slowest": [{"ts": x[1], "service": x[3], "host": x[2], "ms": x[0], "message": x[4]} for x in slow[:10]]}
+
+    def services(self, window, env=None, host=None) -> list[dict]:
+        """One row per service in scope: lines, ERROR+, error rate, hosts, lines per minute, p95 (from its latency histograms)."""
+        scope = self._scope(env, host)
+        mins = self._mins(window)
+        tot: Counter = Counter(); err: Counter = Counter(); hosts: dict[str, set] = {}; lat: dict[str, list[int]] = {}
+        with self.lock:
+            for m in mins:
+                for (h, s), n in self.svc.get(m, {}).items():
+                    if scope is None or h in scope:
+                        tot[s] += n; hosts.setdefault(s, set()).add(h)
+                for (h, s), n in self.svc_err.get(m, {}).items():
+                    if scope is None or h in scope:
+                        err[s] += n
+                for (hn, sv), hh in self.lat.get(m, {}).items():
+                    if scope is None or self.hid.get(hn) in scope:
+                        acc = lat.setdefault(sv, [0] * (len(BOUNDS) + 1))
+                        for i, c in enumerate(hh):
+                            acc[i] += c
+        return sorted(({"service": s, "lines": n, "errors": err.get(s, 0), "error_rate": round(err.get(s, 0) / n, 5) if n else 0, "hosts": len(hosts.get(s, ())),
+                        "per_min": round(n / len(mins), 1), "p95_ms": _q(lat[s], 0.95) if s in lat else None} for s, n in tot.items()), key=lambda r: (-r["errors"], -r["lines"]))
 
     def host_counts(self, window_min: int) -> tuple[dict, dict]:
         """(host, env) -> [events, ERROR+] and (host, env) -> {service: ERROR+} over the last window_min minutes (the anomaly scan)."""

@@ -1,0 +1,240 @@
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=379434","full_message":"payment failed order=481930 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=741969","full_message":"payment failed order=576389 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-api-02","short_message":"upstream timed out","timestamp":1790068503.1,"level":4,"_service":"nginx"}
+{"version":"1.1","host":"prd-api-02","short_message":"upstream timed out","timestamp":1790068503.1,"level":4,"_service":"nginx"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=777549","full_message":"payment failed order=702869 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-02","short_message":"upstream timed out","timestamp":1790068503.1,"level":4,"_service":"nginx"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=797319","full_message":"payment failed order=84900 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-api-02","short_message":"upstream timed out","timestamp":1790068503.1,"level":4,"_service":"nginx"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=255904","full_message":"payment failed order=10963 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-api-02","short_message":"upstream timed out","timestamp":1790068503.1,"level":4,"_service":"nginx"}
+{"version":"1.1","host":"prd-api-02","short_message":"upstream timed out","timestamp":1790068503.1,"level":4,"_service":"nginx"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-api-02","short_message":"upstream timed out","timestamp":1790068503.1,"level":4,"_service":"nginx"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=438762","full_message":"payment failed order=216662 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-api-02","short_message":"upstream timed out","timestamp":1790068503.1,"level":4,"_service":"nginx"}
+{"version":"1.1","host":"prd-api-02","short_message":"upstream timed out","timestamp":1790068503.1,"level":4,"_service":"nginx"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-02","short_message":"upstream timed out","timestamp":1790068503.1,"level":4,"_service":"nginx"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=865988","full_message":"payment failed order=249774 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=868418","full_message":"payment failed order=415015 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=327774","full_message":"payment failed order=283704 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=513170","full_message":"payment failed order=140170 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-api-02","short_message":"upstream timed out","timestamp":1790068503.1,"level":4,"_service":"nginx"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-api-02","short_message":"upstream timed out","timestamp":1790068503.1,"level":4,"_service":"nginx"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=843531","full_message":"payment failed order=420105 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-api-02","short_message":"upstream timed out","timestamp":1790068503.1,"level":4,"_service":"nginx"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=644868","full_message":"payment failed order=395528 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-api-02","short_message":"upstream timed out","timestamp":1790068503.1,"level":4,"_service":"nginx"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=90005","full_message":"payment failed order=232358 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-02","short_message":"upstream timed out","timestamp":1790068503.1,"level":4,"_service":"nginx"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=786782","full_message":"payment failed order=846084 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-api-02","short_message":"upstream timed out","timestamp":1790068503.1,"level":4,"_service":"nginx"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=410047","full_message":"payment failed order=650684 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=875827","full_message":"payment failed order=529276 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=671043","full_message":"payment failed order=521758 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-02","short_message":"upstream timed out","timestamp":1790068503.1,"level":4,"_service":"nginx"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=565927","full_message":"payment failed order=841224 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-api-02","short_message":"upstream timed out","timestamp":1790068503.1,"level":4,"_service":"nginx"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=280675","full_message":"payment failed order=33062 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=499342","full_message":"payment failed order=790813 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=828563","full_message":"payment failed order=883002 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-api-02","short_message":"upstream timed out","timestamp":1790068503.1,"level":4,"_service":"nginx"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=478124","full_message":"payment failed order=68159 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-02","short_message":"upstream timed out","timestamp":1790068503.1,"level":4,"_service":"nginx"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-02","short_message":"upstream timed out","timestamp":1790068503.1,"level":4,"_service":"nginx"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=421291","full_message":"payment failed order=535847 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-api-02","short_message":"upstream timed out","timestamp":1790068503.1,"level":4,"_service":"nginx"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=937964","full_message":"payment failed order=488335 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-api-02","short_message":"upstream timed out","timestamp":1790068503.1,"level":4,"_service":"nginx"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-api-02","short_message":"upstream timed out","timestamp":1790068503.1,"level":4,"_service":"nginx"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=316656","full_message":"payment failed order=889677 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=221679","full_message":"payment failed order=396484 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=529410","full_message":"payment failed order=429352 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=958004","full_message":"payment failed order=346755 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-api-02","short_message":"upstream timed out","timestamp":1790068503.1,"level":4,"_service":"nginx"}
+{"version":"1.1","host":"prd-api-02","short_message":"upstream timed out","timestamp":1790068503.1,"level":4,"_service":"nginx"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=915081","full_message":"payment failed order=874311 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-api-02","short_message":"upstream timed out","timestamp":1790068503.1,"level":4,"_service":"nginx"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-02","short_message":"upstream timed out","timestamp":1790068503.1,"level":4,"_service":"nginx"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=969420","full_message":"payment failed order=32684 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=329229","full_message":"payment failed order=232032 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=432373","full_message":"payment failed order=739812 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-api-02","short_message":"upstream timed out","timestamp":1790068503.1,"level":4,"_service":"nginx"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=166372","full_message":"payment failed order=947650 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-02","short_message":"upstream timed out","timestamp":1790068503.1,"level":4,"_service":"nginx"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-api-02","short_message":"upstream timed out","timestamp":1790068503.1,"level":4,"_service":"nginx"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=657836","full_message":"payment failed order=615320 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-api-02","short_message":"upstream timed out","timestamp":1790068503.1,"level":4,"_service":"nginx"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-api-02","short_message":"upstream timed out","timestamp":1790068503.1,"level":4,"_service":"nginx"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=632803","full_message":"payment failed order=995010 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=237667","full_message":"payment failed order=452191 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=545238","full_message":"payment failed order=416698 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-api-02","short_message":"upstream timed out","timestamp":1790068503.1,"level":4,"_service":"nginx"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-api-02","short_message":"upstream timed out","timestamp":1790068503.1,"level":4,"_service":"nginx"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-02","short_message":"upstream timed out","timestamp":1790068503.1,"level":4,"_service":"nginx"}
+{"version":"1.1","host":"prd-api-02","short_message":"upstream timed out","timestamp":1790068503.1,"level":4,"_service":"nginx"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=924685","full_message":"payment failed order=33802 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=656590","full_message":"payment failed order=852568 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=486432","full_message":"payment failed order=12770 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=480662","full_message":"payment failed order=996550 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=629256","full_message":"payment failed order=646964 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-02","short_message":"upstream timed out","timestamp":1790068503.1,"level":4,"_service":"nginx"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=64462","full_message":"payment failed order=635205 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=811305","full_message":"payment failed order=890284 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=391231","full_message":"payment failed order=624594 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=397365","full_message":"payment failed order=733638 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=334131","full_message":"payment failed order=891359 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=733207","full_message":"payment failed order=162342 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-api-02","short_message":"upstream timed out","timestamp":1790068503.1,"level":4,"_service":"nginx"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=701202","full_message":"payment failed order=206605 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=477344","full_message":"payment failed order=580093 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=524524","full_message":"payment failed order=330573 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=906235","full_message":"payment failed order=84860 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=89373","full_message":"payment failed order=755679 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=390652","full_message":"payment failed order=888081 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=855268","full_message":"payment failed order=882110 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-02","short_message":"upstream timed out","timestamp":1790068503.1,"level":4,"_service":"nginx"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=562078","full_message":"payment failed order=40069 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-api-02","short_message":"upstream timed out","timestamp":1790068503.1,"level":4,"_service":"nginx"}
+{"version":"1.1","host":"prd-api-02","short_message":"upstream timed out","timestamp":1790068503.1,"level":4,"_service":"nginx"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=469375","full_message":"payment failed order=16711 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=825898","full_message":"payment failed order=947586 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=26930","full_message":"payment failed order=130860 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-01","short_message":"payment failed order=403863","full_message":"payment failed order=395199 reason=gateway_timeout","timestamp":1790068621.5,"level":3,"_service":"payment-api","_env":"prod"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-02","short_message":"upstream timed out","timestamp":1790068503.1,"level":4,"_service":"nginx"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-api-02","short_message":"upstream timed out","timestamp":1790068503.1,"level":4,"_service":"nginx"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-02","short_message":"upstream timed out","timestamp":1790068503.1,"level":4,"_service":"nginx"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-api-02","short_message":"upstream timed out","timestamp":1790068503.1,"level":4,"_service":"nginx"}
+{"version":"1.1","host":"prd-api-01","short_message":"user login ok user=ali","timestamp":1790068560,"level":6,"_service":"auth-api"}
+{"version":"1.1","host":"prd-db-01","short_message":"checkpoint complete: wrote 812 buffers","timestamp":1790068471.2,"level":6,"_service":"postgres"}

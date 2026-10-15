@@ -70,7 +70,7 @@ export function DetailPanel({ kind, sq, env, host, sl, m, s, files, onClose }: {
   </Card>;
 }
 
-function TailModal({ f, onClose }: { f: any; onClose: () => void }) {
+export function TailModal({ f, onClose }: { f: any; onClose: () => void }) {
   const { t } = useT(); const { can } = useAuth(); const [errors, setErrors] = useState(false);
   const q = useQuery({ queryKey: ["lines", f.agent, f.file, errors], queryFn: () => get(`/live/lines?agent=${encodeURIComponent(f.agent)}&source=${encodeURIComponent(f.file)}&n=400&errors=${errors}${f.host && f.host !== "-" ? `&host=${encodeURIComponent(f.host)}` : ""}`), refetchInterval: 5000 });
   const text = (q.data ?? []).map((l: any) => `${l.timestamp.slice(11, 19)} ${l.severity.padEnd(8)} ${l.message}`).join("\n");

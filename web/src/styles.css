@@ -273,3 +273,11 @@ tr.clickable { cursor: pointer; } tr.clickable:hover td { background: rgba(148, 
 @media (max-width: 640px) { .ops-kpis, .ops-infra { grid-template-columns: 1fr 1fr; } .t2-v { font-size: 22px; } .t2-sp { display: none; } .hm-row { grid-template-columns: 1fr; }
   .lx-l { grid-template-columns: 60px 10px minmax(0, 1fr); } .lx-l .lx-host, .lx-l .lx-svc { display: none; } .sc-in { width: 100%; } }
 .lx-bar .input.sm { width: auto; }
+.t2-link { text-decoration: underline dotted; cursor: pointer; } .t2-link:hover { color: var(--fg); }
+.env-chips { display: flex; gap: 6px; flex-wrap: wrap; } .env-chips .chip { cursor: pointer; }
+.rd-two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+.rd-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.rd-kpis > div { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; } .rd-kpis b { font-size: 22px; font-variant-numeric: tabular-nums; }
+.rd-list { max-height: 260px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+th.clickable { cursor: pointer; user-select: none; } th.clickable:hover { color: var(--fg); }
+@media (max-width: 900px) { .rd-two, .rd-kpis { grid-template-columns: 1fr; } }

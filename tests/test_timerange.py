@@ -110,3 +110,37 @@ def test_range_api_and_scope(tmp_path, monkeypatch):
         assert {p["pool"] for p in c.get("/api/live/range/fleet?last=15", headers=h).json()["pools"]} == {"prd-db"}
         assert {l["host"][:6] for l in c.get("/api/live/range/logs?last=15", headers=h).json()["lines"]} == {"prd-db"}
         assert c.get("/api/live/range/groups?last=15&pool=prd-web", headers=h).json()["total"] == 0
+
+
+def test_detail_services_and_fixed_range_report(tmp_path, monkeypatch):
+    """The detail behind the headline numbers follows the range (services with errors and p95, errors by host, budget burn), and the
+    SLO report of a fixed past range covers that range, not the last N minutes."""
+    st, h = _store(tmp_path)
+    now = datetime.now(UTC)
+    for i in range(6):
+        _feed(st, now - timedelta(minutes=2), f"prd-web-0{i % 3 + 1}")
+    rv = RangeView(st, h)
+    d = rv.detail(*parse_range(15)[:2])
+    assert d["source"] == "live" and d["total"] == 300 and d["services"][0]["service"] == "web" and d["services"][0]["errors"] == 30
+    assert d["services"][0]["hosts"] == 3 and d["services"][0]["p95_ms"] and d["by_service"] == [("web", 30)] and len(d["per_minute"]) == 16
+    assert d["templates"] and d["recent"] and d["error_budget"] == 0.0
+    for k, v in {"KNOWLEDGE_DB": str(tmp_path / "k2.db"), "ACTIONS_DB": str(tmp_path / "a.db"), "PLAYBOOK_DB": str(tmp_path / "pb.db"),
+                 "WATCHOVER_HOME": str(tmp_path / "home"), "LIVE_SPOOL": str(tmp_path / "live.jsonl"), "WATCHOVER_API_BACKGROUND": "0", "WATCHOVER_SELFMON": "0"}.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    from fastapi.testclient import TestClient
+    from watchover.api import create_app
+    a = create_app(); svc = a.state.services
+    svc.kb._exec("UPDATE users SET must_change=0")
+    for i in range(4):
+        _feed(svc.live, now - timedelta(hours=3), f"prd-web-0{i % 2 + 1}")
+    svc.history.flush()
+    with TestClient(a) as c:
+        hd = {"Authorization": "Bearer " + c.post("/api/auth/login", json={"email": "admin@watchover.local", "password": "Watchover!Admin2026"}).json()["token"]}
+        from urllib.parse import quote
+        s_, e_ = quote((now - timedelta(hours=3, minutes=5)).isoformat()), quote((now - timedelta(hours=2, minutes=55)).isoformat())
+        d = c.get(f"/api/live/range/detail?start={s_}&end={e_}", headers=hd).json()
+        assert d["source"] == "history" and d["total"] == 200 and d["services"][0]["lines"] == 200 and d["live"] is False
+        r = c.get(f"/api/live/report?start={s_}&end={e_}", headers=hd)
+        assert r.status_code == 200 and "200" in r.text.replace(".", "").replace(",", "")
+        assert c.get("/api/live/report?window=15", headers=hd).status_code == 200

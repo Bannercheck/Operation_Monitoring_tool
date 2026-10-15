@@ -1,0 +1,1500 @@
+alarm_id,timestamp,source_system,host,service,severity,alarm_type,message,veri_merkezi,kabin,ortam
+ALM-00001,2026-09-10T01:30:01+03:00,zabbix,inventory-02,inventory-api,2,FS_INODES,Inode usage 39% on inventory-02,dc1,rack-A,prod
+ALM-00002,2026-09-10T01:30:05+03:00,syslog,report-02,report-svc,2,MEM_HIGH,Memory usage 18% on report-02,dc1,rack-C,test
+ALM-00003,2026-09-10T01:30:05+03:00,prometheus,api-01,api-gateway,1,CONFIG_RELOAD,Config reloaded on api-01,dc1,rack-B,prod
+ALM-00004,2026-09-10T01:30:08+03:00,prometheus,backup-02,backup-svc,1,CONFIG_RELOAD,Config reloaded on backup-02,dc2,rack-B,prod
+ALM-00005,2026-09-10T01:30:10+03:00,zabbix,payment-01,payment-db,2,LOGIN_FAIL,Login failures 45/min on payment-db,dc1,rack-B,prod
+ALM-00006,2026-09-10T01:30:13+03:00,prometheus,catalog-01,catalog-api,2,BACKUP_FAIL,Backup job failed on catalog-01,dc1,rack-A,prod
+ALM-00007,2026-09-10T01:30:18+03:00,syslog,backup-01,backup-svc,2,AGENT_RESTART,Monitoring agent restarted on backup-01,dc1,rack-A,prod
+ALM-00008,2026-09-10T01:30:20+03:00,prometheus,email-01,email-svc,1,DEPLOY_START,Deployment started for email-svc,dc1,rack-A,prod
+ALM-00009,2026-09-10T01:30:20+03:00,appdynamics,order-01,order-db,2,AGENT_RESTART,Monitoring agent restarted on order-01,dc2,rack-C,prod
+ALM-00010,2026-09-10T01:30:23+03:00,syslog,redis-01,redis-cache,2,FS_INODES,Inode usage 8% on redis-01,dc2,rack-C,prod
+ALM-00011,2026-09-10T01:30:26+03:00,prometheus,billing-02,billing-svc,1,DEPLOY_START,Deployment started for billing-svc,dc2,rack-B,prod
+ALM-00012,2026-09-10T01:30:31+03:00,cloudwatch,stage-02,payment-api,3,NTP_DRIFT,Clock drift 47ms on stage-02,dc1,rack-C,staging
+ALM-00013,2026-09-10T01:30:31+03:00,cloudwatch,payment-02,payment-db,2,JOB_RETRY,Batch job retry #65 on payment-db,dc1,rack-C,prod
+ALM-00014,2026-09-10T01:30:35+03:00,prometheus,payment-01,payment-db,2,JOB_RETRY,Batch job retry #12 on payment-db,dc1,rack-B,prod
+ALM-00015,2026-09-10T01:30:39+03:00,prometheus,auth-02,auth-api,1,DEPLOY_START,Deployment started for auth-api,dc2,rack-B,prod
+ALM-00016,2026-09-10T01:30:42+03:00,syslog,ledger-01,ledger-svc,2,JOB_RETRY,Batch job retry #41 on ledger-svc,dc2,rack-C,prod
+ALM-00017,2026-09-10T01:30:42+03:00,prometheus,inventory-01,inventory-api,2,NTP_DRIFT,Clock drift 34ms on inventory-01,dc2,rack-C,prod
+ALM-00018,2026-09-10T01:30:51+03:00,syslog,notification-02,notification-svc,2,FS_INODES,Inode usage 8% on notification-02,dc1,rack-C,prod
+ALM-00019,2026-09-10T01:30:52+03:00,syslog,inventory-02,inventory-api,2,BACKUP_FAIL,Backup job failed on inventory-02,dc1,rack-A,prod
+ALM-00020,2026-09-10T01:30:54+03:00,prometheus,search-02,search-api,2,MEM_HIGH,Memory usage 12% on search-02,dc1,rack-C,prod
+ALM-00021,2026-09-10T01:30:56+03:00,prometheus,user-01,user-db,2,BACKUP_FAIL,Backup job failed on user-01,dc1,rack-A,prod
+ALM-00022,2026-09-10T01:31:04+03:00,zabbix,order-02,order-api,2,MEM_HIGH,Memory usage 54% on order-02,dc2,rack-B,prod
+ALM-00023,2026-09-10T01:31:08+03:00,appdynamics,user-01,user-db,2,FS_INODES,Inode usage 39% on user-01,dc1,rack-A,prod
+ALM-00024,2026-09-10T01:31:16+03:00,syslog,auth-01,auth-api,2,CACHE_MISS,Cache miss ratio 42% on auth-api,dc1,rack-A,prod
+ALM-00025,2026-09-10T01:31:16+03:00,prometheus,user-01,user-db,2,JOB_RETRY,Batch job retry #66 on user-db,dc1,rack-A,prod
+ALM-00026,2026-09-10T01:31:17+03:00,zabbix,sms-01,sms-svc,3,JOB_RETRY,Batch job retry #79 on sms-svc,dc2,rack-C,prod
+ALM-00027,2026-09-10T01:31:17+03:00,syslog,order-02,order-api,2,LOGIN_FAIL,Login failures 14/min on order-api,dc2,rack-B,prod
+ALM-00028,2026-09-10T01:31:18+03:00,cloudwatch,catalog-01,catalog-api,2,AGENT_RESTART,Monitoring agent restarted on catalog-01,dc1,rack-A,prod
+ALM-00029,2026-09-10T01:31:20+03:00,prometheus,kafka-01,kafka,1,DEPLOY_START,Deployment started for kafka,dc1,rack-B,prod
+ALM-00030,2026-09-10T01:31:26+03:00,syslog,email-02,email-svc,2,CPU_HIGH,CPU usage 70% on email-02,dc2,rack-B,prod
+ALM-00031,2026-09-10T01:31:29+03:00,cloudwatch,fraud-01,fraud-svc,1,CONFIG_RELOAD,Config reloaded on fraud-01,dc1,rack-B,prod
+ALM-00032,2026-09-10T01:31:30+03:00,cloudwatch,fraud-01,fraud-svc,2,BACKUP_FAIL,Backup job failed on fraud-01,dc1,rack-B,prod
+ALM-00033,2026-09-10T01:31:37+03:00,syslog,ledger-02,ledger-svc,2,BACKUP_FAIL,Backup job failed on ledger-02,dc1,rack-A,prod
+ALM-00034,2026-09-10T01:31:39+03:00,cloudwatch,order-02,order-api,2,FS_INODES,Inode usage 69% on order-02,dc2,rack-B,prod
+ALM-00035,2026-09-10T01:31:51+03:00,cloudwatch,fraud-02,fraud-svc,2,BACKUP_FAIL,Backup job failed on fraud-02,dc1,rack-C,prod
+ALM-00036,2026-09-10T01:31:56+03:00,cloudwatch,catalog-01,catalog-db,2,CERT_EXPIRY,TLS certificate expires in 43 days,dc1,rack-A,prod
+ALM-00037,2026-09-10T01:32:01+03:00,cloudwatch,email-01,email-svc,1,CONFIG_RELOAD,Config reloaded on email-01,dc1,rack-A,prod
+ALM-00038,2026-09-10T01:32:02+03:00,zabbix,email-01,email-svc,2,CERT_EXPIRY,TLS certificate expires in 59 days,dc1,rack-A,prod
+ALM-00039,2026-09-10T01:32:03+03:00,zabbix,notification-02,notification-svc,2,MEM_HIGH,Memory usage 33% on notification-02,dc1,rack-C,prod
+ALM-00040,2026-09-10T01:32:08+03:00,zabbix,report-02,report-svc,2,AGENT_RESTART,Monitoring agent restarted on report-02,dc1,rack-C,test
+ALM-00041,2026-09-10T01:32:13+03:00,cloudwatch,api-02,api-gateway,1,CONFIG_RELOAD,Config reloaded on api-02,dc1,rack-C,prod
+ALM-00042,2026-09-10T01:32:15+03:00,zabbix,checkout-01,checkout-api,2,BACKUP_FAIL,Backup job failed on checkout-01,dc2,rack-C,prod
+ALM-00043,2026-09-10T01:32:20+03:00,appdynamics,kafka-01,kafka,1,CONFIG_RELOAD,Config reloaded on kafka-01,dc1,rack-B,prod
+ALM-00044,2026-09-10T01:32:26+03:00,cloudwatch,stage-01,checkout-api,2,MEM_HIGH,Memory usage 62% on stage-01,dc1,rack-C,staging
+ALM-00045,2026-09-10T01:32:27+03:00,syslog,fraud-01,fraud-svc,1,DEPLOY_START,Deployment started for fraud-svc,dc1,rack-B,prod
+ALM-00046,2026-09-10T01:32:29+03:00,zabbix,auth-02,auth-api,2,CERT_EXPIRY,TLS certificate expires in 34 days,dc2,rack-B,prod
+ALM-00047,2026-09-10T01:32:30+03:00,syslog,ledger-02,ledger-svc,2,CPU_HIGH,CPU usage 32% on ledger-02,dc1,rack-A,prod
+ALM-00048,2026-09-10T01:32:31+03:00,prometheus,auth-01,auth-api,1,DEPLOY_START,Deployment started for auth-api,dc1,rack-A,prod
+ALM-00049,2026-09-10T01:32:32+03:00,cloudwatch,monitoring-02,monitoring-agent,1,CONFIG_RELOAD,Config reloaded on monitoring-02,dc1,rack-C,prod
+ALM-00050,2026-09-10T01:32:38+03:00,prometheus,user-01,user-db,1,CONFIG_RELOAD,Config reloaded on user-01,dc1,rack-A,prod
+ALM-00051,2026-09-10T01:32:39+03:00,appdynamics,sms-02,sms-svc,2,NTP_DRIFT,Clock drift 66ms on sms-02,dc1,rack-A,prod
+ALM-00052,2026-09-10T01:32:42+03:00,cloudwatch,inventory-02,inventory-api,1,DEPLOY_START,Deployment started for inventory-api,dc1,rack-A,prod
+ALM-00053,2026-09-10T01:32:44+03:00,cloudwatch,redis-01,redis-cache,1,CONFIG_RELOAD,Config reloaded on redis-01,dc2,rack-C,prod
+ALM-00054,2026-09-10T01:32:49+03:00,syslog,stage-01,checkout-api,2,NTP_DRIFT,Clock drift 49ms on stage-01,dc1,rack-C,staging
+ALM-00055,2026-09-10T01:32:51+03:00,zabbix,fraud-01,fraud-svc,2,LOGIN_FAIL,Login failures 37/min on fraud-svc,dc1,rack-B,prod
+ALM-00056,2026-09-10T01:32:54+03:00,zabbix,catalog-01,catalog-api,2,CPU_HIGH,CPU usage 68% on catalog-01,dc1,rack-A,prod
+ALM-00057,2026-09-10T01:32:59+03:00,appdynamics,kafka-02,kafka,2,CPU_HIGH,CPU usage 49% on kafka-02,dc1,rack-C,prod
+ALM-00058,2026-09-10T01:33:02+03:00,prometheus,report-01,report-svc,2,CPU_HIGH,CPU usage 10% on report-01,dc1,rack-B,prod
+ALM-00059,2026-09-10T01:33:06+03:00,appdynamics,report-02,report-svc,2,CPU_HIGH,CPU usage 10% on report-02,dc1,rack-C,test
+ALM-00060,2026-09-10T01:33:18+03:00,cloudwatch,catalog-01,catalog-api,2,AGENT_RESTART,Monitoring agent restarted on catalog-01,dc1,rack-A,prod
+ALM-00061,2026-09-10T01:33:21+03:00,appdynamics,ledger-01,ledger-svc,2,CERT_EXPIRY,TLS certificate expires in 17 days,dc2,rack-C,prod
+ALM-00062,2026-09-10T01:33:22+03:00,appdynamics,stage-01,checkout-api,2,LOGIN_FAIL,Login failures 4/min on checkout-api,dc1,rack-C,staging
+ALM-00063,2026-09-10T01:33:24+03:00,cloudwatch,batch-01,batch-scheduler,2,CERT_EXPIRY,TLS certificate expires in 76 days,dc2,rack-C,prod
+ALM-00064,2026-09-10T01:33:29+03:00,cloudwatch,payment-02,payment-db,2,CERT_EXPIRY,TLS certificate expires in 55 days,dc1,rack-C,prod
+ALM-00065,2026-09-10T01:33:30+03:00,zabbix,user-02,user-db,2,CPU_HIGH,CPU usage 74% on user-02,dc2,rack-B,prod
+ALM-00066,2026-09-10T01:33:30+03:00,syslog,sms-01,sms-svc,2,LOGIN_FAIL,Login failures 11/min on sms-svc,dc2,rack-C,prod
+ALM-00067,2026-09-10T01:33:41+03:00,syslog,email-02,email-svc,1,DEPLOY_START,Deployment started for email-svc,dc2,rack-B,prod
+ALM-00068,2026-09-10T01:33:41+03:00,prometheus,order-01,order-api,2,FS_INODES,Inode usage 20% on order-01,dc1,rack-A,prod
+ALM-00069,2026-09-10T01:33:52+03:00,prometheus,backup-02,backup-svc,1,CONFIG_RELOAD,Config reloaded on backup-02,dc2,rack-B,prod
+ALM-00070,2026-09-10T01:34:04+03:00,zabbix,order-01,order-db,2,MEM_HIGH,Memory usage 72% on order-01,dc2,rack-C,prod
+ALM-00071,2026-09-10T01:34:09+03:00,prometheus,fraud-02,fraud-svc,1,CONFIG_RELOAD,Config reloaded on fraud-02,dc1,rack-C,prod
+ALM-00072,2026-09-10T01:34:10+03:00,prometheus,api-02,api-gateway,2,CPU_HIGH,CPU usage 18% on api-02,dc1,rack-C,prod
+ALM-00073,2026-09-10T01:34:11+03:00,syslog,payment-02,payment-db,2,MEM_HIGH,Memory usage 31% on payment-02,dc1,rack-C,prod
+ALM-00074,2026-09-10T01:34:11+03:00,syslog,catalog-02,catalog-api,2,CERT_EXPIRY,TLS certificate expires in 48 days,dc2,rack-B,prod
+ALM-00075,2026-09-10T01:34:11+03:00,cloudwatch,fraud-01,fraud-svc,2,FS_INODES,Inode usage 30% on fraud-01,dc1,rack-B,prod
+ALM-00076,2026-09-10T01:34:13+03:00,zabbix,order-01,order-db,1,DEPLOY_START,Deployment started for order-db,dc2,rack-C,prod
+ALM-00077,2026-09-10T01:34:15+03:00,cloudwatch,api-02,api-gateway,2,NTP_DRIFT,Clock drift 51ms on api-02,dc1,rack-C,prod
+ALM-00078,2026-09-10T01:34:16+03:00,zabbix,email-02,email-svc,1,DEPLOY_START,Deployment started for email-svc,dc2,rack-B,prod
+ALM-00079,2026-09-10T01:34:17+03:00,cloudwatch,search-02,search-api,2,JOB_RETRY,Batch job retry #39 on search-api,dc1,rack-C,prod
+ALM-00080,2026-09-10T01:34:24+03:00,prometheus,payment-02,payment-db,2,JOB_RETRY,Batch job retry #6 on payment-db,dc1,rack-C,prod
+ALM-00081,2026-09-10T01:34:24+03:00,syslog,catalog-01,catalog-db,2,JOB_RETRY,Batch job retry #3 on catalog-db,dc1,rack-A,prod
+ALM-00082,2026-09-10T01:34:29+03:00,cloudwatch,auth-01,auth-api,2,MEM_HIGH,Memory usage 45% on auth-01,dc1,rack-A,prod
+ALM-00083,2026-09-10T01:34:36+03:00,cloudwatch,catalog-01,catalog-db,2,AGENT_RESTART,Monitoring agent restarted on catalog-01,dc1,rack-A,prod
+ALM-00084,2026-09-10T01:34:40+03:00,syslog,sms-01,sms-svc,2,MEM_HIGH,Memory usage 67% on sms-01,dc2,rack-C,prod
+ALM-00085,2026-09-10T01:34:43+03:00,cloudwatch,payment-02,payment-api,2,CPU_HIGH,CPU usage 12% on payment-02,dc1,rack-C,prod
+ALM-00086,2026-09-10T01:34:47+03:00,syslog,monitoring-01,monitoring-agent,1,DEPLOY_START,Deployment started for monitoring-agent,dc1,rack-B,prod
+ALM-00087,2026-09-10T01:34:52+03:00,zabbix,catalog-02,catalog-api,2,NTP_DRIFT,Clock drift 31ms on catalog-02,dc2,rack-B,prod
+ALM-00088,2026-09-10T01:34:52+03:00,zabbix,order-02,order-api,2,JOB_RETRY,Batch job retry #29 on order-api,dc2,rack-B,prod
+ALM-00089,2026-09-10T01:34:54+03:00,appdynamics,catalog-01,catalog-db,2,NTP_DRIFT,Clock drift 19ms on catalog-01,dc1,rack-A,prod
+ALM-00090,2026-09-10T01:34:58+03:00,cloudwatch,catalog-02,catalog-api,2,BACKUP_FAIL,Backup job failed on catalog-02,dc2,rack-B,prod
+ALM-00091,2026-09-10T01:35:00+03:00,appdynamics,order-01,order-db,3,DISK_HIGH,Disk usage 80% on /data (order-01),dc2,rack-C,prod
+ALM-00092,2026-09-10T01:35:09+03:00,prometheus,auth-02,auth-api,2,CPU_HIGH,CPU usage 65% on auth-02,dc2,rack-B,prod
+ALM-00093,2026-09-10T01:35:10+03:00,appdynamics,payment-02,payment-db,2,NTP_DRIFT,Clock drift 67ms on payment-02,dc1,rack-C,prod
+ALM-00094,2026-09-10T01:35:11+03:00,cloudwatch,payment-01,payment-api,2,NTP_DRIFT,Clock drift 60ms on payment-01,dc1,rack-B,prod
+ALM-00095,2026-09-10T01:35:19+03:00,zabbix,checkout-02,checkout-api,2,CPU_HIGH,CPU usage 3% on checkout-02,dc1,rack-A,prod
+ALM-00096,2026-09-10T01:35:19+03:00,zabbix,api-02,api-gateway,2,CACHE_MISS,Cache miss ratio 20% on api-gateway,dc1,rack-C,prod
+ALM-00097,2026-09-10T01:35:23+03:00,appdynamics,stage-01,checkout-api,2,NTP_DRIFT,Clock drift 41ms on stage-01,dc1,rack-C,staging
+ALM-00098,2026-09-10T01:35:31+03:00,cloudwatch,order-01,order-api,1,CONFIG_RELOAD,Config reloaded on order-01,dc1,rack-A,prod
+ALM-00099,2026-09-10T01:35:32+03:00,cloudwatch,cdn-02,cdn-edge,2,NTP_DRIFT,Clock drift 38ms on cdn-02,dc1,rack-A,prod
+ALM-00100,2026-09-10T01:35:32+03:00,prometheus,billing-01,billing-svc,2,NTP_DRIFT,Clock drift 8ms on billing-01,dc1,rack-A,prod
+ALM-00101,2026-09-10T01:35:38+03:00,appdynamics,inventory-02,inventory-api,2,FS_INODES,Inode usage 69% on inventory-02,dc1,rack-A,prod
+ALM-00102,2026-09-10T01:35:39+03:00,prometheus,report-02,report-svc,1,DEPLOY_START,Deployment started for report-svc,dc1,rack-C,test
+ALM-00103,2026-09-10T01:35:42+03:00,cloudwatch,object-02,object-storage,2,FS_INODES,Inode usage 38% on object-02,dc2,rack-B,prod
+ALM-00104,2026-09-10T01:35:44+03:00,prometheus,email-02,email-svc,1,CONFIG_RELOAD,Config reloaded on email-02,dc2,rack-B,prod
+ALM-00105,2026-09-10T01:35:48+03:00,zabbix,order-01,order-db,2,AGENT_RESTART,Monitoring agent restarted on order-01,dc2,rack-C,prod
+ALM-00106,2026-09-10T01:35:51+03:00,prometheus,stage-02,payment-api,2,CACHE_MISS,Cache miss ratio 75% on payment-api,dc1,rack-C,staging
+ALM-00107,2026-09-10T01:35:54+03:00,appdynamics,api-01,api-gateway,2,MEM_HIGH,Memory usage 27% on api-01,dc1,rack-B,prod
+ALM-00108,2026-09-10T01:35:54+03:00,cloudwatch,payment-02,payment-api,2,CACHE_MISS,Cache miss ratio 5% on payment-api,dc1,rack-C,prod
+ALM-00109,2026-09-10T01:36:00+03:00,appdynamics,catalog-01,catalog-db,2,NTP_DRIFT,Clock drift 21ms on catalog-01,dc1,rack-A,prod
+ALM-00110,2026-09-10T01:36:01+03:00,prometheus,user-01,user-db,2,CPU_HIGH,CPU usage 45% on user-01,dc1,rack-A,prod
+ALM-00111,2026-09-10T01:36:02+03:00,appdynamics,catalog-02,catalog-api,2,NTP_DRIFT,Clock drift 72ms on catalog-02,dc2,rack-B,prod
+ALM-00112,2026-09-10T01:36:03+03:00,syslog,payment-01,payment-db,2,MEM_HIGH,Memory usage 18% on payment-01,dc1,rack-B,prod
+ALM-00113,2026-09-10T01:36:04+03:00,syslog,redis-01,redis-cache,2,CACHE_MISS,Cache miss ratio 3% on redis-cache,dc2,rack-C,prod
+ALM-00114,2026-09-10T01:36:06+03:00,zabbix,fraud-02,fraud-svc,3,MEM_HIGH,Memory usage 15% on fraud-02,dc1,rack-C,prod
+ALM-00115,2026-09-10T01:36:06+03:00,appdynamics,kafka-01,kafka,1,CONFIG_RELOAD,Config reloaded on kafka-01,dc1,rack-B,prod
+ALM-00116,2026-09-10T01:36:08+03:00,prometheus,report-02,report-svc,2,CACHE_MISS,Cache miss ratio 43% on report-svc,dc1,rack-C,test
+ALM-00117,2026-09-10T01:36:21+03:00,zabbix,batch-02,batch-scheduler,2,AGENT_RESTART,Monitoring agent restarted on batch-02,dc1,rack-A,prod
+ALM-00118,2026-09-10T01:36:29+03:00,cloudwatch,cart-02,cart-api,1,DEPLOY_START,Deployment started for cart-api,dc1,rack-A,prod
+ALM-00119,2026-09-10T01:36:30+03:00,zabbix,order-01,order-db,3,DISK_HIGH,Disk usage 80% on /data (order-01),dc2,rack-C,prod
+ALM-00120,2026-09-10T01:36:33+03:00,appdynamics,object-01,object-storage,2,LOGIN_FAIL,Login failures 70/min on object-storage,dc1,rack-A,prod
+ALM-00121,2026-09-10T01:36:36+03:00,prometheus,kafka-01,kafka,2,LOGIN_FAIL,Login failures 14/min on kafka,dc1,rack-B,prod
+ALM-00122,2026-09-10T01:36:36+03:00,zabbix,backup-02,backup-svc,3,LOGIN_FAIL,Login failures 20/min on backup-svc,dc2,rack-B,prod
+ALM-00123,2026-09-10T01:36:37+03:00,zabbix,user-01,user-db,1,CONFIG_RELOAD,Config reloaded on user-01,dc1,rack-A,prod
+ALM-00124,2026-09-10T01:36:40+03:00,prometheus,catalog-01,catalog-api,2,CACHE_MISS,Cache miss ratio 58% on catalog-api,dc1,rack-A,prod
+ALM-00125,2026-09-10T01:36:42+03:00,cloudwatch,batch-01,batch-scheduler,2,AGENT_RESTART,Monitoring agent restarted on batch-01,dc2,rack-C,prod
+ALM-00126,2026-09-10T01:36:46+03:00,prometheus,stage-02,payment-api,2,NTP_DRIFT,Clock drift 11ms on stage-02,dc1,rack-C,staging
+ALM-00127,2026-09-10T01:36:47+03:00,zabbix,order-01,order-api,2,CPU_HIGH,CPU usage 62% on order-01,dc1,rack-A,prod
+ALM-00128,2026-09-10T01:36:48+03:00,appdynamics,payment-01,payment-api,2,CACHE_MISS,Cache miss ratio 71% on payment-api,dc1,rack-B,prod
+ALM-00129,2026-09-10T01:36:51+03:00,zabbix,order-02,order-api,2,CERT_EXPIRY,TLS certificate expires in 38 days,dc2,rack-B,prod
+ALM-00130,2026-09-10T01:37:11+03:00,prometheus,order-02,order-api,2,NTP_DRIFT,Clock drift 53ms on order-02,dc2,rack-B,prod
+ALM-00131,2026-09-10T01:37:19+03:00,appdynamics,payment-01,payment-db,2,JOB_RETRY,Batch job retry #21 on payment-db,dc1,rack-B,prod
+ALM-00132,2026-09-10T01:37:20+03:00,prometheus,cart-01,cart-api,2,AGENT_RESTART,Monitoring agent restarted on cart-01,dc2,rack-C,prod
+ALM-00133,2026-09-10T01:37:21+03:00,zabbix,report-01,report-svc,2,LOGIN_FAIL,Login failures 6/min on report-svc,dc1,rack-B,prod
+ALM-00134,2026-09-10T01:37:21+03:00,cloudwatch,cdn-01,cdn-edge,2,CPU_HIGH,CPU usage 26% on cdn-01,dc2,rack-C,prod
+ALM-00135,2026-09-10T01:37:23+03:00,appdynamics,search-01,search-api,2,JOB_RETRY,Batch job retry #12 on search-api,dc1,rack-B,prod
+ALM-00136,2026-09-10T01:37:23+03:00,zabbix,stage-01,checkout-api,2,AGENT_RESTART,Monitoring agent restarted on stage-01,dc1,rack-C,staging
+ALM-00137,2026-09-10T01:37:26+03:00,cloudwatch,object-02,object-storage,2,NTP_DRIFT,Clock drift 38ms on object-02,dc2,rack-B,prod
+ALM-00138,2026-09-10T01:37:35+03:00,appdynamics,notification-02,notification-svc,2,JOB_RETRY,Batch job retry #67 on notification-svc,dc1,rack-C,prod
+ALM-00139,2026-09-10T01:37:37+03:00,zabbix,catalog-02,catalog-db,2,BACKUP_FAIL,Backup job failed on catalog-02,dc2,rack-B,prod
+ALM-00140,2026-09-10T01:37:37+03:00,prometheus,fraud-02,fraud-svc,2,BACKUP_FAIL,Backup job failed on fraud-02,dc1,rack-C,prod
+ALM-00141,2026-09-10T01:37:44+03:00,zabbix,kafka-01,kafka,2,AGENT_RESTART,Monitoring agent restarted on kafka-01,dc1,rack-B,prod
+ALM-00142,2026-09-10T01:37:48+03:00,prometheus,order-02,order-api,2,FS_INODES,Inode usage 50% on order-02,dc2,rack-B,prod
+ALM-00143,2026-09-10T01:37:51+03:00,prometheus,order-01,order-api,1,DEPLOY_START,Deployment started for order-api,dc1,rack-A,prod
+ALM-00144,2026-09-10T01:37:52+03:00,appdynamics,search-01,search-api,2,CPU_HIGH,CPU usage 76% on search-01,dc1,rack-B,prod
+ALM-00145,2026-09-10T01:37:53+03:00,cloudwatch,backup-02,backup-svc,2,BACKUP_FAIL,Backup job failed on backup-02,dc2,rack-B,prod
+ALM-00146,2026-09-10T01:37:54+03:00,appdynamics,report-02,report-svc,1,CONFIG_RELOAD,Config reloaded on report-02,dc1,rack-C,test
+ALM-00147,2026-09-10T01:37:56+03:00,cloudwatch,cart-02,cart-api,2,MEM_HIGH,Memory usage 34% on cart-02,dc1,rack-A,prod
+ALM-00148,2026-09-10T01:38:00+03:00,prometheus,order-01,order-db,3,DISK_HIGH,Disk usage 80% on /data (order-01),dc2,rack-C,prod
+ALM-00149,2026-09-10T01:38:13+03:00,zabbix,catalog-02,catalog-db,1,DEPLOY_START,Deployment started for catalog-db,dc2,rack-B,prod
+ALM-00150,2026-09-10T01:38:16+03:00,prometheus,object-02,object-storage,2,CERT_EXPIRY,TLS certificate expires in 32 days,dc2,rack-B,prod
+ALM-00151,2026-09-10T01:38:21+03:00,zabbix,report-01,report-svc,2,JOB_RETRY,Batch job retry #66 on report-svc,dc1,rack-B,prod
+ALM-00152,2026-09-10T01:38:21+03:00,appdynamics,billing-02,billing-svc,2,NTP_DRIFT,Clock drift 10ms on billing-02,dc2,rack-B,prod
+ALM-00153,2026-09-10T01:38:24+03:00,zabbix,search-01,search-api,2,LOGIN_FAIL,Login failures 41/min on search-api,dc1,rack-B,prod
+ALM-00154,2026-09-10T01:38:32+03:00,cloudwatch,monitoring-01,monitoring-agent,2,CERT_EXPIRY,TLS certificate expires in 42 days,dc1,rack-B,prod
+ALM-00155,2026-09-10T01:38:37+03:00,zabbix,report-02,report-svc,2,AGENT_RESTART,Monitoring agent restarted on report-02,dc1,rack-C,test
+ALM-00156,2026-09-10T01:38:41+03:00,appdynamics,kafka-01,kafka,2,CERT_EXPIRY,TLS certificate expires in 48 days,dc1,rack-B,prod
+ALM-00157,2026-09-10T01:38:44+03:00,syslog,auth-01,auth-api,2,MEM_HIGH,Memory usage 74% on auth-01,dc1,rack-A,prod
+ALM-00158,2026-09-10T01:38:45+03:00,zabbix,notification-01,notification-svc,2,NTP_DRIFT,Clock drift 52ms on notification-01,dc1,rack-B,prod
+ALM-00159,2026-09-10T01:38:50+03:00,appdynamics,payment-01,payment-db,2,LOGIN_FAIL,Login failures 38/min on payment-db,dc1,rack-B,prod
+ALM-00160,2026-09-10T01:38:52+03:00,appdynamics,batch-02,batch-scheduler,2,BACKUP_FAIL,Backup job failed on batch-02,dc1,rack-A,prod
+ALM-00161,2026-09-10T01:38:56+03:00,prometheus,redis-02,redis-cache,1,CONFIG_RELOAD,Config reloaded on redis-02,dc1,rack-A,prod
+ALM-00162,2026-09-10T01:38:57+03:00,appdynamics,backup-01,backup-svc,2,FS_INODES,Inode usage 43% on backup-01,dc1,rack-A,prod
+ALM-00163,2026-09-10T01:39:00+03:00,syslog,order-01,order-api,2,NTP_DRIFT,Clock drift 53ms on order-01,dc1,rack-A,prod
+ALM-00164,2026-09-10T01:39:08+03:00,prometheus,notification-01,notification-svc,3,MEM_HIGH,Memory usage 69% on notification-01,dc1,rack-B,prod
+ALM-00165,2026-09-10T01:39:10+03:00,appdynamics,api-01,api-gateway,1,DEPLOY_START,Deployment started for api-gateway,dc1,rack-B,prod
+ALM-00166,2026-09-10T01:39:16+03:00,prometheus,user-01,user-db,2,LOGIN_FAIL,Login failures 17/min on user-db,dc1,rack-A,prod
+ALM-00167,2026-09-10T01:39:23+03:00,syslog,sms-01,sms-svc,2,AGENT_RESTART,Monitoring agent restarted on sms-01,dc2,rack-C,prod
+ALM-00168,2026-09-10T01:39:23+03:00,prometheus,user-01,user-db,2,CACHE_MISS,Cache miss ratio 14% on user-db,dc1,rack-A,prod
+ALM-00169,2026-09-10T01:39:28+03:00,syslog,fraud-02,fraud-svc,2,LOGIN_FAIL,Login failures 52/min on fraud-svc,dc1,rack-C,prod
+ALM-00170,2026-09-10T01:39:29+03:00,prometheus,payment-02,payment-api,2,CACHE_MISS,Cache miss ratio 34% on payment-api,dc1,rack-C,prod
+ALM-00171,2026-09-10T01:39:30+03:00,cloudwatch,order-01,order-db,3,DISK_HIGH,Disk usage 80% on /data (order-01),dc2,rack-C,prod
+ALM-00172,2026-09-10T01:39:36+03:00,appdynamics,fraud-02,fraud-svc,2,BACKUP_FAIL,Backup job failed on fraud-02,dc1,rack-C,prod
+ALM-00173,2026-09-10T01:39:37+03:00,appdynamics,catalog-01,catalog-db,1,CONFIG_RELOAD,Config reloaded on catalog-01,dc1,rack-A,prod
+ALM-00174,2026-09-10T01:39:38+03:00,cloudwatch,report-02,report-svc,2,JOB_RETRY,Batch job retry #53 on report-svc,dc1,rack-C,test
+ALM-00175,2026-09-10T01:39:39+03:00,cloudwatch,kafka-02,kafka,2,NTP_DRIFT,Clock drift 11ms on kafka-02,dc1,rack-C,prod
+ALM-00176,2026-09-10T01:39:46+03:00,zabbix,checkout-02,checkout-api,2,MEM_HIGH,Memory usage 72% on checkout-02,dc1,rack-A,prod
+ALM-00177,2026-09-10T01:39:47+03:00,syslog,inventory-02,inventory-api,2,CERT_EXPIRY,TLS certificate expires in 58 days,dc1,rack-A,prod
+ALM-00178,2026-09-10T01:39:48+03:00,appdynamics,fraud-01,fraud-svc,2,CERT_EXPIRY,TLS certificate expires in 44 days,dc1,rack-B,prod
+ALM-00179,2026-09-10T01:39:51+03:00,prometheus,email-01,email-svc,3,DEPLOY_START,Deployment started for email-svc,dc1,rack-A,prod
+ALM-00180,2026-09-10T01:39:53+03:00,cloudwatch,ledger-01,ledger-svc,3,MEM_HIGH,Memory usage 19% on ledger-01,dc2,rack-C,prod
+ALM-00181,2026-09-10T01:39:55+03:00,cloudwatch,report-02,report-svc,2,NTP_DRIFT,Clock drift 80ms on report-02,dc1,rack-C,test
+ALM-00182,2026-09-10T01:39:56+03:00,appdynamics,report-02,report-svc,2,LOGIN_FAIL,Login failures 56/min on report-svc,dc1,rack-C,test
+ALM-00183,2026-09-10T01:40:07+03:00,prometheus,redis-02,redis-cache,1,DEPLOY_START,Deployment started for redis-cache,dc1,rack-A,prod
+ALM-00184,2026-09-10T01:40:16+03:00,syslog,cdn-01,cdn-edge,2,NTP_DRIFT,Clock drift 53ms on cdn-01,dc2,rack-C,prod
+ALM-00185,2026-09-10T01:40:16+03:00,zabbix,monitoring-02,monitoring-agent,2,MEM_HIGH,Memory usage 1% on monitoring-02,dc1,rack-C,prod
+ALM-00186,2026-09-10T01:40:21+03:00,cloudwatch,monitoring-02,monitoring-agent,1,CONFIG_RELOAD,Config reloaded on monitoring-02,dc1,rack-C,prod
+ALM-00187,2026-09-10T01:40:30+03:00,appdynamics,cart-01,cart-api,2,AGENT_RESTART,Monitoring agent restarted on cart-01,dc2,rack-C,prod
+ALM-00188,2026-09-10T01:40:30+03:00,appdynamics,catalog-02,catalog-api,2,CERT_EXPIRY,TLS certificate expires in 61 days,dc2,rack-B,prod
+ALM-00189,2026-09-10T01:40:30+03:00,cloudwatch,redis-01,redis-cache,2,BACKUP_FAIL,Backup job failed on redis-01,dc2,rack-C,prod
+ALM-00190,2026-09-10T01:40:42+03:00,cloudwatch,backup-01,backup-svc,2,CPU_HIGH,CPU usage 10% on backup-01,dc1,rack-A,prod
+ALM-00191,2026-09-10T01:40:45+03:00,syslog,inventory-02,inventory-api,2,AGENT_RESTART,Monitoring agent restarted on inventory-02,dc1,rack-A,prod
+ALM-00192,2026-09-10T01:40:45+03:00,syslog,report-01,report-svc,1,DEPLOY_START,Deployment started for report-svc,dc1,rack-B,prod
+ALM-00193,2026-09-10T01:40:45+03:00,cloudwatch,report-02,report-svc,1,CONFIG_RELOAD,Config reloaded on report-02,dc1,rack-C,test
+ALM-00194,2026-09-10T01:40:50+03:00,syslog,user-02,user-db,1,CONFIG_RELOAD,Config reloaded on user-02,dc2,rack-B,prod
+ALM-00195,2026-09-10T01:40:53+03:00,zabbix,kafka-02,kafka,2,CPU_HIGH,CPU usage 72% on kafka-02,dc1,rack-C,prod
+ALM-00196,2026-09-10T01:40:57+03:00,cloudwatch,fraud-02,fraud-svc,2,BACKUP_FAIL,Backup job failed on fraud-02,dc1,rack-C,prod
+ALM-00197,2026-09-10T01:40:59+03:00,syslog,catalog-02,catalog-db,2,FS_INODES,Inode usage 38% on catalog-02,dc2,rack-B,prod
+ALM-00198,2026-09-10T01:40:59+03:00,cloudwatch,payment-02,payment-db,1,DEPLOY_START,Deployment started for payment-db,dc1,rack-C,prod
+ALM-00199,2026-09-10T01:41:00+03:00,appdynamics,order-01,order-db,3,DISK_HIGH,Disk usage 81% on /data (order-01),dc2,rack-C,prod
+ALM-00200,2026-09-10T01:41:03+03:00,zabbix,report-02,report-svc,2,MEM_HIGH,Memory usage 30% on report-02,dc1,rack-C,test
+ALM-00201,2026-09-10T01:41:07+03:00,syslog,auth-02,auth-api,2,MEM_HIGH,Memory usage 18% on auth-02,dc2,rack-B,prod
+ALM-00202,2026-09-10T01:41:09+03:00,cloudwatch,stage-02,payment-api,3,JOB_RETRY,Batch job retry #5 on payment-api,dc1,rack-C,staging
+ALM-00203,2026-09-10T01:41:15+03:00,syslog,cdn-01,cdn-edge,2,MEM_HIGH,Memory usage 68% on cdn-01,dc2,rack-C,prod
+ALM-00204,2026-09-10T01:41:17+03:00,cloudwatch,sms-02,sms-svc,2,FS_INODES,Inode usage 44% on sms-02,dc1,rack-A,prod
+ALM-00205,2026-09-10T01:41:25+03:00,syslog,order-02,order-api,1,CONFIG_RELOAD,Config reloaded on order-02,dc2,rack-B,prod
+ALM-00206,2026-09-10T01:41:27+03:00,appdynamics,inventory-01,inventory-api,3,DEPLOY_START,Deployment started for inventory-api,dc2,rack-C,prod
+ALM-00207,2026-09-10T01:41:28+03:00,prometheus,auth-02,auth-api,2,NTP_DRIFT,Clock drift 33ms on auth-02,dc2,rack-B,prod
+ALM-00208,2026-09-10T01:41:29+03:00,zabbix,email-02,email-svc,3,LOGIN_FAIL,Login failures 18/min on email-svc,dc2,rack-B,prod
+ALM-00209,2026-09-10T01:41:34+03:00,syslog,object-01,object-storage,3,AGENT_RESTART,Monitoring agent restarted on object-01,dc1,rack-A,prod
+ALM-00210,2026-09-10T01:41:36+03:00,cloudwatch,user-01,user-db,2,AGENT_RESTART,Monitoring agent restarted on user-01,dc1,rack-A,prod
+ALM-00211,2026-09-10T01:41:38+03:00,syslog,kafka-02,kafka,2,BACKUP_FAIL,Backup job failed on kafka-02,dc1,rack-C,prod
+ALM-00212,2026-09-10T01:41:39+03:00,prometheus,search-02,search-api,2,CERT_EXPIRY,TLS certificate expires in 52 days,dc1,rack-C,prod
+ALM-00213,2026-09-10T01:41:42+03:00,zabbix,checkout-01,checkout-api,2,CPU_HIGH,CPU usage 32% on checkout-01,dc2,rack-C,prod
+ALM-00214,2026-09-10T01:41:49+03:00,appdynamics,order-02,order-db,1,CONFIG_RELOAD,Config reloaded on order-02,dc1,rack-A,prod
+ALM-00215,2026-09-10T01:41:49+03:00,appdynamics,stage-01,checkout-api,2,CERT_EXPIRY,TLS certificate expires in 49 days,dc1,rack-C,staging
+ALM-00216,2026-09-10T01:41:51+03:00,prometheus,batch-01,batch-scheduler,2,NTP_DRIFT,Clock drift 80ms on batch-01,dc2,rack-C,prod
+ALM-00217,2026-09-10T01:41:51+03:00,syslog,object-01,object-storage,1,CONFIG_RELOAD,Config reloaded on object-01,dc1,rack-A,prod
+ALM-00218,2026-09-10T01:41:56+03:00,cloudwatch,sms-02,sms-svc,3,CACHE_MISS,Cache miss ratio 1% on sms-svc,dc1,rack-A,prod
+ALM-00219,2026-09-10T01:41:56+03:00,cloudwatch,catalog-01,catalog-api,2,LOGIN_FAIL,Login failures 47/min on catalog-api,dc1,rack-A,prod
+ALM-00220,2026-09-10T01:41:57+03:00,cloudwatch,monitoring-02,monitoring-agent,3,MEM_HIGH,Memory usage 15% on monitoring-02,dc1,rack-C,prod
+ALM-00221,2026-09-10T01:41:58+03:00,syslog,payment-01,payment-api,2,BACKUP_FAIL,Backup job failed on payment-01,dc1,rack-B,prod
+ALM-00222,2026-09-10T01:41:58+03:00,cloudwatch,billing-01,billing-svc,3,BACKUP_FAIL,Backup job failed on billing-01,dc1,rack-A,prod
+ALM-00223,2026-09-10T01:41:59+03:00,syslog,report-01,report-svc,1,DEPLOY_START,Deployment started for report-svc,dc1,rack-B,prod
+ALM-00224,2026-09-10T01:42:00+03:00,appdynamics,user-02,user-db,1,CONFIG_RELOAD,Config reloaded on user-02,dc2,rack-B,prod
+ALM-00225,2026-09-10T01:42:00+03:00,zabbix,inventory-01,inventory-api,2,FS_INODES,Inode usage 14% on inventory-01,dc2,rack-C,prod
+ALM-00226,2026-09-10T01:42:05+03:00,cloudwatch,order-01,order-db,2,CACHE_MISS,Cache miss ratio 20% on order-db,dc2,rack-C,prod
+ALM-00227,2026-09-10T01:42:08+03:00,cloudwatch,backup-02,backup-svc,2,NTP_DRIFT,Clock drift 27ms on backup-02,dc2,rack-B,prod
+ALM-00228,2026-09-10T01:42:08+03:00,zabbix,backup-02,backup-svc,2,FS_INODES,Inode usage 54% on backup-02,dc2,rack-B,prod
+ALM-00229,2026-09-10T01:42:11+03:00,prometheus,monitoring-01,monitoring-agent,1,CONFIG_RELOAD,Config reloaded on monitoring-01,dc1,rack-B,prod
+ALM-00230,2026-09-10T01:42:11+03:00,prometheus,cart-02,cart-api,2,BACKUP_FAIL,Backup job failed on cart-02,dc1,rack-A,prod
+ALM-00231,2026-09-10T01:42:13+03:00,cloudwatch,checkout-01,checkout-api,2,CACHE_MISS,Cache miss ratio 75% on checkout-api,dc2,rack-C,prod
+ALM-00232,2026-09-10T01:42:13+03:00,zabbix,order-02,order-db,2,JOB_RETRY,Batch job retry #20 on order-db,dc1,rack-A,prod
+ALM-00233,2026-09-10T01:42:16+03:00,appdynamics,cart-02,cart-api,2,NTP_DRIFT,Clock drift 68ms on cart-02,dc1,rack-A,prod
+ALM-00234,2026-09-10T01:42:23+03:00,cloudwatch,report-02,report-svc,2,LOGIN_FAIL,Login failures 6/min on report-svc,dc1,rack-C,test
+ALM-00235,2026-09-10T01:42:29+03:00,cloudwatch,monitoring-02,monitoring-agent,2,MEM_HIGH,Memory usage 70% on monitoring-02,dc1,rack-C,prod
+ALM-00236,2026-09-10T01:42:29+03:00,zabbix,ledger-02,ledger-svc,3,CERT_EXPIRY,TLS certificate expires in 70 days,dc1,rack-A,prod
+ALM-00237,2026-09-10T01:42:29+03:00,syslog,cdn-02,cdn-edge,1,CONFIG_RELOAD,Config reloaded on cdn-02,dc1,rack-A,prod
+ALM-00238,2026-09-10T01:42:30+03:00,prometheus,order-01,order-db,3,DISK_HIGH,Disk usage 81% on /data (order-01),dc2,rack-C,prod
+ALM-00239,2026-09-10T01:42:31+03:00,syslog,email-02,email-svc,1,CONFIG_RELOAD,Config reloaded on email-02,dc2,rack-B,prod
+ALM-00240,2026-09-10T01:42:35+03:00,appdynamics,kafka-02,kafka,2,NTP_DRIFT,Clock drift 75ms on kafka-02,dc1,rack-C,prod
+ALM-00241,2026-09-10T01:42:41+03:00,syslog,sms-02,sms-svc,2,MEM_HIGH,Memory usage 80% on sms-02,dc1,rack-A,prod
+ALM-00242,2026-09-10T01:42:50+03:00,appdynamics,checkout-01,checkout-api,2,CERT_EXPIRY,TLS certificate expires in 7 days,dc2,rack-C,prod
+ALM-00243,2026-09-10T01:42:51+03:00,zabbix,backup-01,backup-svc,2,MEM_HIGH,Memory usage 9% on backup-01,dc1,rack-A,prod
+ALM-00244,2026-09-10T01:42:53+03:00,appdynamics,order-01,order-api,3,BACKUP_FAIL,Backup job failed on order-01,dc1,rack-A,prod
+ALM-00245,2026-09-10T01:42:53+03:00,prometheus,user-01,user-db,2,BACKUP_FAIL,Backup job failed on user-01,dc1,rack-A,prod
+ALM-00246,2026-09-10T01:42:53+03:00,zabbix,cart-01,cart-api,2,NTP_DRIFT,Clock drift 21ms on cart-01,dc2,rack-C,prod
+ALM-00247,2026-09-10T01:42:58+03:00,appdynamics,user-02,user-db,2,BACKUP_FAIL,Backup job failed on user-02,dc2,rack-B,prod
+ALM-00248,2026-09-10T01:42:59+03:00,appdynamics,stage-01,checkout-api,2,CERT_EXPIRY,TLS certificate expires in 31 days,dc1,rack-C,staging
+ALM-00249,2026-09-10T01:43:05+03:00,zabbix,notification-02,notification-svc,2,AGENT_RESTART,Monitoring agent restarted on notification-02,dc1,rack-C,prod
+ALM-00250,2026-09-10T01:43:05+03:00,cloudwatch,batch-01,batch-scheduler,2,JOB_RETRY,Batch job retry #39 on batch-scheduler,dc2,rack-C,prod
+ALM-00251,2026-09-10T01:43:06+03:00,zabbix,ledger-01,ledger-svc,2,CERT_EXPIRY,TLS certificate expires in 39 days,dc2,rack-C,prod
+ALM-00252,2026-09-10T01:43:09+03:00,syslog,monitoring-02,monitoring-agent,2,LOGIN_FAIL,Login failures 39/min on monitoring-agent,dc1,rack-C,prod
+ALM-00253,2026-09-10T01:43:10+03:00,prometheus,cart-02,cart-api,2,CPU_HIGH,CPU usage 10% on cart-02,dc1,rack-A,prod
+ALM-00254,2026-09-10T01:43:18+03:00,zabbix,ledger-02,ledger-svc,1,CONFIG_RELOAD,Config reloaded on ledger-02,dc1,rack-A,prod
+ALM-00255,2026-09-10T01:43:20+03:00,prometheus,batch-01,batch-scheduler,2,NTP_DRIFT,Clock drift 70ms on batch-01,dc2,rack-C,prod
+ALM-00256,2026-09-10T01:43:23+03:00,syslog,checkout-01,checkout-api,2,LOGIN_FAIL,Login failures 6/min on checkout-api,dc2,rack-C,prod
+ALM-00257,2026-09-10T01:43:24+03:00,syslog,monitoring-02,monitoring-agent,2,CPU_HIGH,CPU usage 37% on monitoring-02,dc1,rack-C,prod
+ALM-00258,2026-09-10T01:43:27+03:00,zabbix,catalog-01,catalog-api,1,CONFIG_RELOAD,Config reloaded on catalog-01,dc1,rack-A,prod
+ALM-00259,2026-09-10T01:43:31+03:00,syslog,user-01,user-db,2,JOB_RETRY,Batch job retry #33 on user-db,dc1,rack-A,prod
+ALM-00260,2026-09-10T01:43:32+03:00,cloudwatch,redis-01,redis-cache,2,JOB_RETRY,Batch job retry #3 on redis-cache,dc2,rack-C,prod
+ALM-00261,2026-09-10T01:43:33+03:00,appdynamics,catalog-02,catalog-db,2,CERT_EXPIRY,TLS certificate expires in 32 days,dc2,rack-B,prod
+ALM-00262,2026-09-10T01:43:38+03:00,appdynamics,search-02,search-api,1,CONFIG_RELOAD,Config reloaded on search-02,dc1,rack-C,prod
+ALM-00263,2026-09-10T01:43:45+03:00,appdynamics,kafka-01,kafka,2,MEM_HIGH,Memory usage 25% on kafka-01,dc1,rack-B,prod
+ALM-00264,2026-09-10T01:43:45+03:00,appdynamics,backup-02,backup-svc,2,JOB_RETRY,Batch job retry #26 on backup-svc,dc2,rack-B,prod
+ALM-00265,2026-09-10T01:43:46+03:00,zabbix,monitoring-01,monitoring-agent,2,BACKUP_FAIL,Backup job failed on monitoring-01,dc1,rack-B,prod
+ALM-00266,2026-09-10T01:43:50+03:00,zabbix,fraud-02,fraud-svc,2,CERT_EXPIRY,TLS certificate expires in 24 days,dc1,rack-C,prod
+ALM-00267,2026-09-10T01:43:56+03:00,zabbix,backup-01,backup-svc,2,BACKUP_FAIL,Backup job failed on backup-01,dc1,rack-A,prod
+ALM-00268,2026-09-10T01:43:57+03:00,syslog,fraud-02,fraud-svc,2,MEM_HIGH,Memory usage 64% on fraud-02,dc1,rack-C,prod
+ALM-00269,2026-09-10T01:44:00+03:00,syslog,order-01,order-db,3,DISK_HIGH,Disk usage 81% on /data (order-01),dc2,rack-C,prod
+ALM-00270,2026-09-10T01:44:00+03:00,appdynamics,batch-02,batch-scheduler,2,CPU_HIGH,CPU usage 6% on batch-02,dc1,rack-A,prod
+ALM-00271,2026-09-10T01:44:02+03:00,syslog,order-02,order-api,2,BACKUP_FAIL,Backup job failed on order-02,dc2,rack-B,prod
+ALM-00272,2026-09-10T01:44:04+03:00,syslog,inventory-01,inventory-api,2,FS_INODES,Inode usage 30% on inventory-01,dc2,rack-C,prod
+ALM-00273,2026-09-10T01:44:07+03:00,appdynamics,sms-01,sms-svc,2,LOGIN_FAIL,Login failures 38/min on sms-svc,dc2,rack-C,prod
+ALM-00274,2026-09-10T01:44:09+03:00,syslog,api-02,api-gateway,2,CPU_HIGH,CPU usage 32% on api-02,dc1,rack-C,prod
+ALM-00275,2026-09-10T01:44:12+03:00,prometheus,auth-02,auth-api,2,AGENT_RESTART,Monitoring agent restarted on auth-02,dc2,rack-B,prod
+ALM-00276,2026-09-10T01:44:16+03:00,prometheus,report-02,report-svc,2,CERT_EXPIRY,TLS certificate expires in 34 days,dc1,rack-C,test
+ALM-00277,2026-09-10T01:44:18+03:00,cloudwatch,backup-02,backup-svc,2,MEM_HIGH,Memory usage 5% on backup-02,dc2,rack-B,prod
+ALM-00278,2026-09-10T01:44:21+03:00,appdynamics,ledger-01,ledger-svc,2,JOB_RETRY,Batch job retry #10 on ledger-svc,dc2,rack-C,prod
+ALM-00279,2026-09-10T01:44:24+03:00,cloudwatch,auth-02,auth-api,2,CPU_HIGH,CPU usage 45% on auth-02,dc2,rack-B,prod
+ALM-00280,2026-09-10T01:44:30+03:00,cloudwatch,user-02,user-db,1,CONFIG_RELOAD,Config reloaded on user-02,dc2,rack-B,prod
+ALM-00281,2026-09-10T01:44:32+03:00,zabbix,monitoring-02,monitoring-agent,2,CACHE_MISS,Cache miss ratio 10% on monitoring-agent,dc1,rack-C,prod
+ALM-00282,2026-09-10T01:44:35+03:00,appdynamics,notification-01,notification-svc,2,FS_INODES,Inode usage 40% on notification-01,dc1,rack-B,prod
+ALM-00283,2026-09-10T01:44:37+03:00,appdynamics,redis-01,redis-cache,2,LOGIN_FAIL,Login failures 11/min on redis-cache,dc2,rack-C,prod
+ALM-00284,2026-09-10T01:44:39+03:00,appdynamics,batch-02,batch-scheduler,2,FS_INODES,Inode usage 20% on batch-02,dc1,rack-A,prod
+ALM-00285,2026-09-10T01:44:39+03:00,cloudwatch,catalog-01,catalog-db,1,CONFIG_RELOAD,Config reloaded on catalog-01,dc1,rack-A,prod
+ALM-00286,2026-09-10T01:44:42+03:00,appdynamics,catalog-01,catalog-db,2,CERT_EXPIRY,TLS certificate expires in 65 days,dc1,rack-A,prod
+ALM-00287,2026-09-10T01:44:45+03:00,prometheus,api-02,api-gateway,2,MEM_HIGH,Memory usage 58% on api-02,dc1,rack-C,prod
+ALM-00288,2026-09-10T01:44:58+03:00,appdynamics,monitoring-02,monitoring-agent,2,CERT_EXPIRY,TLS certificate expires in 54 days,dc1,rack-C,prod
+ALM-00289,2026-09-10T01:45:13+03:00,syslog,billing-01,billing-svc,2,CERT_EXPIRY,TLS certificate expires in 57 days,dc1,rack-A,prod
+ALM-00290,2026-09-10T01:45:18+03:00,appdynamics,kafka-01,kafka,1,DEPLOY_START,Deployment started for kafka,dc1,rack-B,prod
+ALM-00291,2026-09-10T01:45:19+03:00,syslog,email-02,email-svc,2,MEM_HIGH,Memory usage 18% on email-02,dc2,rack-B,prod
+ALM-00292,2026-09-10T01:45:22+03:00,prometheus,kafka-01,kafka,2,LOGIN_FAIL,Login failures 68/min on kafka,dc1,rack-B,prod
+ALM-00293,2026-09-10T01:45:24+03:00,cloudwatch,sms-02,sms-svc,2,MEM_HIGH,Memory usage 64% on sms-02,dc1,rack-A,prod
+ALM-00294,2026-09-10T01:45:24+03:00,prometheus,redis-02,redis-cache,2,JOB_RETRY,Batch job retry #73 on redis-cache,dc1,rack-A,prod
+ALM-00295,2026-09-10T01:45:25+03:00,cloudwatch,object-02,object-storage,1,CONFIG_RELOAD,Config reloaded on object-02,dc2,rack-B,prod
+ALM-00296,2026-09-10T01:45:25+03:00,appdynamics,auth-02,auth-api,2,CACHE_MISS,Cache miss ratio 6% on auth-api,dc2,rack-B,prod
+ALM-00297,2026-09-10T01:45:28+03:00,zabbix,object-01,object-storage,2,LOGIN_FAIL,Login failures 32/min on object-storage,dc1,rack-A,prod
+ALM-00298,2026-09-10T01:45:30+03:00,cloudwatch,order-01,order-db,3,DISK_HIGH,Disk usage 81% on /data (order-01),dc2,rack-C,prod
+ALM-00299,2026-09-10T01:45:35+03:00,prometheus,redis-01,redis-cache,2,BACKUP_FAIL,Backup job failed on redis-01,dc2,rack-C,prod
+ALM-00300,2026-09-10T01:45:41+03:00,appdynamics,fraud-02,fraud-svc,1,DEPLOY_START,Deployment started for fraud-svc,dc1,rack-C,prod
+ALM-00301,2026-09-10T01:45:46+03:00,prometheus,fraud-02,fraud-svc,2,BACKUP_FAIL,Backup job failed on fraud-02,dc1,rack-C,prod
+ALM-00302,2026-09-10T01:45:47+03:00,syslog,user-02,user-db,2,CPU_HIGH,CPU usage 43% on user-02,dc2,rack-B,prod
+ALM-00303,2026-09-10T01:45:48+03:00,zabbix,order-02,order-db,2,CACHE_MISS,Cache miss ratio 9% on order-db,dc1,rack-A,prod
+ALM-00304,2026-09-10T01:45:48+03:00,syslog,api-02,api-gateway,2,FS_INODES,Inode usage 15% on api-02,dc1,rack-C,prod
+ALM-00305,2026-09-10T01:45:48+03:00,prometheus,payment-02,payment-db,2,CPU_HIGH,CPU usage 49% on payment-02,dc1,rack-C,prod
+ALM-00306,2026-09-10T01:45:48+03:00,syslog,user-02,user-db,2,BACKUP_FAIL,Backup job failed on user-02,dc2,rack-B,prod
+ALM-00307,2026-09-10T01:45:50+03:00,prometheus,catalog-02,catalog-db,2,BACKUP_FAIL,Backup job failed on catalog-02,dc2,rack-B,prod
+ALM-00308,2026-09-10T01:45:55+03:00,appdynamics,backup-02,backup-svc,1,DEPLOY_START,Deployment started for backup-svc,dc2,rack-B,prod
+ALM-00309,2026-09-10T01:45:59+03:00,appdynamics,payment-02,payment-api,2,MEM_HIGH,Memory usage 20% on payment-02,dc1,rack-C,prod
+ALM-00310,2026-09-10T01:46:01+03:00,syslog,order-01,order-db,2,JOB_RETRY,Batch job retry #59 on order-db,dc2,rack-C,prod
+ALM-00311,2026-09-10T01:46:03+03:00,syslog,order-02,order-db,2,CACHE_MISS,Cache miss ratio 73% on order-db,dc1,rack-A,prod
+ALM-00312,2026-09-10T01:46:03+03:00,syslog,backup-01,backup-svc,1,CONFIG_RELOAD,Config reloaded on backup-01,dc1,rack-A,prod
+ALM-00313,2026-09-10T01:46:04+03:00,zabbix,object-02,object-storage,2,FS_INODES,Inode usage 63% on object-02,dc2,rack-B,prod
+ALM-00314,2026-09-10T01:46:09+03:00,appdynamics,catalog-01,catalog-api,2,AGENT_RESTART,Monitoring agent restarted on catalog-01,dc1,rack-A,prod
+ALM-00315,2026-09-10T01:46:14+03:00,cloudwatch,auth-02,auth-api,1,DEPLOY_START,Deployment started for auth-api,dc2,rack-B,prod
+ALM-00316,2026-09-10T01:46:15+03:00,prometheus,auth-02,auth-api,2,CACHE_MISS,Cache miss ratio 33% on auth-api,dc2,rack-B,prod
+ALM-00317,2026-09-10T01:46:19+03:00,cloudwatch,ledger-02,ledger-svc,2,CPU_HIGH,CPU usage 65% on ledger-02,dc1,rack-A,prod
+ALM-00318,2026-09-10T01:46:19+03:00,cloudwatch,payment-01,payment-api,2,CACHE_MISS,Cache miss ratio 66% on payment-api,dc1,rack-B,prod
+ALM-00319,2026-09-10T01:46:25+03:00,appdynamics,batch-01,batch-scheduler,1,DEPLOY_START,Deployment started for batch-scheduler,dc2,rack-C,prod
+ALM-00320,2026-09-10T01:46:26+03:00,syslog,email-01,email-svc,2,MEM_HIGH,Memory usage 63% on email-01,dc1,rack-A,prod
+ALM-00321,2026-09-10T01:46:33+03:00,syslog,payment-02,payment-db,2,LOGIN_FAIL,Login failures 5/min on payment-db,dc1,rack-C,prod
+ALM-00322,2026-09-10T01:46:37+03:00,cloudwatch,user-01,user-db,2,BACKUP_FAIL,Backup job failed on user-01,dc1,rack-A,prod
+ALM-00323,2026-09-10T01:46:38+03:00,appdynamics,object-01,object-storage,3,CERT_EXPIRY,TLS certificate expires in 30 days,dc1,rack-A,prod
+ALM-00324,2026-09-10T01:46:39+03:00,syslog,batch-01,batch-scheduler,2,FS_INODES,Inode usage 52% on batch-01,dc2,rack-C,prod
+ALM-00325,2026-09-10T01:46:48+03:00,prometheus,api-01,api-gateway,2,CACHE_MISS,Cache miss ratio 61% on api-gateway,dc1,rack-B,prod
+ALM-00326,2026-09-10T01:46:54+03:00,zabbix,object-02,object-storage,2,NTP_DRIFT,Clock drift 76ms on object-02,dc2,rack-B,prod
+ALM-00327,2026-09-10T01:46:55+03:00,appdynamics,monitoring-02,monitoring-agent,3,CONFIG_RELOAD,Config reloaded on monitoring-02,dc1,rack-C,prod
+ALM-00328,2026-09-10T01:46:59+03:00,zabbix,ledger-01,ledger-svc,2,CERT_EXPIRY,TLS certificate expires in 72 days,dc2,rack-C,prod
+ALM-00329,2026-09-10T01:47:00+03:00,prometheus,order-01,order-db,3,DISK_HIGH,Disk usage 82% on /data (order-01),dc2,rack-C,prod
+ALM-00330,2026-09-10T01:47:07+03:00,prometheus,order-02,order-db,2,LOGIN_FAIL,Login failures 22/min on order-db,dc1,rack-A,prod
+ALM-00331,2026-09-10T01:47:09+03:00,cloudwatch,object-01,object-storage,3,CPU_HIGH,CPU usage 73% on object-01,dc1,rack-A,prod
+ALM-00332,2026-09-10T01:47:11+03:00,prometheus,monitoring-01,monitoring-agent,2,CACHE_MISS,Cache miss ratio 80% on monitoring-agent,dc1,rack-B,prod
+ALM-00333,2026-09-10T01:47:11+03:00,prometheus,sms-02,sms-svc,2,CPU_HIGH,CPU usage 25% on sms-02,dc1,rack-A,prod
+ALM-00334,2026-09-10T01:47:12+03:00,cloudwatch,auth-01,auth-api,2,MEM_HIGH,Memory usage 65% on auth-01,dc1,rack-A,prod
+ALM-00335,2026-09-10T01:47:17+03:00,zabbix,cdn-01,cdn-edge,2,JOB_RETRY,Batch job retry #10 on cdn-edge,dc2,rack-C,prod
+ALM-00336,2026-09-10T01:47:28+03:00,zabbix,payment-02,payment-db,3,NTP_DRIFT,Clock drift 45ms on payment-02,dc1,rack-C,prod
+ALM-00337,2026-09-10T01:47:33+03:00,appdynamics,inventory-01,inventory-api,2,CPU_HIGH,CPU usage 9% on inventory-01,dc2,rack-C,prod
+ALM-00338,2026-09-10T01:47:33+03:00,appdynamics,checkout-02,checkout-api,2,CERT_EXPIRY,TLS certificate expires in 69 days,dc1,rack-A,prod
+ALM-00339,2026-09-10T01:47:35+03:00,prometheus,catalog-02,catalog-db,2,CPU_HIGH,CPU usage 39% on catalog-02,dc2,rack-B,prod
+ALM-00340,2026-09-10T01:47:36+03:00,prometheus,catalog-01,catalog-api,3,BACKUP_FAIL,Backup job failed on catalog-01,dc1,rack-A,prod
+ALM-00341,2026-09-10T01:47:37+03:00,cloudwatch,payment-01,payment-db,2,CERT_EXPIRY,TLS certificate expires in 47 days,dc1,rack-B,prod
+ALM-00342,2026-09-10T01:47:37+03:00,syslog,api-01,api-gateway,2,NTP_DRIFT,Clock drift 75ms on api-01,dc1,rack-B,prod
+ALM-00343,2026-09-10T01:47:38+03:00,prometheus,order-02,order-api,2,CACHE_MISS,Cache miss ratio 73% on order-api,dc2,rack-B,prod
+ALM-00344,2026-09-10T01:47:42+03:00,syslog,ledger-02,ledger-svc,2,AGENT_RESTART,Monitoring agent restarted on ledger-02,dc1,rack-A,prod
+ALM-00345,2026-09-10T01:47:46+03:00,zabbix,catalog-02,catalog-api,3,NTP_DRIFT,Clock drift 52ms on catalog-02,dc2,rack-B,prod
+ALM-00346,2026-09-10T01:47:46+03:00,syslog,catalog-02,catalog-db,2,AGENT_RESTART,Monitoring agent restarted on catalog-02,dc2,rack-B,prod
+ALM-00347,2026-09-10T01:47:47+03:00,syslog,order-01,order-api,2,BACKUP_FAIL,Backup job failed on order-01,dc1,rack-A,prod
+ALM-00348,2026-09-10T01:47:50+03:00,appdynamics,kafka-02,kafka,2,CACHE_MISS,Cache miss ratio 61% on kafka,dc1,rack-C,prod
+ALM-00349,2026-09-10T01:47:52+03:00,zabbix,email-01,email-svc,2,JOB_RETRY,Batch job retry #76 on email-svc,dc1,rack-A,prod
+ALM-00350,2026-09-10T01:47:57+03:00,appdynamics,payment-02,payment-db,2,AGENT_RESTART,Monitoring agent restarted on payment-02,dc1,rack-C,prod
+ALM-00351,2026-09-10T01:48:15+03:00,zabbix,order-01,order-api,2,CACHE_MISS,Cache miss ratio 11% on order-api,dc1,rack-A,prod
+ALM-00352,2026-09-10T01:48:17+03:00,zabbix,payment-01,payment-db,2,LOGIN_FAIL,Login failures 19/min on payment-db,dc1,rack-B,prod
+ALM-00353,2026-09-10T01:48:19+03:00,cloudwatch,kafka-01,kafka,2,NTP_DRIFT,Clock drift 21ms on kafka-01,dc1,rack-B,prod
+ALM-00354,2026-09-10T01:48:30+03:00,syslog,order-01,order-db,3,DISK_HIGH,Disk usage 82% on /data (order-01),dc2,rack-C,prod
+ALM-00355,2026-09-10T01:48:34+03:00,zabbix,billing-01,billing-svc,2,JOB_RETRY,Batch job retry #36 on billing-svc,dc1,rack-A,prod
+ALM-00356,2026-09-10T01:48:39+03:00,appdynamics,checkout-01,checkout-api,2,LOGIN_FAIL,Login failures 1/min on checkout-api,dc2,rack-C,prod
+ALM-00357,2026-09-10T01:48:41+03:00,appdynamics,payment-01,payment-db,2,LOGIN_FAIL,Login failures 40/min on payment-db,dc1,rack-B,prod
+ALM-00358,2026-09-10T01:48:43+03:00,cloudwatch,email-02,email-svc,2,AGENT_RESTART,Monitoring agent restarted on email-02,dc2,rack-B,prod
+ALM-00359,2026-09-10T01:48:46+03:00,appdynamics,kafka-01,kafka,2,JOB_RETRY,Batch job retry #43 on kafka,dc1,rack-B,prod
+ALM-00360,2026-09-10T01:48:46+03:00,appdynamics,auth-01,auth-api,2,AGENT_RESTART,Monitoring agent restarted on auth-01,dc1,rack-A,prod
+ALM-00361,2026-09-10T01:48:58+03:00,appdynamics,billing-02,billing-svc,3,BACKUP_FAIL,Backup job failed on billing-02,dc2,rack-B,prod
+ALM-00362,2026-09-10T01:48:59+03:00,zabbix,payment-01,payment-db,2,JOB_RETRY,Batch job retry #5 on payment-db,dc1,rack-B,prod
+ALM-00363,2026-09-10T01:48:59+03:00,syslog,cart-01,cart-api,1,DEPLOY_START,Deployment started for cart-api,dc2,rack-C,prod
+ALM-00364,2026-09-10T01:49:00+03:00,prometheus,report-02,report-svc,1,CONFIG_RELOAD,Config reloaded on report-02,dc1,rack-C,test
+ALM-00365,2026-09-10T01:49:07+03:00,prometheus,object-01,object-storage,2,FS_INODES,Inode usage 20% on object-01,dc1,rack-A,prod
+ALM-00366,2026-09-10T01:49:09+03:00,zabbix,backup-01,backup-svc,3,DEPLOY_START,Deployment started for backup-svc,dc1,rack-A,prod
+ALM-00367,2026-09-10T01:49:10+03:00,syslog,report-02,report-svc,2,LOGIN_FAIL,Login failures 5/min on report-svc,dc1,rack-C,test
+ALM-00368,2026-09-10T01:49:11+03:00,zabbix,auth-02,auth-api,1,CONFIG_RELOAD,Config reloaded on auth-02,dc2,rack-B,prod
+ALM-00369,2026-09-10T01:49:11+03:00,appdynamics,auth-01,auth-api,2,CACHE_MISS,Cache miss ratio 55% on auth-api,dc1,rack-A,prod
+ALM-00370,2026-09-10T01:49:11+03:00,cloudwatch,auth-01,auth-api,2,AGENT_RESTART,Monitoring agent restarted on auth-01,dc1,rack-A,prod
+ALM-00371,2026-09-10T01:49:14+03:00,syslog,monitoring-01,monitoring-agent,2,FS_INODES,Inode usage 3% on monitoring-01,dc1,rack-B,prod
+ALM-00372,2026-09-10T01:49:15+03:00,prometheus,payment-01,payment-api,2,LOGIN_FAIL,Login failures 30/min on payment-api,dc1,rack-B,prod
+ALM-00373,2026-09-10T01:49:16+03:00,appdynamics,backup-02,backup-svc,2,NTP_DRIFT,Clock drift 10ms on backup-02,dc2,rack-B,prod
+ALM-00374,2026-09-10T01:49:21+03:00,cloudwatch,catalog-01,catalog-db,1,DEPLOY_START,Deployment started for catalog-db,dc1,rack-A,prod
+ALM-00375,2026-09-10T01:49:23+03:00,cloudwatch,redis-01,redis-cache,2,CACHE_MISS,Cache miss ratio 9% on redis-cache,dc2,rack-C,prod
+ALM-00376,2026-09-10T01:49:34+03:00,appdynamics,sms-02,sms-svc,2,CERT_EXPIRY,TLS certificate expires in 69 days,dc1,rack-A,prod
+ALM-00377,2026-09-10T01:49:35+03:00,appdynamics,email-01,email-svc,2,MEM_HIGH,Memory usage 71% on email-01,dc1,rack-A,prod
+ALM-00378,2026-09-10T01:49:35+03:00,zabbix,catalog-01,catalog-api,2,CACHE_MISS,Cache miss ratio 56% on catalog-api,dc1,rack-A,prod
+ALM-00379,2026-09-10T01:49:38+03:00,prometheus,backup-02,backup-svc,2,AGENT_RESTART,Monitoring agent restarted on backup-02,dc2,rack-B,prod
+ALM-00380,2026-09-10T01:49:48+03:00,cloudwatch,api-01,api-gateway,2,CACHE_MISS,Cache miss ratio 40% on api-gateway,dc1,rack-B,prod
+ALM-00381,2026-09-10T01:49:48+03:00,cloudwatch,order-01,order-api,1,CONFIG_RELOAD,Config reloaded on order-01,dc1,rack-A,prod
+ALM-00382,2026-09-10T01:49:50+03:00,prometheus,search-01,search-api,2,AGENT_RESTART,Monitoring agent restarted on search-01,dc1,rack-B,prod
+ALM-00383,2026-09-10T01:49:52+03:00,appdynamics,object-01,object-storage,2,FS_INODES,Inode usage 49% on object-01,dc1,rack-A,prod
+ALM-00384,2026-09-10T01:49:53+03:00,appdynamics,order-02,order-db,2,LOGIN_FAIL,Login failures 73/min on order-db,dc1,rack-A,prod
+ALM-00385,2026-09-10T01:49:54+03:00,prometheus,billing-01,billing-svc,2,LOGIN_FAIL,Login failures 43/min on billing-svc,dc1,rack-A,prod
+ALM-00386,2026-09-10T01:49:55+03:00,syslog,api-01,api-gateway,2,NTP_DRIFT,Clock drift 10ms on api-01,dc1,rack-B,prod
+ALM-00387,2026-09-10T01:49:57+03:00,syslog,ledger-02,ledger-svc,1,CONFIG_RELOAD,Config reloaded on ledger-02,dc1,rack-A,prod
+ALM-00388,2026-09-10T01:49:58+03:00,cloudwatch,fraud-01,fraud-svc,2,CPU_HIGH,CPU usage 44% on fraud-01,dc1,rack-B,prod
+ALM-00389,2026-09-10T01:49:58+03:00,zabbix,sms-02,sms-svc,2,AGENT_RESTART,Monitoring agent restarted on sms-02,dc1,rack-A,prod
+ALM-00390,2026-09-10T01:49:58+03:00,prometheus,payment-02,payment-db,2,CERT_EXPIRY,TLS certificate expires in 11 days,dc1,rack-C,prod
+ALM-00391,2026-09-10T01:50:00+03:00,zabbix,order-01,order-db,3,DISK_HIGH,Disk usage 82% on /data (order-01),dc2,rack-C,prod
+ALM-00392,2026-09-10T01:50:01+03:00,syslog,checkout-01,checkout-api,1,CONFIG_RELOAD,Config reloaded on checkout-01,dc2,rack-C,prod
+ALM-00393,2026-09-10T01:50:01+03:00,prometheus,catalog-01,catalog-db,2,BACKUP_FAIL,Backup job failed on catalog-01,dc1,rack-A,prod
+ALM-00394,2026-09-10T01:50:03+03:00,syslog,inventory-02,inventory-api,1,DEPLOY_START,Deployment started for inventory-api,dc1,rack-A,prod
+ALM-00395,2026-09-10T01:50:05+03:00,syslog,cart-01,cart-api,3,NTP_DRIFT,Clock drift 62ms on cart-01,dc2,rack-C,prod
+ALM-00396,2026-09-10T01:50:18+03:00,zabbix,cdn-02,cdn-edge,2,BACKUP_FAIL,Backup job failed on cdn-02,dc1,rack-A,prod
+ALM-00397,2026-09-10T01:50:19+03:00,syslog,redis-01,redis-cache,2,AGENT_RESTART,Monitoring agent restarted on redis-01,dc2,rack-C,prod
+ALM-00398,2026-09-10T01:50:25+03:00,syslog,monitoring-01,monitoring-agent,2,MEM_HIGH,Memory usage 14% on monitoring-01,dc1,rack-B,prod
+ALM-00399,2026-09-10T01:50:28+03:00,syslog,auth-02,auth-api,2,NTP_DRIFT,Clock drift 35ms on auth-02,dc2,rack-B,prod
+ALM-00400,2026-09-10T01:50:33+03:00,cloudwatch,auth-01,auth-api,2,CACHE_MISS,Cache miss ratio 45% on auth-api,dc1,rack-A,prod
+ALM-00401,2026-09-10T01:50:34+03:00,prometheus,fraud-01,fraud-svc,1,DEPLOY_START,Deployment started for fraud-svc,dc1,rack-B,prod
+ALM-00402,2026-09-10T01:50:35+03:00,prometheus,payment-02,payment-db,2,CACHE_MISS,Cache miss ratio 35% on payment-db,dc1,rack-C,prod
+ALM-00403,2026-09-10T01:50:35+03:00,syslog,email-02,email-svc,2,AGENT_RESTART,Monitoring agent restarted on email-02,dc2,rack-B,prod
+ALM-00404,2026-09-10T01:50:36+03:00,zabbix,report-01,report-svc,1,CONFIG_RELOAD,Config reloaded on report-01,dc1,rack-B,prod
+ALM-00405,2026-09-10T01:50:36+03:00,cloudwatch,cdn-02,cdn-edge,2,NTP_DRIFT,Clock drift 39ms on cdn-02,dc1,rack-A,prod
+ALM-00406,2026-09-10T01:50:41+03:00,zabbix,sms-01,sms-svc,2,NTP_DRIFT,Clock drift 62ms on sms-01,dc2,rack-C,prod
+ALM-00407,2026-09-10T01:50:45+03:00,syslog,object-01,object-storage,2,FS_INODES,Inode usage 73% on object-01,dc1,rack-A,prod
+ALM-00408,2026-09-10T01:50:50+03:00,appdynamics,monitoring-01,monitoring-agent,2,AGENT_RESTART,Monitoring agent restarted on monitoring-01,dc1,rack-B,prod
+ALM-00409,2026-09-10T01:50:53+03:00,prometheus,checkout-02,checkout-api,2,CACHE_MISS,Cache miss ratio 6% on checkout-api,dc1,rack-A,prod
+ALM-00410,2026-09-10T01:50:55+03:00,zabbix,order-01,order-db,2,CACHE_MISS,Cache miss ratio 42% on order-db,dc2,rack-C,prod
+ALM-00411,2026-09-10T01:50:57+03:00,syslog,user-01,user-db,2,AGENT_RESTART,Monitoring agent restarted on user-01,dc1,rack-A,prod
+ALM-00412,2026-09-10T01:51:07+03:00,cloudwatch,monitoring-02,monitoring-agent,2,FS_INODES,Inode usage 23% on monitoring-02,dc1,rack-C,prod
+ALM-00413,2026-09-10T01:51:08+03:00,cloudwatch,billing-02,billing-svc,2,CERT_EXPIRY,TLS certificate expires in 77 days,dc2,rack-B,prod
+ALM-00414,2026-09-10T01:51:12+03:00,zabbix,billing-01,billing-svc,2,FS_INODES,Inode usage 41% on billing-01,dc1,rack-A,prod
+ALM-00415,2026-09-10T01:51:13+03:00,cloudwatch,cdn-02,cdn-edge,2,MEM_HIGH,Memory usage 34% on cdn-02,dc1,rack-A,prod
+ALM-00416,2026-09-10T01:51:14+03:00,cloudwatch,notification-02,notification-svc,1,DEPLOY_START,Deployment started for notification-svc,dc1,rack-C,prod
+ALM-00417,2026-09-10T01:51:17+03:00,prometheus,kafka-01,kafka,2,CPU_HIGH,CPU usage 31% on kafka-01,dc1,rack-B,prod
+ALM-00418,2026-09-10T01:51:22+03:00,syslog,payment-02,payment-api,2,BACKUP_FAIL,Backup job failed on payment-02,dc1,rack-C,prod
+ALM-00419,2026-09-10T01:51:25+03:00,syslog,redis-02,redis-cache,2,FS_INODES,Inode usage 28% on redis-02,dc1,rack-A,prod
+ALM-00420,2026-09-10T01:51:30+03:00,zabbix,order-01,order-db,3,DISK_HIGH,Disk usage 82% on /data (order-01),dc2,rack-C,prod
+ALM-00421,2026-09-10T01:51:30+03:00,zabbix,fraud-01,fraud-svc,2,AGENT_RESTART,Monitoring agent restarted on fraud-01,dc1,rack-B,prod
+ALM-00422,2026-09-10T01:51:36+03:00,appdynamics,user-01,user-db,2,MEM_HIGH,Memory usage 63% on user-01,dc1,rack-A,prod
+ALM-00423,2026-09-10T01:51:41+03:00,appdynamics,user-01,user-db,2,NTP_DRIFT,Clock drift 8ms on user-01,dc1,rack-A,prod
+ALM-00424,2026-09-10T01:51:42+03:00,syslog,search-02,search-api,2,CACHE_MISS,Cache miss ratio 24% on search-api,dc1,rack-C,prod
+ALM-00425,2026-09-10T01:51:45+03:00,zabbix,backup-01,backup-svc,2,CERT_EXPIRY,TLS certificate expires in 76 days,dc1,rack-A,prod
+ALM-00426,2026-09-10T01:51:52+03:00,prometheus,email-01,email-svc,1,CONFIG_RELOAD,Config reloaded on email-01,dc1,rack-A,prod
+ALM-00427,2026-09-10T01:51:52+03:00,zabbix,monitoring-01,monitoring-agent,2,MEM_HIGH,Memory usage 29% on monitoring-01,dc1,rack-B,prod
+ALM-00428,2026-09-10T01:52:09+03:00,zabbix,billing-02,billing-svc,1,DEPLOY_START,Deployment started for billing-svc,dc2,rack-B,prod
+ALM-00429,2026-09-10T01:52:11+03:00,prometheus,user-01,user-db,2,JOB_RETRY,Batch job retry #50 on user-db,dc1,rack-A,prod
+ALM-00430,2026-09-10T01:52:14+03:00,cloudwatch,payment-02,payment-db,2,MEM_HIGH,Memory usage 16% on payment-02,dc1,rack-C,prod
+ALM-00431,2026-09-10T01:52:20+03:00,appdynamics,inventory-02,inventory-api,2,JOB_RETRY,Batch job retry #73 on inventory-api,dc1,rack-A,prod
+ALM-00432,2026-09-10T01:52:56+03:00,appdynamics,stage-02,payment-api,2,BACKUP_FAIL,Backup job failed on stage-02,dc1,rack-C,staging
+ALM-00433,2026-09-10T01:52:57+03:00,prometheus,ledger-01,ledger-svc,2,LOGIN_FAIL,Login failures 72/min on ledger-svc,dc2,rack-C,prod
+ALM-00434,2026-09-10T01:52:59+03:00,prometheus,user-01,user-db,2,BACKUP_FAIL,Backup job failed on user-01,dc1,rack-A,prod
+ALM-00435,2026-09-10T01:53:00+03:00,syslog,order-01,order-db,3,DISK_HIGH,Disk usage 83% on /data (order-01),dc2,rack-C,prod
+ALM-00436,2026-09-10T01:53:03+03:00,zabbix,report-01,report-svc,2,LOGIN_FAIL,Login failures 76/min on report-svc,dc1,rack-B,prod
+ALM-00437,2026-09-10T01:53:07+03:00,prometheus,object-02,object-storage,2,NTP_DRIFT,Clock drift 5ms on object-02,dc2,rack-B,prod
+ALM-00438,2026-09-10T01:53:12+03:00,prometheus,payment-02,payment-db,2,CACHE_MISS,Cache miss ratio 28% on payment-db,dc1,rack-C,prod
+ALM-00439,2026-09-10T01:53:19+03:00,prometheus,billing-02,billing-svc,2,JOB_RETRY,Batch job retry #23 on billing-svc,dc2,rack-B,prod
+ALM-00440,2026-09-10T01:53:20+03:00,appdynamics,cart-01,cart-api,2,LOGIN_FAIL,Login failures 56/min on cart-api,dc2,rack-C,prod
+ALM-00441,2026-09-10T01:53:22+03:00,prometheus,batch-02,batch-scheduler,2,CACHE_MISS,Cache miss ratio 25% on batch-scheduler,dc1,rack-A,prod
+ALM-00442,2026-09-10T01:53:22+03:00,zabbix,fraud-01,fraud-svc,2,JOB_RETRY,Batch job retry #64 on fraud-svc,dc1,rack-B,prod
+ALM-00443,2026-09-10T01:53:29+03:00,appdynamics,auth-02,auth-api,2,LOGIN_FAIL,Login failures 36/min on auth-api,dc2,rack-B,prod
+ALM-00444,2026-09-10T01:53:34+03:00,appdynamics,cart-02,cart-api,2,LOGIN_FAIL,Login failures 43/min on cart-api,dc1,rack-A,prod
+ALM-00445,2026-09-10T01:53:36+03:00,syslog,kafka-01,kafka,2,NTP_DRIFT,Clock drift 63ms on kafka-01,dc1,rack-B,prod
+ALM-00446,2026-09-10T01:53:37+03:00,syslog,email-01,email-svc,2,NTP_DRIFT,Clock drift 65ms on email-01,dc1,rack-A,prod
+ALM-00447,2026-09-10T01:53:40+03:00,cloudwatch,fraud-01,fraud-svc,2,CPU_HIGH,CPU usage 8% on fraud-01,dc1,rack-B,prod
+ALM-00448,2026-09-10T01:53:40+03:00,cloudwatch,order-02,order-api,2,NTP_DRIFT,Clock drift 51ms on order-02,dc2,rack-B,prod
+ALM-00449,2026-09-10T01:53:52+03:00,cloudwatch,user-01,user-db,2,CERT_EXPIRY,TLS certificate expires in 26 days,dc1,rack-A,prod
+ALM-00450,2026-09-10T01:53:55+03:00,prometheus,notification-02,notification-svc,3,MEM_HIGH,Memory usage 46% on notification-02,dc1,rack-C,prod
+ALM-00451,2026-09-10T01:54:03+03:00,cloudwatch,sms-01,sms-svc,2,FS_INODES,Inode usage 32% on sms-01,dc2,rack-C,prod
+ALM-00452,2026-09-10T01:54:12+03:00,zabbix,email-01,email-svc,2,BACKUP_FAIL,Backup job failed on email-01,dc1,rack-A,prod
+ALM-00453,2026-09-10T01:54:12+03:00,zabbix,search-02,search-api,1,DEPLOY_START,Deployment started for search-api,dc1,rack-C,prod
+ALM-00454,2026-09-10T01:54:12+03:00,zabbix,batch-02,batch-scheduler,2,CACHE_MISS,Cache miss ratio 10% on batch-scheduler,dc1,rack-A,prod
+ALM-00455,2026-09-10T01:54:13+03:00,appdynamics,sms-01,sms-svc,2,BACKUP_FAIL,Backup job failed on sms-01,dc2,rack-C,prod
+ALM-00456,2026-09-10T01:54:13+03:00,prometheus,payment-01,payment-api,2,CERT_EXPIRY,TLS certificate expires in 56 days,dc1,rack-B,prod
+ALM-00457,2026-09-10T01:54:14+03:00,prometheus,catalog-02,catalog-api,3,DEPLOY_START,Deployment started for catalog-api,dc2,rack-B,prod
+ALM-00458,2026-09-10T01:54:23+03:00,syslog,stage-02,payment-api,2,BACKUP_FAIL,Backup job failed on stage-02,dc1,rack-C,staging
+ALM-00459,2026-09-10T01:54:25+03:00,prometheus,catalog-02,catalog-api,1,DEPLOY_START,Deployment started for catalog-api,dc2,rack-B,prod
+ALM-00460,2026-09-10T01:54:27+03:00,zabbix,kafka-02,kafka,2,AGENT_RESTART,Monitoring agent restarted on kafka-02,dc1,rack-C,prod
+ALM-00461,2026-09-10T01:54:30+03:00,cloudwatch,order-01,order-db,3,DISK_HIGH,Disk usage 83% on /data (order-01),dc2,rack-C,prod
+ALM-00462,2026-09-10T01:54:38+03:00,syslog,cdn-02,cdn-edge,2,JOB_RETRY,Batch job retry #1 on cdn-edge,dc1,rack-A,prod
+ALM-00463,2026-09-10T01:54:42+03:00,appdynamics,stage-02,payment-api,2,FS_INODES,Inode usage 26% on stage-02,dc1,rack-C,staging
+ALM-00464,2026-09-10T01:54:42+03:00,cloudwatch,cart-02,cart-api,2,AGENT_RESTART,Monitoring agent restarted on cart-02,dc1,rack-A,prod
+ALM-00465,2026-09-10T01:54:43+03:00,syslog,order-01,order-api,2,CPU_HIGH,CPU usage 22% on order-01,dc1,rack-A,prod
+ALM-00466,2026-09-10T01:54:44+03:00,cloudwatch,order-01,order-db,2,BACKUP_FAIL,Backup job failed on order-01,dc2,rack-C,prod
+ALM-00467,2026-09-10T01:54:50+03:00,zabbix,catalog-02,catalog-api,2,BACKUP_FAIL,Backup job failed on catalog-02,dc2,rack-B,prod
+ALM-00468,2026-09-10T01:54:55+03:00,appdynamics,api-02,api-gateway,2,LOGIN_FAIL,Login failures 8/min on api-gateway,dc1,rack-C,prod
+ALM-00469,2026-09-10T01:54:57+03:00,appdynamics,order-01,order-db,2,CPU_HIGH,CPU usage 20% on order-01,dc2,rack-C,prod
+ALM-00470,2026-09-10T01:55:02+03:00,zabbix,backup-02,backup-svc,1,CONFIG_RELOAD,Config reloaded on backup-02,dc2,rack-B,prod
+ALM-00471,2026-09-10T01:55:10+03:00,prometheus,email-01,email-svc,2,AGENT_RESTART,Monitoring agent restarted on email-01,dc1,rack-A,prod
+ALM-00472,2026-09-10T01:55:10+03:00,cloudwatch,order-02,order-api,2,CACHE_MISS,Cache miss ratio 22% on order-api,dc2,rack-B,prod
+ALM-00473,2026-09-10T01:55:11+03:00,zabbix,cdn-02,cdn-edge,2,LOGIN_FAIL,Login failures 46/min on cdn-edge,dc1,rack-A,prod
+ALM-00474,2026-09-10T01:55:11+03:00,zabbix,monitoring-01,monitoring-agent,2,CERT_EXPIRY,TLS certificate expires in 61 days,dc1,rack-B,prod
+ALM-00475,2026-09-10T01:55:13+03:00,zabbix,report-02,report-svc,2,MEM_HIGH,Memory usage 76% on report-02,dc1,rack-C,test
+ALM-00476,2026-09-10T01:55:22+03:00,appdynamics,inventory-01,inventory-api,2,CPU_HIGH,CPU usage 49% on inventory-01,dc2,rack-C,prod
+ALM-00477,2026-09-10T01:55:27+03:00,prometheus,kafka-02,kafka,2,BACKUP_FAIL,Backup job failed on kafka-02,dc1,rack-C,prod
+ALM-00478,2026-09-10T01:55:28+03:00,cloudwatch,cart-02,cart-api,2,CERT_EXPIRY,TLS certificate expires in 1 days,dc1,rack-A,prod
+ALM-00479,2026-09-10T01:55:30+03:00,zabbix,notification-01,notification-svc,1,DEPLOY_START,Deployment started for notification-svc,dc1,rack-B,prod
+ALM-00480,2026-09-10T01:55:36+03:00,cloudwatch,batch-02,batch-scheduler,1,CONFIG_RELOAD,Config reloaded on batch-02,dc1,rack-A,prod
+ALM-00481,2026-09-10T01:55:39+03:00,syslog,batch-01,batch-scheduler,2,FS_INODES,Inode usage 27% on batch-01,dc2,rack-C,prod
+ALM-00482,2026-09-10T01:55:43+03:00,zabbix,email-01,email-svc,2,JOB_RETRY,Batch job retry #78 on email-svc,dc1,rack-A,prod
+ALM-00483,2026-09-10T01:55:47+03:00,cloudwatch,sms-02,sms-svc,1,CONFIG_RELOAD,Config reloaded on sms-02,dc1,rack-A,prod
+ALM-00484,2026-09-10T01:55:50+03:00,appdynamics,order-02,order-api,2,FS_INODES,Inode usage 66% on order-02,dc2,rack-B,prod
+ALM-00485,2026-09-10T01:55:58+03:00,zabbix,redis-01,redis-cache,2,CERT_EXPIRY,TLS certificate expires in 67 days,dc2,rack-C,prod
+ALM-00486,2026-09-10T01:55:58+03:00,cloudwatch,fraud-01,fraud-svc,1,CONFIG_RELOAD,Config reloaded on fraud-01,dc1,rack-B,prod
+ALM-00487,2026-09-10T01:56:00+03:00,syslog,order-01,order-db,3,DISK_HIGH,Disk usage 83% on /data (order-01),dc2,rack-C,prod
+ALM-00488,2026-09-10T01:56:02+03:00,syslog,billing-01,billing-svc,1,CONFIG_RELOAD,Config reloaded on billing-01,dc1,rack-A,prod
+ALM-00489,2026-09-10T01:56:03+03:00,prometheus,email-02,email-svc,2,FS_INODES,Inode usage 43% on email-02,dc2,rack-B,prod
+ALM-00490,2026-09-10T01:56:07+03:00,syslog,ledger-02,ledger-svc,2,NTP_DRIFT,Clock drift 39ms on ledger-02,dc1,rack-A,prod
+ALM-00491,2026-09-10T01:56:11+03:00,prometheus,cdn-02,cdn-edge,2,JOB_RETRY,Batch job retry #62 on cdn-edge,dc1,rack-A,prod
+ALM-00492,2026-09-10T01:56:12+03:00,syslog,catalog-02,catalog-api,2,CERT_EXPIRY,TLS certificate expires in 68 days,dc2,rack-B,prod
+ALM-00493,2026-09-10T01:56:13+03:00,zabbix,inventory-01,inventory-api,2,CACHE_MISS,Cache miss ratio 76% on inventory-api,dc2,rack-C,prod
+ALM-00494,2026-09-10T01:56:15+03:00,syslog,cart-02,cart-api,2,CPU_HIGH,CPU usage 20% on cart-02,dc1,rack-A,prod
+ALM-00495,2026-09-10T01:56:15+03:00,syslog,fraud-02,fraud-svc,1,DEPLOY_START,Deployment started for fraud-svc,dc1,rack-C,prod
+ALM-00496,2026-09-10T01:56:15+03:00,zabbix,redis-01,redis-cache,2,MEM_HIGH,Memory usage 19% on redis-01,dc2,rack-C,prod
+ALM-00497,2026-09-10T01:56:18+03:00,prometheus,payment-01,payment-db,2,AGENT_RESTART,Monitoring agent restarted on payment-01,dc1,rack-B,prod
+ALM-00498,2026-09-10T01:56:18+03:00,zabbix,search-02,search-api,1,DEPLOY_START,Deployment started for search-api,dc1,rack-C,prod
+ALM-00499,2026-09-10T01:56:18+03:00,appdynamics,payment-02,payment-db,2,BACKUP_FAIL,Backup job failed on payment-02,dc1,rack-C,prod
+ALM-00500,2026-09-10T01:56:22+03:00,syslog,kafka-01,kafka,2,NTP_DRIFT,Clock drift 58ms on kafka-01,dc1,rack-B,prod
+ALM-00501,2026-09-10T01:56:24+03:00,appdynamics,monitoring-01,monitoring-agent,2,JOB_RETRY,Batch job retry #45 on monitoring-agent,dc1,rack-B,prod
+ALM-00502,2026-09-10T01:56:43+03:00,cloudwatch,report-02,report-svc,2,AGENT_RESTART,Monitoring agent restarted on report-02,dc1,rack-C,test
+ALM-00503,2026-09-10T01:56:43+03:00,appdynamics,cart-01,cart-api,2,BACKUP_FAIL,Backup job failed on cart-01,dc2,rack-C,prod
+ALM-00504,2026-09-10T01:56:44+03:00,syslog,order-02,order-api,2,CACHE_MISS,Cache miss ratio 26% on order-api,dc2,rack-B,prod
+ALM-00505,2026-09-10T01:56:48+03:00,appdynamics,object-02,object-storage,2,LOGIN_FAIL,Login failures 48/min on object-storage,dc2,rack-B,prod
+ALM-00506,2026-09-10T01:56:49+03:00,cloudwatch,inventory-01,inventory-api,2,MEM_HIGH,Memory usage 66% on inventory-01,dc2,rack-C,prod
+ALM-00507,2026-09-10T01:56:56+03:00,syslog,batch-02,batch-scheduler,2,AGENT_RESTART,Monitoring agent restarted on batch-02,dc1,rack-A,prod
+ALM-00508,2026-09-10T01:56:58+03:00,cloudwatch,auth-02,auth-api,2,JOB_RETRY,Batch job retry #60 on auth-api,dc2,rack-B,prod
+ALM-00509,2026-09-10T01:57:01+03:00,cloudwatch,cart-02,cart-api,2,JOB_RETRY,Batch job retry #22 on cart-api,dc1,rack-A,prod
+ALM-00510,2026-09-10T01:57:02+03:00,cloudwatch,auth-01,auth-api,2,LOGIN_FAIL,Login failures 39/min on auth-api,dc1,rack-A,prod
+ALM-00511,2026-09-10T01:57:04+03:00,appdynamics,payment-02,payment-api,2,MEM_HIGH,Memory usage 20% on payment-02,dc1,rack-C,prod
+ALM-00512,2026-09-10T01:57:09+03:00,cloudwatch,monitoring-01,monitoring-agent,2,BACKUP_FAIL,Backup job failed on monitoring-01,dc1,rack-B,prod
+ALM-00513,2026-09-10T01:57:13+03:00,prometheus,notification-02,notification-svc,2,BACKUP_FAIL,Backup job failed on notification-02,dc1,rack-C,prod
+ALM-00514,2026-09-10T01:57:17+03:00,cloudwatch,billing-02,billing-svc,2,NTP_DRIFT,Clock drift 42ms on billing-02,dc2,rack-B,prod
+ALM-00515,2026-09-10T01:57:20+03:00,cloudwatch,notification-02,notification-svc,1,CONFIG_RELOAD,Config reloaded on notification-02,dc1,rack-C,prod
+ALM-00516,2026-09-10T01:57:24+03:00,appdynamics,cdn-01,cdn-edge,2,FS_INODES,Inode usage 4% on cdn-01,dc2,rack-C,prod
+ALM-00517,2026-09-10T01:57:27+03:00,cloudwatch,inventory-01,inventory-api,1,CONFIG_RELOAD,Config reloaded on inventory-01,dc2,rack-C,prod
+ALM-00518,2026-09-10T01:57:29+03:00,zabbix,sms-01,sms-svc,1,DEPLOY_START,Deployment started for sms-svc,dc2,rack-C,prod
+ALM-00519,2026-09-10T01:57:29+03:00,appdynamics,monitoring-01,monitoring-agent,2,BACKUP_FAIL,Backup job failed on monitoring-01,dc1,rack-B,prod
+ALM-00520,2026-09-10T01:57:30+03:00,zabbix,order-01,order-db,3,DISK_HIGH,Disk usage 83% on /data (order-01),dc2,rack-C,prod
+ALM-00521,2026-09-10T01:57:30+03:00,syslog,batch-02,batch-scheduler,2,CERT_EXPIRY,TLS certificate expires in 74 days,dc1,rack-A,prod
+ALM-00522,2026-09-10T01:57:34+03:00,appdynamics,search-02,search-api,2,NTP_DRIFT,Clock drift 40ms on search-02,dc1,rack-C,prod
+ALM-00523,2026-09-10T01:57:37+03:00,zabbix,notification-01,notification-svc,2,AGENT_RESTART,Monitoring agent restarted on notification-01,dc1,rack-B,prod
+ALM-00524,2026-09-10T01:57:41+03:00,zabbix,inventory-01,inventory-api,2,MEM_HIGH,Memory usage 71% on inventory-01,dc2,rack-C,prod
+ALM-00525,2026-09-10T01:57:44+03:00,cloudwatch,cdn-01,cdn-edge,2,FS_INODES,Inode usage 8% on cdn-01,dc2,rack-C,prod
+ALM-00526,2026-09-10T01:57:45+03:00,zabbix,cart-01,cart-api,2,BACKUP_FAIL,Backup job failed on cart-01,dc2,rack-C,prod
+ALM-00527,2026-09-10T01:57:49+03:00,appdynamics,object-02,object-storage,2,AGENT_RESTART,Monitoring agent restarted on object-02,dc2,rack-B,prod
+ALM-00528,2026-09-10T01:57:52+03:00,zabbix,order-02,order-db,2,NTP_DRIFT,Clock drift 62ms on order-02,dc1,rack-A,prod
+ALM-00529,2026-09-10T01:57:56+03:00,appdynamics,catalog-01,catalog-db,2,CERT_EXPIRY,TLS certificate expires in 57 days,dc1,rack-A,prod
+ALM-00530,2026-09-10T01:57:56+03:00,zabbix,catalog-02,catalog-api,2,NTP_DRIFT,Clock drift 35ms on catalog-02,dc2,rack-B,prod
+ALM-00531,2026-09-10T01:57:58+03:00,appdynamics,checkout-01,checkout-api,2,JOB_RETRY,Batch job retry #68 on checkout-api,dc2,rack-C,prod
+ALM-00532,2026-09-10T01:57:58+03:00,zabbix,monitoring-02,monitoring-agent,2,AGENT_RESTART,Monitoring agent restarted on monitoring-02,dc1,rack-C,prod
+ALM-00533,2026-09-10T01:58:04+03:00,syslog,cdn-01,cdn-edge,3,CPU_HIGH,CPU usage 54% on cdn-01,dc2,rack-C,prod
+ALM-00534,2026-09-10T01:58:05+03:00,zabbix,api-01,api-gateway,2,NTP_DRIFT,Clock drift 66ms on api-01,dc1,rack-B,prod
+ALM-00535,2026-09-10T01:58:06+03:00,syslog,cdn-01,cdn-edge,2,BACKUP_FAIL,Backup job failed on cdn-01,dc2,rack-C,prod
+ALM-00536,2026-09-10T01:58:07+03:00,cloudwatch,notification-01,notification-svc,1,CONFIG_RELOAD,Config reloaded on notification-01,dc1,rack-B,prod
+ALM-00537,2026-09-10T01:58:14+03:00,zabbix,cart-02,cart-api,2,JOB_RETRY,Batch job retry #49 on cart-api,dc1,rack-A,prod
+ALM-00538,2026-09-10T01:58:14+03:00,zabbix,kafka-01,kafka,2,CPU_HIGH,CPU usage 66% on kafka-01,dc1,rack-B,prod
+ALM-00539,2026-09-10T01:58:16+03:00,syslog,payment-01,payment-api,2,BACKUP_FAIL,Backup job failed on payment-01,dc1,rack-B,prod
+ALM-00540,2026-09-10T01:58:16+03:00,zabbix,object-01,object-storage,2,CPU_HIGH,CPU usage 69% on object-01,dc1,rack-A,prod
+ALM-00541,2026-09-10T01:58:16+03:00,cloudwatch,email-01,email-svc,2,CACHE_MISS,Cache miss ratio 61% on email-svc,dc1,rack-A,prod
+ALM-00542,2026-09-10T01:58:18+03:00,prometheus,notification-02,notification-svc,2,JOB_RETRY,Batch job retry #75 on notification-svc,dc1,rack-C,prod
+ALM-00543,2026-09-10T01:58:23+03:00,prometheus,billing-01,billing-svc,2,FS_INODES,Inode usage 67% on billing-01,dc1,rack-A,prod
+ALM-00544,2026-09-10T01:58:35+03:00,appdynamics,cart-01,cart-api,1,CONFIG_RELOAD,Config reloaded on cart-01,dc2,rack-C,prod
+ALM-00545,2026-09-10T01:58:38+03:00,zabbix,user-01,user-db,2,BACKUP_FAIL,Backup job failed on user-01,dc1,rack-A,prod
+ALM-00546,2026-09-10T01:58:38+03:00,zabbix,order-02,order-api,2,FS_INODES,Inode usage 5% on order-02,dc2,rack-B,prod
+ALM-00547,2026-09-10T01:58:44+03:00,appdynamics,auth-01,auth-api,1,DEPLOY_START,Deployment started for auth-api,dc1,rack-A,prod
+ALM-00548,2026-09-10T01:58:48+03:00,syslog,search-01,search-api,1,CONFIG_RELOAD,Config reloaded on search-01,dc1,rack-B,prod
+ALM-00549,2026-09-10T01:58:48+03:00,zabbix,kafka-02,kafka,2,BACKUP_FAIL,Backup job failed on kafka-02,dc1,rack-C,prod
+ALM-00550,2026-09-10T01:58:48+03:00,appdynamics,catalog-02,catalog-db,1,CONFIG_RELOAD,Config reloaded on catalog-02,dc2,rack-B,prod
+ALM-00551,2026-09-10T01:58:59+03:00,zabbix,monitoring-01,monitoring-agent,1,CONFIG_RELOAD,Config reloaded on monitoring-01,dc1,rack-B,prod
+ALM-00552,2026-09-10T01:59:00+03:00,cloudwatch,order-01,order-db,3,DISK_HIGH,Disk usage 84% on /data (order-01),dc2,rack-C,prod
+ALM-00553,2026-09-10T01:59:05+03:00,prometheus,stage-02,payment-api,1,DEPLOY_START,Deployment started for payment-api,dc1,rack-C,staging
+ALM-00554,2026-09-10T01:59:07+03:00,zabbix,catalog-01,catalog-db,2,LOGIN_FAIL,Login failures 25/min on catalog-db,dc1,rack-A,prod
+ALM-00555,2026-09-10T01:59:10+03:00,syslog,monitoring-02,monitoring-agent,2,LOGIN_FAIL,Login failures 51/min on monitoring-agent,dc1,rack-C,prod
+ALM-00556,2026-09-10T01:59:12+03:00,appdynamics,payment-01,payment-db,2,CERT_EXPIRY,TLS certificate expires in 40 days,dc1,rack-B,prod
+ALM-00557,2026-09-10T01:59:13+03:00,prometheus,order-02,order-api,3,CERT_EXPIRY,TLS certificate expires in 75 days,dc2,rack-B,prod
+ALM-00558,2026-09-10T01:59:13+03:00,syslog,kafka-01,kafka,2,LOGIN_FAIL,Login failures 29/min on kafka,dc1,rack-B,prod
+ALM-00559,2026-09-10T01:59:26+03:00,prometheus,fraud-02,fraud-svc,2,MEM_HIGH,Memory usage 73% on fraud-02,dc1,rack-C,prod
+ALM-00560,2026-09-10T01:59:27+03:00,zabbix,batch-01,batch-scheduler,2,CPU_HIGH,CPU usage 77% on batch-01,dc2,rack-C,prod
+ALM-00561,2026-09-10T01:59:28+03:00,prometheus,user-02,user-db,2,NTP_DRIFT,Clock drift 73ms on user-02,dc2,rack-B,prod
+ALM-00562,2026-09-10T01:59:33+03:00,cloudwatch,email-02,email-svc,2,FS_INODES,Inode usage 70% on email-02,dc2,rack-B,prod
+ALM-00563,2026-09-10T01:59:33+03:00,zabbix,redis-01,redis-cache,2,JOB_RETRY,Batch job retry #5 on redis-cache,dc2,rack-C,prod
+ALM-00564,2026-09-10T01:59:34+03:00,cloudwatch,user-02,user-db,2,CERT_EXPIRY,TLS certificate expires in 13 days,dc2,rack-B,prod
+ALM-00565,2026-09-10T01:59:40+03:00,syslog,cdn-02,cdn-edge,2,BACKUP_FAIL,Backup job failed on cdn-02,dc1,rack-A,prod
+ALM-00566,2026-09-10T01:59:46+03:00,prometheus,auth-02,auth-api,2,FS_INODES,Inode usage 42% on auth-02,dc2,rack-B,prod
+ALM-00567,2026-09-10T01:59:50+03:00,zabbix,cdn-01,cdn-edge,2,CPU_HIGH,CPU usage 60% on cdn-01,dc2,rack-C,prod
+ALM-00568,2026-09-10T01:59:54+03:00,prometheus,redis-01,redis-cache,2,CACHE_MISS,Cache miss ratio 9% on redis-cache,dc2,rack-C,prod
+ALM-00569,2026-09-10T01:59:59+03:00,prometheus,monitoring-01,monitoring-agent,2,CERT_EXPIRY,TLS certificate expires in 43 days,dc1,rack-B,prod
+ALM-00570,2026-09-10T02:00:05+03:00,syslog,batch-02,batch-scheduler,2,NTP_DRIFT,Clock drift 36ms on batch-02,dc1,rack-A,prod
+ALM-00571,2026-09-10T02:00:08+03:00,prometheus,monitoring-01,monitoring-agent,2,FS_INODES,Inode usage 10% on monitoring-01,dc1,rack-B,prod
+ALM-00572,2026-09-10T02:00:23+03:00,prometheus,monitoring-02,monitoring-agent,1,DEPLOY_START,Deployment started for monitoring-agent,dc1,rack-C,prod
+ALM-00573,2026-09-10T02:00:23+03:00,cloudwatch,inventory-02,inventory-api,2,CACHE_MISS,Cache miss ratio 5% on inventory-api,dc1,rack-A,prod
+ALM-00574,2026-09-10T02:00:23+03:00,zabbix,inventory-02,inventory-api,2,JOB_RETRY,Batch job retry #63 on inventory-api,dc1,rack-A,prod
+ALM-00575,2026-09-10T02:00:27+03:00,appdynamics,inventory-01,inventory-api,1,DEPLOY_START,Deployment started for inventory-api,dc2,rack-C,prod
+ALM-00576,2026-09-10T02:00:28+03:00,syslog,cart-02,cart-api,2,BACKUP_FAIL,Backup job failed on cart-02,dc1,rack-A,prod
+ALM-00577,2026-09-10T02:00:30+03:00,zabbix,order-01,order-db,3,DISK_HIGH,Disk usage 84% on /data (order-01),dc2,rack-C,prod
+ALM-00578,2026-09-10T02:00:35+03:00,appdynamics,cdn-02,cdn-edge,2,JOB_RETRY,Batch job retry #74 on cdn-edge,dc1,rack-A,prod
+ALM-00579,2026-09-10T02:00:42+03:00,cloudwatch,order-02,order-api,2,NTP_DRIFT,Clock drift 52ms on order-02,dc2,rack-B,prod
+ALM-00580,2026-09-10T02:00:47+03:00,prometheus,object-02,object-storage,2,CACHE_MISS,Cache miss ratio 32% on object-storage,dc2,rack-B,prod
+ALM-00581,2026-09-10T02:00:53+03:00,appdynamics,api-01,api-gateway,2,AGENT_RESTART,Monitoring agent restarted on api-01,dc1,rack-B,prod
+ALM-00582,2026-09-10T02:00:54+03:00,cloudwatch,checkout-01,checkout-api,2,BACKUP_FAIL,Backup job failed on checkout-01,dc2,rack-C,prod
+ALM-00583,2026-09-10T02:00:58+03:00,prometheus,kafka-02,kafka,2,CACHE_MISS,Cache miss ratio 3% on kafka,dc1,rack-C,prod
+ALM-00584,2026-09-10T02:01:03+03:00,appdynamics,catalog-01,catalog-db,1,DEPLOY_START,Deployment started for catalog-db,dc1,rack-A,prod
+ALM-00585,2026-09-10T02:01:07+03:00,zabbix,redis-01,redis-cache,2,MEM_HIGH,Memory usage 21% on redis-01,dc2,rack-C,prod
+ALM-00586,2026-09-10T02:01:08+03:00,syslog,api-02,api-gateway,1,CONFIG_RELOAD,Config reloaded on api-02,dc1,rack-C,prod
+ALM-00587,2026-09-10T02:01:08+03:00,cloudwatch,order-02,order-db,2,AGENT_RESTART,Monitoring agent restarted on order-02,dc1,rack-A,prod
+ALM-00588,2026-09-10T02:01:12+03:00,appdynamics,inventory-02,inventory-api,2,FS_INODES,Inode usage 72% on inventory-02,dc1,rack-A,prod
+ALM-00589,2026-09-10T02:01:34+03:00,prometheus,cart-02,cart-api,3,AGENT_RESTART,Monitoring agent restarted on cart-02,dc1,rack-A,prod
+ALM-00590,2026-09-10T02:01:45+03:00,syslog,search-02,search-api,2,LOGIN_FAIL,Login failures 29/min on search-api,dc1,rack-C,prod
+ALM-00591,2026-09-10T02:01:46+03:00,syslog,batch-02,batch-scheduler,2,FS_INODES,Inode usage 75% on batch-02,dc1,rack-A,prod
+ALM-00592,2026-09-10T02:01:51+03:00,cloudwatch,fraud-02,fraud-svc,3,CACHE_MISS,Cache miss ratio 11% on fraud-svc,dc1,rack-C,prod
+ALM-00593,2026-09-10T02:01:55+03:00,zabbix,cart-01,cart-api,2,CACHE_MISS,Cache miss ratio 30% on cart-api,dc2,rack-C,prod
+ALM-00594,2026-09-10T02:01:57+03:00,syslog,inventory-01,inventory-api,1,CONFIG_RELOAD,Config reloaded on inventory-01,dc2,rack-C,prod
+ALM-00595,2026-09-10T02:01:57+03:00,appdynamics,kafka-02,kafka,2,NTP_DRIFT,Clock drift 33ms on kafka-02,dc1,rack-C,prod
+ALM-00596,2026-09-10T02:01:59+03:00,zabbix,billing-02,billing-svc,2,FS_INODES,Inode usage 10% on billing-02,dc2,rack-B,prod
+ALM-00597,2026-09-10T02:02:00+03:00,syslog,order-01,order-db,3,DISK_HIGH,Disk usage 84% on /data (order-01),dc2,rack-C,prod
+ALM-00598,2026-09-10T02:02:00+03:00,syslog,inventory-01,inventory-api,2,NTP_DRIFT,Clock drift 42ms on inventory-01,dc2,rack-C,prod
+ALM-00599,2026-09-10T02:02:09+03:00,cloudwatch,search-02,search-api,2,BACKUP_FAIL,Backup job failed on search-02,dc1,rack-C,prod
+ALM-00600,2026-09-10T02:02:10+03:00,cloudwatch,sms-02,sms-svc,2,CERT_EXPIRY,TLS certificate expires in 5 days,dc1,rack-A,prod
+ALM-00601,2026-09-10T02:02:13+03:00,appdynamics,billing-01,billing-svc,2,BACKUP_FAIL,Backup job failed on billing-01,dc1,rack-A,prod
+ALM-00602,2026-09-10T02:02:14+03:00,zabbix,order-01,order-db,2,CPU_HIGH,CPU usage 55% on order-01,dc2,rack-C,prod
+ALM-00603,2026-09-10T02:02:16+03:00,zabbix,notification-01,notification-svc,2,CPU_HIGH,CPU usage 20% on notification-01,dc1,rack-B,prod
+ALM-00604,2026-09-10T02:02:16+03:00,cloudwatch,notification-02,notification-svc,2,MEM_HIGH,Memory usage 64% on notification-02,dc1,rack-C,prod
+ALM-00605,2026-09-10T02:02:20+03:00,syslog,auth-02,auth-api,3,NTP_DRIFT,Clock drift 20ms on auth-02,dc2,rack-B,prod
+ALM-00606,2026-09-10T02:02:21+03:00,zabbix,object-02,object-storage,2,CERT_EXPIRY,TLS certificate expires in 69 days,dc2,rack-B,prod
+ALM-00607,2026-09-10T02:02:22+03:00,appdynamics,search-01,search-api,2,FS_INODES,Inode usage 56% on search-01,dc1,rack-B,prod
+ALM-00608,2026-09-10T02:02:26+03:00,appdynamics,billing-01,billing-svc,2,MEM_HIGH,Memory usage 65% on billing-01,dc1,rack-A,prod
+ALM-00609,2026-09-10T02:02:30+03:00,syslog,redis-01,redis-cache,2,CERT_EXPIRY,TLS certificate expires in 49 days,dc2,rack-C,prod
+ALM-00610,2026-09-10T02:02:31+03:00,appdynamics,auth-02,auth-api,2,NTP_DRIFT,Clock drift 17ms on auth-02,dc2,rack-B,prod
+ALM-00611,2026-09-10T02:02:33+03:00,syslog,payment-01,payment-db,1,DEPLOY_START,Deployment started for payment-db,dc1,rack-B,prod
+ALM-00612,2026-09-10T02:02:33+03:00,zabbix,notification-02,notification-svc,2,JOB_RETRY,Batch job retry #52 on notification-svc,dc1,rack-C,prod
+ALM-00613,2026-09-10T02:02:34+03:00,prometheus,fraud-02,fraud-svc,2,CPU_HIGH,CPU usage 9% on fraud-02,dc1,rack-C,prod
+ALM-00614,2026-09-10T02:02:36+03:00,cloudwatch,report-01,report-svc,2,NTP_DRIFT,Clock drift 44ms on report-01,dc1,rack-B,prod
+ALM-00615,2026-09-10T02:02:43+03:00,syslog,auth-01,auth-api,2,AGENT_RESTART,Monitoring agent restarted on auth-01,dc1,rack-A,prod
+ALM-00616,2026-09-10T02:02:43+03:00,zabbix,payment-01,payment-db,2,JOB_RETRY,Batch job retry #4 on payment-db,dc1,rack-B,prod
+ALM-00617,2026-09-10T02:02:44+03:00,syslog,redis-02,redis-cache,2,CACHE_MISS,Cache miss ratio 61% on redis-cache,dc1,rack-A,prod
+ALM-00618,2026-09-10T02:02:45+03:00,prometheus,order-01,order-db,2,NTP_DRIFT,Clock drift 69ms on order-01,dc2,rack-C,prod
+ALM-00619,2026-09-10T02:02:48+03:00,cloudwatch,payment-02,payment-db,2,AGENT_RESTART,Monitoring agent restarted on payment-02,dc1,rack-C,prod
+ALM-00620,2026-09-10T02:02:52+03:00,syslog,object-01,object-storage,2,CERT_EXPIRY,TLS certificate expires in 43 days,dc1,rack-A,prod
+ALM-00621,2026-09-10T02:02:52+03:00,cloudwatch,backup-02,backup-svc,2,CERT_EXPIRY,TLS certificate expires in 47 days,dc2,rack-B,prod
+ALM-00622,2026-09-10T02:02:53+03:00,prometheus,catalog-02,catalog-api,2,AGENT_RESTART,Monitoring agent restarted on catalog-02,dc2,rack-B,prod
+ALM-00623,2026-09-10T02:03:01+03:00,zabbix,api-02,api-gateway,1,CONFIG_RELOAD,Config reloaded on api-02,dc1,rack-C,prod
+ALM-00624,2026-09-10T02:03:02+03:00,appdynamics,api-02,api-gateway,2,AGENT_RESTART,Monitoring agent restarted on api-02,dc1,rack-C,prod
+ALM-00625,2026-09-10T02:03:07+03:00,cloudwatch,billing-02,billing-svc,2,BACKUP_FAIL,Backup job failed on billing-02,dc2,rack-B,prod
+ALM-00626,2026-09-10T02:03:11+03:00,prometheus,search-01,search-api,2,CERT_EXPIRY,TLS certificate expires in 54 days,dc1,rack-B,prod
+ALM-00627,2026-09-10T02:03:13+03:00,syslog,catalog-01,catalog-db,1,DEPLOY_START,Deployment started for catalog-db,dc1,rack-A,prod
+ALM-00628,2026-09-10T02:03:17+03:00,prometheus,auth-01,auth-api,2,BACKUP_FAIL,Backup job failed on auth-01,dc1,rack-A,prod
+ALM-00629,2026-09-10T02:03:22+03:00,cloudwatch,ledger-01,ledger-svc,2,CPU_HIGH,CPU usage 62% on ledger-01,dc2,rack-C,prod
+ALM-00630,2026-09-10T02:03:30+03:00,zabbix,order-01,order-db,3,DISK_HIGH,Disk usage 84% on /data (order-01),dc2,rack-C,prod
+ALM-00631,2026-09-10T02:03:30+03:00,zabbix,search-01,search-api,2,NTP_DRIFT,Clock drift 15ms on search-01,dc1,rack-B,prod
+ALM-00632,2026-09-10T02:03:39+03:00,cloudwatch,kafka-02,kafka,2,LOGIN_FAIL,Login failures 7/min on kafka,dc1,rack-C,prod
+ALM-00633,2026-09-10T02:03:39+03:00,appdynamics,user-02,user-db,2,AGENT_RESTART,Monitoring agent restarted on user-02,dc2,rack-B,prod
+ALM-00634,2026-09-10T02:03:43+03:00,zabbix,backup-02,backup-svc,2,AGENT_RESTART,Monitoring agent restarted on backup-02,dc2,rack-B,prod
+ALM-00635,2026-09-10T02:03:54+03:00,zabbix,redis-01,redis-cache,1,DEPLOY_START,Deployment started for redis-cache,dc2,rack-C,prod
+ALM-00636,2026-09-10T02:03:55+03:00,prometheus,kafka-02,kafka,2,BACKUP_FAIL,Backup job failed on kafka-02,dc1,rack-C,prod
+ALM-00637,2026-09-10T02:04:05+03:00,zabbix,stage-02,payment-api,2,MEM_HIGH,Memory usage 72% on stage-02,dc1,rack-C,staging
+ALM-00638,2026-09-10T02:04:05+03:00,syslog,notification-01,notification-svc,3,FS_INODES,Inode usage 28% on notification-01,dc1,rack-B,prod
+ALM-00639,2026-09-10T02:04:09+03:00,zabbix,notification-01,notification-svc,2,LOGIN_FAIL,Login failures 22/min on notification-svc,dc1,rack-B,prod
+ALM-00640,2026-09-10T02:04:13+03:00,appdynamics,api-02,api-gateway,2,FS_INODES,Inode usage 56% on api-02,dc1,rack-C,prod
+ALM-00641,2026-09-10T02:04:13+03:00,appdynamics,ledger-01,ledger-svc,2,NTP_DRIFT,Clock drift 39ms on ledger-01,dc2,rack-C,prod
+ALM-00642,2026-09-10T02:04:15+03:00,cloudwatch,sms-01,sms-svc,2,FS_INODES,Inode usage 40% on sms-01,dc2,rack-C,prod
+ALM-00643,2026-09-10T02:04:16+03:00,syslog,search-01,search-api,1,DEPLOY_START,Deployment started for search-api,dc1,rack-B,prod
+ALM-00644,2026-09-10T02:04:22+03:00,syslog,order-02,order-db,1,DEPLOY_START,Deployment started for order-db,dc1,rack-A,prod
+ALM-00645,2026-09-10T02:04:24+03:00,appdynamics,report-01,report-svc,2,BACKUP_FAIL,Backup job failed on report-01,dc1,rack-B,prod
+ALM-00646,2026-09-10T02:04:27+03:00,cloudwatch,billing-01,billing-svc,1,CONFIG_RELOAD,Config reloaded on billing-01,dc1,rack-A,prod
+ALM-00647,2026-09-10T02:04:33+03:00,prometheus,payment-02,payment-api,2,CACHE_MISS,Cache miss ratio 49% on payment-api,dc1,rack-C,prod
+ALM-00648,2026-09-10T02:04:33+03:00,cloudwatch,payment-02,payment-db,1,DEPLOY_START,Deployment started for payment-db,dc1,rack-C,prod
+ALM-00649,2026-09-10T02:04:38+03:00,appdynamics,object-02,object-storage,3,CACHE_MISS,Cache miss ratio 6% on object-storage,dc2,rack-B,prod
+ALM-00650,2026-09-10T02:04:43+03:00,syslog,fraud-01,fraud-svc,2,AGENT_RESTART,Monitoring agent restarted on fraud-01,dc1,rack-B,prod
+ALM-00651,2026-09-10T02:04:46+03:00,zabbix,catalog-02,catalog-db,2,JOB_RETRY,Batch job retry #79 on catalog-db,dc2,rack-B,prod
+ALM-00652,2026-09-10T02:04:46+03:00,prometheus,catalog-02,catalog-api,2,NTP_DRIFT,Clock drift 31ms on catalog-02,dc2,rack-B,prod
+ALM-00653,2026-09-10T02:04:47+03:00,cloudwatch,batch-02,batch-scheduler,2,CACHE_MISS,Cache miss ratio 61% on batch-scheduler,dc1,rack-A,prod
+ALM-00654,2026-09-10T02:04:49+03:00,prometheus,order-02,order-db,2,AGENT_RESTART,Monitoring agent restarted on order-02,dc1,rack-A,prod
+ALM-00655,2026-09-10T02:04:53+03:00,syslog,api-01,api-gateway,2,MEM_HIGH,Memory usage 32% on api-01,dc1,rack-B,prod
+ALM-00656,2026-09-10T02:04:57+03:00,syslog,redis-01,redis-cache,2,MEM_HIGH,Memory usage 17% on redis-01,dc2,rack-C,prod
+ALM-00657,2026-09-10T02:04:58+03:00,appdynamics,cart-01,cart-api,2,FS_INODES,Inode usage 23% on cart-01,dc2,rack-C,prod
+ALM-00658,2026-09-10T02:05:00+03:00,prometheus,order-01,order-db,3,DISK_HIGH,Disk usage 85% on /data (order-01),dc2,rack-C,prod
+ALM-00659,2026-09-10T02:05:01+03:00,cloudwatch,catalog-01,catalog-api,1,CONFIG_RELOAD,Config reloaded on catalog-01,dc1,rack-A,prod
+ALM-00660,2026-09-10T02:05:09+03:00,zabbix,email-01,email-svc,2,CERT_EXPIRY,TLS certificate expires in 70 days,dc1,rack-A,prod
+ALM-00661,2026-09-10T02:05:09+03:00,zabbix,fraud-02,fraud-svc,2,CPU_HIGH,CPU usage 26% on fraud-02,dc1,rack-C,prod
+ALM-00662,2026-09-10T02:05:11+03:00,cloudwatch,auth-01,auth-api,2,JOB_RETRY,Batch job retry #63 on auth-api,dc1,rack-A,prod
+ALM-00663,2026-09-10T02:05:13+03:00,zabbix,cdn-01,cdn-edge,2,CERT_EXPIRY,TLS certificate expires in 42 days,dc2,rack-C,prod
+ALM-00664,2026-09-10T02:05:19+03:00,syslog,redis-01,redis-cache,2,CERT_EXPIRY,TLS certificate expires in 65 days,dc2,rack-C,prod
+ALM-00665,2026-09-10T02:05:20+03:00,syslog,fraud-01,fraud-svc,2,JOB_RETRY,Batch job retry #21 on fraud-svc,dc1,rack-B,prod
+ALM-00666,2026-09-10T02:05:21+03:00,zabbix,catalog-01,catalog-api,2,CACHE_MISS,Cache miss ratio 59% on catalog-api,dc1,rack-A,prod
+ALM-00667,2026-09-10T02:05:22+03:00,cloudwatch,inventory-01,inventory-api,2,BACKUP_FAIL,Backup job failed on inventory-01,dc2,rack-C,prod
+ALM-00668,2026-09-10T02:05:22+03:00,appdynamics,kafka-02,kafka,2,AGENT_RESTART,Monitoring agent restarted on kafka-02,dc1,rack-C,prod
+ALM-00669,2026-09-10T02:05:24+03:00,cloudwatch,kafka-01,kafka,2,BACKUP_FAIL,Backup job failed on kafka-01,dc1,rack-B,prod
+ALM-00670,2026-09-10T02:05:24+03:00,syslog,backup-02,backup-svc,1,DEPLOY_START,Deployment started for backup-svc,dc2,rack-B,prod
+ALM-00671,2026-09-10T02:05:27+03:00,cloudwatch,redis-01,redis-cache,2,AGENT_RESTART,Monitoring agent restarted on redis-01,dc2,rack-C,prod
+ALM-00672,2026-09-10T02:05:27+03:00,prometheus,payment-01,payment-api,2,CERT_EXPIRY,TLS certificate expires in 45 days,dc1,rack-B,prod
+ALM-00673,2026-09-10T02:05:27+03:00,syslog,order-02,order-db,2,CERT_EXPIRY,TLS certificate expires in 74 days,dc1,rack-A,prod
+ALM-00674,2026-09-10T02:05:28+03:00,prometheus,catalog-02,catalog-db,2,CERT_EXPIRY,TLS certificate expires in 11 days,dc2,rack-B,prod
+ALM-00675,2026-09-10T02:05:32+03:00,zabbix,cart-01,cart-api,2,CACHE_MISS,Cache miss ratio 32% on cart-api,dc2,rack-C,prod
+ALM-00676,2026-09-10T02:05:35+03:00,cloudwatch,redis-01,redis-cache,2,CERT_EXPIRY,TLS certificate expires in 15 days,dc2,rack-C,prod
+ALM-00677,2026-09-10T02:05:36+03:00,prometheus,search-01,search-api,1,CONFIG_RELOAD,Config reloaded on search-01,dc1,rack-B,prod
+ALM-00678,2026-09-10T02:05:38+03:00,cloudwatch,payment-01,payment-db,2,AGENT_RESTART,Monitoring agent restarted on payment-01,dc1,rack-B,prod
+ALM-00679,2026-09-10T02:05:41+03:00,prometheus,billing-02,billing-svc,2,CPU_HIGH,CPU usage 37% on billing-02,dc2,rack-B,prod
+ALM-00680,2026-09-10T02:05:43+03:00,cloudwatch,payment-01,payment-api,2,BACKUP_FAIL,Backup job failed on payment-01,dc1,rack-B,prod
+ALM-00681,2026-09-10T02:05:48+03:00,syslog,order-02,order-db,2,MEM_HIGH,Memory usage 44% on order-02,dc1,rack-A,prod
+ALM-00682,2026-09-10T02:05:48+03:00,appdynamics,billing-02,billing-svc,2,CACHE_MISS,Cache miss ratio 6% on billing-svc,dc2,rack-B,prod
+ALM-00683,2026-09-10T02:06:01+03:00,zabbix,catalog-01,catalog-api,3,NTP_DRIFT,Clock drift 16ms on catalog-01,dc1,rack-A,prod
+ALM-00684,2026-09-10T02:06:01+03:00,zabbix,fraud-02,fraud-svc,1,DEPLOY_START,Deployment started for fraud-svc,dc1,rack-C,prod
+ALM-00685,2026-09-10T02:06:04+03:00,cloudwatch,checkout-02,checkout-api,2,CERT_EXPIRY,TLS certificate expires in 4 days,dc1,rack-A,prod
+ALM-00686,2026-09-10T02:06:16+03:00,cloudwatch,object-01,object-storage,1,CONFIG_RELOAD,Config reloaded on object-01,dc1,rack-A,prod
+ALM-00687,2026-09-10T02:06:19+03:00,appdynamics,email-01,email-svc,1,DEPLOY_START,Deployment started for email-svc,dc1,rack-A,prod
+ALM-00688,2026-09-10T02:06:20+03:00,prometheus,payment-01,payment-db,2,CPU_HIGH,CPU usage 53% on payment-01,dc1,rack-B,prod
+ALM-00689,2026-09-10T02:06:27+03:00,zabbix,sms-02,sms-svc,2,FS_INODES,Inode usage 24% on sms-02,dc1,rack-A,prod
+ALM-00690,2026-09-10T02:06:27+03:00,prometheus,redis-01,redis-cache,2,CPU_HIGH,CPU usage 24% on redis-01,dc2,rack-C,prod
+ALM-00691,2026-09-10T02:06:28+03:00,prometheus,backup-02,backup-svc,2,JOB_RETRY,Batch job retry #2 on backup-svc,dc2,rack-B,prod
+ALM-00692,2026-09-10T02:06:30+03:00,cloudwatch,order-01,order-db,3,DISK_HIGH,Disk usage 85% on /data (order-01),dc2,rack-C,prod
+ALM-00693,2026-09-10T02:06:44+03:00,appdynamics,kafka-02,kafka,2,CACHE_MISS,Cache miss ratio 21% on kafka,dc1,rack-C,prod
+ALM-00694,2026-09-10T02:06:53+03:00,appdynamics,email-02,email-svc,2,AGENT_RESTART,Monitoring agent restarted on email-02,dc2,rack-B,prod
+ALM-00695,2026-09-10T02:06:56+03:00,appdynamics,api-01,api-gateway,2,AGENT_RESTART,Monitoring agent restarted on api-01,dc1,rack-B,prod
+ALM-00696,2026-09-10T02:06:57+03:00,prometheus,monitoring-02,monitoring-agent,2,AGENT_RESTART,Monitoring agent restarted on monitoring-02,dc1,rack-C,prod
+ALM-00697,2026-09-10T02:07:03+03:00,syslog,email-01,email-svc,2,FS_INODES,Inode usage 19% on email-01,dc1,rack-A,prod
+ALM-00698,2026-09-10T02:07:07+03:00,prometheus,billing-02,billing-svc,1,DEPLOY_START,Deployment started for billing-svc,dc2,rack-B,prod
+ALM-00699,2026-09-10T02:07:10+03:00,appdynamics,api-01,api-gateway,2,JOB_RETRY,Batch job retry #18 on api-gateway,dc1,rack-B,prod
+ALM-00700,2026-09-10T02:07:12+03:00,cloudwatch,object-01,object-storage,2,LOGIN_FAIL,Login failures 55/min on object-storage,dc1,rack-A,prod
+ALM-00701,2026-09-10T02:07:14+03:00,cloudwatch,order-01,order-api,2,NTP_DRIFT,Clock drift 11ms on order-01,dc1,rack-A,prod
+ALM-00702,2026-09-10T02:07:15+03:00,cloudwatch,email-02,email-svc,2,NTP_DRIFT,Clock drift 46ms on email-02,dc2,rack-B,prod
+ALM-00703,2026-09-10T02:07:16+03:00,appdynamics,search-01,search-api,2,NTP_DRIFT,Clock drift 23ms on search-01,dc1,rack-B,prod
+ALM-00704,2026-09-10T02:07:20+03:00,appdynamics,auth-02,auth-api,2,CERT_EXPIRY,TLS certificate expires in 16 days,dc2,rack-B,prod
+ALM-00705,2026-09-10T02:07:23+03:00,zabbix,inventory-01,inventory-api,2,NTP_DRIFT,Clock drift 54ms on inventory-01,dc2,rack-C,prod
+ALM-00706,2026-09-10T02:07:24+03:00,prometheus,inventory-02,inventory-api,1,DEPLOY_START,Deployment started for inventory-api,dc1,rack-A,prod
+ALM-00707,2026-09-10T02:07:29+03:00,appdynamics,report-01,report-svc,1,CONFIG_RELOAD,Config reloaded on report-01,dc1,rack-B,prod
+ALM-00708,2026-09-10T02:07:32+03:00,cloudwatch,cart-02,cart-api,2,BACKUP_FAIL,Backup job failed on cart-02,dc1,rack-A,prod
+ALM-00709,2026-09-10T02:07:33+03:00,prometheus,order-02,order-api,1,DEPLOY_START,Deployment started for order-api,dc2,rack-B,prod
+ALM-00710,2026-09-10T02:07:42+03:00,prometheus,monitoring-01,monitoring-agent,2,NTP_DRIFT,Clock drift 7ms on monitoring-01,dc1,rack-B,prod
+ALM-00711,2026-09-10T02:07:44+03:00,prometheus,catalog-02,catalog-db,2,FS_INODES,Inode usage 42% on catalog-02,dc2,rack-B,prod
+ALM-00712,2026-09-10T02:07:45+03:00,zabbix,catalog-02,catalog-db,2,AGENT_RESTART,Monitoring agent restarted on catalog-02,dc2,rack-B,prod
+ALM-00713,2026-09-10T02:07:45+03:00,prometheus,catalog-01,catalog-db,2,BACKUP_FAIL,Backup job failed on catalog-01,dc1,rack-A,prod
+ALM-00714,2026-09-10T02:07:48+03:00,cloudwatch,api-02,api-gateway,1,CONFIG_RELOAD,Config reloaded on api-02,dc1,rack-C,prod
+ALM-00715,2026-09-10T02:07:53+03:00,syslog,fraud-01,fraud-svc,2,BACKUP_FAIL,Backup job failed on fraud-01,dc1,rack-B,prod
+ALM-00716,2026-09-10T02:07:56+03:00,appdynamics,catalog-02,catalog-api,2,CPU_HIGH,CPU usage 73% on catalog-02,dc2,rack-B,prod
+ALM-00717,2026-09-10T02:08:00+03:00,syslog,order-01,order-db,3,DISK_HIGH,Disk usage 85% on /data (order-01),dc2,rack-C,prod
+ALM-00718,2026-09-10T02:08:03+03:00,zabbix,cart-01,cart-api,2,BACKUP_FAIL,Backup job failed on cart-01,dc2,rack-C,prod
+ALM-00719,2026-09-10T02:08:03+03:00,cloudwatch,report-01,report-svc,2,JOB_RETRY,Batch job retry #15 on report-svc,dc1,rack-B,prod
+ALM-00720,2026-09-10T02:08:03+03:00,cloudwatch,payment-02,payment-db,2,CACHE_MISS,Cache miss ratio 37% on payment-db,dc1,rack-C,prod
+ALM-00721,2026-09-10T02:08:09+03:00,zabbix,auth-02,auth-api,2,FS_INODES,Inode usage 71% on auth-02,dc2,rack-B,prod
+ALM-00722,2026-09-10T02:08:12+03:00,cloudwatch,batch-01,batch-scheduler,2,JOB_RETRY,Batch job retry #51 on batch-scheduler,dc2,rack-C,prod
+ALM-00723,2026-09-10T02:08:17+03:00,syslog,auth-01,auth-api,2,AGENT_RESTART,Monitoring agent restarted on auth-01,dc1,rack-A,prod
+ALM-00724,2026-09-10T02:08:20+03:00,prometheus,search-01,search-api,3,CPU_HIGH,CPU usage 39% on search-01,dc1,rack-B,prod
+ALM-00725,2026-09-10T02:08:21+03:00,prometheus,ledger-01,ledger-svc,2,LOGIN_FAIL,Login failures 71/min on ledger-svc,dc2,rack-C,prod
+ALM-00726,2026-09-10T02:08:29+03:00,appdynamics,sms-01,sms-svc,2,CACHE_MISS,Cache miss ratio 49% on sms-svc,dc2,rack-C,prod
+ALM-00727,2026-09-10T02:08:35+03:00,zabbix,ledger-01,ledger-svc,2,NTP_DRIFT,Clock drift 65ms on ledger-01,dc2,rack-C,prod
+ALM-00728,2026-09-10T02:08:35+03:00,appdynamics,kafka-02,kafka,2,NTP_DRIFT,Clock drift 5ms on kafka-02,dc1,rack-C,prod
+ALM-00729,2026-09-10T02:08:36+03:00,prometheus,order-02,order-api,2,CERT_EXPIRY,TLS certificate expires in 76 days,dc2,rack-B,prod
+ALM-00730,2026-09-10T02:08:43+03:00,zabbix,sms-02,sms-svc,2,AGENT_RESTART,Monitoring agent restarted on sms-02,dc1,rack-A,prod
+ALM-00731,2026-09-10T02:08:45+03:00,prometheus,cart-01,cart-api,2,JOB_RETRY,Batch job retry #75 on cart-api,dc2,rack-C,prod
+ALM-00732,2026-09-10T02:08:48+03:00,syslog,email-02,email-svc,2,NTP_DRIFT,Clock drift 59ms on email-02,dc2,rack-B,prod
+ALM-00733,2026-09-10T02:08:56+03:00,zabbix,ledger-01,ledger-svc,2,NTP_DRIFT,Clock drift 57ms on ledger-01,dc2,rack-C,prod
+ALM-00734,2026-09-10T02:09:05+03:00,appdynamics,object-02,object-storage,2,NTP_DRIFT,Clock drift 51ms on object-02,dc2,rack-B,prod
+ALM-00735,2026-09-10T02:09:07+03:00,prometheus,report-02,report-svc,2,BACKUP_FAIL,Backup job failed on report-02,dc1,rack-C,test
+ALM-00736,2026-09-10T02:09:14+03:00,prometheus,inventory-02,inventory-api,2,JOB_RETRY,Batch job retry #44 on inventory-api,dc1,rack-A,prod
+ALM-00737,2026-09-10T02:09:16+03:00,zabbix,billing-02,billing-svc,2,MEM_HIGH,Memory usage 47% on billing-02,dc2,rack-B,prod
+ALM-00738,2026-09-10T02:09:17+03:00,cloudwatch,notification-02,notification-svc,2,AGENT_RESTART,Monitoring agent restarted on notification-02,dc1,rack-C,prod
+ALM-00739,2026-09-10T02:09:26+03:00,prometheus,sms-01,sms-svc,1,CONFIG_RELOAD,Config reloaded on sms-01,dc2,rack-C,prod
+ALM-00740,2026-09-10T02:09:29+03:00,prometheus,report-02,report-svc,1,CONFIG_RELOAD,Config reloaded on report-02,dc1,rack-C,test
+ALM-00741,2026-09-10T02:09:30+03:00,zabbix,order-01,order-db,3,DISK_HIGH,Disk usage 85% on /data (order-01),dc2,rack-C,prod
+ALM-00742,2026-09-10T02:09:30+03:00,cloudwatch,batch-02,batch-scheduler,2,NTP_DRIFT,Clock drift 2ms on batch-02,dc1,rack-A,prod
+ALM-00743,2026-09-10T02:09:35+03:00,syslog,cart-01,cart-api,2,CERT_EXPIRY,TLS certificate expires in 49 days,dc2,rack-C,prod
+ALM-00744,2026-09-10T02:09:37+03:00,zabbix,user-01,user-db,2,FS_INODES,Inode usage 70% on user-01,dc1,rack-A,prod
+ALM-00745,2026-09-10T02:09:39+03:00,prometheus,order-02,order-api,2,AGENT_RESTART,Monitoring agent restarted on order-02,dc2,rack-B,prod
+ALM-00746,2026-09-10T02:09:42+03:00,zabbix,object-01,object-storage,1,DEPLOY_START,Deployment started for object-storage,dc1,rack-A,prod
+ALM-00747,2026-09-10T02:09:43+03:00,syslog,payment-02,payment-api,2,BACKUP_FAIL,Backup job failed on payment-02,dc1,rack-C,prod
+ALM-00748,2026-09-10T02:09:44+03:00,appdynamics,redis-02,redis-cache,2,LOGIN_FAIL,Login failures 27/min on redis-cache,dc1,rack-A,prod
+ALM-00749,2026-09-10T02:09:45+03:00,syslog,sms-02,sms-svc,2,CACHE_MISS,Cache miss ratio 6% on sms-svc,dc1,rack-A,prod
+ALM-00750,2026-09-10T02:09:50+03:00,cloudwatch,stage-01,checkout-api,2,JOB_RETRY,Batch job retry #54 on checkout-api,dc1,rack-C,staging
+ALM-00751,2026-09-10T02:09:54+03:00,appdynamics,payment-02,payment-api,2,JOB_RETRY,Batch job retry #73 on payment-api,dc1,rack-C,prod
+ALM-00752,2026-09-10T02:10:00+03:00,cloudwatch,search-01,search-api,2,LOGIN_FAIL,Login failures 32/min on search-api,dc1,rack-B,prod
+ALM-00753,2026-09-10T02:10:01+03:00,cloudwatch,catalog-02,catalog-api,1,CONFIG_RELOAD,Config reloaded on catalog-02,dc2,rack-B,prod
+ALM-00754,2026-09-10T02:10:07+03:00,cloudwatch,order-01,order-db,2,CERT_EXPIRY,TLS certificate expires in 54 days,dc2,rack-C,prod
+ALM-00755,2026-09-10T02:10:12+03:00,appdynamics,sms-01,sms-svc,2,NTP_DRIFT,Clock drift 60ms on sms-01,dc2,rack-C,prod
+ALM-00756,2026-09-10T02:10:12+03:00,zabbix,email-02,email-svc,2,NTP_DRIFT,Clock drift 4ms on email-02,dc2,rack-B,prod
+ALM-00757,2026-09-10T02:10:15+03:00,zabbix,kafka-01,kafka,2,BACKUP_FAIL,Backup job failed on kafka-01,dc1,rack-B,prod
+ALM-00758,2026-09-10T02:10:17+03:00,appdynamics,batch-01,batch-scheduler,2,BACKUP_FAIL,Backup job failed on batch-01,dc2,rack-C,prod
+ALM-00759,2026-09-10T02:10:18+03:00,appdynamics,cdn-01,cdn-edge,2,CERT_EXPIRY,TLS certificate expires in 7 days,dc2,rack-C,prod
+ALM-00760,2026-09-10T02:10:19+03:00,appdynamics,sms-01,sms-svc,3,AGENT_RESTART,Monitoring agent restarted on sms-01,dc2,rack-C,prod
+ALM-00761,2026-09-10T02:10:25+03:00,syslog,inventory-01,inventory-api,3,LOGIN_FAIL,Login failures 10/min on inventory-api,dc2,rack-C,prod
+ALM-00762,2026-09-10T02:10:35+03:00,cloudwatch,backup-01,backup-svc,2,JOB_RETRY,Batch job retry #27 on backup-svc,dc1,rack-A,prod
+ALM-00763,2026-09-10T02:10:44+03:00,syslog,email-01,email-svc,2,AGENT_RESTART,Monitoring agent restarted on email-01,dc1,rack-A,prod
+ALM-00764,2026-09-10T02:10:45+03:00,zabbix,notification-01,notification-svc,2,BACKUP_FAIL,Backup job failed on notification-01,dc1,rack-B,prod
+ALM-00765,2026-09-10T02:10:46+03:00,syslog,catalog-02,catalog-api,2,LOGIN_FAIL,Login failures 27/min on catalog-api,dc2,rack-B,prod
+ALM-00766,2026-09-10T02:10:47+03:00,cloudwatch,cart-02,cart-api,2,JOB_RETRY,Batch job retry #14 on cart-api,dc1,rack-A,prod
+ALM-00767,2026-09-10T02:10:49+03:00,appdynamics,stage-01,checkout-api,2,BACKUP_FAIL,Backup job failed on stage-01,dc1,rack-C,staging
+ALM-00768,2026-09-10T02:10:50+03:00,syslog,order-02,order-db,1,DEPLOY_START,Deployment started for order-db,dc1,rack-A,prod
+ALM-00769,2026-09-10T02:10:53+03:00,appdynamics,monitoring-01,monitoring-agent,2,BACKUP_FAIL,Backup job failed on monitoring-01,dc1,rack-B,prod
+ALM-00770,2026-09-10T02:10:55+03:00,syslog,notification-02,notification-svc,2,JOB_RETRY,Batch job retry #62 on notification-svc,dc1,rack-C,prod
+ALM-00771,2026-09-10T02:10:57+03:00,prometheus,kafka-02,kafka,2,JOB_RETRY,Batch job retry #24 on kafka,dc1,rack-C,prod
+ALM-00772,2026-09-10T02:10:58+03:00,appdynamics,kafka-01,kafka,1,DEPLOY_START,Deployment started for kafka,dc1,rack-B,prod
+ALM-00773,2026-09-10T02:11:00+03:00,cloudwatch,order-01,order-db,3,DISK_HIGH,Disk usage 86% on /data (order-01),dc2,rack-C,prod
+ALM-00774,2026-09-10T02:11:02+03:00,zabbix,billing-01,billing-svc,2,LOGIN_FAIL,Login failures 31/min on billing-svc,dc1,rack-A,prod
+ALM-00775,2026-09-10T02:11:10+03:00,cloudwatch,billing-02,billing-svc,2,BACKUP_FAIL,Backup job failed on billing-02,dc2,rack-B,prod
+ALM-00776,2026-09-10T02:11:19+03:00,zabbix,payment-02,payment-api,2,MEM_HIGH,Memory usage 40% on payment-02,dc1,rack-C,prod
+ALM-00777,2026-09-10T02:11:19+03:00,syslog,billing-01,billing-svc,2,CPU_HIGH,CPU usage 33% on billing-01,dc1,rack-A,prod
+ALM-00778,2026-09-10T02:11:23+03:00,syslog,payment-02,payment-api,2,CPU_HIGH,CPU usage 35% on payment-02,dc1,rack-C,prod
+ALM-00779,2026-09-10T02:11:27+03:00,cloudwatch,monitoring-01,monitoring-agent,2,BACKUP_FAIL,Backup job failed on monitoring-01,dc1,rack-B,prod
+ALM-00780,2026-09-10T02:11:33+03:00,cloudwatch,cart-01,cart-api,2,FS_INODES,Inode usage 34% on cart-01,dc2,rack-C,prod
+ALM-00781,2026-09-10T02:11:41+03:00,prometheus,email-01,email-svc,2,BACKUP_FAIL,Backup job failed on email-01,dc1,rack-A,prod
+ALM-00782,2026-09-10T02:11:42+03:00,appdynamics,user-02,user-db,2,CACHE_MISS,Cache miss ratio 30% on user-db,dc2,rack-B,prod
+ALM-00783,2026-09-10T02:11:44+03:00,prometheus,notification-01,notification-svc,2,CPU_HIGH,CPU usage 70% on notification-01,dc1,rack-B,prod
+ALM-00784,2026-09-10T02:11:59+03:00,appdynamics,cart-02,cart-api,1,DEPLOY_START,Deployment started for cart-api,dc1,rack-A,prod
+ALM-00785,2026-09-10T02:12:13+03:00,prometheus,payment-01,payment-db,2,NTP_DRIFT,Clock drift 46ms on payment-01,dc1,rack-B,prod
+ALM-00786,2026-09-10T02:12:18+03:00,syslog,object-01,object-storage,2,FS_INODES,Inode usage 38% on object-01,dc1,rack-A,prod
+ALM-00787,2026-09-10T02:12:19+03:00,cloudwatch,sms-01,sms-svc,2,LOGIN_FAIL,Login failures 21/min on sms-svc,dc2,rack-C,prod
+ALM-00788,2026-09-10T02:12:20+03:00,cloudwatch,payment-01,payment-api,2,BACKUP_FAIL,Backup job failed on payment-01,dc1,rack-B,prod
+ALM-00789,2026-09-10T02:12:23+03:00,zabbix,stage-01,checkout-api,3,DEPLOY_START,Deployment started for checkout-api,dc1,rack-C,staging
+ALM-00790,2026-09-10T02:12:30+03:00,appdynamics,order-01,order-db,3,DISK_HIGH,Disk usage 86% on /data (order-01),dc2,rack-C,prod
+ALM-00791,2026-09-10T02:12:33+03:00,cloudwatch,catalog-01,catalog-api,2,CPU_HIGH,CPU usage 27% on catalog-01,dc1,rack-A,prod
+ALM-00792,2026-09-10T02:12:33+03:00,cloudwatch,inventory-02,inventory-api,2,LOGIN_FAIL,Login failures 68/min on inventory-api,dc1,rack-A,prod
+ALM-00793,2026-09-10T02:12:33+03:00,cloudwatch,billing-02,billing-svc,2,AGENT_RESTART,Monitoring agent restarted on billing-02,dc2,rack-B,prod
+ALM-00794,2026-09-10T02:12:35+03:00,prometheus,cart-01,cart-api,2,CACHE_MISS,Cache miss ratio 34% on cart-api,dc2,rack-C,prod
+ALM-00795,2026-09-10T02:12:36+03:00,prometheus,catalog-01,catalog-db,2,CPU_HIGH,CPU usage 79% on catalog-01,dc1,rack-A,prod
+ALM-00796,2026-09-10T02:12:37+03:00,syslog,search-01,search-api,1,CONFIG_RELOAD,Config reloaded on search-01,dc1,rack-B,prod
+ALM-00797,2026-09-10T02:12:39+03:00,zabbix,backup-02,backup-svc,2,FS_INODES,Inode usage 77% on backup-02,dc2,rack-B,prod
+ALM-00798,2026-09-10T02:12:47+03:00,syslog,catalog-02,catalog-api,2,NTP_DRIFT,Clock drift 50ms on catalog-02,dc2,rack-B,prod
+ALM-00799,2026-09-10T02:12:48+03:00,cloudwatch,notification-01,notification-svc,2,LOGIN_FAIL,Login failures 56/min on notification-svc,dc1,rack-B,prod
+ALM-00800,2026-09-10T02:12:57+03:00,cloudwatch,user-01,user-db,2,NTP_DRIFT,Clock drift 1ms on user-01,dc1,rack-A,prod
+ALM-00801,2026-09-10T02:12:58+03:00,appdynamics,redis-01,redis-cache,2,CERT_EXPIRY,TLS certificate expires in 6 days,dc2,rack-C,prod
+ALM-00802,2026-09-10T02:12:59+03:00,cloudwatch,object-02,object-storage,1,DEPLOY_START,Deployment started for object-storage,dc2,rack-B,prod
+ALM-00803,2026-09-10T02:13:01+03:00,syslog,cdn-01,cdn-edge,1,DEPLOY_START,Deployment started for cdn-edge,dc2,rack-C,prod
+ALM-00804,2026-09-10T02:13:06+03:00,appdynamics,stage-01,checkout-api,2,CERT_EXPIRY,TLS certificate expires in 16 days,dc1,rack-C,staging
+ALM-00805,2026-09-10T02:13:07+03:00,appdynamics,payment-02,payment-db,2,FS_INODES,Inode usage 53% on payment-02,dc1,rack-C,prod
+ALM-00806,2026-09-10T02:13:10+03:00,prometheus,backup-02,backup-svc,1,CONFIG_RELOAD,Config reloaded on backup-02,dc2,rack-B,prod
+ALM-00807,2026-09-10T02:13:15+03:00,prometheus,ledger-02,ledger-svc,3,CPU_HIGH,CPU usage 73% on ledger-02,dc1,rack-A,prod
+ALM-00808,2026-09-10T02:13:15+03:00,cloudwatch,sms-02,sms-svc,2,JOB_RETRY,Batch job retry #21 on sms-svc,dc1,rack-A,prod
+ALM-00809,2026-09-10T02:13:20+03:00,prometheus,payment-02,payment-db,2,LOGIN_FAIL,Login failures 49/min on payment-db,dc1,rack-C,prod
+ALM-00810,2026-09-10T02:13:20+03:00,syslog,order-02,order-db,2,BACKUP_FAIL,Backup job failed on order-02,dc1,rack-A,prod
+ALM-00811,2026-09-10T02:13:25+03:00,prometheus,order-02,order-api,2,FS_INODES,Inode usage 5% on order-02,dc2,rack-B,prod
+ALM-00812,2026-09-10T02:13:29+03:00,appdynamics,catalog-01,catalog-api,2,NTP_DRIFT,Clock drift 63ms on catalog-01,dc1,rack-A,prod
+ALM-00813,2026-09-10T02:13:38+03:00,appdynamics,kafka-02,kafka,1,CONFIG_RELOAD,Config reloaded on kafka-02,dc1,rack-C,prod
+ALM-00814,2026-09-10T02:13:39+03:00,prometheus,ledger-01,ledger-svc,2,NTP_DRIFT,Clock drift 42ms on ledger-01,dc2,rack-C,prod
+ALM-00815,2026-09-10T02:13:41+03:00,syslog,user-02,user-db,2,MEM_HIGH,Memory usage 19% on user-02,dc2,rack-B,prod
+ALM-00816,2026-09-10T02:13:42+03:00,prometheus,auth-02,auth-api,2,NTP_DRIFT,Clock drift 59ms on auth-02,dc2,rack-B,prod
+ALM-00817,2026-09-10T02:13:44+03:00,prometheus,monitoring-01,monitoring-agent,2,NTP_DRIFT,Clock drift 48ms on monitoring-01,dc1,rack-B,prod
+ALM-00818,2026-09-10T02:13:47+03:00,prometheus,monitoring-01,monitoring-agent,2,CPU_HIGH,CPU usage 65% on monitoring-01,dc1,rack-B,prod
+ALM-00819,2026-09-10T02:13:48+03:00,prometheus,notification-02,notification-svc,2,FS_INODES,Inode usage 57% on notification-02,dc1,rack-C,prod
+ALM-00820,2026-09-10T02:13:49+03:00,zabbix,sms-02,sms-svc,2,AGENT_RESTART,Monitoring agent restarted on sms-02,dc1,rack-A,prod
+ALM-00821,2026-09-10T02:13:56+03:00,syslog,checkout-02,checkout-api,2,JOB_RETRY,Batch job retry #70 on checkout-api,dc1,rack-A,prod
+ALM-00822,2026-09-10T02:13:56+03:00,syslog,notification-02,notification-svc,2,FS_INODES,Inode usage 72% on notification-02,dc1,rack-C,prod
+ALM-00823,2026-09-10T02:13:57+03:00,appdynamics,payment-01,payment-api,2,BACKUP_FAIL,Backup job failed on payment-01,dc1,rack-B,prod
+ALM-00824,2026-09-10T02:13:58+03:00,zabbix,email-01,email-svc,2,CPU_HIGH,CPU usage 72% on email-01,dc1,rack-A,prod
+ALM-00825,2026-09-10T02:13:58+03:00,syslog,payment-01,payment-api,2,CERT_EXPIRY,TLS certificate expires in 53 days,dc1,rack-B,prod
+ALM-00826,2026-09-10T02:14:00+03:00,appdynamics,payment-01,payment-db,3,DB_SLOW_QUERY,Slow query 2997ms on payment-db,dc1,rack-B,prod
+ALM-00827,2026-09-10T02:14:00+03:00,prometheus,order-01,order-db,3,DISK_HIGH,Disk usage 86% on /data (order-01),dc2,rack-C,prod
+ALM-00828,2026-09-10T02:14:12+03:00,prometheus,backup-01,backup-svc,2,AGENT_RESTART,Monitoring agent restarted on backup-01,dc1,rack-A,prod
+ALM-00829,2026-09-10T02:14:12+03:00,appdynamics,kafka-01,kafka,1,DEPLOY_START,Deployment started for kafka,dc1,rack-B,prod
+ALM-00830,2026-09-10T02:14:14+03:00,appdynamics,object-01,object-storage,2,JOB_RETRY,Batch job retry #33 on object-storage,dc1,rack-A,prod
+ALM-00831,2026-09-10T02:14:14+03:00,cloudwatch,notification-01,notification-svc,2,AGENT_RESTART,Monitoring agent restarted on notification-01,dc1,rack-B,prod
+ALM-00832,2026-09-10T02:14:14+03:00,cloudwatch,auth-02,auth-api,3,MEM_HIGH,Memory usage 59% on auth-02,dc2,rack-B,prod
+ALM-00833,2026-09-10T02:14:17+03:00,syslog,catalog-01,catalog-db,2,JOB_RETRY,Batch job retry #31 on catalog-db,dc1,rack-A,prod
+ALM-00834,2026-09-10T02:14:19+03:00,prometheus,monitoring-02,monitoring-agent,2,NTP_DRIFT,Clock drift 44ms on monitoring-02,dc1,rack-C,prod
+ALM-00835,2026-09-10T02:14:20+03:00,syslog,email-02,email-svc,2,NTP_DRIFT,Clock drift 12ms on email-02,dc2,rack-B,prod
+ALM-00836,2026-09-10T02:14:23+03:00,syslog,payment-01,payment-db,3,REPLICA_LAG,Replica lag 2255s on payment-db,dc1,rack-B,prod
+ALM-00837,2026-09-10T02:14:26+03:00,zabbix,payment-02,payment-db,3,DB_SLOW_QUERY,Slow query 1651ms on payment-db,dc1,rack-C,prod
+ALM-00838,2026-09-10T02:14:28+03:00,syslog,report-01,report-svc,1,CONFIG_RELOAD,Config reloaded on report-01,dc1,rack-B,prod
+ALM-00839,2026-09-10T02:14:30+03:00,prometheus,monitoring-02,monitoring-agent,2,JOB_RETRY,Batch job retry #27 on monitoring-agent,dc1,rack-C,prod
+ALM-00840,2026-09-10T02:14:39+03:00,appdynamics,catalog-02,catalog-db,2,CPU_HIGH,CPU usage 30% on catalog-02,dc2,rack-B,prod
+ALM-00841,2026-09-10T02:14:39+03:00,zabbix,catalog-01,catalog-api,2,MEM_HIGH,Memory usage 4% on catalog-01,dc1,rack-A,prod
+ALM-00842,2026-09-10T02:14:41+03:00,appdynamics,payment-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,prod
+ALM-00843,2026-09-10T02:14:41+03:00,cloudwatch,payment-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,prod
+ALM-00844,2026-09-10T02:14:41+03:00,prometheus,sms-01,sms-svc,2,MEM_HIGH,Memory usage 78% on sms-01,dc2,rack-C,prod
+ALM-00845,2026-09-10T02:14:42+03:00,syslog,monitoring-02,monitoring-agent,2,MEM_HIGH,Memory usage 1% on monitoring-02,dc1,rack-C,prod
+ALM-00846,2026-09-10T02:14:43+03:00,appdynamics,payment-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,prod
+ALM-00847,2026-09-10T02:14:44+03:00,zabbix,payment-01,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-B,prod
+ALM-00848,2026-09-10T02:14:51+03:00,zabbix,search-02,search-api,3,CERT_EXPIRY,TLS certificate expires in 30 days,dc1,rack-C,prod
+ALM-00849,2026-09-10T02:14:52+03:00,appdynamics,order-01,order-db,1,DEPLOY_START,Deployment started for order-db,dc2,rack-C,prod
+ALM-00850,2026-09-10T02:14:52+03:00,prometheus,billing-02,billing-svc,2,CPU_HIGH,CPU usage 5% on billing-02,dc2,rack-B,prod
+ALM-00851,2026-09-10T02:14:54+03:00,appdynamics,payment-01,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-B,prod
+ALM-00852,2026-09-10T02:14:56+03:00,appdynamics,checkout-02,checkout-api,3,JOB_RETRY,Batch job retry #37 on checkout-api,dc1,rack-A,prod
+ALM-00853,2026-09-10T02:14:56+03:00,cloudwatch,order-02,order-db,2,CACHE_MISS,Cache miss ratio 47% on order-db,dc1,rack-A,prod
+ALM-00854,2026-09-10T02:14:58+03:00,syslog,stage-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,staging
+ALM-00855,2026-09-10T02:14:59+03:00,syslog,payment-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,prod
+ALM-00856,2026-09-10T02:14:59+03:00,cloudwatch,kafka-01,kafka,3,BACKUP_FAIL,Backup job failed on kafka-01,dc1,rack-B,prod
+ALM-00857,2026-09-10T02:15:03+03:00,syslog,payment-01,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-B,prod
+ALM-00858,2026-09-10T02:15:04+03:00,zabbix,kafka-02,kafka,3,BACKUP_FAIL,Backup job failed on kafka-02,dc1,rack-C,prod
+ALM-00859,2026-09-10T02:15:07+03:00,appdynamics,stage-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,staging
+ALM-00860,2026-09-10T02:15:08+03:00,cloudwatch,payment-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,prod
+ALM-00861,2026-09-10T02:15:08+03:00,zabbix,payment-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,prod
+ALM-00862,2026-09-10T02:15:11+03:00,prometheus,payment-02,payment-db,3,DB_SLOW_QUERY,Slow query 1171ms on payment-db,dc1,rack-C,prod
+ALM-00863,2026-09-10T02:15:11+03:00,appdynamics,search-01,search-api,1,CONFIG_RELOAD,Config reloaded on search-01,dc1,rack-B,prod
+ALM-00864,2026-09-10T02:15:12+03:00,appdynamics,catalog-01,catalog-api,1,DEPLOY_START,Deployment started for catalog-api,dc1,rack-A,prod
+ALM-00865,2026-09-10T02:15:14+03:00,zabbix,payment-02,payment-db,3,DB_SLOW_QUERY,Slow query 2896ms on payment-db,dc1,rack-C,prod
+ALM-00866,2026-09-10T02:15:14+03:00,cloudwatch,cart-02,cart-api,1,DEPLOY_START,Deployment started for cart-api,dc1,rack-A,prod
+ALM-00867,2026-09-10T02:15:14+03:00,cloudwatch,payment-01,payment-db,2,FS_INODES,Inode usage 39% on payment-01,dc1,rack-B,prod
+ALM-00868,2026-09-10T02:15:19+03:00,syslog,payment-02,payment-db,3,REPLICA_LAG,Replica lag 2193s on payment-db,dc1,rack-C,prod
+ALM-00869,2026-09-10T02:15:20+03:00,appdynamics,fraud-02,fraud-svc,2,LOGIN_FAIL,Login failures 74/min on fraud-svc,dc1,rack-C,prod
+ALM-00870,2026-09-10T02:15:22+03:00,syslog,payment-02,payment-db,3,DB_SLOW_QUERY,Slow query 2639ms on payment-db,dc1,rack-C,prod
+ALM-00871,2026-09-10T02:15:23+03:00,syslog,payment-01,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-B,prod
+ALM-00872,2026-09-10T02:15:24+03:00,zabbix,stage-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,staging
+ALM-00873,2026-09-10T02:15:26+03:00,zabbix,payment-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,prod
+ALM-00874,2026-09-10T02:15:29+03:00,cloudwatch,kafka-02,kafka,3,CONFIG_RELOAD,Config reloaded on kafka-02,dc1,rack-C,prod
+ALM-00875,2026-09-10T02:15:29+03:00,syslog,search-01,search-api,2,BACKUP_FAIL,Backup job failed on search-01,dc1,rack-B,prod
+ALM-00876,2026-09-10T02:15:30+03:00,zabbix,order-01,order-db,3,DISK_HIGH,Disk usage 86% on /data (order-01),dc2,rack-C,prod
+ALM-00877,2026-09-10T02:15:30+03:00,appdynamics,sms-02,sms-svc,2,JOB_RETRY,Batch job retry #33 on sms-svc,dc1,rack-A,prod
+ALM-00878,2026-09-10T02:15:31+03:00,zabbix,payment-01,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-B,prod
+ALM-00879,2026-09-10T02:15:31+03:00,syslog,order-01,order-db,2,NTP_DRIFT,Clock drift 39ms on order-01,dc2,rack-C,prod
+ALM-00880,2026-09-10T02:15:32+03:00,appdynamics,catalog-01,catalog-api,2,NTP_DRIFT,Clock drift 18ms on catalog-01,dc1,rack-A,prod
+ALM-00881,2026-09-10T02:15:35+03:00,syslog,order-02,order-api,2,CACHE_MISS,Cache miss ratio 72% on order-api,dc2,rack-B,prod
+ALM-00882,2026-09-10T02:15:38+03:00,cloudwatch,order-02,order-api,2,NTP_DRIFT,Clock drift 25ms on order-02,dc2,rack-B,prod
+ALM-00883,2026-09-10T02:15:39+03:00,syslog,payment-01,payment-db,3,DB_SLOW_QUERY,Slow query 3111ms on payment-db,dc1,rack-B,prod
+ALM-00884,2026-09-10T02:15:42+03:00,appdynamics,stage-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,staging
+ALM-00885,2026-09-10T02:15:42+03:00,appdynamics,stage-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-C,staging
+ALM-00886,2026-09-10T02:15:43+03:00,prometheus,fraud-01,fraud-svc,2,LOGIN_FAIL,Login failures 25/min on fraud-svc,dc1,rack-B,prod
+ALM-00887,2026-09-10T02:15:44+03:00,appdynamics,payment-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,prod
+ALM-00888,2026-09-10T02:15:45+03:00,zabbix,payment-01,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-B,prod
+ALM-00889,2026-09-10T02:15:46+03:00,prometheus,payment-02,payment-db,3,REPLICA_LAG,Replica lag 3398s on payment-db,dc1,rack-C,prod
+ALM-00890,2026-09-10T02:15:49+03:00,syslog,batch-01,batch-scheduler,2,CACHE_MISS,Cache miss ratio 62% on batch-scheduler,dc2,rack-C,prod
+ALM-00891,2026-09-10T02:15:49+03:00,cloudwatch,stage-02,payment-api,1,DEPLOY_START,Deployment started for payment-api,dc1,rack-C,staging
+ALM-00892,2026-09-10T02:15:49+03:00,prometheus,backup-01,backup-svc,2,AGENT_RESTART,Monitoring agent restarted on backup-01,dc1,rack-A,prod
+ALM-00893,2026-09-10T02:15:50+03:00,prometheus,sms-02,sms-svc,2,CACHE_MISS,Cache miss ratio 41% on sms-svc,dc1,rack-A,prod
+ALM-00894,2026-09-10T02:15:52+03:00,prometheus,payment-01,payment-db,3,REPLICA_LAG,Replica lag 3260s on payment-db,dc1,rack-B,prod
+ALM-00895,2026-09-10T02:15:52+03:00,cloudwatch,checkout-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc2,rack-C,prod
+ALM-00896,2026-09-10T02:15:52+03:00,appdynamics,object-02,object-storage,2,AGENT_RESTART,Monitoring agent restarted on object-02,dc2,rack-B,prod
+ALM-00897,2026-09-10T02:15:53+03:00,zabbix,object-02,object-storage,1,DEPLOY_START,Deployment started for object-storage,dc2,rack-B,prod
+ALM-00898,2026-09-10T02:15:57+03:00,cloudwatch,user-01,user-db,2,CPU_HIGH,CPU usage 53% on user-01,dc1,rack-A,prod
+ALM-00899,2026-09-10T02:15:59+03:00,appdynamics,payment-01,payment-db,3,REPLICA_LAG,Replica lag 1041s on payment-db,dc1,rack-B,prod
+ALM-00900,2026-09-10T02:15:59+03:00,syslog,stage-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-C,staging
+ALM-00901,2026-09-10T02:15:59+03:00,prometheus,auth-01,auth-api,2,AGENT_RESTART,Monitoring agent restarted on auth-01,dc1,rack-A,prod
+ALM-00902,2026-09-10T02:16:00+03:00,prometheus,ledger-01,ledger-svc,2,CPU_HIGH,CPU usage 51% on ledger-01,dc2,rack-C,prod
+ALM-00903,2026-09-10T02:16:02+03:00,zabbix,api-01,api-gateway,2,MEM_HIGH,Memory usage 19% on api-01,dc1,rack-B,prod
+ALM-00904,2026-09-10T02:16:04+03:00,cloudwatch,api-01,api-gateway,4,HTTP_5XX,HTTP 5xx rate 35% on api-gateway,dc1,rack-B,prod
+ALM-00905,2026-09-10T02:16:04+03:00,syslog,notification-02,notification-svc,2,MEM_HIGH,Memory usage 31% on notification-02,dc1,rack-C,prod
+ALM-00906,2026-09-10T02:16:05+03:00,cloudwatch,payment-02,payment-db,3,DB_SLOW_QUERY,Slow query 2799ms on payment-db,dc1,rack-C,prod
+ALM-00907,2026-09-10T02:16:05+03:00,appdynamics,payment-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,prod
+ALM-00908,2026-09-10T02:16:06+03:00,zabbix,stage-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,staging
+ALM-00909,2026-09-10T02:16:06+03:00,cloudwatch,stage-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,staging
+ALM-00910,2026-09-10T02:16:06+03:00,zabbix,api-01,api-gateway,4,HTTP_5XX,HTTP 5xx rate 23% on api-gateway,dc1,rack-B,prod
+ALM-00911,2026-09-10T02:16:10+03:00,zabbix,checkout-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc2,rack-C,prod
+ALM-00912,2026-09-10T02:16:11+03:00,prometheus,payment-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,prod
+ALM-00913,2026-09-10T02:16:12+03:00,cloudwatch,payment-02,payment-db,3,DB_SLOW_QUERY,Slow query 2429ms on payment-db,dc1,rack-C,prod
+ALM-00914,2026-09-10T02:16:12+03:00,appdynamics,checkout-02,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-A,prod
+ALM-00915,2026-09-10T02:16:13+03:00,prometheus,sms-01,sms-svc,2,FS_INODES,Inode usage 72% on sms-01,dc2,rack-C,prod
+ALM-00916,2026-09-10T02:16:14+03:00,cloudwatch,stage-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-C,staging
+ALM-00917,2026-09-10T02:16:15+03:00,zabbix,search-01,search-api,1,DEPLOY_START,Deployment started for search-api,dc1,rack-B,prod
+ALM-00918,2026-09-10T02:16:20+03:00,cloudwatch,stage-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-C,staging
+ALM-00919,2026-09-10T02:16:20+03:00,prometheus,fraud-01,fraud-svc,2,LOGIN_FAIL,Login failures 37/min on fraud-svc,dc1,rack-B,prod
+ALM-00920,2026-09-10T02:16:21+03:00,cloudwatch,sms-01,sms-svc,2,CERT_EXPIRY,TLS certificate expires in 59 days,dc2,rack-C,prod
+ALM-00921,2026-09-10T02:16:22+03:00,zabbix,stage-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-C,staging
+ALM-00922,2026-09-10T02:16:24+03:00,cloudwatch,payment-01,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-B,prod
+ALM-00923,2026-09-10T02:16:25+03:00,zabbix,stage-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,staging
+ALM-00924,2026-09-10T02:16:25+03:00,syslog,catalog-02,catalog-api,2,LOGIN_FAIL,Login failures 48/min on catalog-api,dc2,rack-B,prod
+ALM-00925,2026-09-10T02:16:26+03:00,zabbix,fraud-01,fraud-svc,2,NTP_DRIFT,Clock drift 43ms on fraud-01,dc1,rack-B,prod
+ALM-00926,2026-09-10T02:16:27+03:00,appdynamics,payment-01,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-B,prod
+ALM-00927,2026-09-10T02:16:28+03:00,prometheus,stage-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,staging
+ALM-00928,2026-09-10T02:16:28+03:00,cloudwatch,stage-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,staging
+ALM-00929,2026-09-10T02:16:28+03:00,syslog,cart-01,cart-api,2,JOB_RETRY,Batch job retry #60 on cart-api,dc2,rack-C,prod
+ALM-00930,2026-09-10T02:16:29+03:00,syslog,payment-02,payment-db,3,REPLICA_LAG,Replica lag 2989s on payment-db,dc1,rack-C,prod
+ALM-00931,2026-09-10T02:16:32+03:00,appdynamics,payment-01,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-B,prod
+ALM-00932,2026-09-10T02:16:33+03:00,syslog,checkout-02,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-A,prod
+ALM-00933,2026-09-10T02:16:35+03:00,prometheus,api-01,api-gateway,4,HTTP_5XX,HTTP 5xx rate 34% on api-gateway,dc1,rack-B,prod
+ALM-00934,2026-09-10T02:16:36+03:00,zabbix,billing-02,billing-svc,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc2,rack-B,prod
+ALM-00935,2026-09-10T02:16:36+03:00,syslog,sms-01,sms-svc,2,MEM_HIGH,Memory usage 9% on sms-01,dc2,rack-C,prod
+ALM-00936,2026-09-10T02:16:36+03:00,zabbix,search-02,search-api,2,MEM_HIGH,Memory usage 16% on search-02,dc1,rack-C,prod
+ALM-00937,2026-09-10T02:16:38+03:00,prometheus,cart-02,cart-api,2,BACKUP_FAIL,Backup job failed on cart-02,dc1,rack-A,prod
+ALM-00938,2026-09-10T02:16:41+03:00,syslog,stage-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-C,staging
+ALM-00939,2026-09-10T02:16:42+03:00,zabbix,sms-02,sms-svc,2,AGENT_RESTART,Monitoring agent restarted on sms-02,dc1,rack-A,prod
+ALM-00940,2026-09-10T02:16:42+03:00,cloudwatch,fraud-01,fraud-svc,2,AGENT_RESTART,Monitoring agent restarted on fraud-01,dc1,rack-B,prod
+ALM-00941,2026-09-10T02:16:43+03:00,prometheus,stage-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,staging
+ALM-00942,2026-09-10T02:16:43+03:00,appdynamics,backup-02,backup-svc,2,AGENT_RESTART,Monitoring agent restarted on backup-02,dc2,rack-B,prod
+ALM-00943,2026-09-10T02:16:44+03:00,prometheus,payment-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,prod
+ALM-00944,2026-09-10T02:16:44+03:00,cloudwatch,checkout-02,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-A,prod
+ALM-00945,2026-09-10T02:16:45+03:00,appdynamics,payment-01,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-B,prod
+ALM-00946,2026-09-10T02:16:46+03:00,zabbix,stage-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-C,staging
+ALM-00947,2026-09-10T02:16:46+03:00,cloudwatch,checkout-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc2,rack-C,prod
+ALM-00948,2026-09-10T02:16:48+03:00,zabbix,billing-02,billing-svc,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc2,rack-B,prod
+ALM-00949,2026-09-10T02:16:50+03:00,appdynamics,api-01,api-gateway,4,HTTP_5XX,HTTP 5xx rate 35% on api-gateway,dc1,rack-B,prod
+ALM-00950,2026-09-10T02:16:53+03:00,zabbix,stage-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,staging
+ALM-00951,2026-09-10T02:16:54+03:00,prometheus,payment-01,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-B,prod
+ALM-00952,2026-09-10T02:16:55+03:00,syslog,api-01,api-gateway,4,HTTP_5XX,HTTP 5xx rate 18% on api-gateway,dc1,rack-B,prod
+ALM-00953,2026-09-10T02:16:55+03:00,appdynamics,fraud-01,fraud-svc,3,NTP_DRIFT,Clock drift 6ms on fraud-01,dc1,rack-B,prod
+ALM-00954,2026-09-10T02:16:56+03:00,appdynamics,user-02,user-db,2,CERT_EXPIRY,TLS certificate expires in 17 days,dc2,rack-B,prod
+ALM-00955,2026-09-10T02:16:57+03:00,zabbix,checkout-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc2,rack-C,prod
+ALM-00956,2026-09-10T02:16:57+03:00,appdynamics,checkout-02,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-A,prod
+ALM-00957,2026-09-10T02:16:57+03:00,appdynamics,checkout-01,checkout-api,2,BACKUP_FAIL,Backup job failed on checkout-01,dc2,rack-C,prod
+ALM-00958,2026-09-10T02:17:00+03:00,prometheus,payment-01,payment-db,3,DB_SLOW_QUERY,Slow query 1750ms on payment-db,dc1,rack-B,prod
+ALM-00959,2026-09-10T02:17:00+03:00,zabbix,order-01,order-db,3,DISK_HIGH,Disk usage 87% on /data (order-01),dc2,rack-C,prod
+ALM-00960,2026-09-10T02:17:00+03:00,zabbix,cart-02,cart-api,2,MEM_HIGH,Memory usage 75% on cart-02,dc1,rack-A,prod
+ALM-00961,2026-09-10T02:17:01+03:00,syslog,checkout-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc2,rack-C,prod
+ALM-00962,2026-09-10T02:17:02+03:00,syslog,cart-01,cart-api,2,JOB_RETRY,Batch job retry #34 on cart-api,dc2,rack-C,prod
+ALM-00963,2026-09-10T02:17:03+03:00,syslog,payment-02,payment-db,2,BACKUP_FAIL,Backup job failed on payment-02,dc1,rack-C,prod
+ALM-00964,2026-09-10T02:17:04+03:00,syslog,payment-02,payment-db,3,DB_SLOW_QUERY,Slow query 1135ms on payment-db,dc1,rack-C,prod
+ALM-00965,2026-09-10T02:17:04+03:00,syslog,payment-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,prod
+ALM-00966,2026-09-10T02:17:04+03:00,prometheus,stage-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-C,staging
+ALM-00967,2026-09-10T02:17:05+03:00,appdynamics,payment-01,payment-db,3,DB_SLOW_QUERY,Slow query 3182ms on payment-db,dc1,rack-B,prod
+ALM-00968,2026-09-10T02:17:05+03:00,cloudwatch,report-02,report-svc,2,LOGIN_FAIL,Login failures 45/min on report-svc,dc1,rack-C,test
+ALM-00969,2026-09-10T02:17:05+03:00,zabbix,email-02,email-svc,2,JOB_RETRY,Batch job retry #28 on email-svc,dc2,rack-B,prod
+ALM-00970,2026-09-10T02:17:06+03:00,zabbix,payment-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,prod
+ALM-00971,2026-09-10T02:17:06+03:00,zabbix,api-02,api-gateway,4,HTTP_5XX,HTTP 5xx rate 30% on api-gateway,dc1,rack-C,prod
+ALM-00972,2026-09-10T02:17:08+03:00,appdynamics,billing-02,billing-svc,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc2,rack-B,prod
+ALM-00973,2026-09-10T02:17:08+03:00,syslog,auth-01,auth-api,2,NTP_DRIFT,Clock drift 11ms on auth-01,dc1,rack-A,prod
+ALM-00974,2026-09-10T02:17:09+03:00,syslog,stage-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,staging
+ALM-00975,2026-09-10T02:17:11+03:00,syslog,checkout-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc2,rack-C,prod
+ALM-00976,2026-09-10T02:17:14+03:00,cloudwatch,stage-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,staging
+ALM-00977,2026-09-10T02:17:15+03:00,zabbix,payment-02,payment-db,3,DB_SLOW_QUERY,Slow query 1655ms on payment-db,dc1,rack-C,prod
+ALM-00978,2026-09-10T02:17:15+03:00,prometheus,stage-01,checkout-api,2,JOB_RETRY,Batch job retry #57 on checkout-api,dc1,rack-C,staging
+ALM-00979,2026-09-10T02:17:16+03:00,syslog,monitoring-01,monitoring-agent,2,MEM_HIGH,Memory usage 15% on monitoring-01,dc1,rack-B,prod
+ALM-00980,2026-09-10T02:17:16+03:00,prometheus,billing-02,billing-svc,2,LOGIN_FAIL,Login failures 78/min on billing-svc,dc2,rack-B,prod
+ALM-00981,2026-09-10T02:17:17+03:00,appdynamics,user-01,user-db,2,LOGIN_FAIL,Login failures 10/min on user-db,dc1,rack-A,prod
+ALM-00982,2026-09-10T02:17:19+03:00,syslog,stage-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,staging
+ALM-00983,2026-09-10T02:17:20+03:00,appdynamics,api-01,api-gateway,4,HTTP_5XX,HTTP 5xx rate 22% on api-gateway,dc1,rack-B,prod
+ALM-00984,2026-09-10T02:17:20+03:00,cloudwatch,api-01,api-gateway,4,HTTP_5XX,HTTP 5xx rate 37% on api-gateway,dc1,rack-B,prod
+ALM-00985,2026-09-10T02:17:21+03:00,cloudwatch,payment-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,prod
+ALM-00986,2026-09-10T02:17:22+03:00,syslog,billing-02,billing-svc,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc2,rack-B,prod
+ALM-00987,2026-09-10T02:17:22+03:00,cloudwatch,billing-01,billing-svc,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-A,prod
+ALM-00988,2026-09-10T02:17:23+03:00,zabbix,report-02,report-svc,2,NTP_DRIFT,Clock drift 65ms on report-02,dc1,rack-C,test
+ALM-00989,2026-09-10T02:17:24+03:00,syslog,fraud-01,fraud-svc,2,CPU_HIGH,CPU usage 18% on fraud-01,dc1,rack-B,prod
+ALM-00990,2026-09-10T02:17:25+03:00,zabbix,stage-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-C,staging
+ALM-00991,2026-09-10T02:17:25+03:00,syslog,search-02,search-api,1,DEPLOY_START,Deployment started for search-api,dc1,rack-C,prod
+ALM-00992,2026-09-10T02:17:26+03:00,cloudwatch,api-01,api-gateway,4,HTTP_5XX,HTTP 5xx rate 18% on api-gateway,dc1,rack-B,prod
+ALM-00993,2026-09-10T02:17:27+03:00,syslog,cart-02,cart-api,2,FS_INODES,Inode usage 18% on cart-02,dc1,rack-A,prod
+ALM-00994,2026-09-10T02:17:30+03:00,appdynamics,payment-02,payment-db,3,REPLICA_LAG,Replica lag 3586s on payment-db,dc1,rack-C,prod
+ALM-00995,2026-09-10T02:17:31+03:00,appdynamics,stage-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-C,staging
+ALM-00996,2026-09-10T02:17:32+03:00,zabbix,checkout-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc2,rack-C,prod
+ALM-00997,2026-09-10T02:17:33+03:00,appdynamics,checkout-02,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-A,prod
+ALM-00998,2026-09-10T02:17:34+03:00,prometheus,payment-01,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-B,prod
+ALM-00999,2026-09-10T02:17:39+03:00,cloudwatch,payment-02,payment-db,3,DB_SLOW_QUERY,Slow query 1152ms on payment-db,dc1,rack-C,prod
+ALM-01000,2026-09-10T02:17:39+03:00,zabbix,cart-01,cart-api,2,FS_INODES,Inode usage 52% on cart-01,dc2,rack-C,prod
+ALM-01001,2026-09-10T02:17:40+03:00,cloudwatch,checkout-01,checkout-api,2,CACHE_MISS,Cache miss ratio 75% on checkout-api,dc2,rack-C,prod
+ALM-01002,2026-09-10T02:17:41+03:00,syslog,stage-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-C,staging
+ALM-01003,2026-09-10T02:17:47+03:00,prometheus,payment-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,prod
+ALM-01004,2026-09-10T02:17:47+03:00,syslog,api-02,api-gateway,4,HTTP_5XX,HTTP 5xx rate 9% on api-gateway,dc1,rack-C,prod
+ALM-01005,2026-09-10T02:17:49+03:00,cloudwatch,api-02,api-gateway,4,HTTP_5XX,HTTP 5xx rate 35% on api-gateway,dc1,rack-C,prod
+ALM-01006,2026-09-10T02:17:55+03:00,appdynamics,api-01,api-gateway,4,HTTP_5XX,HTTP 5xx rate 10% on api-gateway,dc1,rack-B,prod
+ALM-01007,2026-09-10T02:17:59+03:00,cloudwatch,payment-01,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-B,prod
+ALM-01008,2026-09-10T02:17:59+03:00,appdynamics,order-01,order-db,3,CACHE_MISS,Cache miss ratio 49% on order-db,dc2,rack-C,prod
+ALM-01009,2026-09-10T02:18:00+03:00,cloudwatch,monitoring-01,monitoring-agent,1,CONFIG_RELOAD,Config reloaded on monitoring-01,dc1,rack-B,prod
+ALM-01010,2026-09-10T02:18:01+03:00,zabbix,payment-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,prod
+ALM-01011,2026-09-10T02:18:01+03:00,syslog,billing-02,billing-svc,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc2,rack-B,prod
+ALM-01012,2026-09-10T02:18:02+03:00,syslog,api-01,api-gateway,4,HTTP_5XX,HTTP 5xx rate 8% on api-gateway,dc1,rack-B,prod
+ALM-01013,2026-09-10T02:18:03+03:00,cloudwatch,billing-01,billing-svc,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-A,prod
+ALM-01014,2026-09-10T02:18:05+03:00,appdynamics,fraud-02,fraud-svc,3,BACKUP_FAIL,Backup job failed on fraud-02,dc1,rack-C,prod
+ALM-01015,2026-09-10T02:18:06+03:00,syslog,redis-02,redis-cache,2,LOGIN_FAIL,Login failures 31/min on redis-cache,dc1,rack-A,prod
+ALM-01016,2026-09-10T02:18:06+03:00,zabbix,backup-02,backup-svc,2,CACHE_MISS,Cache miss ratio 13% on backup-svc,dc2,rack-B,prod
+ALM-01017,2026-09-10T02:18:07+03:00,zabbix,payment-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,prod
+ALM-01018,2026-09-10T02:18:08+03:00,prometheus,checkout-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc2,rack-C,prod
+ALM-01019,2026-09-10T02:18:10+03:00,appdynamics,sms-02,sms-svc,1,CONFIG_RELOAD,Config reloaded on sms-02,dc1,rack-A,prod
+ALM-01020,2026-09-10T02:18:11+03:00,cloudwatch,batch-02,batch-scheduler,2,NTP_DRIFT,Clock drift 28ms on batch-02,dc1,rack-A,prod
+ALM-01021,2026-09-10T02:18:12+03:00,cloudwatch,checkout-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc2,rack-C,prod
+ALM-01022,2026-09-10T02:18:16+03:00,syslog,api-02,api-gateway,4,HTTP_5XX,HTTP 5xx rate 31% on api-gateway,dc1,rack-C,prod
+ALM-01023,2026-09-10T02:18:17+03:00,appdynamics,stage-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,staging
+ALM-01024,2026-09-10T02:18:18+03:00,cloudwatch,payment-02,payment-db,3,REPLICA_LAG,Replica lag 3266s on payment-db,dc1,rack-C,prod
+ALM-01025,2026-09-10T02:18:18+03:00,zabbix,billing-02,billing-svc,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc2,rack-B,prod
+ALM-01026,2026-09-10T02:18:23+03:00,zabbix,payment-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,prod
+ALM-01027,2026-09-10T02:18:24+03:00,appdynamics,checkout-02,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-A,prod
+ALM-01028,2026-09-10T02:18:25+03:00,prometheus,api-01,api-gateway,4,HTTP_5XX,HTTP 5xx rate 31% on api-gateway,dc1,rack-B,prod
+ALM-01029,2026-09-10T02:18:27+03:00,appdynamics,payment-01,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-B,prod
+ALM-01030,2026-09-10T02:18:29+03:00,cloudwatch,payment-01,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-B,prod
+ALM-01031,2026-09-10T02:18:30+03:00,zabbix,order-01,order-db,3,DISK_HIGH,Disk usage 87% on /data (order-01),dc2,rack-C,prod
+ALM-01032,2026-09-10T02:18:32+03:00,syslog,payment-01,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-B,prod
+ALM-01033,2026-09-10T02:18:35+03:00,zabbix,payment-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,prod
+ALM-01034,2026-09-10T02:18:37+03:00,appdynamics,api-01,api-gateway,4,HTTP_5XX,HTTP 5xx rate 23% on api-gateway,dc1,rack-B,prod
+ALM-01035,2026-09-10T02:18:38+03:00,zabbix,user-02,user-db,2,AGENT_RESTART,Monitoring agent restarted on user-02,dc2,rack-B,prod
+ALM-01036,2026-09-10T02:18:43+03:00,prometheus,api-02,api-gateway,4,HTTP_5XX,HTTP 5xx rate 20% on api-gateway,dc1,rack-C,prod
+ALM-01037,2026-09-10T02:18:44+03:00,cloudwatch,payment-02,payment-db,3,DB_SLOW_QUERY,Slow query 2563ms on payment-db,dc1,rack-C,prod
+ALM-01038,2026-09-10T02:18:44+03:00,syslog,sms-01,sms-svc,2,JOB_RETRY,Batch job retry #63 on sms-svc,dc2,rack-C,prod
+ALM-01039,2026-09-10T02:18:46+03:00,prometheus,payment-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,prod
+ALM-01040,2026-09-10T02:18:46+03:00,syslog,api-02,api-gateway,2,BACKUP_FAIL,Backup job failed on api-02,dc1,rack-C,prod
+ALM-01041,2026-09-10T02:18:47+03:00,zabbix,checkout-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc2,rack-C,prod
+ALM-01042,2026-09-10T02:18:48+03:00,cloudwatch,object-01,object-storage,2,CPU_HIGH,CPU usage 65% on object-01,dc1,rack-A,prod
+ALM-01043,2026-09-10T02:18:50+03:00,appdynamics,payment-01,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-B,prod
+ALM-01044,2026-09-10T02:18:52+03:00,prometheus,stage-02,payment-api,2,NTP_DRIFT,Clock drift 33ms on stage-02,dc1,rack-C,staging
+ALM-01045,2026-09-10T02:18:54+03:00,appdynamics,payment-01,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-B,prod
+ALM-01046,2026-09-10T02:18:54+03:00,zabbix,billing-01,billing-svc,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-A,prod
+ALM-01047,2026-09-10T02:18:56+03:00,prometheus,payment-01,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-B,prod
+ALM-01048,2026-09-10T02:18:56+03:00,cloudwatch,checkout-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc2,rack-C,prod
+ALM-01049,2026-09-10T02:19:03+03:00,syslog,search-02,search-api,2,JOB_RETRY,Batch job retry #12 on search-api,dc1,rack-C,prod
+ALM-01050,2026-09-10T02:19:04+03:00,zabbix,payment-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,prod
+ALM-01051,2026-09-10T02:19:04+03:00,appdynamics,cdn-01,cdn-edge,2,CACHE_MISS,Cache miss ratio 22% on cdn-edge,dc2,rack-C,prod
+ALM-01052,2026-09-10T02:19:05+03:00,syslog,payment-01,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-B,prod
+ALM-01053,2026-09-10T02:19:05+03:00,appdynamics,checkout-02,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-A,prod
+ALM-01054,2026-09-10T02:19:05+03:00,cloudwatch,backup-01,backup-svc,2,CACHE_MISS,Cache miss ratio 55% on backup-svc,dc1,rack-A,prod
+ALM-01055,2026-09-10T02:19:06+03:00,syslog,payment-01,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-B,prod
+ALM-01056,2026-09-10T02:19:08+03:00,appdynamics,api-02,api-gateway,4,HTTP_5XX,HTTP 5xx rate 30% on api-gateway,dc1,rack-C,prod
+ALM-01057,2026-09-10T02:19:10+03:00,appdynamics,checkout-01,checkout-api,2,LOGIN_FAIL,Login failures 63/min on checkout-api,dc2,rack-C,prod
+ALM-01058,2026-09-10T02:19:11+03:00,cloudwatch,api-02,api-gateway,4,HTTP_5XX,HTTP 5xx rate 19% on api-gateway,dc1,rack-C,prod
+ALM-01059,2026-09-10T02:19:12+03:00,cloudwatch,ledger-01,ledger-svc,1,DEPLOY_START,Deployment started for ledger-svc,dc2,rack-C,prod
+ALM-01060,2026-09-10T02:19:14+03:00,zabbix,stage-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,staging
+ALM-01061,2026-09-10T02:19:15+03:00,prometheus,payment-01,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-B,prod
+ALM-01062,2026-09-10T02:19:15+03:00,prometheus,api-02,api-gateway,4,HTTP_5XX,HTTP 5xx rate 16% on api-gateway,dc1,rack-C,prod
+ALM-01063,2026-09-10T02:19:15+03:00,zabbix,cdn-02,cdn-edge,1,CONFIG_RELOAD,Config reloaded on cdn-02,dc1,rack-A,prod
+ALM-01064,2026-09-10T02:19:16+03:00,cloudwatch,payment-01,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-B,prod
+ALM-01065,2026-09-10T02:19:16+03:00,prometheus,billing-01,billing-svc,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-A,prod
+ALM-01066,2026-09-10T02:19:16+03:00,prometheus,cart-02,cart-api,3,AGENT_RESTART,Monitoring agent restarted on cart-02,dc1,rack-A,prod
+ALM-01067,2026-09-10T02:19:17+03:00,prometheus,payment-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,prod
+ALM-01068,2026-09-10T02:19:18+03:00,zabbix,payment-01,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-B,prod
+ALM-01069,2026-09-10T02:19:18+03:00,prometheus,api-02,api-gateway,4,HTTP_5XX,HTTP 5xx rate 36% on api-gateway,dc1,rack-C,prod
+ALM-01070,2026-09-10T02:19:19+03:00,cloudwatch,search-01,search-api,1,CONFIG_RELOAD,Config reloaded on search-01,dc1,rack-B,prod
+ALM-01071,2026-09-10T02:19:21+03:00,zabbix,kafka-02,kafka,3,MEM_HIGH,Memory usage 65% on kafka-02,dc1,rack-C,prod
+ALM-01072,2026-09-10T02:19:25+03:00,appdynamics,billing-01,billing-svc,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-A,prod
+ALM-01073,2026-09-10T02:19:25+03:00,prometheus,billing-01,billing-svc,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-A,prod
+ALM-01074,2026-09-10T02:19:26+03:00,cloudwatch,stage-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-C,staging
+ALM-01075,2026-09-10T02:19:29+03:00,cloudwatch,report-01,report-svc,2,AGENT_RESTART,Monitoring agent restarted on report-01,dc1,rack-B,prod
+ALM-01076,2026-09-10T02:19:30+03:00,zabbix,stage-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-C,staging
+ALM-01077,2026-09-10T02:19:30+03:00,zabbix,stage-01,checkout-api,2,NTP_DRIFT,Clock drift 36ms on stage-01,dc1,rack-C,staging
+ALM-01078,2026-09-10T02:19:30+03:00,cloudwatch,auth-01,auth-api,2,CERT_EXPIRY,TLS certificate expires in 38 days,dc1,rack-A,prod
+ALM-01079,2026-09-10T02:19:31+03:00,prometheus,payment-01,payment-db,3,DB_SLOW_QUERY,Slow query 2417ms on payment-db,dc1,rack-B,prod
+ALM-01080,2026-09-10T02:19:34+03:00,syslog,checkout-02,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-A,prod
+ALM-01081,2026-09-10T02:19:35+03:00,prometheus,ledger-01,ledger-svc,1,CONFIG_RELOAD,Config reloaded on ledger-01,dc2,rack-C,prod
+ALM-01082,2026-09-10T02:19:39+03:00,zabbix,stage-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,staging
+ALM-01083,2026-09-10T02:19:39+03:00,prometheus,billing-02,billing-svc,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc2,rack-B,prod
+ALM-01084,2026-09-10T02:19:40+03:00,prometheus,checkout-02,checkout-api,2,NTP_DRIFT,Clock drift 65ms on checkout-02,dc1,rack-A,prod
+ALM-01085,2026-09-10T02:19:42+03:00,cloudwatch,catalog-02,catalog-db,2,FS_INODES,Inode usage 63% on catalog-02,dc2,rack-B,prod
+ALM-01086,2026-09-10T02:19:42+03:00,zabbix,api-02,api-gateway,2,CPU_HIGH,CPU usage 43% on api-02,dc1,rack-C,prod
+ALM-01087,2026-09-10T02:19:45+03:00,syslog,checkout-02,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-A,prod
+ALM-01088,2026-09-10T02:19:48+03:00,syslog,api-01,api-gateway,4,HTTP_5XX,HTTP 5xx rate 5% on api-gateway,dc1,rack-B,prod
+ALM-01089,2026-09-10T02:19:49+03:00,zabbix,sms-02,sms-svc,2,JOB_RETRY,Batch job retry #70 on sms-svc,dc1,rack-A,prod
+ALM-01090,2026-09-10T02:19:50+03:00,prometheus,payment-02,payment-db,3,DB_SLOW_QUERY,Slow query 2802ms on payment-db,dc1,rack-C,prod
+ALM-01091,2026-09-10T02:19:50+03:00,syslog,payment-01,payment-db,3,REPLICA_LAG,Replica lag 2760s on payment-db,dc1,rack-B,prod
+ALM-01092,2026-09-10T02:19:50+03:00,appdynamics,fraud-02,fraud-svc,2,AGENT_RESTART,Monitoring agent restarted on fraud-02,dc1,rack-C,prod
+ALM-01093,2026-09-10T02:19:52+03:00,appdynamics,api-01,api-gateway,4,HTTP_5XX,HTTP 5xx rate 36% on api-gateway,dc1,rack-B,prod
+ALM-01094,2026-09-10T02:19:53+03:00,cloudwatch,cart-01,cart-api,1,DEPLOY_START,Deployment started for cart-api,dc2,rack-C,prod
+ALM-01095,2026-09-10T02:19:55+03:00,cloudwatch,cart-01,cart-api,2,CPU_HIGH,CPU usage 49% on cart-01,dc2,rack-C,prod
+ALM-01096,2026-09-10T02:19:56+03:00,appdynamics,api-01,api-gateway,4,HTTP_5XX,HTTP 5xx rate 34% on api-gateway,dc1,rack-B,prod
+ALM-01097,2026-09-10T02:19:58+03:00,cloudwatch,billing-01,billing-svc,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-A,prod
+ALM-01098,2026-09-10T02:19:59+03:00,appdynamics,stage-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,staging
+ALM-01099,2026-09-10T02:20:00+03:00,prometheus,api-01,api-gateway,4,HTTP_5XX,HTTP 5xx rate 40% on api-gateway,dc1,rack-B,prod
+ALM-01100,2026-09-10T02:20:00+03:00,prometheus,order-01,order-db,3,DISK_HIGH,Disk usage 87% on /data (order-01),dc2,rack-C,prod
+ALM-01101,2026-09-10T02:20:00+03:00,zabbix,backup-01,backup-svc,2,BACKUP_FAIL,Backup job failed on backup-01,dc1,rack-A,prod
+ALM-01102,2026-09-10T02:20:01+03:00,cloudwatch,fraud-01,fraud-svc,1,DEPLOY_START,Deployment started for fraud-svc,dc1,rack-B,prod
+ALM-01103,2026-09-10T02:20:02+03:00,appdynamics,api-02,api-gateway,2,MEM_HIGH,Memory usage 38% on api-02,dc1,rack-C,prod
+ALM-01104,2026-09-10T02:20:03+03:00,appdynamics,api-01,api-gateway,2,CACHE_MISS,Cache miss ratio 37% on api-gateway,dc1,rack-B,prod
+ALM-01105,2026-09-10T02:20:05+03:00,zabbix,checkout-02,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-A,prod
+ALM-01106,2026-09-10T02:20:05+03:00,syslog,order-01,order-api,2,CPU_HIGH,CPU usage 63% on order-01,dc1,rack-A,prod
+ALM-01107,2026-09-10T02:20:05+03:00,cloudwatch,order-02,order-db,2,CPU_HIGH,CPU usage 26% on order-02,dc1,rack-A,prod
+ALM-01108,2026-09-10T02:20:06+03:00,appdynamics,payment-01,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-B,prod
+ALM-01109,2026-09-10T02:20:07+03:00,prometheus,payment-01,payment-db,3,REPLICA_LAG,Replica lag 1745s on payment-db,dc1,rack-B,prod
+ALM-01110,2026-09-10T02:20:07+03:00,cloudwatch,checkout-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc2,rack-C,prod
+ALM-01111,2026-09-10T02:20:09+03:00,appdynamics,cart-01,cart-api,1,DEPLOY_START,Deployment started for cart-api,dc2,rack-C,prod
+ALM-01112,2026-09-10T02:20:11+03:00,prometheus,checkout-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc2,rack-C,prod
+ALM-01113,2026-09-10T02:20:11+03:00,syslog,kafka-01,kafka,2,JOB_RETRY,Batch job retry #45 on kafka,dc1,rack-B,prod
+ALM-01114,2026-09-10T02:20:12+03:00,zabbix,monitoring-01,monitoring-agent,1,CONFIG_RELOAD,Config reloaded on monitoring-01,dc1,rack-B,prod
+ALM-01115,2026-09-10T02:20:12+03:00,zabbix,checkout-02,checkout-api,2,LOGIN_FAIL,Login failures 4/min on checkout-api,dc1,rack-A,prod
+ALM-01116,2026-09-10T02:20:13+03:00,syslog,stage-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,staging
+ALM-01117,2026-09-10T02:20:13+03:00,cloudwatch,api-01,api-gateway,4,HTTP_5XX,HTTP 5xx rate 30% on api-gateway,dc1,rack-B,prod
+ALM-01118,2026-09-10T02:20:13+03:00,zabbix,api-01,api-gateway,4,HTTP_5XX,HTTP 5xx rate 16% on api-gateway,dc1,rack-B,prod
+ALM-01119,2026-09-10T02:20:16+03:00,appdynamics,stage-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,staging
+ALM-01120,2026-09-10T02:20:16+03:00,syslog,search-02,search-api,2,FS_INODES,Inode usage 60% on search-02,dc1,rack-C,prod
+ALM-01121,2026-09-10T02:20:17+03:00,zabbix,api-02,api-gateway,4,HTTP_5XX,HTTP 5xx rate 32% on api-gateway,dc1,rack-C,prod
+ALM-01122,2026-09-10T02:20:17+03:00,cloudwatch,checkout-01,checkout-api,2,BACKUP_FAIL,Backup job failed on checkout-01,dc2,rack-C,prod
+ALM-01123,2026-09-10T02:20:18+03:00,appdynamics,checkout-02,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-A,prod
+ALM-01124,2026-09-10T02:20:18+03:00,syslog,notification-01,notification-svc,2,BACKUP_FAIL,Backup job failed on notification-01,dc1,rack-B,prod
+ALM-01125,2026-09-10T02:20:20+03:00,zabbix,stage-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-C,staging
+ALM-01126,2026-09-10T02:20:20+03:00,cloudwatch,api-01,api-gateway,4,HTTP_5XX,HTTP 5xx rate 21% on api-gateway,dc1,rack-B,prod
+ALM-01127,2026-09-10T02:20:22+03:00,cloudwatch,checkout-02,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-A,prod
+ALM-01128,2026-09-10T02:20:23+03:00,appdynamics,api-02,api-gateway,4,HTTP_5XX,HTTP 5xx rate 19% on api-gateway,dc1,rack-C,prod
+ALM-01129,2026-09-10T02:20:23+03:00,syslog,api-01,api-gateway,4,HTTP_5XX,HTTP 5xx rate 17% on api-gateway,dc1,rack-B,prod
+ALM-01130,2026-09-10T02:20:23+03:00,prometheus,user-01,user-db,2,MEM_HIGH,Memory usage 46% on user-01,dc1,rack-A,prod
+ALM-01131,2026-09-10T02:20:24+03:00,prometheus,monitoring-01,monitoring-agent,1,DEPLOY_START,Deployment started for monitoring-agent,dc1,rack-B,prod
+ALM-01132,2026-09-10T02:20:25+03:00,prometheus,sms-01,sms-svc,2,CERT_EXPIRY,TLS certificate expires in 33 days,dc2,rack-C,prod
+ALM-01133,2026-09-10T02:20:27+03:00,cloudwatch,stage-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,staging
+ALM-01134,2026-09-10T02:20:31+03:00,zabbix,order-01,order-db,2,CERT_EXPIRY,TLS certificate expires in 33 days,dc2,rack-C,prod
+ALM-01135,2026-09-10T02:20:32+03:00,appdynamics,payment-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,prod
+ALM-01136,2026-09-10T02:20:35+03:00,zabbix,payment-01,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-B,prod
+ALM-01137,2026-09-10T02:20:37+03:00,prometheus,stage-01,checkout-api,2,BACKUP_FAIL,Backup job failed on stage-01,dc1,rack-C,staging
+ALM-01138,2026-09-10T02:20:41+03:00,prometheus,stage-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-C,staging
+ALM-01139,2026-09-10T02:20:41+03:00,syslog,billing-02,billing-svc,2,CERT_EXPIRY,TLS certificate expires in 28 days,dc2,rack-B,prod
+ALM-01140,2026-09-10T02:20:42+03:00,syslog,api-01,api-gateway,4,HTTP_5XX,HTTP 5xx rate 24% on api-gateway,dc1,rack-B,prod
+ALM-01141,2026-09-10T02:20:44+03:00,syslog,payment-01,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-B,prod
+ALM-01142,2026-09-10T02:20:44+03:00,cloudwatch,notification-02,notification-svc,2,AGENT_RESTART,Monitoring agent restarted on notification-02,dc1,rack-C,prod
+ALM-01143,2026-09-10T02:20:44+03:00,cloudwatch,ledger-01,ledger-svc,2,CACHE_MISS,Cache miss ratio 70% on ledger-svc,dc2,rack-C,prod
+ALM-01144,2026-09-10T02:20:45+03:00,syslog,inventory-02,inventory-api,2,JOB_RETRY,Batch job retry #68 on inventory-api,dc1,rack-A,prod
+ALM-01145,2026-09-10T02:20:49+03:00,prometheus,notification-01,notification-svc,2,NTP_DRIFT,Clock drift 74ms on notification-01,dc1,rack-B,prod
+ALM-01146,2026-09-10T02:20:50+03:00,syslog,payment-01,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-B,prod
+ALM-01147,2026-09-10T02:20:50+03:00,cloudwatch,ledger-01,ledger-svc,2,BACKUP_FAIL,Backup job failed on ledger-01,dc2,rack-C,prod
+ALM-01148,2026-09-10T02:20:51+03:00,syslog,billing-01,billing-svc,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-A,prod
+ALM-01149,2026-09-10T02:20:53+03:00,zabbix,payment-01,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-B,prod
+ALM-01150,2026-09-10T02:20:53+03:00,cloudwatch,checkout-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc2,rack-C,prod
+ALM-01151,2026-09-10T02:20:56+03:00,syslog,report-02,report-svc,2,MEM_HIGH,Memory usage 40% on report-02,dc1,rack-C,test
+ALM-01152,2026-09-10T02:20:59+03:00,prometheus,sms-01,sms-svc,2,FS_INODES,Inode usage 15% on sms-01,dc2,rack-C,prod
+ALM-01153,2026-09-10T02:21:00+03:00,appdynamics,api-02,api-gateway,4,HTTP_5XX,HTTP 5xx rate 22% on api-gateway,dc1,rack-C,prod
+ALM-01154,2026-09-10T02:21:01+03:00,syslog,notification-02,notification-svc,2,AGENT_RESTART,Monitoring agent restarted on notification-02,dc1,rack-C,prod
+ALM-01155,2026-09-10T02:21:02+03:00,syslog,api-02,api-gateway,4,HTTP_5XX,HTTP 5xx rate 11% on api-gateway,dc1,rack-C,prod
+ALM-01156,2026-09-10T02:21:03+03:00,zabbix,stage-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-C,staging
+ALM-01157,2026-09-10T02:21:04+03:00,syslog,payment-01,payment-db,2,NTP_DRIFT,Clock drift 53ms on payment-01,dc1,rack-B,prod
+ALM-01158,2026-09-10T02:21:07+03:00,appdynamics,billing-02,billing-svc,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc2,rack-B,prod
+ALM-01159,2026-09-10T02:21:08+03:00,appdynamics,api-02,api-gateway,4,HTTP_5XX,HTTP 5xx rate 34% on api-gateway,dc1,rack-C,prod
+ALM-01160,2026-09-10T02:21:13+03:00,syslog,payment-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,prod
+ALM-01161,2026-09-10T02:21:13+03:00,prometheus,inventory-02,inventory-api,2,MEM_HIGH,Memory usage 34% on inventory-02,dc1,rack-A,prod
+ALM-01162,2026-09-10T02:21:16+03:00,zabbix,checkout-02,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-A,prod
+ALM-01163,2026-09-10T02:21:16+03:00,appdynamics,payment-01,payment-db,2,AGENT_RESTART,Monitoring agent restarted on payment-01,dc1,rack-B,prod
+ALM-01164,2026-09-10T02:21:16+03:00,prometheus,kafka-01,kafka,2,JOB_RETRY,Batch job retry #22 on kafka,dc1,rack-B,prod
+ALM-01165,2026-09-10T02:21:17+03:00,zabbix,stage-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,staging
+ALM-01166,2026-09-10T02:21:19+03:00,appdynamics,api-02,api-gateway,4,HTTP_5XX,HTTP 5xx rate 29% on api-gateway,dc1,rack-C,prod
+ALM-01167,2026-09-10T02:21:20+03:00,appdynamics,stage-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-C,staging
+ALM-01168,2026-09-10T02:21:20+03:00,syslog,billing-01,billing-svc,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-A,prod
+ALM-01169,2026-09-10T02:21:20+03:00,zabbix,user-02,user-db,2,LOGIN_FAIL,Login failures 17/min on user-db,dc2,rack-B,prod
+ALM-01170,2026-09-10T02:21:21+03:00,cloudwatch,order-01,order-db,1,CONFIG_RELOAD,Config reloaded on order-01,dc2,rack-C,prod
+ALM-01171,2026-09-10T02:21:25+03:00,cloudwatch,payment-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,prod
+ALM-01172,2026-09-10T02:21:25+03:00,cloudwatch,batch-02,batch-scheduler,3,BACKUP_FAIL,Backup job failed on batch-02,dc1,rack-A,prod
+ALM-01173,2026-09-10T02:21:27+03:00,zabbix,payment-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,prod
+ALM-01174,2026-09-10T02:21:27+03:00,syslog,api-02,api-gateway,4,HTTP_5XX,HTTP 5xx rate 34% on api-gateway,dc1,rack-C,prod
+ALM-01175,2026-09-10T02:21:29+03:00,zabbix,api-02,api-gateway,2,AGENT_RESTART,Monitoring agent restarted on api-02,dc1,rack-C,prod
+ALM-01176,2026-09-10T02:21:30+03:00,syslog,order-01,order-db,3,DISK_HIGH,Disk usage 87% on /data (order-01),dc2,rack-C,prod
+ALM-01177,2026-09-10T02:21:36+03:00,appdynamics,payment-02,payment-db,3,REPLICA_LAG,Replica lag 3735s on payment-db,dc1,rack-C,prod
+ALM-01178,2026-09-10T02:21:38+03:00,syslog,checkout-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc2,rack-C,prod
+ALM-01179,2026-09-10T02:21:40+03:00,appdynamics,cdn-01,cdn-edge,2,NTP_DRIFT,Clock drift 14ms on cdn-01,dc2,rack-C,prod
+ALM-01180,2026-09-10T02:21:42+03:00,appdynamics,notification-02,notification-svc,1,CONFIG_RELOAD,Config reloaded on notification-02,dc1,rack-C,prod
+ALM-01181,2026-09-10T02:21:44+03:00,cloudwatch,notification-02,notification-svc,2,FS_INODES,Inode usage 9% on notification-02,dc1,rack-C,prod
+ALM-01182,2026-09-10T02:21:46+03:00,cloudwatch,payment-01,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-B,prod
+ALM-01183,2026-09-10T02:21:46+03:00,zabbix,email-02,email-svc,2,CERT_EXPIRY,TLS certificate expires in 51 days,dc2,rack-B,prod
+ALM-01184,2026-09-10T02:21:47+03:00,appdynamics,api-02,api-gateway,4,HTTP_5XX,HTTP 5xx rate 28% on api-gateway,dc1,rack-C,prod
+ALM-01185,2026-09-10T02:21:51+03:00,appdynamics,payment-01,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-B,prod
+ALM-01186,2026-09-10T02:21:51+03:00,cloudwatch,checkout-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc2,rack-C,prod
+ALM-01187,2026-09-10T02:21:51+03:00,prometheus,user-02,user-db,2,FS_INODES,Inode usage 7% on user-02,dc2,rack-B,prod
+ALM-01188,2026-09-10T02:21:52+03:00,cloudwatch,checkout-01,checkout-api,1,DEPLOY_START,Deployment started for checkout-api,dc2,rack-C,prod
+ALM-01189,2026-09-10T02:21:56+03:00,zabbix,payment-02,payment-db,3,REPLICA_LAG,Replica lag 2281s on payment-db,dc1,rack-C,prod
+ALM-01190,2026-09-10T02:21:59+03:00,zabbix,backup-01,backup-svc,2,CERT_EXPIRY,TLS certificate expires in 4 days,dc1,rack-A,prod
+ALM-01191,2026-09-10T02:22:01+03:00,prometheus,payment-01,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-B,prod
+ALM-01192,2026-09-10T02:22:02+03:00,syslog,checkout-02,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-A,prod
+ALM-01193,2026-09-10T02:22:02+03:00,syslog,sms-01,sms-svc,2,JOB_RETRY,Batch job retry #33 on sms-svc,dc2,rack-C,prod
+ALM-01194,2026-09-10T02:22:04+03:00,zabbix,payment-01,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-B,prod
+ALM-01195,2026-09-10T02:22:05+03:00,syslog,payment-02,payment-db,3,DB_SLOW_QUERY,Slow query 1048ms on payment-db,dc1,rack-C,prod
+ALM-01196,2026-09-10T02:22:05+03:00,prometheus,api-02,api-gateway,4,HTTP_5XX,HTTP 5xx rate 24% on api-gateway,dc1,rack-C,prod
+ALM-01197,2026-09-10T02:22:05+03:00,appdynamics,billing-02,billing-svc,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc2,rack-B,prod
+ALM-01198,2026-09-10T02:22:10+03:00,syslog,payment-01,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-B,prod
+ALM-01199,2026-09-10T02:22:12+03:00,prometheus,payment-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,prod
+ALM-01200,2026-09-10T02:22:12+03:00,cloudwatch,api-01,api-gateway,4,HTTP_5XX,HTTP 5xx rate 35% on api-gateway,dc1,rack-B,prod
+ALM-01201,2026-09-10T02:22:13+03:00,prometheus,payment-02,payment-db,2,JOB_RETRY,Batch job retry #74 on payment-db,dc1,rack-C,prod
+ALM-01202,2026-09-10T02:22:14+03:00,syslog,catalog-01,catalog-api,2,NTP_DRIFT,Clock drift 14ms on catalog-01,dc1,rack-A,prod
+ALM-01203,2026-09-10T02:22:15+03:00,prometheus,payment-01,payment-db,3,REPLICA_LAG,Replica lag 1151s on payment-db,dc1,rack-B,prod
+ALM-01204,2026-09-10T02:22:16+03:00,prometheus,payment-02,payment-db,3,DB_SLOW_QUERY,Slow query 1876ms on payment-db,dc1,rack-C,prod
+ALM-01205,2026-09-10T02:22:16+03:00,zabbix,stage-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,staging
+ALM-01206,2026-09-10T02:22:17+03:00,appdynamics,auth-01,auth-api,2,LOGIN_FAIL,Login failures 47/min on auth-api,dc1,rack-A,prod
+ALM-01207,2026-09-10T02:22:22+03:00,zabbix,api-02,api-gateway,4,HTTP_5XX,HTTP 5xx rate 7% on api-gateway,dc1,rack-C,prod
+ALM-01208,2026-09-10T02:22:23+03:00,prometheus,stage-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,staging
+ALM-01209,2026-09-10T02:22:23+03:00,syslog,stage-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,staging
+ALM-01210,2026-09-10T02:22:24+03:00,prometheus,redis-02,redis-cache,2,MEM_HIGH,Memory usage 30% on redis-02,dc1,rack-A,prod
+ALM-01211,2026-09-10T02:22:25+03:00,zabbix,checkout-02,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-A,prod
+ALM-01212,2026-09-10T02:22:25+03:00,appdynamics,stage-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-C,staging
+ALM-01213,2026-09-10T02:22:26+03:00,appdynamics,payment-02,payment-db,3,REPLICA_LAG,Replica lag 3787s on payment-db,dc1,rack-C,prod
+ALM-01214,2026-09-10T02:22:28+03:00,appdynamics,payment-01,payment-db,3,REPLICA_LAG,Replica lag 1081s on payment-db,dc1,rack-B,prod
+ALM-01215,2026-09-10T02:22:29+03:00,syslog,stage-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,staging
+ALM-01216,2026-09-10T02:22:29+03:00,prometheus,payment-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,prod
+ALM-01217,2026-09-10T02:22:33+03:00,prometheus,catalog-01,catalog-api,2,AGENT_RESTART,Monitoring agent restarted on catalog-01,dc1,rack-A,prod
+ALM-01218,2026-09-10T02:22:35+03:00,cloudwatch,billing-02,billing-svc,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc2,rack-B,prod
+ALM-01219,2026-09-10T02:22:35+03:00,appdynamics,billing-02,billing-svc,2,LOGIN_FAIL,Login failures 21/min on billing-svc,dc2,rack-B,prod
+ALM-01220,2026-09-10T02:22:36+03:00,appdynamics,checkout-02,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-A,prod
+ALM-01221,2026-09-10T02:22:38+03:00,prometheus,payment-01,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-B,prod
+ALM-01222,2026-09-10T02:22:44+03:00,prometheus,object-02,object-storage,2,JOB_RETRY,Batch job retry #75 on object-storage,dc2,rack-B,prod
+ALM-01223,2026-09-10T02:22:45+03:00,appdynamics,stage-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,staging
+ALM-01224,2026-09-10T02:22:46+03:00,cloudwatch,payment-01,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-B,prod
+ALM-01225,2026-09-10T02:22:47+03:00,prometheus,fraud-02,fraud-svc,1,CONFIG_RELOAD,Config reloaded on fraud-02,dc1,rack-C,prod
+ALM-01226,2026-09-10T02:22:49+03:00,cloudwatch,payment-01,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-B,prod
+ALM-01227,2026-09-10T02:22:49+03:00,zabbix,stage-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,staging
+ALM-01228,2026-09-10T02:22:50+03:00,cloudwatch,batch-02,batch-scheduler,2,BACKUP_FAIL,Backup job failed on batch-02,dc1,rack-A,prod
+ALM-01229,2026-09-10T02:22:52+03:00,zabbix,api-01,api-gateway,1,DEPLOY_START,Deployment started for api-gateway,dc1,rack-B,prod
+ALM-01230,2026-09-10T02:22:53+03:00,appdynamics,order-01,order-api,2,CACHE_MISS,Cache miss ratio 42% on order-api,dc1,rack-A,prod
+ALM-01231,2026-09-10T02:22:53+03:00,appdynamics,payment-01,payment-db,1,DEPLOY_START,Deployment started for payment-db,dc1,rack-B,prod
+ALM-01232,2026-09-10T02:22:54+03:00,syslog,stage-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,staging
+ALM-01233,2026-09-10T02:22:54+03:00,appdynamics,monitoring-01,monitoring-agent,1,CONFIG_RELOAD,Config reloaded on monitoring-01,dc1,rack-B,prod
+ALM-01234,2026-09-10T02:22:58+03:00,syslog,report-02,report-svc,2,JOB_RETRY,Batch job retry #45 on report-svc,dc1,rack-C,test
+ALM-01235,2026-09-10T02:23:00+03:00,prometheus,order-01,order-db,3,DISK_HIGH,Disk usage 88% on /data (order-01),dc2,rack-C,prod
+ALM-01236,2026-09-10T02:23:01+03:00,prometheus,api-01,api-gateway,4,HTTP_5XX,HTTP 5xx rate 24% on api-gateway,dc1,rack-B,prod
+ALM-01237,2026-09-10T02:23:02+03:00,zabbix,billing-02,billing-svc,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc2,rack-B,prod
+ALM-01238,2026-09-10T02:23:02+03:00,cloudwatch,user-01,user-db,1,CONFIG_RELOAD,Config reloaded on user-01,dc1,rack-A,prod
+ALM-01239,2026-09-10T02:23:04+03:00,prometheus,payment-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,prod
+ALM-01240,2026-09-10T02:23:06+03:00,appdynamics,stage-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,staging
+ALM-01241,2026-09-10T02:23:06+03:00,cloudwatch,stage-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,staging
+ALM-01242,2026-09-10T02:23:06+03:00,syslog,kafka-02,kafka,2,BACKUP_FAIL,Backup job failed on kafka-02,dc1,rack-C,prod
+ALM-01243,2026-09-10T02:23:08+03:00,syslog,payment-01,payment-db,3,DB_SLOW_QUERY,Slow query 2297ms on payment-db,dc1,rack-B,prod
+ALM-01244,2026-09-10T02:23:09+03:00,zabbix,checkout-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc2,rack-C,prod
+ALM-01245,2026-09-10T02:23:10+03:00,syslog,checkout-02,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-A,prod
+ALM-01246,2026-09-10T02:23:10+03:00,zabbix,api-02,api-gateway,4,HTTP_5XX,HTTP 5xx rate 28% on api-gateway,dc1,rack-C,prod
+ALM-01247,2026-09-10T02:23:10+03:00,cloudwatch,api-01,api-gateway,4,HTTP_5XX,HTTP 5xx rate 12% on api-gateway,dc1,rack-B,prod
+ALM-01248,2026-09-10T02:23:10+03:00,zabbix,billing-02,billing-svc,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc2,rack-B,prod
+ALM-01249,2026-09-10T02:23:12+03:00,prometheus,stage-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-C,staging
+ALM-01250,2026-09-10T02:23:12+03:00,appdynamics,inventory-02,inventory-api,2,NTP_DRIFT,Clock drift 79ms on inventory-02,dc1,rack-A,prod
+ALM-01251,2026-09-10T02:23:13+03:00,syslog,payment-02,payment-db,3,DB_SLOW_QUERY,Slow query 3138ms on payment-db,dc1,rack-C,prod
+ALM-01252,2026-09-10T02:23:15+03:00,zabbix,batch-02,batch-scheduler,2,CACHE_MISS,Cache miss ratio 50% on batch-scheduler,dc1,rack-A,prod
+ALM-01253,2026-09-10T02:23:18+03:00,zabbix,payment-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,prod
+ALM-01254,2026-09-10T02:23:18+03:00,appdynamics,stage-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,staging
+ALM-01255,2026-09-10T02:23:18+03:00,appdynamics,email-01,email-svc,2,CACHE_MISS,Cache miss ratio 72% on email-svc,dc1,rack-A,prod
+ALM-01256,2026-09-10T02:23:19+03:00,cloudwatch,checkout-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc2,rack-C,prod
+ALM-01257,2026-09-10T02:23:24+03:00,appdynamics,payment-01,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-B,prod
+ALM-01258,2026-09-10T02:23:24+03:00,cloudwatch,payment-01,payment-api,2,JOB_RETRY,Batch job retry #72 on payment-api,dc1,rack-B,prod
+ALM-01259,2026-09-10T02:23:25+03:00,cloudwatch,billing-02,billing-svc,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc2,rack-B,prod
+ALM-01260,2026-09-10T02:23:27+03:00,appdynamics,payment-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,prod
+ALM-01261,2026-09-10T02:23:27+03:00,cloudwatch,billing-01,billing-svc,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-A,prod
+ALM-01262,2026-09-10T02:23:27+03:00,cloudwatch,backup-02,backup-svc,2,CACHE_MISS,Cache miss ratio 5% on backup-svc,dc2,rack-B,prod
+ALM-01263,2026-09-10T02:23:29+03:00,syslog,payment-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,prod
+ALM-01264,2026-09-10T02:23:30+03:00,zabbix,payment-02,payment-db,3,DB_SLOW_QUERY,Slow query 1986ms on payment-db,dc1,rack-C,prod
+ALM-01265,2026-09-10T02:23:30+03:00,zabbix,payment-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,prod
+ALM-01266,2026-09-10T02:23:32+03:00,cloudwatch,payment-02,payment-db,3,REPLICA_LAG,Replica lag 2430s on payment-db,dc1,rack-C,prod
+ALM-01267,2026-09-10T02:23:33+03:00,prometheus,api-01,api-gateway,4,HTTP_5XX,HTTP 5xx rate 15% on api-gateway,dc1,rack-B,prod
+ALM-01268,2026-09-10T02:23:33+03:00,zabbix,payment-02,payment-db,3,JOB_RETRY,Batch job retry #23 on payment-db,dc1,rack-C,prod
+ALM-01269,2026-09-10T02:23:34+03:00,prometheus,stage-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-C,staging
+ALM-01270,2026-09-10T02:23:35+03:00,syslog,payment-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,prod
+ALM-01271,2026-09-10T02:23:35+03:00,appdynamics,checkout-02,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-A,prod
+ALM-01272,2026-09-10T02:23:36+03:00,prometheus,stage-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,staging
+ALM-01273,2026-09-10T02:23:36+03:00,appdynamics,cart-02,cart-api,1,DEPLOY_START,Deployment started for cart-api,dc1,rack-A,prod
+ALM-01274,2026-09-10T02:23:39+03:00,syslog,payment-01,payment-db,3,DB_SLOW_QUERY,Slow query 1714ms on payment-db,dc1,rack-B,prod
+ALM-01275,2026-09-10T02:23:39+03:00,cloudwatch,payment-01,payment-db,3,REPLICA_LAG,Replica lag 1314s on payment-db,dc1,rack-B,prod
+ALM-01276,2026-09-10T02:23:39+03:00,zabbix,email-01,email-svc,2,NTP_DRIFT,Clock drift 47ms on email-01,dc1,rack-A,prod
+ALM-01277,2026-09-10T02:23:42+03:00,appdynamics,cart-01,cart-api,2,BACKUP_FAIL,Backup job failed on cart-01,dc2,rack-C,prod
+ALM-01278,2026-09-10T02:23:42+03:00,cloudwatch,catalog-01,catalog-api,2,AGENT_RESTART,Monitoring agent restarted on catalog-01,dc1,rack-A,prod
+ALM-01279,2026-09-10T02:23:42+03:00,cloudwatch,order-02,order-api,2,MEM_HIGH,Memory usage 79% on order-02,dc2,rack-B,prod
+ALM-01280,2026-09-10T02:23:43+03:00,cloudwatch,stage-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,staging
+ALM-01281,2026-09-10T02:23:43+03:00,appdynamics,payment-01,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-B,prod
+ALM-01282,2026-09-10T02:23:43+03:00,appdynamics,checkout-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc2,rack-C,prod
+ALM-01283,2026-09-10T02:23:43+03:00,prometheus,billing-01,billing-svc,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-A,prod
+ALM-01284,2026-09-10T02:23:44+03:00,cloudwatch,stage-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-C,staging
+ALM-01285,2026-09-10T02:23:46+03:00,appdynamics,order-02,order-db,2,AGENT_RESTART,Monitoring agent restarted on order-02,dc1,rack-A,prod
+ALM-01286,2026-09-10T02:23:47+03:00,zabbix,checkout-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc2,rack-C,prod
+ALM-01287,2026-09-10T02:23:49+03:00,syslog,stage-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,staging
+ALM-01288,2026-09-10T02:23:50+03:00,appdynamics,sms-02,sms-svc,2,LOGIN_FAIL,Login failures 40/min on sms-svc,dc1,rack-A,prod
+ALM-01289,2026-09-10T02:23:51+03:00,cloudwatch,checkout-02,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-A,prod
+ALM-01290,2026-09-10T02:23:54+03:00,appdynamics,stage-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,staging
+ALM-01291,2026-09-10T02:23:54+03:00,cloudwatch,cart-01,cart-api,2,MEM_HIGH,Memory usage 53% on cart-01,dc2,rack-C,prod
+ALM-01292,2026-09-10T02:23:55+03:00,cloudwatch,checkout-02,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-A,prod
+ALM-01293,2026-09-10T02:23:55+03:00,appdynamics,kafka-01,kafka,2,JOB_RETRY,Batch job retry #30 on kafka,dc1,rack-B,prod
+ALM-01294,2026-09-10T02:23:57+03:00,zabbix,payment-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,prod
+ALM-01295,2026-09-10T02:23:58+03:00,appdynamics,cdn-02,cdn-edge,3,CPU_HIGH,CPU usage 19% on cdn-02,dc1,rack-A,prod
+ALM-01296,2026-09-10T02:23:58+03:00,zabbix,catalog-01,catalog-api,1,DEPLOY_START,Deployment started for catalog-api,dc1,rack-A,prod
+ALM-01297,2026-09-10T02:23:59+03:00,prometheus,payment-01,payment-db,3,REPLICA_LAG,Replica lag 1003s on payment-db,dc1,rack-B,prod
+ALM-01298,2026-09-10T02:23:59+03:00,prometheus,checkout-02,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-A,prod
+ALM-01299,2026-09-10T02:24:00+03:00,prometheus,report-02,report-svc,1,DEPLOY_START,Deployment started for report-svc,dc1,rack-C,test
+ALM-01300,2026-09-10T02:24:01+03:00,zabbix,kafka-02,kafka,2,LOGIN_FAIL,Login failures 25/min on kafka,dc1,rack-C,prod
+ALM-01301,2026-09-10T02:24:04+03:00,syslog,payment-01,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-B,prod
+ALM-01302,2026-09-10T02:24:04+03:00,zabbix,stage-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-C,staging
+ALM-01303,2026-09-10T02:24:04+03:00,prometheus,catalog-01,catalog-api,2,CERT_EXPIRY,TLS certificate expires in 6 days,dc1,rack-A,prod
+ALM-01304,2026-09-10T02:24:04+03:00,zabbix,checkout-02,checkout-api,2,BACKUP_FAIL,Backup job failed on checkout-02,dc1,rack-A,prod
+ALM-01305,2026-09-10T02:24:06+03:00,appdynamics,checkout-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc2,rack-C,prod
+ALM-01306,2026-09-10T02:24:06+03:00,appdynamics,monitoring-01,monitoring-agent,2,CERT_EXPIRY,TLS certificate expires in 80 days,dc1,rack-B,prod
+ALM-01307,2026-09-10T02:24:07+03:00,syslog,checkout-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc2,rack-C,prod
+ALM-01308,2026-09-10T02:24:07+03:00,zabbix,api-02,api-gateway,3,MEM_HIGH,Memory usage 78% on api-02,dc1,rack-C,prod
+ALM-01309,2026-09-10T02:24:11+03:00,zabbix,fraud-02,fraud-svc,1,CONFIG_RELOAD,Config reloaded on fraud-02,dc1,rack-C,prod
+ALM-01310,2026-09-10T02:24:14+03:00,prometheus,redis-01,redis-cache,2,CPU_HIGH,CPU usage 23% on redis-01,dc2,rack-C,prod
+ALM-01311,2026-09-10T02:24:20+03:00,zabbix,cdn-01,cdn-edge,1,DEPLOY_START,Deployment started for cdn-edge,dc2,rack-C,prod
+ALM-01312,2026-09-10T02:24:25+03:00,cloudwatch,report-02,report-svc,2,CACHE_MISS,Cache miss ratio 50% on report-svc,dc1,rack-C,test
+ALM-01313,2026-09-10T02:24:26+03:00,zabbix,checkout-02,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-A,prod
+ALM-01314,2026-09-10T02:24:27+03:00,zabbix,api-02,api-gateway,4,HTTP_5XX,HTTP 5xx rate 17% on api-gateway,dc1,rack-C,prod
+ALM-01315,2026-09-10T02:24:28+03:00,appdynamics,api-01,api-gateway,4,HTTP_5XX,HTTP 5xx rate 16% on api-gateway,dc1,rack-B,prod
+ALM-01316,2026-09-10T02:24:29+03:00,zabbix,object-02,object-storage,2,JOB_RETRY,Batch job retry #60 on object-storage,dc2,rack-B,prod
+ALM-01317,2026-09-10T02:24:30+03:00,zabbix,api-01,api-gateway,4,HTTP_5XX,HTTP 5xx rate 33% on api-gateway,dc1,rack-B,prod
+ALM-01318,2026-09-10T02:24:30+03:00,appdynamics,order-01,order-db,3,DISK_HIGH,Disk usage 88% on /data (order-01),dc2,rack-C,prod
+ALM-01319,2026-09-10T02:24:31+03:00,prometheus,stage-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-C,staging
+ALM-01320,2026-09-10T02:24:32+03:00,prometheus,cart-01,cart-api,2,LOGIN_FAIL,Login failures 27/min on cart-api,dc2,rack-C,prod
+ALM-01321,2026-09-10T02:24:34+03:00,zabbix,ledger-02,ledger-svc,2,CERT_EXPIRY,TLS certificate expires in 58 days,dc1,rack-A,prod
+ALM-01322,2026-09-10T02:24:34+03:00,syslog,kafka-01,kafka,2,NTP_DRIFT,Clock drift 54ms on kafka-01,dc1,rack-B,prod
+ALM-01323,2026-09-10T02:24:36+03:00,appdynamics,batch-02,batch-scheduler,2,BACKUP_FAIL,Backup job failed on batch-02,dc1,rack-A,prod
+ALM-01324,2026-09-10T02:24:39+03:00,prometheus,api-01,api-gateway,4,HTTP_5XX,HTTP 5xx rate 38% on api-gateway,dc1,rack-B,prod
+ALM-01325,2026-09-10T02:24:40+03:00,appdynamics,payment-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,prod
+ALM-01326,2026-09-10T02:24:44+03:00,syslog,auth-02,auth-api,1,DEPLOY_START,Deployment started for auth-api,dc2,rack-B,prod
+ALM-01327,2026-09-10T02:24:45+03:00,syslog,sms-01,sms-svc,2,CACHE_MISS,Cache miss ratio 31% on sms-svc,dc2,rack-C,prod
+ALM-01328,2026-09-10T02:24:47+03:00,prometheus,catalog-02,catalog-api,2,NTP_DRIFT,Clock drift 36ms on catalog-02,dc2,rack-B,prod
+ALM-01329,2026-09-10T02:24:47+03:00,appdynamics,sms-02,sms-svc,2,NTP_DRIFT,Clock drift 26ms on sms-02,dc1,rack-A,prod
+ALM-01330,2026-09-10T02:24:52+03:00,prometheus,checkout-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc2,rack-C,prod
+ALM-01331,2026-09-10T02:24:53+03:00,appdynamics,payment-01,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-B,prod
+ALM-01332,2026-09-10T02:24:53+03:00,appdynamics,checkout-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc2,rack-C,prod
+ALM-01333,2026-09-10T02:24:57+03:00,prometheus,backup-02,backup-svc,2,CERT_EXPIRY,TLS certificate expires in 24 days,dc2,rack-B,prod
+ALM-01334,2026-09-10T02:25:00+03:00,zabbix,email-02,email-svc,2,LOGIN_FAIL,Login failures 22/min on email-svc,dc2,rack-B,prod
+ALM-01335,2026-09-10T02:25:06+03:00,prometheus,api-02,api-gateway,1,CONFIG_RELOAD,Config reloaded on api-02,dc1,rack-C,prod
+ALM-01336,2026-09-10T02:25:07+03:00,syslog,stage-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,staging
+ALM-01337,2026-09-10T02:25:07+03:00,cloudwatch,sms-02,sms-svc,2,BACKUP_FAIL,Backup job failed on sms-02,dc1,rack-A,prod
+ALM-01338,2026-09-10T02:25:12+03:00,syslog,checkout-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc2,rack-C,prod
+ALM-01339,2026-09-10T02:25:13+03:00,appdynamics,checkout-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc2,rack-C,prod
+ALM-01340,2026-09-10T02:25:14+03:00,appdynamics,api-01,api-gateway,4,HTTP_5XX,HTTP 5xx rate 33% on api-gateway,dc1,rack-B,prod
+ALM-01341,2026-09-10T02:25:14+03:00,cloudwatch,billing-01,billing-svc,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-A,prod
+ALM-01342,2026-09-10T02:25:17+03:00,cloudwatch,api-01,api-gateway,4,HTTP_5XX,HTTP 5xx rate 25% on api-gateway,dc1,rack-B,prod
+ALM-01343,2026-09-10T02:25:17+03:00,zabbix,redis-02,redis-cache,3,CPU_HIGH,CPU usage 53% on redis-02,dc1,rack-A,prod
+ALM-01344,2026-09-10T02:25:17+03:00,cloudwatch,stage-01,checkout-api,2,AGENT_RESTART,Monitoring agent restarted on stage-01,dc1,rack-C,staging
+ALM-01345,2026-09-10T02:25:18+03:00,syslog,payment-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,prod
+ALM-01346,2026-09-10T02:25:22+03:00,prometheus,email-01,email-svc,2,NTP_DRIFT,Clock drift 43ms on email-01,dc1,rack-A,prod
+ALM-01347,2026-09-10T02:25:24+03:00,cloudwatch,kafka-01,kafka,2,MEM_HIGH,Memory usage 19% on kafka-01,dc1,rack-B,prod
+ALM-01348,2026-09-10T02:25:26+03:00,appdynamics,checkout-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc2,rack-C,prod
+ALM-01349,2026-09-10T02:25:27+03:00,prometheus,auth-02,auth-api,2,JOB_RETRY,Batch job retry #79 on auth-api,dc2,rack-B,prod
+ALM-01350,2026-09-10T02:25:28+03:00,zabbix,batch-01,batch-scheduler,2,JOB_RETRY,Batch job retry #22 on batch-scheduler,dc2,rack-C,prod
+ALM-01351,2026-09-10T02:25:28+03:00,prometheus,report-02,report-svc,1,DEPLOY_START,Deployment started for report-svc,dc1,rack-C,test
+ALM-01352,2026-09-10T02:25:29+03:00,zabbix,stage-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-C,staging
+ALM-01353,2026-09-10T02:25:31+03:00,syslog,payment-01,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-B,prod
+ALM-01354,2026-09-10T02:25:31+03:00,prometheus,payment-02,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-C,prod
+ALM-01355,2026-09-10T02:25:31+03:00,cloudwatch,payment-01,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-B,prod
+ALM-01356,2026-09-10T02:25:33+03:00,cloudwatch,checkout-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc2,rack-C,prod
+ALM-01357,2026-09-10T02:25:34+03:00,zabbix,order-02,order-api,3,MEM_HIGH,Memory usage 7% on order-02,dc2,rack-B,prod
+ALM-01358,2026-09-10T02:25:38+03:00,appdynamics,payment-01,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-B,prod
+ALM-01359,2026-09-10T02:25:38+03:00,prometheus,payment-01,payment-api,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-B,prod
+ALM-01360,2026-09-10T02:25:40+03:00,cloudwatch,email-02,email-svc,2,CACHE_MISS,Cache miss ratio 57% on email-svc,dc2,rack-B,prod
+ALM-01361,2026-09-10T02:25:41+03:00,prometheus,report-02,report-svc,2,AGENT_RESTART,Monitoring agent restarted on report-02,dc1,rack-C,test
+ALM-01362,2026-09-10T02:25:42+03:00,zabbix,payment-02,payment-db,2,LOGIN_FAIL,Login failures 10/min on payment-db,dc1,rack-C,prod
+ALM-01363,2026-09-10T02:25:44+03:00,appdynamics,checkout-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc2,rack-C,prod
+ALM-01364,2026-09-10T02:25:46+03:00,appdynamics,user-02,user-db,2,CACHE_MISS,Cache miss ratio 20% on user-db,dc2,rack-B,prod
+ALM-01365,2026-09-10T02:25:47+03:00,appdynamics,stage-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-C,staging
+ALM-01366,2026-09-10T02:25:50+03:00,appdynamics,report-01,report-svc,2,JOB_RETRY,Batch job retry #29 on report-svc,dc1,rack-B,prod
+ALM-01367,2026-09-10T02:25:51+03:00,prometheus,billing-02,billing-svc,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc2,rack-B,prod
+ALM-01368,2026-09-10T02:25:51+03:00,appdynamics,payment-02,payment-api,2,CPU_HIGH,CPU usage 69% on payment-02,dc1,rack-C,prod
+ALM-01369,2026-09-10T02:25:55+03:00,syslog,order-02,order-db,2,CPU_HIGH,CPU usage 5% on order-02,dc1,rack-A,prod
+ALM-01370,2026-09-10T02:25:57+03:00,appdynamics,api-01,api-gateway,4,HTTP_5XX,HTTP 5xx rate 17% on api-gateway,dc1,rack-B,prod
+ALM-01371,2026-09-10T02:25:59+03:00,appdynamics,checkout-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc2,rack-C,prod
+ALM-01372,2026-09-10T02:26:00+03:00,prometheus,order-01,order-db,3,DISK_HIGH,Disk usage 88% on /data (order-01),dc2,rack-C,prod
+ALM-01373,2026-09-10T02:26:02+03:00,syslog,catalog-01,catalog-db,2,CPU_HIGH,CPU usage 80% on catalog-01,dc1,rack-A,prod
+ALM-01374,2026-09-10T02:26:04+03:00,syslog,batch-02,batch-scheduler,2,NTP_DRIFT,Clock drift 48ms on batch-02,dc1,rack-A,prod
+ALM-01375,2026-09-10T02:26:04+03:00,zabbix,catalog-01,catalog-db,2,CACHE_MISS,Cache miss ratio 1% on catalog-db,dc1,rack-A,prod
+ALM-01376,2026-09-10T02:26:06+03:00,prometheus,stage-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-C,staging
+ALM-01377,2026-09-10T02:26:10+03:00,appdynamics,order-02,order-api,2,CPU_HIGH,CPU usage 23% on order-02,dc2,rack-B,prod
+ALM-01378,2026-09-10T02:26:11+03:00,zabbix,stage-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-C,staging
+ALM-01379,2026-09-10T02:26:14+03:00,prometheus,payment-01,payment-db,3,CERT_EXPIRY,TLS certificate expires in 53 days,dc1,rack-B,prod
+ALM-01380,2026-09-10T02:26:15+03:00,zabbix,ledger-01,ledger-svc,2,CERT_EXPIRY,TLS certificate expires in 70 days,dc2,rack-C,prod
+ALM-01381,2026-09-10T02:26:16+03:00,zabbix,monitoring-01,monitoring-agent,1,DEPLOY_START,Deployment started for monitoring-agent,dc1,rack-B,prod
+ALM-01382,2026-09-10T02:26:17+03:00,prometheus,stage-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-C,staging
+ALM-01383,2026-09-10T02:26:18+03:00,cloudwatch,user-02,user-db,2,MEM_HIGH,Memory usage 4% on user-02,dc2,rack-B,prod
+ALM-01384,2026-09-10T02:26:21+03:00,prometheus,checkout-02,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-A,prod
+ALM-01385,2026-09-10T02:26:21+03:00,prometheus,order-01,order-db,3,BACKUP_FAIL,Backup job failed on order-01,dc2,rack-C,prod
+ALM-01386,2026-09-10T02:26:22+03:00,cloudwatch,checkout-02,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-A,prod
+ALM-01387,2026-09-10T02:26:24+03:00,prometheus,cart-02,cart-api,2,CERT_EXPIRY,TLS certificate expires in 43 days,dc1,rack-A,prod
+ALM-01388,2026-09-10T02:26:26+03:00,syslog,redis-02,redis-cache,2,JOB_RETRY,Batch job retry #4 on redis-cache,dc1,rack-A,prod
+ALM-01389,2026-09-10T02:26:27+03:00,cloudwatch,catalog-02,catalog-api,2,CERT_EXPIRY,TLS certificate expires in 54 days,dc2,rack-B,prod
+ALM-01390,2026-09-10T02:26:28+03:00,zabbix,cdn-02,cdn-edge,2,FS_INODES,Inode usage 45% on cdn-02,dc1,rack-A,prod
+ALM-01391,2026-09-10T02:26:28+03:00,zabbix,email-01,email-svc,2,MEM_HIGH,Memory usage 26% on email-01,dc1,rack-A,prod
+ALM-01392,2026-09-10T02:26:29+03:00,zabbix,sms-01,sms-svc,2,MEM_HIGH,Memory usage 11% on sms-01,dc2,rack-C,prod
+ALM-01393,2026-09-10T02:26:30+03:00,cloudwatch,auth-02,auth-api,2,NTP_DRIFT,Clock drift 27ms on auth-02,dc2,rack-B,prod
+ALM-01394,2026-09-10T02:26:31+03:00,appdynamics,checkout-02,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-A,prod
+ALM-01395,2026-09-10T02:26:31+03:00,appdynamics,api-02,api-gateway,4,HTTP_5XX,HTTP 5xx rate 7% on api-gateway,dc1,rack-C,prod
+ALM-01396,2026-09-10T02:26:31+03:00,appdynamics,auth-02,auth-api,2,LOGIN_FAIL,Login failures 11/min on auth-api,dc2,rack-B,prod
+ALM-01397,2026-09-10T02:26:32+03:00,syslog,checkout-02,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-A,prod
+ALM-01398,2026-09-10T02:26:33+03:00,appdynamics,ledger-02,ledger-svc,2,CACHE_MISS,Cache miss ratio 44% on ledger-svc,dc1,rack-A,prod
+ALM-01399,2026-09-10T02:26:37+03:00,appdynamics,stage-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-C,staging
+ALM-01400,2026-09-10T02:26:37+03:00,cloudwatch,backup-02,backup-svc,2,MEM_HIGH,Memory usage 29% on backup-02,dc2,rack-B,prod
+ALM-01401,2026-09-10T02:26:42+03:00,syslog,batch-01,batch-scheduler,2,MEM_HIGH,Memory usage 51% on batch-01,dc2,rack-C,prod
+ALM-01402,2026-09-10T02:26:42+03:00,cloudwatch,billing-01,billing-svc,1,DEPLOY_START,Deployment started for billing-svc,dc1,rack-A,prod
+ALM-01403,2026-09-10T02:26:43+03:00,cloudwatch,stage-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-C,staging
+ALM-01404,2026-09-10T02:26:46+03:00,appdynamics,cart-01,cart-api,2,MEM_HIGH,Memory usage 8% on cart-01,dc2,rack-C,prod
+ALM-01405,2026-09-10T02:26:47+03:00,prometheus,billing-02,billing-svc,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc2,rack-B,prod
+ALM-01406,2026-09-10T02:26:48+03:00,appdynamics,notification-01,notification-svc,2,NTP_DRIFT,Clock drift 80ms on notification-01,dc1,rack-B,prod
+ALM-01407,2026-09-10T02:26:49+03:00,zabbix,api-01,api-gateway,4,HTTP_5XX,HTTP 5xx rate 9% on api-gateway,dc1,rack-B,prod
+ALM-01408,2026-09-10T02:26:50+03:00,zabbix,email-01,email-svc,2,LOGIN_FAIL,Login failures 17/min on email-svc,dc1,rack-A,prod
+ALM-01409,2026-09-10T02:26:58+03:00,zabbix,checkout-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc2,rack-C,prod
+ALM-01410,2026-09-10T02:27:00+03:00,syslog,api-02,api-gateway,4,HTTP_5XX,HTTP 5xx rate 20% on api-gateway,dc1,rack-C,prod
+ALM-01411,2026-09-10T02:27:00+03:00,appdynamics,cdn-02,cdn-edge,1,CONFIG_RELOAD,Config reloaded on cdn-02,dc1,rack-A,prod
+ALM-01412,2026-09-10T02:27:01+03:00,syslog,checkout-02,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-A,prod
+ALM-01413,2026-09-10T02:27:02+03:00,prometheus,api-02,api-gateway,3,DEPLOY_START,Deployment started for api-gateway,dc1,rack-C,prod
+ALM-01414,2026-09-10T02:27:05+03:00,syslog,api-02,api-gateway,4,HTTP_5XX,HTTP 5xx rate 7% on api-gateway,dc1,rack-C,prod
+ALM-01415,2026-09-10T02:27:06+03:00,zabbix,catalog-02,catalog-api,2,CERT_EXPIRY,TLS certificate expires in 67 days,dc2,rack-B,prod
+ALM-01416,2026-09-10T02:27:07+03:00,appdynamics,email-02,email-svc,2,FS_INODES,Inode usage 48% on email-02,dc2,rack-B,prod
+ALM-01417,2026-09-10T02:27:09+03:00,zabbix,stage-01,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-C,staging
+ALM-01418,2026-09-10T02:27:09+03:00,prometheus,api-01,api-gateway,4,HTTP_5XX,HTTP 5xx rate 34% on api-gateway,dc1,rack-B,prod
+ALM-01419,2026-09-10T02:27:10+03:00,syslog,checkout-02,checkout-api,4,UPSTREAM_TIMEOUT,Upstream timeout calling payment-api,dc1,rack-A,prod
+ALM-01420,2026-09-10T02:27:10+03:00,appdynamics,catalog-01,catalog-api,2,FS_INODES,Inode usage 28% on catalog-01,dc1,rack-A,prod
+ALM-01421,2026-09-10T02:27:10+03:00,syslog,catalog-01,catalog-db,2,CERT_EXPIRY,TLS certificate expires in 21 days,dc1,rack-A,prod
+ALM-01422,2026-09-10T02:27:13+03:00,cloudwatch,report-01,report-svc,2,AGENT_RESTART,Monitoring agent restarted on report-01,dc1,rack-B,prod
+ALM-01423,2026-09-10T02:27:17+03:00,cloudwatch,notification-01,notification-svc,2,FS_INODES,Inode usage 52% on notification-01,dc1,rack-B,prod
+ALM-01424,2026-09-10T02:27:17+03:00,appdynamics,kafka-02,kafka,3,AGENT_RESTART,Monitoring agent restarted on kafka-02,dc1,rack-C,prod
+ALM-01425,2026-09-10T02:27:21+03:00,cloudwatch,api-01,api-gateway,4,HTTP_5XX,HTTP 5xx rate 8% on api-gateway,dc1,rack-B,prod
+ALM-01426,2026-09-10T02:27:21+03:00,appdynamics,notification-02,notification-svc,2,CERT_EXPIRY,TLS certificate expires in 10 days,dc1,rack-C,prod
+ALM-01427,2026-09-10T02:27:21+03:00,appdynamics,billing-02,billing-svc,2,NTP_DRIFT,Clock drift 30ms on billing-02,dc2,rack-B,prod
+ALM-01428,2026-09-10T02:27:26+03:00,cloudwatch,payment-01,payment-db,2,AGENT_RESTART,Monitoring agent restarted on payment-01,dc1,rack-B,prod
+ALM-01429,2026-09-10T02:27:27+03:00,appdynamics,user-01,user-db,2,NTP_DRIFT,Clock drift 51ms on user-01,dc1,rack-A,prod
+ALM-01430,2026-09-10T02:27:29+03:00,zabbix,kafka-02,kafka,1,CONFIG_RELOAD,Config reloaded on kafka-02,dc1,rack-C,prod
+ALM-01431,2026-09-10T02:27:30+03:00,appdynamics,api-01,api-gateway,4,HTTP_5XX,HTTP 5xx rate 20% on api-gateway,dc1,rack-B,prod
+ALM-01432,2026-09-10T02:27:30+03:00,cloudwatch,order-01,order-db,3,DISK_HIGH,Disk usage 88% on /data (order-01),dc2,rack-C,prod
+ALM-01433,2026-09-10T02:27:31+03:00,syslog,inventory-02,inventory-api,2,FS_INODES,Inode usage 53% on inventory-02,dc1,rack-A,prod
+ALM-01434,2026-09-10T02:27:35+03:00,zabbix,email-02,email-svc,1,CONFIG_RELOAD,Config reloaded on email-02,dc2,rack-B,prod
+ALM-01435,2026-09-10T02:27:37+03:00,prometheus,billing-01,billing-svc,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-A,prod
+ALM-01436,2026-09-10T02:27:37+03:00,zabbix,catalog-02,catalog-api,2,MEM_HIGH,Memory usage 47% on catalog-02,dc2,rack-B,prod
+ALM-01437,2026-09-10T02:27:39+03:00,cloudwatch,redis-01,redis-cache,2,MEM_HIGH,Memory usage 45% on redis-01,dc2,rack-C,prod
+ALM-01438,2026-09-10T02:27:41+03:00,zabbix,sms-01,sms-svc,2,BACKUP_FAIL,Backup job failed on sms-01,dc2,rack-C,prod
+ALM-01439,2026-09-10T02:27:46+03:00,syslog,search-01,search-api,2,MEM_HIGH,Memory usage 32% on search-01,dc1,rack-B,prod
+ALM-01440,2026-09-10T02:27:48+03:00,appdynamics,api-01,api-gateway,4,HTTP_5XX,HTTP 5xx rate 14% on api-gateway,dc1,rack-B,prod
+ALM-01441,2026-09-10T02:27:49+03:00,syslog,billing-01,billing-svc,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc1,rack-A,prod
+ALM-01442,2026-09-10T02:27:53+03:00,cloudwatch,billing-02,billing-svc,4,DB_CONN_TIMEOUT,Connection timeout to payment-db after 5000ms,dc2,rack-B,prod
+ALM-01443,2026-09-10T02:27:53+03:00,syslog,user-02,user-db,2,MEM_HIGH,Memory usage 57% on user-02,dc2,rack-B,prod
+ALM-01444,2026-09-10T02:28:00+03:00,cloudwatch,fraud-01,fraud-svc,2,LOGIN_FAIL,Login failures 71/min on fraud-svc,dc1,rack-B,prod
+ALM-01445,2026-09-10T02:28:04+03:00,zabbix,order-02,order-api,2,LOGIN_FAIL,Login failures 20/min on order-api,dc2,rack-B,prod
+ALM-01446,2026-09-10T02:28:10+03:00,syslog,user-02,user-db,2,MEM_HIGH,Memory usage 41% on user-02,dc2,rack-B,prod
+ALM-01447,2026-09-10T02:28:10+03:00,prometheus,email-01,email-svc,2,AGENT_RESTART,Monitoring agent restarted on email-01,dc1,rack-A,prod
+ALM-01448,2026-09-10T02:28:12+03:00,zabbix,cart-02,cart-api,2,CACHE_MISS,Cache miss ratio 23% on cart-api,dc1,rack-A,prod
+ALM-01449,2026-09-10T02:28:12+03:00,zabbix,cdn-02,cdn-edge,3,CPU_HIGH,CPU usage 2% on cdn-02,dc1,rack-A,prod
+ALM-01450,2026-09-10T02:28:16+03:00,cloudwatch,order-01,order-db,2,CERT_EXPIRY,TLS certificate expires in 1 days,dc2,rack-C,prod
+ALM-01451,2026-09-10T02:28:18+03:00,zabbix,catalog-02,catalog-db,2,NTP_DRIFT,Clock drift 6ms on catalog-02,dc2,rack-B,prod
+ALM-01452,2026-09-10T02:28:26+03:00,prometheus,order-01,order-api,2,JOB_RETRY,Batch job retry #29 on order-api,dc1,rack-A,prod
+ALM-01453,2026-09-10T02:28:31+03:00,prometheus,backup-02,backup-svc,2,MEM_HIGH,Memory usage 78% on backup-02,dc2,rack-B,prod
+ALM-01454,2026-09-10T02:28:33+03:00,cloudwatch,email-01,email-svc,2,MEM_HIGH,Memory usage 22% on email-01,dc1,rack-A,prod
+ALM-01455,2026-09-10T02:28:35+03:00,zabbix,ledger-02,ledger-svc,2,LOGIN_FAIL,Login failures 30/min on ledger-svc,dc1,rack-A,prod
+ALM-01456,2026-09-10T02:28:36+03:00,prometheus,user-01,user-db,2,BACKUP_FAIL,Backup job failed on user-01,dc1,rack-A,prod
+ALM-01457,2026-09-10T02:28:37+03:00,prometheus,batch-02,batch-scheduler,2,FS_INODES,Inode usage 43% on batch-02,dc1,rack-A,prod
+ALM-01458,2026-09-10T02:28:40+03:00,prometheus,order-01,order-api,3,JOB_RETRY,Batch job retry #77 on order-api,dc1,rack-A,prod
+ALM-01459,2026-09-10T02:28:41+03:00,prometheus,ledger-02,ledger-svc,2,CERT_EXPIRY,TLS certificate expires in 43 days,dc1,rack-A,prod
+ALM-01460,2026-09-10T02:28:44+03:00,syslog,ledger-01,ledger-svc,1,CONFIG_RELOAD,Config reloaded on ledger-01,dc2,rack-C,prod
+ALM-01461,2026-09-10T02:28:46+03:00,prometheus,user-01,user-db,2,LOGIN_FAIL,Login failures 14/min on user-db,dc1,rack-A,prod
+ALM-01462,2026-09-10T02:28:50+03:00,cloudwatch,api-02,api-gateway,2,FS_INODES,Inode usage 48% on api-02,dc1,rack-C,prod
+ALM-01463,2026-09-10T02:28:50+03:00,cloudwatch,api-01,api-gateway,2,BACKUP_FAIL,Backup job failed on api-01,dc1,rack-B,prod
+ALM-01464,2026-09-10T02:28:52+03:00,cloudwatch,payment-01,payment-api,2,JOB_RETRY,Batch job retry #34 on payment-api,dc1,rack-B,prod
+ALM-01465,2026-09-10T02:28:53+03:00,syslog,notification-01,notification-svc,2,CPU_HIGH,CPU usage 16% on notification-01,dc1,rack-B,prod
+ALM-01466,2026-09-10T02:28:56+03:00,syslog,checkout-01,checkout-api,3,LOGIN_FAIL,Login failures 25/min on checkout-api,dc2,rack-C,prod
+ALM-01467,2026-09-10T02:29:00+03:00,syslog,order-01,order-db,3,DISK_HIGH,Disk usage 89% on /data (order-01),dc2,rack-C,prod
+ALM-01468,2026-09-10T02:29:03+03:00,cloudwatch,stage-01,checkout-api,2,CERT_EXPIRY,TLS certificate expires in 53 days,dc1,rack-C,staging
+ALM-01469,2026-09-10T02:29:15+03:00,cloudwatch,fraud-01,fraud-svc,2,CERT_EXPIRY,TLS certificate expires in 27 days,dc1,rack-B,prod
+ALM-01470,2026-09-10T02:29:22+03:00,prometheus,fraud-02,fraud-svc,2,BACKUP_FAIL,Backup job failed on fraud-02,dc1,rack-C,prod
+ALM-01471,2026-09-10T02:29:24+03:00,syslog,report-01,report-svc,2,BACKUP_FAIL,Backup job failed on report-01,dc1,rack-B,prod
+ALM-01472,2026-09-10T02:29:26+03:00,syslog,batch-02,batch-scheduler,2,CACHE_MISS,Cache miss ratio 50% on batch-scheduler,dc1,rack-A,prod
+ALM-01473,2026-09-10T02:29:37+03:00,prometheus,catalog-02,catalog-db,2,FS_INODES,Inode usage 39% on catalog-02,dc2,rack-B,prod
+ALM-01474,2026-09-10T02:29:57+03:00,appdynamics,payment-01,payment-api,2,NTP_DRIFT,Clock drift 75ms on payment-01,dc1,rack-B,prod
+ALM-01475,2026-09-10T02:29:59+03:00,cloudwatch,checkout-02,checkout-api,2,MEM_HIGH,Memory usage 57% on checkout-02,dc1,rack-A,prod
+ALM-01476,2026-09-10T02:30:00+03:00,syslog,payment-02,payment-api,2,MEM_HIGH,Memory usage 66% on payment-02,dc1,rack-C,prod
+ALM-01477,2026-09-10T02:30:03+03:00,cloudwatch,cart-02,cart-api,2,AGENT_RESTART,Monitoring agent restarted on cart-02,dc1,rack-A,prod
+ALM-01478,2026-09-10T02:30:03+03:00,prometheus,kafka-01,kafka,1,CONFIG_RELOAD,Config reloaded on kafka-01,dc1,rack-B,prod
+ALM-01479,2026-09-10T02:30:05+03:00,syslog,cdn-02,cdn-edge,1,DEPLOY_START,Deployment started for cdn-edge,dc1,rack-A,prod
+ALM-01480,2026-09-10T02:30:06+03:00,appdynamics,cart-01,cart-api,3,FS_INODES,Inode usage 68% on cart-01,dc2,rack-C,prod
+ALM-01481,2026-09-10T02:30:06+03:00,appdynamics,inventory-02,inventory-api,2,LOGIN_FAIL,Login failures 67/min on inventory-api,dc1,rack-A,prod
+ALM-01482,2026-09-10T02:30:09+03:00,prometheus,catalog-01,catalog-api,2,AGENT_RESTART,Monitoring agent restarted on catalog-01,dc1,rack-A,prod
+ALM-01483,2026-09-10T02:30:13+03:00,prometheus,kafka-01,kafka,3,QUEUE_LAG,Consumer lag 66844 messages on kafka,dc1,rack-B,prod
+ALM-01484,2026-09-10T02:30:14+03:00,appdynamics,batch-02,batch-scheduler,2,AGENT_RESTART,Monitoring agent restarted on batch-02,dc1,rack-A,prod
+ALM-01485,2026-09-10T02:30:18+03:00,appdynamics,cart-01,cart-api,2,LOGIN_FAIL,Login failures 33/min on cart-api,dc2,rack-C,prod
+ALM-01486,2026-09-10T02:30:21+03:00,syslog,stage-01,checkout-api,1,CONFIG_RELOAD,Config reloaded on stage-01,dc1,rack-C,staging
+ALM-01487,2026-09-10T02:30:21+03:00,zabbix,order-02,order-db,2,NTP_DRIFT,Clock drift 19ms on order-02,dc1,rack-A,prod
+ALM-01488,2026-09-10T02:30:25+03:00,appdynamics,auth-02,auth-api,3,CERT_EXPIRY,TLS certificate expires in 77 days,dc2,rack-B,prod
+ALM-01489,2026-09-10T02:30:30+03:00,cloudwatch,order-01,order-db,3,DISK_HIGH,Disk usage 89% on /data (order-01),dc2,rack-C,prod
+ALM-01490,2026-09-10T02:30:30+03:00,prometheus,object-01,object-storage,2,NTP_DRIFT,Clock drift 52ms on object-01,dc1,rack-A,prod
+ALM-01491,2026-09-10T02:30:33+03:00,cloudwatch,order-01,order-db,2,LOGIN_FAIL,Login failures 28/min on order-db,dc2,rack-C,prod
+ALM-01492,2026-09-10T02:30:40+03:00,appdynamics,order-02,order-db,2,LOGIN_FAIL,Login failures 37/min on order-db,dc1,rack-A,prod
+ALM-01493,2026-09-10T02:30:47+03:00,zabbix,cart-02,cart-api,1,CONFIG_RELOAD,Config reloaded on cart-02,dc1,rack-A,prod
+ALM-01494,2026-09-10T02:30:48+03:00,zabbix,cart-01,cart-api,2,CERT_EXPIRY,TLS certificate expires in 52 days,dc2,rack-C,prod
+ALM-01495,2026-09-10T02:30:51+03:00,zabbix,payment-02,payment-db,1,DEPLOY_START,Deployment started for payment-db,dc1,rack-C,prod
+ALM-01496,2026-09-10T02:30:55+03:00,appdynamics,inventory-02,inventory-api,2,MEM_HIGH,Memory usage 64% on inventory-02,dc1,rack-A,prod
+ALM-01497,2026-09-10T02:30:58+03:00,cloudwatch,catalog-01,catalog-db,2,AGENT_RESTART,Monitoring agent restarted on catalog-01,dc1,rack-A,prod
+ALM-01498,2026-09-10T02:31:00+03:00,cloudwatch,ledger-01,ledger-svc,2,CACHE_MISS,Cache miss ratio 36% on ledger-svc,dc2,rack-C,prod
+ALM-01499,2026-09-10T02:31:02+03:00,syslog,cdn-01,cdn-edge,2,CACHE_MISS,Cache miss ratio 36% on cdn-edge,dc2,rack-C,prod

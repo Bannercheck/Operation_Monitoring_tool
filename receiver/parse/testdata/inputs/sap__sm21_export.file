@@ -1,0 +1,4 @@
+System log  PRD  16.09.2026
+02:14:50 DIA  001 100 SAPUSER  SE38  BY 4 Database error -10709 at CON access to table
+02:14:51 UPD  003 100 BATCHUSR SM50  R6 8 Update terminated; work process aborted (rc=8)
+02:14:52 BTC  005 100 BATCHUSR SM37  EP 2 Job PAYRUN_NIGHTLY started

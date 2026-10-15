@@ -1,0 +1,241 @@
+timestamp,severity,host,service,message
+2026-10-14T09:30:00.789Z,WARN,prd-api-01,payment-api,retry 3/5 order=111551
+2026-10-14T09:30:00.466Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.824Z,WARN,prd-api-01,payment-api,retry 3/5 order=426646
+2026-10-14T09:30:00.448Z,WARN,prd-api-01,payment-api,retry 3/5 order=57707
+2026-10-14T09:30:00.949Z,ERROR,prd-api-01,payment-api,gateway timeout order=412991
+2026-10-14T09:30:00.621Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.937Z,ERROR,prd-api-01,payment-api,gateway timeout order=567875
+2026-10-14T09:30:00.324Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.056Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.710Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.662Z,WARN,prd-api-01,payment-api,retry 3/5 order=652225
+2026-10-14T09:30:00.969Z,ERROR,prd-api-01,payment-api,gateway timeout order=798527
+2026-10-14T09:30:00.698Z,WARN,prd-api-01,payment-api,retry 3/5 order=990549
+2026-10-14T09:30:00.813Z,WARN,prd-api-01,payment-api,retry 3/5 order=710142
+2026-10-14T09:30:00.695Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.922Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.240Z,WARN,prd-api-01,payment-api,retry 3/5 order=429224
+2026-10-14T09:30:00.663Z,WARN,prd-api-01,payment-api,retry 3/5 order=57334
+2026-10-14T09:30:00.620Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.472Z,ERROR,prd-api-01,payment-api,gateway timeout order=785244
+2026-10-14T09:30:00.378Z,ERROR,prd-api-01,payment-api,gateway timeout order=459898
+2026-10-14T09:30:00.869Z,WARN,prd-api-01,payment-api,retry 3/5 order=241085
+2026-10-14T09:30:00.147Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.700Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.789Z,WARN,prd-api-01,payment-api,retry 3/5 order=318280
+2026-10-14T09:30:00.149Z,ERROR,prd-api-01,payment-api,gateway timeout order=68377
+2026-10-14T09:30:00.798Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.536Z,ERROR,prd-api-01,payment-api,gateway timeout order=161503
+2026-10-14T09:30:00.601Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.631Z,ERROR,prd-api-01,payment-api,gateway timeout order=507104
+2026-10-14T09:30:00.826Z,WARN,prd-api-01,payment-api,retry 3/5 order=109363
+2026-10-14T09:30:00.124Z,ERROR,prd-api-01,payment-api,gateway timeout order=463334
+2026-10-14T09:30:00.202Z,WARN,prd-api-01,payment-api,retry 3/5 order=669301
+2026-10-14T09:30:00.295Z,ERROR,prd-api-01,payment-api,gateway timeout order=373712
+2026-10-14T09:30:00.573Z,WARN,prd-api-01,payment-api,retry 3/5 order=322081
+2026-10-14T09:30:00.939Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.496Z,ERROR,prd-api-01,payment-api,gateway timeout order=652174
+2026-10-14T09:30:00.710Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.807Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.883Z,ERROR,prd-api-01,payment-api,gateway timeout order=167267
+2026-10-14T09:30:00.909Z,WARN,prd-api-01,payment-api,retry 3/5 order=451867
+2026-10-14T09:30:00.272Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.809Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.246Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.011Z,ERROR,prd-api-01,payment-api,gateway timeout order=883600
+2026-10-14T09:30:00.801Z,WARN,prd-api-01,payment-api,retry 3/5 order=602430
+2026-10-14T09:30:00.205Z,WARN,prd-api-01,payment-api,retry 3/5 order=419966
+2026-10-14T09:30:00.170Z,ERROR,prd-api-01,payment-api,gateway timeout order=26382
+2026-10-14T09:30:00.394Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.684Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.079Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.649Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.473Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.233Z,ERROR,prd-api-01,payment-api,gateway timeout order=262146
+2026-10-14T09:30:00.450Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.217Z,WARN,prd-api-01,payment-api,retry 3/5 order=668654
+2026-10-14T09:30:00.962Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.166Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.296Z,ERROR,prd-api-01,payment-api,gateway timeout order=211686
+2026-10-14T09:30:00.672Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.399Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.725Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.851Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.933Z,ERROR,prd-api-01,payment-api,gateway timeout order=159060
+2026-10-14T09:30:00.957Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.249Z,ERROR,prd-api-01,payment-api,gateway timeout order=432026
+2026-10-14T09:30:00.197Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.255Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.227Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.817Z,ERROR,prd-api-01,payment-api,gateway timeout order=470132
+2026-10-14T09:30:00.455Z,ERROR,prd-api-01,payment-api,gateway timeout order=412945
+2026-10-14T09:30:00.557Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.505Z,ERROR,prd-api-01,payment-api,gateway timeout order=626442
+2026-10-14T09:30:00.240Z,WARN,prd-api-01,payment-api,retry 3/5 order=572796
+2026-10-14T09:30:00.541Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.147Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.822Z,WARN,prd-api-01,payment-api,retry 3/5 order=630209
+2026-10-14T09:30:00.942Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.623Z,ERROR,prd-api-01,payment-api,gateway timeout order=202270
+2026-10-14T09:30:00.853Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.585Z,ERROR,prd-api-01,payment-api,gateway timeout order=541266
+2026-10-14T09:30:00.710Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.139Z,WARN,prd-api-01,payment-api,retry 3/5 order=109378
+2026-10-14T09:30:00.687Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.092Z,ERROR,prd-api-01,payment-api,gateway timeout order=510438
+2026-10-14T09:30:00.205Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.289Z,ERROR,prd-api-01,payment-api,gateway timeout order=266443
+2026-10-14T09:30:00.232Z,ERROR,prd-api-01,payment-api,gateway timeout order=151648
+2026-10-14T09:30:00.620Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.318Z,WARN,prd-api-01,payment-api,retry 3/5 order=541109
+2026-10-14T09:30:00.304Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.257Z,ERROR,prd-api-01,payment-api,gateway timeout order=202467
+2026-10-14T09:30:00.152Z,WARN,prd-api-01,payment-api,retry 3/5 order=717982
+2026-10-14T09:30:00.146Z,WARN,prd-api-01,payment-api,retry 3/5 order=45980
+2026-10-14T09:30:00.758Z,ERROR,prd-api-01,payment-api,gateway timeout order=872076
+2026-10-14T09:30:00.987Z,ERROR,prd-api-01,payment-api,gateway timeout order=770624
+2026-10-14T09:30:00.795Z,WARN,prd-api-01,payment-api,retry 3/5 order=910069
+2026-10-14T09:30:00.201Z,ERROR,prd-api-01,payment-api,gateway timeout order=467279
+2026-10-14T09:30:00.160Z,ERROR,prd-api-01,payment-api,gateway timeout order=302762
+2026-10-14T09:30:00.451Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.826Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.565Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.313Z,ERROR,prd-api-01,payment-api,gateway timeout order=231849
+2026-10-14T09:30:00.644Z,WARN,prd-api-01,payment-api,retry 3/5 order=321754
+2026-10-14T09:30:00.715Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.278Z,ERROR,prd-api-01,payment-api,gateway timeout order=878895
+2026-10-14T09:30:00.809Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.169Z,ERROR,prd-api-01,payment-api,gateway timeout order=83081
+2026-10-14T09:30:00.570Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.414Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.504Z,ERROR,prd-api-01,payment-api,gateway timeout order=324722
+2026-10-14T09:30:00.920Z,WARN,prd-api-01,payment-api,retry 3/5 order=61431
+2026-10-14T09:30:00.328Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.184Z,WARN,prd-api-01,payment-api,retry 3/5 order=433221
+2026-10-14T09:30:00.101Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.145Z,ERROR,prd-api-01,payment-api,gateway timeout order=575775
+2026-10-14T09:30:00.120Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.843Z,WARN,prd-api-01,payment-api,retry 3/5 order=183745
+2026-10-14T09:30:00.674Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.120Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.426Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.572Z,ERROR,prd-api-01,payment-api,gateway timeout order=598918
+2026-10-14T09:30:00.144Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.408Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.148Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.776Z,WARN,prd-api-01,payment-api,retry 3/5 order=981581
+2026-10-14T09:30:00.767Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.594Z,ERROR,prd-api-01,payment-api,gateway timeout order=533999
+2026-10-14T09:30:00.622Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.354Z,ERROR,prd-api-01,payment-api,gateway timeout order=24342
+2026-10-14T09:30:00.942Z,WARN,prd-api-01,payment-api,retry 3/5 order=675935
+2026-10-14T09:30:00.555Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.004Z,WARN,prd-api-01,payment-api,retry 3/5 order=344055
+2026-10-14T09:30:00.535Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.688Z,ERROR,prd-api-01,payment-api,gateway timeout order=157356
+2026-10-14T09:30:00.822Z,WARN,prd-api-01,payment-api,retry 3/5 order=436366
+2026-10-14T09:30:00.660Z,WARN,prd-api-01,payment-api,retry 3/5 order=982978
+2026-10-14T09:30:00.084Z,WARN,prd-api-01,payment-api,retry 3/5 order=986817
+2026-10-14T09:30:00.174Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.921Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.377Z,ERROR,prd-api-01,payment-api,gateway timeout order=119547
+2026-10-14T09:30:00.640Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.185Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.971Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.237Z,ERROR,prd-api-01,payment-api,gateway timeout order=491036
+2026-10-14T09:30:00.302Z,WARN,prd-api-01,payment-api,retry 3/5 order=498301
+2026-10-14T09:30:00.246Z,WARN,prd-api-01,payment-api,retry 3/5 order=584330
+2026-10-14T09:30:00.666Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.275Z,ERROR,prd-api-01,payment-api,gateway timeout order=761029
+2026-10-14T09:30:00.290Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.892Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.373Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.777Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.598Z,ERROR,prd-api-01,payment-api,gateway timeout order=390538
+2026-10-14T09:30:00.643Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.117Z,WARN,prd-api-01,payment-api,retry 3/5 order=900928
+2026-10-14T09:30:00.525Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.239Z,ERROR,prd-api-01,payment-api,gateway timeout order=875042
+2026-10-14T09:30:00.837Z,ERROR,prd-api-01,payment-api,gateway timeout order=404706
+2026-10-14T09:30:00.673Z,ERROR,prd-api-01,payment-api,gateway timeout order=584045
+2026-10-14T09:30:00.828Z,WARN,prd-api-01,payment-api,retry 3/5 order=518741
+2026-10-14T09:30:00.990Z,ERROR,prd-api-01,payment-api,gateway timeout order=661712
+2026-10-14T09:30:00.761Z,ERROR,prd-api-01,payment-api,gateway timeout order=246859
+2026-10-14T09:30:00.896Z,WARN,prd-api-01,payment-api,retry 3/5 order=398840
+2026-10-14T09:30:00.136Z,ERROR,prd-api-01,payment-api,gateway timeout order=404466
+2026-10-14T09:30:00.785Z,ERROR,prd-api-01,payment-api,gateway timeout order=212941
+2026-10-14T09:30:00.651Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.001Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.332Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.982Z,ERROR,prd-api-01,payment-api,gateway timeout order=172382
+2026-10-14T09:30:00.770Z,ERROR,prd-api-01,payment-api,gateway timeout order=36780
+2026-10-14T09:30:00.467Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.089Z,WARN,prd-api-01,payment-api,retry 3/5 order=977324
+2026-10-14T09:30:00.436Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.308Z,WARN,prd-api-01,payment-api,retry 3/5 order=437290
+2026-10-14T09:30:00.124Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.582Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.959Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.239Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.152Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.474Z,ERROR,prd-api-01,payment-api,gateway timeout order=887986
+2026-10-14T09:30:00.012Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.612Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.711Z,ERROR,prd-api-01,payment-api,gateway timeout order=43505
+2026-10-14T09:30:00.031Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.052Z,WARN,prd-api-01,payment-api,retry 3/5 order=151131
+2026-10-14T09:30:00.483Z,ERROR,prd-api-01,payment-api,gateway timeout order=881038
+2026-10-14T09:30:00.374Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.696Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.079Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.852Z,ERROR,prd-api-01,payment-api,gateway timeout order=896846
+2026-10-14T09:30:00.683Z,WARN,prd-api-01,payment-api,retry 3/5 order=889217
+2026-10-14T09:30:00.764Z,WARN,prd-api-01,payment-api,retry 3/5 order=270027
+2026-10-14T09:30:00.014Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.060Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.513Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.177Z,WARN,prd-api-01,payment-api,retry 3/5 order=453397
+2026-10-14T09:30:00.556Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.434Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.567Z,ERROR,prd-api-01,payment-api,gateway timeout order=80448
+2026-10-14T09:30:00.988Z,ERROR,prd-api-01,payment-api,gateway timeout order=13826
+2026-10-14T09:30:00.136Z,ERROR,prd-api-01,payment-api,gateway timeout order=767991
+2026-10-14T09:30:00.474Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.657Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.125Z,ERROR,prd-api-01,payment-api,gateway timeout order=55536
+2026-10-14T09:30:00.864Z,WARN,prd-api-01,payment-api,retry 3/5 order=53991
+2026-10-14T09:30:00.248Z,WARN,prd-api-01,payment-api,retry 3/5 order=258817
+2026-10-14T09:30:00.755Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.625Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.940Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.474Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.892Z,WARN,prd-api-01,payment-api,retry 3/5 order=422401
+2026-10-14T09:30:00.430Z,ERROR,prd-api-01,payment-api,gateway timeout order=828277
+2026-10-14T09:30:00.810Z,WARN,prd-api-01,payment-api,retry 3/5 order=450750
+2026-10-14T09:30:00.474Z,WARN,prd-api-01,payment-api,retry 3/5 order=397743
+2026-10-14T09:30:00.534Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.986Z,WARN,prd-api-01,payment-api,retry 3/5 order=946262
+2026-10-14T09:30:00.284Z,ERROR,prd-api-01,order-service,order-service failed: connection timeout to db-01 on port 8080
+2026-10-14T09:30:00.281Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.249Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.255Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.298Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.637Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.121Z,WARN,prd-api-01,payment-api,retry 3/5 order=443599
+2026-10-14T09:30:00.710Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.337Z,WARN,prd-api-01,payment-api,retry 3/5 order=239426
+2026-10-14T09:30:00.074Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.590Z,ERROR,prd-api-01,payment-api,gateway timeout order=229403
+2026-10-14T09:30:00.710Z,ERROR,prd-api-01,payment-api,gateway timeout order=625125
+2026-10-14T09:30:00.826Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.269Z,WARN,prd-api-01,payment-api,retry 3/5 order=815131
+2026-10-14T09:30:00.412Z,INFO,prd-api-01,order-service,order-service started on port 8080
+2026-10-14T09:30:00.756Z,WARN,prd-api-01,payment-api,retry 3/5 order=495570
+2026-10-14T09:30:00.970Z,WARN,prd-api-01,payment-api,retry 3/5 order=439280
+2026-10-14T09:30:00.433Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.331Z,INFO,prd-api-02,auth-api,user login ok user=ali
+2026-10-14T09:30:00.466Z,WARN,prd-api-01,payment-api,retry 3/5 order=53492
+2026-10-14T09:30:00.995Z,WARN,prd-api-01,payment-api,retry 3/5 order=507249
+2026-10-14T09:30:00.547Z,WARN,prd-api-01,payment-api,retry 3/5 order=566894
+2026-10-14T09:30:00.458Z,WARN,prd-api-01,payment-api,retry 3/5 order=997495

@@ -207,3 +207,49 @@ class RangeView:
         return {"lines": [{"ts": o.timestamp.isoformat(), "severity": o.severity, "host": o.host, "service": o.service, "env": o.environment,
                            "message": o.message, "source": o.source, "agent": o.attributes.get("agent", "")} for o in rows],
                 "next": rows[-1].timestamp.isoformat() if more and rows else None, "scanned": scanned}
+
+    # ---------------------------------------------------------------- what is behind a headline number
+    def detail(self, s, e, env=None, host=None) -> dict:
+        """The detail behind the four headline numbers for the range (same shape as LiveStore.slo_detail, plus services):
+        errors by service / host, the message groups that lower availability, per-bar availability and error-budget burn,
+        latency per service and the slowest lines, the newest ERROR+ lines."""
+        from . import scenario
+        minutes = max(1, round((e - s).total_seconds() / 60))
+        step = step_minutes(minutes)
+        fig = self._figures(s, e, env, host, step)
+        r, mm, info = self.rollup_for(s, e)
+        k = info.get("sample", 1)
+        target = scenario.SLO["availability"]; allowed = 1 - target
+        per, cum_e, cum_t = [], 0, 0
+        for b in fig.get("series", []):
+            cum_e += b["errors"]; cum_t += b["total"]
+            per.append({"minute": datetime.fromtimestamp(b["t"], UTC).isoformat(), "total": b["total"], "errors": b["errors"],
+                        "availability": (1 - b["errors"] / b["total"]) if b["total"] else None,
+                        "budget_left": max(0.0, 1 - (cum_e / cum_t) / allowed) if cum_t and allowed > 0 else None})
+        out = {"source": fig["source"], "sample": k, "step_min": step, "total": fig["total"], "errors": fig["errors"], "availability": fig.get("availability"),
+               "p95_ms": fig.get("p95_ms"), "allowed_errors": int(allowed * fig["total"]), "slo": scenario.SLO, "sla": scenario.SLA,
+               "error_budget": (max(0.0, 1 - (1 - fig["availability"]) / allowed) if fig.get("availability") is not None and allowed > 0 else None),
+               "breach_minutes": sum(1 for x in per if x["availability"] is not None and x["availability"] < target), "per_minute": per,
+               "by_service": [], "by_host": [], "templates": [], "latency": [], "slowest": [], "recent": [], "services": []}
+        if r is not None:
+            d = r.detail(mm, env, host)
+            out["by_host"] = [(h, n * k) for h, n in d["by_host"]]
+            out["latency"], out["slowest"] = d["latency"], d["slowest"]
+            out["recent"] = [{"ts": x[0], "severity": x[1], "service": x[2], "host": x[3], "message": x[4]} for x in d["errors_recent"]]
+            g = r.groups(mm, env, host, min_sev="ERROR", limit=10)["groups"]
+            out["templates"] = [{"template": x["template"], "count": x["count"] * k, "severity": x["severity"], "first": x["first"], "last": x["last"],
+                                 "services": [x["service"]], "hosts": [h["host"] for h in x["hosts"]], "sample": x["sample"]} for x in g]
+            out["services"] = [{**x, "lines": x["lines"] * k, "errors": x["errors"] * k} for x in r.services(mm, env, host)]
+            out["by_service"] = [(x["service"], x["errors"]) for x in out["services"] if x["errors"]]
+        elif self.history is not None and not host:
+            rows = self.history.kb._exec("SELECT service, SUM(total) AS t, SUM(errors) AS e FROM slo_hour_service WHERE hour >= ? AND hour <= ?" + (" AND env = ?" if env else "") + " GROUP BY service",
+                                         (s.strftime("%Y-%m-%dT%H"), e.strftime("%Y-%m-%dT%H"), *([env] if env else [])))
+            out["services"] = sorted(({"service": x["service"], "lines": int(x["t"] or 0), "errors": int(x["e"] or 0), "error_rate": round(int(x["e"] or 0) / int(x["t"]), 5) if x["t"] else 0,
+                                       "hosts": None, "per_min": round(int(x["t"] or 0) / minutes, 1), "p95_ms": None} for x in rows), key=lambda x: (-x["errors"], -x["lines"]))
+            out["by_service"] = [(x["service"], x["errors"]) for x in out["services"] if x["errors"]]
+            by_h: dict[str, int] = {}
+            for x in self._hist_rows(s, e, env):
+                if x["errors"]:
+                    by_h[x["host"]] = by_h.get(x["host"], 0) + x["errors"]
+            out["by_host"] = sorted(by_h.items(), key=lambda x: -x[1])
+        return out

@@ -1,0 +1,240 @@
+{"@timestamp":"2026-10-14T09:30:00.070Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.640Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.100Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.399Z","log.level":"error","message":"gateway timeout order=965644","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.444Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.826Z","log.level":"warn","message":"retry 3/5 order=830896","service.name":"payment-api","host.name":"prd-api-01"}
+{"@timestamp":"2026-10-14T09:30:00.655Z","log.level":"warn","message":"retry 3/5 order=895008","service.name":"payment-api","host.name":"prd-api-01"}
+{"@timestamp":"2026-10-14T09:30:00.205Z","log.level":"error","message":"gateway timeout order=822231","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.100Z","log.level":"warn","message":"retry 3/5 order=945024","service.name":"payment-api","host.name":"prd-api-01"}
+{"@timestamp":"2026-10-14T09:30:00.630Z","log.level":"warn","message":"retry 3/5 order=183835","service.name":"payment-api","host.name":"prd-api-01"}
+{"@timestamp":"2026-10-14T09:30:00.197Z","log.level":"warn","message":"retry 3/5 order=258835","service.name":"payment-api","host.name":"prd-api-01"}
+{"@timestamp":"2026-10-14T09:30:00.786Z","log.level":"error","message":"gateway timeout order=825788","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.504Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.071Z","log.level":"warn","message":"retry 3/5 order=34751","service.name":"payment-api","host.name":"prd-api-01"}
+{"@timestamp":"2026-10-14T09:30:00.382Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.362Z","log.level":"warn","message":"retry 3/5 order=348111","service.name":"payment-api","host.name":"prd-api-01"}
+{"@timestamp":"2026-10-14T09:30:00.597Z","log.level":"info","message":"order-service failed: connection timeout to db-01 on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.556Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.275Z","log.level":"error","message":"gateway timeout order=292098","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.257Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.093Z","log.level":"error","message":"gateway timeout order=134426","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.091Z","log.level":"warn","message":"retry 3/5 order=236198","service.name":"payment-api","host.name":"prd-api-01"}
+{"@timestamp":"2026-10-14T09:30:00.225Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.868Z","log.level":"warn","message":"retry 3/5 order=362713","service.name":"payment-api","host.name":"prd-api-01"}
+{"@timestamp":"2026-10-14T09:30:00.282Z","log.level":"error","message":"gateway timeout order=947673","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.603Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.722Z","log.level":"error","message":"gateway timeout order=658050","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.102Z","log.level":"warn","message":"retry 3/5 order=354745","service.name":"payment-api","host.name":"prd-api-01"}
+{"@timestamp":"2026-10-14T09:30:00.270Z","log.level":"warn","message":"retry 3/5 order=590096","service.name":"payment-api","host.name":"prd-api-01"}
+{"@timestamp":"2026-10-14T09:30:00.237Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.125Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.518Z","log.level":"error","message":"gateway timeout order=775963","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.985Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.845Z","log.level":"error","message":"gateway timeout order=302685","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.117Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.559Z","log.level":"error","message":"gateway timeout order=951653","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.391Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.320Z","log.level":"error","message":"gateway timeout order=865547","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.187Z","log.level":"warn","message":"retry 3/5 order=240461","service.name":"payment-api","host.name":"prd-api-01"}
+{"@timestamp":"2026-10-14T09:30:00.781Z","log.level":"error","message":"gateway timeout order=648382","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.263Z","log.level":"warn","message":"retry 3/5 order=699402","service.name":"payment-api","host.name":"prd-api-01"}
+{"@timestamp":"2026-10-14T09:30:00.639Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.624Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.195Z","log.level":"error","message":"gateway timeout order=501037","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.189Z","log.level":"error","message":"gateway timeout order=335017","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.693Z","log.level":"warn","message":"retry 3/5 order=161282","service.name":"payment-api","host.name":"prd-api-01"}
+{"@timestamp":"2026-10-14T09:30:00.083Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.017Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.498Z","log.level":"warn","message":"retry 3/5 order=217991","service.name":"payment-api","host.name":"prd-api-01"}
+{"@timestamp":"2026-10-14T09:30:00.368Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.967Z","log.level":"warn","message":"retry 3/5 order=646516","service.name":"payment-api","host.name":"prd-api-01"}
+{"@timestamp":"2026-10-14T09:30:00.850Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.096Z","log.level":"error","message":"gateway timeout order=165809","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.512Z","log.level":"warn","message":"retry 3/5 order=248493","service.name":"payment-api","host.name":"prd-api-01"}
+{"@timestamp":"2026-10-14T09:30:00.054Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.103Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.776Z","log.level":"error","message":"gateway timeout order=128897","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.562Z","log.level":"warn","message":"retry 3/5 order=819111","service.name":"payment-api","host.name":"prd-api-01"}
+{"@timestamp":"2026-10-14T09:30:00.062Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.376Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.532Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.594Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.142Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.718Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.886Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.659Z","log.level":"warn","message":"retry 3/5 order=497375","service.name":"payment-api","host.name":"prd-api-01"}
+{"@timestamp":"2026-10-14T09:30:00.348Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.502Z","log.level":"error","message":"gateway timeout order=233771","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.641Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.537Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.048Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.901Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.990Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.203Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.399Z","log.level":"error","message":"gateway timeout order=75924","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.080Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.490Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.729Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.320Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.492Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.075Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.066Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.430Z","log.level":"error","message":"gateway timeout order=485611","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.168Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.171Z","log.level":"error","message":"gateway timeout order=998385","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.978Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.558Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.958Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.203Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.995Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.649Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.115Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.780Z","log.level":"warn","message":"retry 3/5 order=544723","service.name":"payment-api","host.name":"prd-api-01"}
+{"@timestamp":"2026-10-14T09:30:00.327Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.189Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.098Z","log.level":"warn","message":"retry 3/5 order=671040","service.name":"payment-api","host.name":"prd-api-01"}
+{"@timestamp":"2026-10-14T09:30:00.673Z","log.level":"error","message":"gateway timeout order=384462","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.597Z","log.level":"warn","message":"retry 3/5 order=630967","service.name":"payment-api","host.name":"prd-api-01"}
+{"@timestamp":"2026-10-14T09:30:00.701Z","log.level":"warn","message":"retry 3/5 order=799430","service.name":"payment-api","host.name":"prd-api-01"}
+{"@timestamp":"2026-10-14T09:30:00.116Z","log.level":"warn","message":"retry 3/5 order=317554","service.name":"payment-api","host.name":"prd-api-01"}
+{"@timestamp":"2026-10-14T09:30:00.603Z","log.level":"error","message":"gateway timeout order=391149","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.324Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.631Z","log.level":"warn","message":"retry 3/5 order=643866","service.name":"payment-api","host.name":"prd-api-01"}
+{"@timestamp":"2026-10-14T09:30:00.146Z","log.level":"error","message":"gateway timeout order=902430","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.021Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.636Z","log.level":"error","message":"gateway timeout order=385020","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.333Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.818Z","log.level":"error","message":"gateway timeout order=666271","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.083Z","log.level":"error","message":"gateway timeout order=59071","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.212Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.154Z","log.level":"error","message":"gateway timeout order=177408","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.271Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.857Z","log.level":"warn","message":"retry 3/5 order=71261","service.name":"payment-api","host.name":"prd-api-01"}
+{"@timestamp":"2026-10-14T09:30:00.418Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.069Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.577Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.902Z","log.level":"warn","message":"retry 3/5 order=335965","service.name":"payment-api","host.name":"prd-api-01"}
+{"@timestamp":"2026-10-14T09:30:00.655Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.932Z","log.level":"error","message":"gateway timeout order=395049","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.824Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.468Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.517Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.739Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.198Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.747Z","log.level":"error","message":"gateway timeout order=814001","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.191Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.646Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.945Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.200Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.475Z","log.level":"warn","message":"retry 3/5 order=420870","service.name":"payment-api","host.name":"prd-api-01"}
+{"@timestamp":"2026-10-14T09:30:00.185Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.370Z","log.level":"error","message":"gateway timeout order=229841","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.627Z","log.level":"warn","message":"retry 3/5 order=41915","service.name":"payment-api","host.name":"prd-api-01"}
+{"@timestamp":"2026-10-14T09:30:00.043Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.472Z","log.level":"warn","message":"retry 3/5 order=800247","service.name":"payment-api","host.name":"prd-api-01"}
+{"@timestamp":"2026-10-14T09:30:00.846Z","log.level":"warn","message":"retry 3/5 order=528059","service.name":"payment-api","host.name":"prd-api-01"}
+{"@timestamp":"2026-10-14T09:30:00.236Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.196Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.071Z","log.level":"warn","message":"retry 3/5 order=450552","service.name":"payment-api","host.name":"prd-api-01"}
+{"@timestamp":"2026-10-14T09:30:00.465Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.728Z","log.level":"error","message":"gateway timeout order=91072","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.639Z","log.level":"warn","message":"retry 3/5 order=961228","service.name":"payment-api","host.name":"prd-api-01"}
+{"@timestamp":"2026-10-14T09:30:00.014Z","log.level":"warn","message":"retry 3/5 order=940640","service.name":"payment-api","host.name":"prd-api-01"}
+{"@timestamp":"2026-10-14T09:30:00.034Z","log.level":"error","message":"gateway timeout order=958342","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.616Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.197Z","log.level":"error","message":"gateway timeout order=812471","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.203Z","log.level":"error","message":"gateway timeout order=388434","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.486Z","log.level":"error","message":"gateway timeout order=336840","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.247Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.932Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.746Z","log.level":"error","message":"gateway timeout order=319532","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.028Z","log.level":"error","message":"gateway timeout order=81752","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.698Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.851Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.707Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.011Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.332Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.536Z","log.level":"error","message":"gateway timeout order=979586","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.312Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.312Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.366Z","log.level":"warn","message":"retry 3/5 order=985235","service.name":"payment-api","host.name":"prd-api-01"}
+{"@timestamp":"2026-10-14T09:30:00.344Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.980Z","log.level":"warn","message":"retry 3/5 order=814115","service.name":"payment-api","host.name":"prd-api-01"}
+{"@timestamp":"2026-10-14T09:30:00.635Z","log.level":"error","message":"gateway timeout order=537410","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.698Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.180Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.979Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.042Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.146Z","log.level":"warn","message":"retry 3/5 order=522493","service.name":"payment-api","host.name":"prd-api-01"}
+{"@timestamp":"2026-10-14T09:30:00.926Z","log.level":"error","message":"gateway timeout order=794434","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.400Z","log.level":"warn","message":"retry 3/5 order=867925","service.name":"payment-api","host.name":"prd-api-01"}
+{"@timestamp":"2026-10-14T09:30:00.767Z","log.level":"error","message":"gateway timeout order=955982","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.341Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.081Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.157Z","log.level":"warn","message":"retry 3/5 order=167827","service.name":"payment-api","host.name":"prd-api-01"}
+{"@timestamp":"2026-10-14T09:30:00.499Z","log.level":"error","message":"gateway timeout order=127416","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.790Z","log.level":"warn","message":"retry 3/5 order=472256","service.name":"payment-api","host.name":"prd-api-01"}
+{"@timestamp":"2026-10-14T09:30:00.567Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.881Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.029Z","log.level":"error","message":"gateway timeout order=84958","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.621Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.458Z","log.level":"error","message":"gateway timeout order=692171","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.023Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.792Z","log.level":"error","message":"gateway timeout order=810139","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.120Z","log.level":"warn","message":"retry 3/5 order=425794","service.name":"payment-api","host.name":"prd-api-01"}
+{"@timestamp":"2026-10-14T09:30:00.178Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.084Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.280Z","log.level":"error","message":"gateway timeout order=444988","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.590Z","log.level":"warn","message":"retry 3/5 order=281289","service.name":"payment-api","host.name":"prd-api-01"}
+{"@timestamp":"2026-10-14T09:30:00.908Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.630Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.173Z","log.level":"error","message":"gateway timeout order=430178","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.357Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.829Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.557Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.878Z","log.level":"warn","message":"retry 3/5 order=662747","service.name":"payment-api","host.name":"prd-api-01"}
+{"@timestamp":"2026-10-14T09:30:00.225Z","log.level":"error","message":"gateway timeout order=887946","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.172Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.904Z","log.level":"error","message":"gateway timeout order=938462","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.471Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.610Z","log.level":"warn","message":"retry 3/5 order=118649","service.name":"payment-api","host.name":"prd-api-01"}
+{"@timestamp":"2026-10-14T09:30:00.510Z","log.level":"error","message":"gateway timeout order=317522","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.880Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.222Z","log.level":"warn","message":"retry 3/5 order=120511","service.name":"payment-api","host.name":"prd-api-01"}
+{"@timestamp":"2026-10-14T09:30:00.930Z","log.level":"warn","message":"retry 3/5 order=937307","service.name":"payment-api","host.name":"prd-api-01"}
+{"@timestamp":"2026-10-14T09:30:00.870Z","log.level":"warn","message":"retry 3/5 order=556947","service.name":"payment-api","host.name":"prd-api-01"}
+{"@timestamp":"2026-10-14T09:30:00.453Z","log.level":"error","message":"gateway timeout order=352176","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.271Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.312Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.189Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.275Z","log.level":"error","message":"gateway timeout order=898782","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.399Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.634Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.129Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.227Z","log.level":"error","message":"gateway timeout order=311448","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.027Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.513Z","log.level":"warn","message":"retry 3/5 order=710682","service.name":"payment-api","host.name":"prd-api-01"}
+{"@timestamp":"2026-10-14T09:30:00.839Z","log.level":"error","message":"gateway timeout order=424539","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.400Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.117Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.521Z","log.level":"warn","message":"retry 3/5 order=422761","service.name":"payment-api","host.name":"prd-api-01"}
+{"@timestamp":"2026-10-14T09:30:00.162Z","log.level":"warn","message":"retry 3/5 order=642035","service.name":"payment-api","host.name":"prd-api-01"}
+{"@timestamp":"2026-10-14T09:30:00.217Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.485Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.088Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.148Z","log.level":"error","message":"gateway timeout order=980516","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.812Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.631Z","log.level":"error","message":"gateway timeout order=196479","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.332Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.238Z","log.level":"error","message":"gateway timeout order=821189","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.259Z","log.level":"error","message":"gateway timeout order=581383","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.169Z","log.level":"warn","message":"retry 3/5 order=208543","service.name":"payment-api","host.name":"prd-api-01"}
+{"@timestamp":"2026-10-14T09:30:00.239Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.369Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.792Z","log.level":"info","message":"user login ok user=ali","service.name":"auth-api","host.name":"prd-api-02"}
+{"@timestamp":"2026-10-14T09:30:00.812Z","log.level":"error","message":"gateway timeout order=161063","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.829Z","log.level":"info","message":"order-service started on port 8080","service.name":"order-service","host.name":"prd-api-01","ecs.version":"8.11"}
+{"@timestamp":"2026-10-14T09:30:00.874Z","log.level":"error","message":"gateway timeout order=728173","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.776Z","log.level":"error","message":"gateway timeout order=583197","service.name":"payment-api","host.name":"prd-api-01","error.type":"ReadTimeout","labels":{"env":"prod"}}
+{"@timestamp":"2026-10-14T09:30:00.771Z","log.level":"warn","message":"retry 3/5 order=397894","service.name":"payment-api","host.name":"prd-api-01"}

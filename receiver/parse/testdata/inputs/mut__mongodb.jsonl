@@ -1,0 +1,240 @@
+{"t":{"$date":"2026-10-14T09:30:00.907Z"},"s":"W","c":"COMMAND","id":913301,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":603492}}
+{"t":{"$date":"2026-10-14T09:30:00.328Z"},"s":"W","c":"COMMAND","id":99731,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":839121}}
+{"t":{"$date":"2026-10-14T09:30:00.842Z"},"s":"E","c":"STORAGE","id":209767,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.328Z"},"s":"F","c":"CONTROL","id":681009,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":491678}}
+{"t":{"$date":"2026-10-14T09:30:00.490Z"},"s":"F","c":"CONTROL","id":343622,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":41707}}
+{"t":{"$date":"2026-10-14T09:30:00.161Z"},"s":"W","c":"COMMAND","id":656039,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":488643}}
+{"t":{"$date":"2026-10-14T09:30:00.448Z"},"s":"W","c":"COMMAND","id":708027,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":232374}}
+{"t":{"$date":"2026-10-14T09:30:00.074Z"},"s":"W","c":"COMMAND","id":93288,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":264295}}
+{"t":{"$date":"2026-10-14T09:30:00.121Z"},"s":"W","c":"COMMAND","id":369764,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":781926}}
+{"t":{"$date":"2026-10-14T09:30:00.938Z"},"s":"I","c":"NETWORK","id":17241,"ctx":"listener","msg":"Connection accepted","attr":{"remote":"10.0.4.12:25013","connectionId":88213}}
+{"t":{"$date":"2026-10-14T09:30:00.064Z"},"s":"E","c":"STORAGE","id":649722,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.957Z"},"s":"W","c":"COMMAND","id":134988,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":940329}}
+{"t":{"$date":"2026-10-14T09:30:00.646Z"},"s":"E","c":"STORAGE","id":859452,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.462Z"},"s":"E","c":"STORAGE","id":320520,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.124Z"},"s":"F","c":"CONTROL","id":130666,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":243767}}
+{"t":{"$date":"2026-10-14T09:30:00.566Z"},"s":"F","c":"CONTROL","id":213905,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":435817}}
+{"t":{"$date":"2026-10-14T09:30:00.420Z"},"s":"E","c":"STORAGE","id":819552,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.218Z"},"s":"W","c":"COMMAND","id":52358,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":357980}}
+{"t":{"$date":"2026-10-14T09:30:00.925Z"},"s":"F","c":"CONTROL","id":930986,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":571685}}
+{"t":{"$date":"2026-10-14T09:30:00.486Z"},"s":"E","c":"STORAGE","id":642426,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.684Z"},"s":"E","c":"STORAGE","id":193093,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.982Z"},"s":"E","c":"STORAGE","id":969967,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.173Z"},"s":"I","c":"NETWORK","id":78745,"ctx":"listener","msg":"Connection accepted","attr":{"remote":"10.0.4.12:299109","connectionId":88213}}
+{"t":{"$date":"2026-10-14T09:30:00.824Z"},"s":"E","c":"STORAGE","id":582582,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.941Z"},"s":"I","c":"NETWORK","id":297737,"ctx":"listener","msg":"Connection accepted","attr":{"remote":"10.0.4.12:46065","connectionId":88213}}
+{"t":{"$date":"2026-10-14T09:30:00.445Z"},"s":"F","c":"CONTROL","id":704173,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":341632}}
+{"t":{"$date":"2026-10-14T09:30:00.784Z"},"s":"F","c":"CONTROL","id":913884,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":609550}}
+{"t":{"$date":"2026-10-14T09:30:00.707Z"},"s":"W","c":"COMMAND","id":586754,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":363920}}
+{"t":{"$date":"2026-10-14T09:30:00.136Z"},"s":"W","c":"COMMAND","id":54662,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":553978}}
+{"t":{"$date":"2026-10-14T09:30:00.453Z"},"s":"E","c":"STORAGE","id":800665,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.086Z"},"s":"E","c":"STORAGE","id":901525,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.843Z"},"s":"I","c":"NETWORK","id":11661,"ctx":"listener","msg":"Connection accepted","attr":{"remote":"10.0.4.12:103246","connectionId":88213}}
+{"t":{"$date":"2026-10-14T09:30:00.560Z"},"s":"W","c":"COMMAND","id":894145,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":187605}}
+{"t":{"$date":"2026-10-14T09:30:00.948Z"},"s":"I","c":"NETWORK","id":472303,"ctx":"listener","msg":"Connection accepted","attr":{"remote":"10.0.4.12:878927","connectionId":88213}}
+{"t":{"$date":"2026-10-14T09:30:00.267Z"},"s":"E","c":"STORAGE","id":643411,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.322Z"},"s":"I","c":"NETWORK","id":348107,"ctx":"listener","msg":"Connection accepted","attr":{"remote":"10.0.4.12:864212","connectionId":88213}}
+{"t":{"$date":"2026-10-14T09:30:00.543Z"},"s":"F","c":"CONTROL","id":676695,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":943641}}
+{"t":{"$date":"2026-10-14T09:30:00.315Z"},"s":"W","c":"COMMAND","id":479080,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":874953}}
+{"t":{"$date":"2026-10-14T09:30:00.278Z"},"s":"E","c":"STORAGE","id":617114,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.340Z"},"s":"W","c":"COMMAND","id":888826,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":636394}}
+{"t":{"$date":"2026-10-14T09:30:00.151Z"},"s":"I","c":"NETWORK","id":830028,"ctx":"listener","msg":"Connection accepted","attr":{"remote":"10.0.4.12:139287","connectionId":88213}}
+{"t":{"$date":"2026-10-14T09:30:00.070Z"},"s":"E","c":"STORAGE","id":459611,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.116Z"},"s":"I","c":"NETWORK","id":351425,"ctx":"listener","msg":"Connection accepted","attr":{"remote":"10.0.4.12:437369","connectionId":88213}}
+{"t":{"$date":"2026-10-14T09:30:00.179Z"},"s":"E","c":"STORAGE","id":280337,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.538Z"},"s":"E","c":"STORAGE","id":936665,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.903Z"},"s":"W","c":"COMMAND","id":171305,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":720139}}
+{"t":{"$date":"2026-10-14T09:30:00.518Z"},"s":"F","c":"CONTROL","id":843346,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":974796}}
+{"t":{"$date":"2026-10-14T09:30:00.586Z"},"s":"W","c":"COMMAND","id":201036,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":252514}}
+{"t":{"$date":"2026-10-14T09:30:00.838Z"},"s":"F","c":"CONTROL","id":409610,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":776952}}
+{"t":{"$date":"2026-10-14T09:30:00.964Z"},"s":"W","c":"COMMAND","id":42764,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":435371}}
+{"t":{"$date":"2026-10-14T09:30:00.489Z"},"s":"E","c":"STORAGE","id":321300,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.306Z"},"s":"F","c":"CONTROL","id":714287,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":830660}}
+{"t":{"$date":"2026-10-14T09:30:00.125Z"},"s":"W","c":"COMMAND","id":52377,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":684120}}
+{"t":{"$date":"2026-10-14T09:30:00.618Z"},"s":"F","c":"CONTROL","id":635386,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":279494}}
+{"t":{"$date":"2026-10-14T09:30:00.494Z"},"s":"F","c":"CONTROL","id":506398,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":527235}}
+{"t":{"$date":"2026-10-14T09:30:00.778Z"},"s":"E","c":"STORAGE","id":887317,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.583Z"},"s":"I","c":"NETWORK","id":700466,"ctx":"listener","msg":"Connection accepted","attr":{"remote":"10.0.4.12:295197","connectionId":88213}}
+{"t":{"$date":"2026-10-14T09:30:00.209Z"},"s":"W","c":"COMMAND","id":66692,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":68697}}
+{"t":{"$date":"2026-10-14T09:30:00.658Z"},"s":"E","c":"STORAGE","id":695570,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.272Z"},"s":"W","c":"COMMAND","id":309035,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":775951}}
+{"t":{"$date":"2026-10-14T09:30:00.537Z"},"s":"I","c":"NETWORK","id":136365,"ctx":"listener","msg":"Connection accepted","attr":{"remote":"10.0.4.12:780793","connectionId":88213}}
+{"t":{"$date":"2026-10-14T09:30:00.614Z"},"s":"E","c":"STORAGE","id":164711,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.454Z"},"s":"F","c":"CONTROL","id":349901,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":409986}}
+{"t":{"$date":"2026-10-14T09:30:00.284Z"},"s":"F","c":"CONTROL","id":632554,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":75662}}
+{"t":{"$date":"2026-10-14T09:30:00.367Z"},"s":"F","c":"CONTROL","id":485319,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":567658}}
+{"t":{"$date":"2026-10-14T09:30:00.655Z"},"s":"W","c":"COMMAND","id":325602,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":349912}}
+{"t":{"$date":"2026-10-14T09:30:00.373Z"},"s":"I","c":"NETWORK","id":291727,"ctx":"listener","msg":"Connection accepted","attr":{"remote":"10.0.4.12:302538","connectionId":88213}}
+{"t":{"$date":"2026-10-14T09:30:00.331Z"},"s":"E","c":"STORAGE","id":906322,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.990Z"},"s":"W","c":"COMMAND","id":170836,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":385387}}
+{"t":{"$date":"2026-10-14T09:30:00.619Z"},"s":"E","c":"STORAGE","id":387742,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.880Z"},"s":"E","c":"STORAGE","id":734968,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.895Z"},"s":"W","c":"COMMAND","id":574658,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":298039}}
+{"t":{"$date":"2026-10-14T09:30:00.243Z"},"s":"E","c":"STORAGE","id":16200,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.826Z"},"s":"W","c":"COMMAND","id":436578,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":610599}}
+{"t":{"$date":"2026-10-14T09:30:00.795Z"},"s":"F","c":"CONTROL","id":80929,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":195399}}
+{"t":{"$date":"2026-10-14T09:30:00.126Z"},"s":"I","c":"NETWORK","id":829252,"ctx":"listener","msg":"Connection accepted","attr":{"remote":"10.0.4.12:950323","connectionId":88213}}
+{"t":{"$date":"2026-10-14T09:30:00.770Z"},"s":"I","c":"NETWORK","id":345392,"ctx":"listener","msg":"Connection accepted","attr":{"remote":"10.0.4.12:567394","connectionId":88213}}
+{"t":{"$date":"2026-10-14T09:30:00.652Z"},"s":"E","c":"STORAGE","id":200712,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.189Z"},"s":"E","c":"STORAGE","id":403978,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.303Z"},"s":"I","c":"NETWORK","id":407154,"ctx":"listener","msg":"Connection accepted","attr":{"remote":"10.0.4.12:692990","connectionId":88213}}
+{"t":{"$date":"2026-10-14T09:30:00.012Z"},"s":"F","c":"CONTROL","id":762121,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":682344}}
+{"t":{"$date":"2026-10-14T09:30:00.261Z"},"s":"F","c":"CONTROL","id":561714,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":791915}}
+{"t":{"$date":"2026-10-14T09:30:00.050Z"},"s":"W","c":"COMMAND","id":444122,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":994091}}
+{"t":{"$date":"2026-10-14T09:30:00.731Z"},"s":"W","c":"COMMAND","id":614241,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":310664}}
+{"t":{"$date":"2026-10-14T09:30:00.451Z"},"s":"E","c":"STORAGE","id":625148,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.542Z"},"s":"F","c":"CONTROL","id":213752,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":555200}}
+{"t":{"$date":"2026-10-14T09:30:00.889Z"},"s":"F","c":"CONTROL","id":538431,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":578106}}
+{"t":{"$date":"2026-10-14T09:30:00.847Z"},"s":"I","c":"NETWORK","id":676804,"ctx":"listener","msg":"Connection accepted","attr":{"remote":"10.0.4.12:241433","connectionId":88213}}
+{"t":{"$date":"2026-10-14T09:30:00.521Z"},"s":"W","c":"COMMAND","id":629873,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":210612}}
+{"t":{"$date":"2026-10-14T09:30:00.719Z"},"s":"E","c":"STORAGE","id":601815,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.010Z"},"s":"F","c":"CONTROL","id":969700,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":418501}}
+{"t":{"$date":"2026-10-14T09:30:00.380Z"},"s":"E","c":"STORAGE","id":906152,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.115Z"},"s":"W","c":"COMMAND","id":337906,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":974584}}
+{"t":{"$date":"2026-10-14T09:30:00.548Z"},"s":"E","c":"STORAGE","id":353665,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.714Z"},"s":"W","c":"COMMAND","id":232092,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":489755}}
+{"t":{"$date":"2026-10-14T09:30:00.575Z"},"s":"I","c":"NETWORK","id":646447,"ctx":"listener","msg":"Connection accepted","attr":{"remote":"10.0.4.12:673845","connectionId":88213}}
+{"t":{"$date":"2026-10-14T09:30:00.613Z"},"s":"F","c":"CONTROL","id":324108,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":96565}}
+{"t":{"$date":"2026-10-14T09:30:00.259Z"},"s":"E","c":"STORAGE","id":44530,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.296Z"},"s":"F","c":"CONTROL","id":966343,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":990312}}
+{"t":{"$date":"2026-10-14T09:30:00.221Z"},"s":"I","c":"NETWORK","id":166044,"ctx":"listener","msg":"Connection accepted","attr":{"remote":"10.0.4.12:84908","connectionId":88213}}
+{"t":{"$date":"2026-10-14T09:30:00.243Z"},"s":"I","c":"NETWORK","id":928336,"ctx":"listener","msg":"Connection accepted","attr":{"remote":"10.0.4.12:113391","connectionId":88213}}
+{"t":{"$date":"2026-10-14T09:30:00.454Z"},"s":"I","c":"NETWORK","id":464776,"ctx":"listener","msg":"Connection accepted","attr":{"remote":"10.0.4.12:140199","connectionId":88213}}
+{"t":{"$date":"2026-10-14T09:30:00.477Z"},"s":"W","c":"COMMAND","id":609213,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":875346}}
+{"t":{"$date":"2026-10-14T09:30:00.017Z"},"s":"W","c":"COMMAND","id":946553,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":282586}}
+{"t":{"$date":"2026-10-14T09:30:00.579Z"},"s":"F","c":"CONTROL","id":750573,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":432987}}
+{"t":{"$date":"2026-10-14T09:30:00.538Z"},"s":"E","c":"STORAGE","id":936446,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.962Z"},"s":"F","c":"CONTROL","id":193167,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":905252}}
+{"t":{"$date":"2026-10-14T09:30:00.930Z"},"s":"F","c":"CONTROL","id":896765,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":827995}}
+{"t":{"$date":"2026-10-14T09:30:00.508Z"},"s":"E","c":"STORAGE","id":731649,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.439Z"},"s":"F","c":"CONTROL","id":851505,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":193022}}
+{"t":{"$date":"2026-10-14T09:30:00.665Z"},"s":"F","c":"CONTROL","id":581395,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":577971}}
+{"t":{"$date":"2026-10-14T09:30:00.417Z"},"s":"F","c":"CONTROL","id":389517,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":863221}}
+{"t":{"$date":"2026-10-14T09:30:00.733Z"},"s":"F","c":"CONTROL","id":872329,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":13563}}
+{"t":{"$date":"2026-10-14T09:30:00.572Z"},"s":"E","c":"STORAGE","id":895951,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.369Z"},"s":"F","c":"CONTROL","id":603174,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":113233}}
+{"t":{"$date":"2026-10-14T09:30:00.293Z"},"s":"F","c":"CONTROL","id":714483,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":131482}}
+{"t":{"$date":"2026-10-14T09:30:00.411Z"},"s":"F","c":"CONTROL","id":728219,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":612726}}
+{"t":{"$date":"2026-10-14T09:30:00.095Z"},"s":"F","c":"CONTROL","id":865192,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":893641}}
+{"t":{"$date":"2026-10-14T09:30:00.142Z"},"s":"I","c":"NETWORK","id":72111,"ctx":"listener","msg":"Connection accepted","attr":{"remote":"10.0.4.12:862922","connectionId":88213}}
+{"t":{"$date":"2026-10-14T09:30:00.879Z"},"s":"E","c":"STORAGE","id":733031,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.823Z"},"s":"I","c":"NETWORK","id":350994,"ctx":"listener","msg":"Connection accepted","attr":{"remote":"10.0.4.12:292098","connectionId":88213}}
+{"t":{"$date":"2026-10-14T09:30:00.636Z"},"s":"W","c":"COMMAND","id":362086,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":475442}}
+{"t":{"$date":"2026-10-14T09:30:00.835Z"},"s":"E","c":"STORAGE","id":895748,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.134Z"},"s":"W","c":"COMMAND","id":371444,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":682569}}
+{"t":{"$date":"2026-10-14T09:30:00.573Z"},"s":"F","c":"CONTROL","id":398825,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":699508}}
+{"t":{"$date":"2026-10-14T09:30:00.093Z"},"s":"F","c":"CONTROL","id":431316,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":675591}}
+{"t":{"$date":"2026-10-14T09:30:00.182Z"},"s":"W","c":"COMMAND","id":724752,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":201377}}
+{"t":{"$date":"2026-10-14T09:30:00.510Z"},"s":"E","c":"STORAGE","id":529059,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.226Z"},"s":"F","c":"CONTROL","id":535387,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":507665}}
+{"t":{"$date":"2026-10-14T09:30:00.716Z"},"s":"F","c":"CONTROL","id":27508,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":959953}}
+{"t":{"$date":"2026-10-14T09:30:00.826Z"},"s":"I","c":"NETWORK","id":162658,"ctx":"listener","msg":"Connection accepted","attr":{"remote":"10.0.4.12:856576","connectionId":88213}}
+{"t":{"$date":"2026-10-14T09:30:00.873Z"},"s":"E","c":"STORAGE","id":965577,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.234Z"},"s":"F","c":"CONTROL","id":609127,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":394595}}
+{"t":{"$date":"2026-10-14T09:30:00.937Z"},"s":"F","c":"CONTROL","id":106749,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":641057}}
+{"t":{"$date":"2026-10-14T09:30:00.818Z"},"s":"I","c":"NETWORK","id":448909,"ctx":"listener","msg":"Connection accepted","attr":{"remote":"10.0.4.12:958168","connectionId":88213}}
+{"t":{"$date":"2026-10-14T09:30:00.364Z"},"s":"I","c":"NETWORK","id":108332,"ctx":"listener","msg":"Connection accepted","attr":{"remote":"10.0.4.12:659451","connectionId":88213}}
+{"t":{"$date":"2026-10-14T09:30:00.231Z"},"s":"F","c":"CONTROL","id":211558,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":765129}}
+{"t":{"$date":"2026-10-14T09:30:00.910Z"},"s":"E","c":"STORAGE","id":756941,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.630Z"},"s":"I","c":"NETWORK","id":661330,"ctx":"listener","msg":"Connection accepted","attr":{"remote":"10.0.4.12:371251","connectionId":88213}}
+{"t":{"$date":"2026-10-14T09:30:00.991Z"},"s":"F","c":"CONTROL","id":492739,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":961417}}
+{"t":{"$date":"2026-10-14T09:30:00.909Z"},"s":"W","c":"COMMAND","id":836223,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":684812}}
+{"t":{"$date":"2026-10-14T09:30:00.538Z"},"s":"W","c":"COMMAND","id":296123,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":949328}}
+{"t":{"$date":"2026-10-14T09:30:00.850Z"},"s":"W","c":"COMMAND","id":11712,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":717128}}
+{"t":{"$date":"2026-10-14T09:30:00.469Z"},"s":"W","c":"COMMAND","id":526084,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":726332}}
+{"t":{"$date":"2026-10-14T09:30:00.346Z"},"s":"I","c":"NETWORK","id":610229,"ctx":"listener","msg":"Connection accepted","attr":{"remote":"10.0.4.12:698803","connectionId":88213}}
+{"t":{"$date":"2026-10-14T09:30:00.545Z"},"s":"W","c":"COMMAND","id":433685,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":362659}}
+{"t":{"$date":"2026-10-14T09:30:00.925Z"},"s":"W","c":"COMMAND","id":516378,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":290574}}
+{"t":{"$date":"2026-10-14T09:30:00.504Z"},"s":"I","c":"NETWORK","id":70238,"ctx":"listener","msg":"Connection accepted","attr":{"remote":"10.0.4.12:367011","connectionId":88213}}
+{"t":{"$date":"2026-10-14T09:30:00.278Z"},"s":"E","c":"STORAGE","id":735668,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.183Z"},"s":"I","c":"NETWORK","id":838333,"ctx":"listener","msg":"Connection accepted","attr":{"remote":"10.0.4.12:792474","connectionId":88213}}
+{"t":{"$date":"2026-10-14T09:30:00.900Z"},"s":"F","c":"CONTROL","id":371016,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":173363}}
+{"t":{"$date":"2026-10-14T09:30:00.941Z"},"s":"W","c":"COMMAND","id":471189,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":173063}}
+{"t":{"$date":"2026-10-14T09:30:00.881Z"},"s":"W","c":"COMMAND","id":342298,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":999396}}
+{"t":{"$date":"2026-10-14T09:30:00.708Z"},"s":"W","c":"COMMAND","id":540201,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":686562}}
+{"t":{"$date":"2026-10-14T09:30:00.948Z"},"s":"I","c":"NETWORK","id":864749,"ctx":"listener","msg":"Connection accepted","attr":{"remote":"10.0.4.12:892129","connectionId":88213}}
+{"t":{"$date":"2026-10-14T09:30:00.968Z"},"s":"W","c":"COMMAND","id":858074,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":327103}}
+{"t":{"$date":"2026-10-14T09:30:00.628Z"},"s":"E","c":"STORAGE","id":656167,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.727Z"},"s":"W","c":"COMMAND","id":188575,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":258017}}
+{"t":{"$date":"2026-10-14T09:30:00.970Z"},"s":"I","c":"NETWORK","id":49107,"ctx":"listener","msg":"Connection accepted","attr":{"remote":"10.0.4.12:191832","connectionId":88213}}
+{"t":{"$date":"2026-10-14T09:30:00.887Z"},"s":"F","c":"CONTROL","id":468205,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":589034}}
+{"t":{"$date":"2026-10-14T09:30:00.251Z"},"s":"F","c":"CONTROL","id":897796,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":185303}}
+{"t":{"$date":"2026-10-14T09:30:00.706Z"},"s":"W","c":"COMMAND","id":27318,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":426006}}
+{"t":{"$date":"2026-10-14T09:30:00.317Z"},"s":"W","c":"COMMAND","id":571008,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":717465}}
+{"t":{"$date":"2026-10-14T09:30:00.833Z"},"s":"F","c":"CONTROL","id":105088,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":887335}}
+{"t":{"$date":"2026-10-14T09:30:00.522Z"},"s":"F","c":"CONTROL","id":471989,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":801916}}
+{"t":{"$date":"2026-10-14T09:30:00.570Z"},"s":"F","c":"CONTROL","id":409278,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":859836}}
+{"t":{"$date":"2026-10-14T09:30:00.916Z"},"s":"I","c":"NETWORK","id":26154,"ctx":"listener","msg":"Connection accepted","attr":{"remote":"10.0.4.12:839221","connectionId":88213}}
+{"t":{"$date":"2026-10-14T09:30:00.403Z"},"s":"I","c":"NETWORK","id":819857,"ctx":"listener","msg":"Connection accepted","attr":{"remote":"10.0.4.12:760767","connectionId":88213}}
+{"t":{"$date":"2026-10-14T09:30:00.019Z"},"s":"I","c":"NETWORK","id":61494,"ctx":"listener","msg":"Connection accepted","attr":{"remote":"10.0.4.12:931352","connectionId":88213}}
+{"t":{"$date":"2026-10-14T09:30:00.147Z"},"s":"W","c":"COMMAND","id":230085,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":610465}}
+{"t":{"$date":"2026-10-14T09:30:00.719Z"},"s":"W","c":"COMMAND","id":890977,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":244457}}
+{"t":{"$date":"2026-10-14T09:30:00.876Z"},"s":"I","c":"NETWORK","id":29143,"ctx":"listener","msg":"Connection accepted","attr":{"remote":"10.0.4.12:702524","connectionId":88213}}
+{"t":{"$date":"2026-10-14T09:30:00.011Z"},"s":"E","c":"STORAGE","id":564539,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.752Z"},"s":"E","c":"STORAGE","id":850926,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.676Z"},"s":"W","c":"COMMAND","id":262597,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":604754}}
+{"t":{"$date":"2026-10-14T09:30:00.754Z"},"s":"F","c":"CONTROL","id":643235,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":792119}}
+{"t":{"$date":"2026-10-14T09:30:00.711Z"},"s":"W","c":"COMMAND","id":65785,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":359645}}
+{"t":{"$date":"2026-10-14T09:30:00.270Z"},"s":"F","c":"CONTROL","id":363859,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":830925}}
+{"t":{"$date":"2026-10-14T09:30:00.703Z"},"s":"I","c":"NETWORK","id":772304,"ctx":"listener","msg":"Connection accepted","attr":{"remote":"10.0.4.12:826186","connectionId":88213}}
+{"t":{"$date":"2026-10-14T09:30:00.449Z"},"s":"I","c":"NETWORK","id":384168,"ctx":"listener","msg":"Connection accepted","attr":{"remote":"10.0.4.12:981395","connectionId":88213}}
+{"t":{"$date":"2026-10-14T09:30:00.501Z"},"s":"F","c":"CONTROL","id":837034,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":13647}}
+{"t":{"$date":"2026-10-14T09:30:00.736Z"},"s":"E","c":"STORAGE","id":167214,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.458Z"},"s":"I","c":"NETWORK","id":176297,"ctx":"listener","msg":"Connection accepted","attr":{"remote":"10.0.4.12:38925","connectionId":88213}}
+{"t":{"$date":"2026-10-14T09:30:00.532Z"},"s":"I","c":"NETWORK","id":974844,"ctx":"listener","msg":"Connection accepted","attr":{"remote":"10.0.4.12:186313","connectionId":88213}}
+{"t":{"$date":"2026-10-14T09:30:00.743Z"},"s":"E","c":"STORAGE","id":211697,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.652Z"},"s":"I","c":"NETWORK","id":994248,"ctx":"listener","msg":"Connection accepted","attr":{"remote":"10.0.4.12:812792","connectionId":88213}}
+{"t":{"$date":"2026-10-14T09:30:00.327Z"},"s":"F","c":"CONTROL","id":984359,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":304294}}
+{"t":{"$date":"2026-10-14T09:30:00.382Z"},"s":"I","c":"NETWORK","id":277634,"ctx":"listener","msg":"Connection accepted","attr":{"remote":"10.0.4.12:710219","connectionId":88213}}
+{"t":{"$date":"2026-10-14T09:30:00.478Z"},"s":"F","c":"CONTROL","id":786331,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":848947}}
+{"t":{"$date":"2026-10-14T09:30:00.910Z"},"s":"W","c":"COMMAND","id":699304,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":868903}}
+{"t":{"$date":"2026-10-14T09:30:00.371Z"},"s":"E","c":"STORAGE","id":263562,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.882Z"},"s":"I","c":"NETWORK","id":432031,"ctx":"listener","msg":"Connection accepted","attr":{"remote":"10.0.4.12:562584","connectionId":88213}}
+{"t":{"$date":"2026-10-14T09:30:00.776Z"},"s":"E","c":"STORAGE","id":514234,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.231Z"},"s":"I","c":"NETWORK","id":379040,"ctx":"listener","msg":"Connection accepted","attr":{"remote":"10.0.4.12:173721","connectionId":88213}}
+{"t":{"$date":"2026-10-14T09:30:00.245Z"},"s":"W","c":"COMMAND","id":875951,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":813738}}
+{"t":{"$date":"2026-10-14T09:30:00.532Z"},"s":"W","c":"COMMAND","id":217927,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":821954}}
+{"t":{"$date":"2026-10-14T09:30:00.793Z"},"s":"W","c":"COMMAND","id":543539,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":873303}}
+{"t":{"$date":"2026-10-14T09:30:00.517Z"},"s":"E","c":"STORAGE","id":971551,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.731Z"},"s":"W","c":"COMMAND","id":174015,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":757218}}
+{"t":{"$date":"2026-10-14T09:30:00.086Z"},"s":"F","c":"CONTROL","id":485904,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":553574}}
+{"t":{"$date":"2026-10-14T09:30:00.776Z"},"s":"W","c":"COMMAND","id":497367,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":635046}}
+{"t":{"$date":"2026-10-14T09:30:00.262Z"},"s":"I","c":"NETWORK","id":440781,"ctx":"listener","msg":"Connection accepted","attr":{"remote":"10.0.4.12:86679","connectionId":88213}}
+{"t":{"$date":"2026-10-14T09:30:00.516Z"},"s":"F","c":"CONTROL","id":860368,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":676226}}
+{"t":{"$date":"2026-10-14T09:30:00.473Z"},"s":"E","c":"STORAGE","id":253209,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.120Z"},"s":"E","c":"STORAGE","id":891057,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.973Z"},"s":"F","c":"CONTROL","id":519719,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":33340}}
+{"t":{"$date":"2026-10-14T09:30:00.523Z"},"s":"W","c":"COMMAND","id":360357,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":707960}}
+{"t":{"$date":"2026-10-14T09:30:00.862Z"},"s":"E","c":"STORAGE","id":307777,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.459Z"},"s":"F","c":"CONTROL","id":981584,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":736733}}
+{"t":{"$date":"2026-10-14T09:30:00.209Z"},"s":"E","c":"STORAGE","id":911459,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.906Z"},"s":"I","c":"NETWORK","id":812359,"ctx":"listener","msg":"Connection accepted","attr":{"remote":"10.0.4.12:413733","connectionId":88213}}
+{"t":{"$date":"2026-10-14T09:30:00.397Z"},"s":"E","c":"STORAGE","id":928743,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.904Z"},"s":"I","c":"NETWORK","id":537034,"ctx":"listener","msg":"Connection accepted","attr":{"remote":"10.0.4.12:529566","connectionId":88213}}
+{"t":{"$date":"2026-10-14T09:30:00.046Z"},"s":"W","c":"COMMAND","id":442920,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":427070}}
+{"t":{"$date":"2026-10-14T09:30:00.687Z"},"s":"F","c":"CONTROL","id":19414,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":594751}}
+{"t":{"$date":"2026-10-14T09:30:00.261Z"},"s":"I","c":"NETWORK","id":918502,"ctx":"listener","msg":"Connection accepted","attr":{"remote":"10.0.4.12:587810","connectionId":88213}}
+{"t":{"$date":"2026-10-14T09:30:00.622Z"},"s":"F","c":"CONTROL","id":380055,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":336929}}
+{"t":{"$date":"2026-10-14T09:30:00.248Z"},"s":"F","c":"CONTROL","id":401424,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":444068}}
+{"t":{"$date":"2026-10-14T09:30:00.674Z"},"s":"I","c":"NETWORK","id":491603,"ctx":"listener","msg":"Connection accepted","attr":{"remote":"10.0.4.12:416601","connectionId":88213}}
+{"t":{"$date":"2026-10-14T09:30:00.257Z"},"s":"W","c":"COMMAND","id":356927,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":285526}}
+{"t":{"$date":"2026-10-14T09:30:00.251Z"},"s":"W","c":"COMMAND","id":982725,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":571407}}
+{"t":{"$date":"2026-10-14T09:30:00.633Z"},"s":"E","c":"STORAGE","id":459408,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.650Z"},"s":"W","c":"COMMAND","id":263772,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":919975}}
+{"t":{"$date":"2026-10-14T09:30:00.576Z"},"s":"F","c":"CONTROL","id":189795,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":617441}}
+{"t":{"$date":"2026-10-14T09:30:00.155Z"},"s":"E","c":"STORAGE","id":232133,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.748Z"},"s":"I","c":"NETWORK","id":41724,"ctx":"listener","msg":"Connection accepted","attr":{"remote":"10.0.4.12:449519","connectionId":88213}}
+{"t":{"$date":"2026-10-14T09:30:00.800Z"},"s":"W","c":"COMMAND","id":208692,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":139378}}
+{"t":{"$date":"2026-10-14T09:30:00.871Z"},"s":"E","c":"STORAGE","id":905144,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.719Z"},"s":"I","c":"NETWORK","id":127366,"ctx":"listener","msg":"Connection accepted","attr":{"remote":"10.0.4.12:661004","connectionId":88213}}
+{"t":{"$date":"2026-10-14T09:30:00.285Z"},"s":"F","c":"CONTROL","id":453317,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":809464}}
+{"t":{"$date":"2026-10-14T09:30:00.046Z"},"s":"I","c":"NETWORK","id":560240,"ctx":"listener","msg":"Connection accepted","attr":{"remote":"10.0.4.12:83083","connectionId":88213}}
+{"t":{"$date":"2026-10-14T09:30:00.170Z"},"s":"W","c":"COMMAND","id":934116,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":772592}}
+{"t":{"$date":"2026-10-14T09:30:00.696Z"},"s":"E","c":"STORAGE","id":599627,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.543Z"},"s":"E","c":"STORAGE","id":773373,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.604Z"},"s":"W","c":"COMMAND","id":692535,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":205605}}
+{"t":{"$date":"2026-10-14T09:30:00.385Z"},"s":"E","c":"STORAGE","id":57063,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}
+{"t":{"$date":"2026-10-14T09:30:00.545Z"},"s":"F","c":"CONTROL","id":741911,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":866491}}
+{"t":{"$date":"2026-10-14T09:30:00.930Z"},"s":"W","c":"COMMAND","id":552593,"ctx":"conn88213","msg":"Slow query","attr":{"type":"command","ns":"shop.orders","durationMillis":113679}}
+{"t":{"$date":"2026-10-14T09:30:00.146Z"},"s":"F","c":"CONTROL","id":905180,"ctx":"main","msg":"Fatal assertion","attr":{"msgid":976707}}
+{"t":{"$date":"2026-10-14T09:30:00.000Z"},"s":"E","c":"STORAGE","id":191498,"ctx":"WTCheckpointThread","msg":"WiredTiger error","attr":{"error":28,"message":"No space left on device"}}

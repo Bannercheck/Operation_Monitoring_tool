@@ -1,0 +1,18 @@
+trc file: "dev_w0", trc level: 1, release: "753"
+---------------------------------------------------
+*  ACTIVE  TRACE LEVEL           1
+*  ACTIVE  TRACE COMPONENTS      all, MJ
+B Wed Sep 16 02:14:07:123 2026
+B  create_con (con_name=R/3)
+M sysno      00
+M sid        PRD
+M relno      7530
+M profile    /usr/sap/PRD/SYS/profile/PRD_D00_sapprd01
+M pid        12345
+M  ThInit: running on host sapprd01
+M Wed Sep 16 02:14:09:501 2026
+M  *** LOG Q0I=> NiIRead: P=10.0.0.5:3300; L=10.0.0.7:41234: recv (104: Connection reset by peer) [nixxi.cpp 5234]
+M  *** ERROR => ThHdlReconnect: db reconnect failed, rc=8 [thxxhead.c 1234]
+M  *** WARNING => ThIPCInit: shared memory segment nearly full [thxxipc.c 77]
+C  *** ERROR => DbSlHDBGetBindHelper: rc=99 (Connection down) [dbslhdb.cpp 1442]
+A  [Thr 140222] *** ERROR => TH_PROCESS_TERMINATED: work process 0 died [thxxhead.c 9999]

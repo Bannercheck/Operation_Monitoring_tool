@@ -1,12 +1,12 @@
 import { Link } from "react-router-dom";
-import { AlertOctagon, AlertTriangle, BellOff, CheckCircle2, Sparkles, Ticket, TrendingUp } from "lucide-react";
+import { AlertOctagon, AlertTriangle, BellOff, CheckCircle2, Cpu, Sparkles, Ticket, TrendingUp } from "lucide-react";
 import { useT } from "../../i18n";
 import { fmtN, fmtPct } from "./util";
 
 export type Item = { level: 3 | 2 | 1; icon: any; title: string; sub?: string; act?: { label: string; run?: () => void; to?: string } };
 
 /** The few things worth a look right now, worst first; when there are none, the card says so plainly. */
-export function buildAttention(t: any, lang: string, fleet: any, groups: any[], anomalies: any[], tickets: any[], go: { pool: (p: string) => void; hosts: (h: string[]) => void; group: (g: any) => void }): Item[] {
+export function buildAttention(t: any, lang: string, fleet: any, groups: any[], anomalies: any[], tickets: any[], breaches: any[], go: { pool: (p: string) => void; hosts: (h: string[]) => void; group: (g: any) => void }): Item[] {
   const out: Item[] = [];
   const allHosts = (fleet?.pools ?? []).flatMap((p: any) => p.hosts);
   const silent = allHosts.filter((h: any) => h.silent);
@@ -18,10 +18,14 @@ export function buildAttention(t: any, lang: string, fleet: any, groups: any[], 
   for (const g of groups.filter((g) => !g.new && (g.severity === "ERROR" || g.severity === "CRITICAL") && rising(g.trend)).slice(0, 2))
     out.push({ level: 2, icon: TrendingUp, title: t("at_rising", { s: g.service, n: g.host_count }), sub: g.template.slice(0, 110), act: { label: t("at_open"), run: () => go.group(g) } });
   for (const a of anomalies.slice(0, 3)) out.push({ level: a.severity === "critical" ? 3 : 2, icon: AlertTriangle, title: a.title, sub: a.detail?.slice(0, 110), act: { label: t("at_anomaly"), to: "/anomalies" } });
+  if (anomalies.length > 3) out.push({ level: 1, icon: AlertTriangle, title: t("at_more_anom", { n: anomalies.length - 3 }), act: { label: t("at_all"), to: "/anomalies" } });
+  const hostsIn = new Set((fleet?.pools ?? []).flatMap((p: any) => p.hosts.map((h: any) => h.host)));
+  for (const b of breaches.filter((b: any) => !hostsIn.size || hostsIn.has(b.host)).sort((a: any, b: any) => (b.value - b.threshold) - (a.value - a.threshold)).slice(0, 3))
+    out.push({ level: b.value >= b.threshold + 5 ? 3 : 2, icon: Cpu, title: t("at_metric", { h: b.host, m: String(b.metric).toUpperCase(), v: Math.round(b.value), th: b.threshold }), act: { label: t("at_show"), run: () => go.hosts([b.host]) } });
   for (const p of (fleet?.pools ?? []).filter((p: any) => p.outliers?.length).slice(0, 2))
     out.push({ level: 1, icon: AlertTriangle, title: t("at_outlier", { p: p.pool, n: p.outliers.length }), sub: p.outliers.slice(0, 4).join(", "), act: { label: t("at_show"), run: () => go.hosts(p.outliers) } });
-  for (const k of tickets.slice(0, 2)) out.push({ level: 1, icon: Ticket, title: `${k.id} · ${k.title}`, sub: `${k.priority} · ${k.status}`, act: { label: "ITSM", to: "/itsm" } });
-  return out.sort((a, b) => b.level - a.level).slice(0, 8);
+  for (const k of tickets.slice(0, 3)) out.push({ level: 1, icon: Ticket, title: `${k.id} · ${k.title}`, sub: `${k.priority} · ${k.status} · ${t("itsm_rel")} ${Number(k.relevance ?? 0).toFixed(2)}${k.related?.length ? ` · ${k.related.slice(0, 3).join(", ")}` : ""}`, act: { label: "ITSM", to: "/itsm" } });
+  return out.sort((a, b) => b.level - a.level).slice(0, 10);
 }
 
 function rising(tr: number[] = []): boolean {

@@ -1,0 +1,599 @@
+{"ts": "2026-09-16T14:00:09+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 46ms user=2186"}
+{"ts": "2026-09-16T14:00:52+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 52ms user=6991"}
+{"ts": "2026-09-16T14:00:37+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 104ms user=4517"}
+{"ts": "2026-09-16T14:00:02+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 95ms user=7851"}
+{"ts": "2026-09-16T14:00:04+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 51ms user=7955"}
+{"ts": "2026-09-16T14:00:03+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 55ms user=4657"}
+{"ts": "2026-09-16T14:00:40+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 114ms user=2013"}
+{"ts": "2026-09-16T14:00:36+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 90ms user=1812"}
+{"ts": "2026-09-16T14:00:14+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 111ms user=3181"}
+{"ts": "2026-09-16T14:00:18+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 58ms user=9858"}
+{"ts": "2026-09-16T14:00:30+00:00", "level": "warn", "service": "payment-api", "host": "prd-api-02", "msg": "cache miss ratio 0.31 above 0.30"}
+{"ts": "2026-09-16T14:01:36+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 64ms user=7101"}
+{"ts": "2026-09-16T14:01:06+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 48ms user=1976"}
+{"ts": "2026-09-16T14:01:39+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 103ms user=9711"}
+{"ts": "2026-09-16T14:01:27+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 99ms user=8424"}
+{"ts": "2026-09-16T14:01:23+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 71ms user=3945"}
+{"ts": "2026-09-16T14:01:44+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 50ms user=5919"}
+{"ts": "2026-09-16T14:01:33+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 83ms user=8353"}
+{"ts": "2026-09-16T14:01:18+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 49ms user=2934"}
+{"ts": "2026-09-16T14:01:32+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 61ms user=6604"}
+{"ts": "2026-09-16T14:01:09+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 93ms user=1642"}
+{"ts": "2026-09-16T14:01:42+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 111ms user=6140"}
+{"ts": "2026-09-16T14:01:21+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 84ms user=9137"}
+{"ts": "2026-09-16T14:02:36+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 97ms user=5662"}
+{"ts": "2026-09-16T14:02:45+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 84ms user=1369"}
+{"ts": "2026-09-16T14:02:29+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 61ms user=2918"}
+{"ts": "2026-09-16T14:02:31+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 67ms user=5709"}
+{"ts": "2026-09-16T14:02:08+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 71ms user=7519"}
+{"ts": "2026-09-16T14:02:25+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 50ms user=3725"}
+{"ts": "2026-09-16T14:02:28+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 110ms user=5552"}
+{"ts": "2026-09-16T14:02:56+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 95ms user=5561"}
+{"ts": "2026-09-16T14:02:45+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 85ms user=7233"}
+{"ts": "2026-09-16T14:02:14+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 50ms user=3887"}
+{"ts": "2026-09-16T14:02:09+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 69ms user=1197"}
+{"ts": "2026-09-16T14:02:31+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 63ms user=5304"}
+{"ts": "2026-09-16T14:02:18+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 58ms user=7864"}
+{"ts": "2026-09-16T14:03:03+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 111ms user=7428"}
+{"ts": "2026-09-16T14:03:25+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 90ms user=2696"}
+{"ts": "2026-09-16T14:03:30+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 91ms user=2019"}
+{"ts": "2026-09-16T14:03:12+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 66ms user=8219"}
+{"ts": "2026-09-16T14:03:10+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 83ms user=1861"}
+{"ts": "2026-09-16T14:03:06+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 112ms user=3478"}
+{"ts": "2026-09-16T14:03:34+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 86ms user=1417"}
+{"ts": "2026-09-16T14:03:04+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 118ms user=7164"}
+{"ts": "2026-09-16T14:03:09+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 72ms user=6691"}
+{"ts": "2026-09-16T14:03:38+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 100ms user=3012"}
+{"ts": "2026-09-16T14:03:07+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 99ms user=8870"}
+{"ts": "2026-09-16T14:03:30+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 50ms user=3361"}
+{"ts": "2026-09-16T14:03:06+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 83ms user=5337"}
+{"ts": "2026-09-16T14:04:33+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 51ms user=5278"}
+{"ts": "2026-09-16T14:04:33+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 61ms user=6827"}
+{"ts": "2026-09-16T14:04:49+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 108ms user=9873"}
+{"ts": "2026-09-16T14:04:49+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 82ms user=4654"}
+{"ts": "2026-09-16T14:04:39+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 70ms user=7564"}
+{"ts": "2026-09-16T14:04:47+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 65ms user=9480"}
+{"ts": "2026-09-16T14:04:31+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 43ms user=1457"}
+{"ts": "2026-09-16T14:04:50+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 100ms user=5246"}
+{"ts": "2026-09-16T14:04:12+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 117ms user=6640"}
+{"ts": "2026-09-16T14:04:28+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 84ms user=6974"}
+{"ts": "2026-09-16T14:04:05+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 53ms user=4716"}
+{"ts": "2026-09-16T14:04:30+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 83ms user=4348"}
+{"ts": "2026-09-16T14:04:30+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 118ms user=1031"}
+{"ts": "2026-09-16T14:04:30+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 84ms user=2389"}
+{"ts": "2026-09-16T14:05:27+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 82ms user=2421"}
+{"ts": "2026-09-16T14:05:51+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 90ms user=8588"}
+{"ts": "2026-09-16T14:05:25+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 50ms user=3602"}
+{"ts": "2026-09-16T14:05:10+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 43ms user=3476"}
+{"ts": "2026-09-16T14:05:37+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 58ms user=8771"}
+{"ts": "2026-09-16T14:05:42+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 59ms user=9989"}
+{"ts": "2026-09-16T14:05:35+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 42ms user=1233"}
+{"ts": "2026-09-16T14:05:51+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 53ms user=9627"}
+{"ts": "2026-09-16T14:05:47+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 95ms user=4191"}
+{"ts": "2026-09-16T14:06:34+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 56ms user=1997"}
+{"ts": "2026-09-16T14:06:58+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 85ms user=8506"}
+{"ts": "2026-09-16T14:06:42+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 106ms user=7891"}
+{"ts": "2026-09-16T14:06:52+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 56ms user=9713"}
+{"ts": "2026-09-16T14:06:09+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 105ms user=1306"}
+{"ts": "2026-09-16T14:06:55+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 63ms user=1064"}
+{"ts": "2026-09-16T14:06:49+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 62ms user=3319"}
+{"ts": "2026-09-16T14:06:30+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 55ms user=2011"}
+{"ts": "2026-09-16T14:06:20+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 106ms user=9695"}
+{"ts": "2026-09-16T14:06:35+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 53ms user=1930"}
+{"ts": "2026-09-16T14:07:57+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 96ms user=6334"}
+{"ts": "2026-09-16T14:07:39+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 117ms user=9391"}
+{"ts": "2026-09-16T14:07:12+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 75ms user=8411"}
+{"ts": "2026-09-16T14:07:32+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 101ms user=9319"}
+{"ts": "2026-09-16T14:07:15+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 106ms user=5253"}
+{"ts": "2026-09-16T14:07:59+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 65ms user=8332"}
+{"ts": "2026-09-16T14:07:08+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 55ms user=7428"}
+{"ts": "2026-09-16T14:07:28+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 49ms user=4942"}
+{"ts": "2026-09-16T14:07:27+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 67ms user=5960"}
+{"ts": "2026-09-16T14:07:50+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 59ms user=6999"}
+{"ts": "2026-09-16T14:07:09+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 57ms user=8663"}
+{"ts": "2026-09-16T14:07:14+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 52ms user=7525"}
+{"ts": "2026-09-16T14:07:56+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 60ms user=4665"}
+{"ts": "2026-09-16T14:07:10+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 95ms user=9447"}
+{"ts": "2026-09-16T14:07:30+00:00", "level": "warn", "service": "payment-api", "host": "prd-api-02", "msg": "cache miss ratio 0.31 above 0.30"}
+{"ts": "2026-09-16T14:08:01+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 82ms user=9477"}
+{"ts": "2026-09-16T14:08:39+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 105ms user=2053"}
+{"ts": "2026-09-16T14:08:07+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 53ms user=2377"}
+{"ts": "2026-09-16T14:08:16+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 45ms user=3974"}
+{"ts": "2026-09-16T14:08:17+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 94ms user=5237"}
+{"ts": "2026-09-16T14:08:25+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 108ms user=9434"}
+{"ts": "2026-09-16T14:08:36+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 81ms user=2465"}
+{"ts": "2026-09-16T14:08:17+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 63ms user=7968"}
+{"ts": "2026-09-16T14:08:57+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 74ms user=1275"}
+{"ts": "2026-09-16T14:08:40+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 73ms user=2372"}
+{"ts": "2026-09-16T14:08:38+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 48ms user=5332"}
+{"ts": "2026-09-16T14:08:55+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 98ms user=1189"}
+{"ts": "2026-09-16T14:08:21+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 93ms user=5388"}
+{"ts": "2026-09-16T14:09:59+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 120ms user=5997"}
+{"ts": "2026-09-16T14:09:33+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 77ms user=8302"}
+{"ts": "2026-09-16T14:09:32+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 62ms user=5432"}
+{"ts": "2026-09-16T14:09:22+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 72ms user=1605"}
+{"ts": "2026-09-16T14:09:00+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 104ms user=4104"}
+{"ts": "2026-09-16T14:09:32+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 71ms user=8324"}
+{"ts": "2026-09-16T14:09:06+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 95ms user=9110"}
+{"ts": "2026-09-16T14:09:34+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 104ms user=6042"}
+{"ts": "2026-09-16T14:09:44+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 69ms user=6614"}
+{"ts": "2026-09-16T14:10:08+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 49ms user=5187"}
+{"ts": "2026-09-16T14:10:27+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 47ms user=2384"}
+{"ts": "2026-09-16T14:10:42+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 104ms user=5619"}
+{"ts": "2026-09-16T14:10:38+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 77ms user=1741"}
+{"ts": "2026-09-16T14:10:29+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 60ms user=5407"}
+{"ts": "2026-09-16T14:10:28+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 73ms user=6966"}
+{"ts": "2026-09-16T14:10:21+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 81ms user=5005"}
+{"ts": "2026-09-16T14:10:02+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 67ms user=6842"}
+{"ts": "2026-09-16T14:10:11+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 82ms user=7252"}
+{"ts": "2026-09-16T14:10:05+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 75ms user=9237"}
+{"ts": "2026-09-16T14:10:41+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 71ms user=9269"}
+{"ts": "2026-09-16T14:10:49+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 51ms user=5328"}
+{"ts": "2026-09-16T14:10:52+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 58ms user=7545"}
+{"ts": "2026-09-16T14:10:37+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 90ms user=1368"}
+{"ts": "2026-09-16T14:11:50+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 89ms user=6343"}
+{"ts": "2026-09-16T14:11:46+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 59ms user=5655"}
+{"ts": "2026-09-16T14:11:46+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 58ms user=1717"}
+{"ts": "2026-09-16T14:11:52+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 105ms user=8032"}
+{"ts": "2026-09-16T14:11:46+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 104ms user=3282"}
+{"ts": "2026-09-16T14:11:58+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 104ms user=1263"}
+{"ts": "2026-09-16T14:11:52+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 114ms user=4767"}
+{"ts": "2026-09-16T14:11:05+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 45ms user=3180"}
+{"ts": "2026-09-16T14:11:40+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 53ms user=7170"}
+{"ts": "2026-09-16T14:11:53+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 111ms user=1831"}
+{"ts": "2026-09-16T14:11:40+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 120ms user=9707"}
+{"ts": "2026-09-16T14:11:43+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 102ms user=5321"}
+{"ts": "2026-09-16T14:11:00+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 48ms user=9240"}
+{"ts": "2026-09-16T14:12:04+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 70ms user=4362"}
+{"ts": "2026-09-16T14:12:14+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 98ms user=9092"}
+{"ts": "2026-09-16T14:12:54+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 49ms user=8848"}
+{"ts": "2026-09-16T14:12:58+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 76ms user=1765"}
+{"ts": "2026-09-16T14:12:39+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 65ms user=2269"}
+{"ts": "2026-09-16T14:12:38+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 82ms user=5160"}
+{"ts": "2026-09-16T14:12:41+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 78ms user=3186"}
+{"ts": "2026-09-16T14:12:00+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 47ms user=8959"}
+{"ts": "2026-09-16T14:12:17+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 52ms user=4566"}
+{"ts": "2026-09-16T14:12:43+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 77ms user=9462"}
+{"ts": "2026-09-16T14:12:18+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 99ms user=8640"}
+{"ts": "2026-09-16T14:12:49+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 110ms user=4264"}
+{"ts": "2026-09-16T14:12:19+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 100ms user=1286"}
+{"ts": "2026-09-16T14:12:18+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 49ms user=9300"}
+{"ts": "2026-09-16T14:13:08+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 120ms user=9335"}
+{"ts": "2026-09-16T14:13:17+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 86ms user=4790"}
+{"ts": "2026-09-16T14:13:31+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 90ms user=1406"}
+{"ts": "2026-09-16T14:13:10+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 102ms user=8385"}
+{"ts": "2026-09-16T14:13:25+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 58ms user=7818"}
+{"ts": "2026-09-16T14:13:22+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 80ms user=2980"}
+{"ts": "2026-09-16T14:13:53+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 40ms user=6317"}
+{"ts": "2026-09-16T14:13:48+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 90ms user=2966"}
+{"ts": "2026-09-16T14:13:59+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 41ms user=5748"}
+{"ts": "2026-09-16T14:13:16+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 48ms user=7437"}
+{"ts": "2026-09-16T14:14:42+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 59ms user=5084"}
+{"ts": "2026-09-16T14:14:17+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 105ms user=6170"}
+{"ts": "2026-09-16T14:14:12+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 94ms user=1475"}
+{"ts": "2026-09-16T14:14:51+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 91ms user=9998"}
+{"ts": "2026-09-16T14:14:13+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 50ms user=1810"}
+{"ts": "2026-09-16T14:14:59+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 92ms user=8386"}
+{"ts": "2026-09-16T14:14:39+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 76ms user=8955"}
+{"ts": "2026-09-16T14:14:03+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 56ms user=3797"}
+{"ts": "2026-09-16T14:14:30+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 83ms user=5616"}
+{"ts": "2026-09-16T14:14:19+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 73ms user=7655"}
+{"ts": "2026-09-16T14:14:41+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 78ms user=8916"}
+{"ts": "2026-09-16T14:14:35+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 90ms user=2961"}
+{"ts": "2026-09-16T14:14:10+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 60ms user=2231"}
+{"ts": "2026-09-16T14:14:13+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 103ms user=4604"}
+{"ts": "2026-09-16T14:14:30+00:00", "level": "warn", "service": "payment-api", "host": "prd-api-02", "msg": "cache miss ratio 0.31 above 0.30"}
+{"ts": "2026-09-16T14:15:20+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 87ms user=5232"}
+{"ts": "2026-09-16T14:15:51+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 65ms user=1329"}
+{"ts": "2026-09-16T14:15:47+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 89ms user=7781"}
+{"ts": "2026-09-16T14:15:47+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 66ms user=7174"}
+{"ts": "2026-09-16T14:15:17+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 47ms user=9161"}
+{"ts": "2026-09-16T14:15:17+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 86ms user=3062"}
+{"ts": "2026-09-16T14:15:43+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 107ms user=4538"}
+{"ts": "2026-09-16T14:15:05+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 71ms user=7300"}
+{"ts": "2026-09-16T14:16:57+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 115ms user=9025"}
+{"ts": "2026-09-16T14:16:00+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 90ms user=9648"}
+{"ts": "2026-09-16T14:16:54+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 97ms user=5070"}
+{"ts": "2026-09-16T14:16:50+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 68ms user=3529"}
+{"ts": "2026-09-16T14:16:09+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 53ms user=8492"}
+{"ts": "2026-09-16T14:16:05+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 45ms user=1022"}
+{"ts": "2026-09-16T14:16:50+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 69ms user=1615"}
+{"ts": "2026-09-16T14:16:41+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 78ms user=3096"}
+{"ts": "2026-09-16T14:16:40+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 107ms user=8166"}
+{"ts": "2026-09-16T14:16:44+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 52ms user=2152"}
+{"ts": "2026-09-16T14:16:19+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 114ms user=4140"}
+{"ts": "2026-09-16T14:16:24+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 68ms user=1018"}
+{"ts": "2026-09-16T14:16:00+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 78ms user=8547"}
+{"ts": "2026-09-16T14:16:17+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 71ms user=8787"}
+{"ts": "2026-09-16T14:17:12+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 93ms user=2328"}
+{"ts": "2026-09-16T14:17:16+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 94ms user=7065"}
+{"ts": "2026-09-16T14:17:14+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 44ms user=6538"}
+{"ts": "2026-09-16T14:17:45+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 86ms user=7493"}
+{"ts": "2026-09-16T14:17:12+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 77ms user=9271"}
+{"ts": "2026-09-16T14:17:04+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 103ms user=4283"}
+{"ts": "2026-09-16T14:17:19+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 69ms user=8620"}
+{"ts": "2026-09-16T14:17:14+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 77ms user=2785"}
+{"ts": "2026-09-16T14:18:13+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 116ms user=3325"}
+{"ts": "2026-09-16T14:18:26+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 47ms user=4016"}
+{"ts": "2026-09-16T14:18:25+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 80ms user=2854"}
+{"ts": "2026-09-16T14:18:05+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 82ms user=4124"}
+{"ts": "2026-09-16T14:18:11+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 107ms user=8661"}
+{"ts": "2026-09-16T14:18:02+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 88ms user=7125"}
+{"ts": "2026-09-16T14:18:21+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 61ms user=2785"}
+{"ts": "2026-09-16T14:18:00+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 75ms user=2323"}
+{"ts": "2026-09-16T14:19:19+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 51ms user=1807"}
+{"ts": "2026-09-16T14:19:45+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 65ms user=7106"}
+{"ts": "2026-09-16T14:19:34+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 64ms user=6297"}
+{"ts": "2026-09-16T14:19:23+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 100ms user=1496"}
+{"ts": "2026-09-16T14:19:40+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 71ms user=7631"}
+{"ts": "2026-09-16T14:19:02+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 44ms user=8603"}
+{"ts": "2026-09-16T14:19:04+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 72ms user=4193"}
+{"ts": "2026-09-16T14:19:47+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 117ms user=6555"}
+{"ts": "2026-09-16T14:19:23+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 82ms user=1714"}
+{"ts": "2026-09-16T14:19:16+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 80ms user=5515"}
+{"ts": "2026-09-16T14:19:19+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 116ms user=2070"}
+{"ts": "2026-09-16T14:19:01+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 53ms user=8785"}
+{"ts": "2026-09-16T14:19:45+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 89ms user=5113"}
+{"ts": "2026-09-16T14:19:58+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 103ms user=3174"}
+{"ts": "2026-09-16T14:20:20+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 86ms user=2294"}
+{"ts": "2026-09-16T14:20:32+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 90ms user=3620"}
+{"ts": "2026-09-16T14:20:15+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 48ms user=1554"}
+{"ts": "2026-09-16T14:20:30+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 109ms user=6337"}
+{"ts": "2026-09-16T14:20:10+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 53ms user=2182"}
+{"ts": "2026-09-16T14:20:16+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 50ms user=4413"}
+{"ts": "2026-09-16T14:20:06+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 103ms user=8323"}
+{"ts": "2026-09-16T14:20:11+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 57ms user=7829"}
+{"ts": "2026-09-16T14:20:29+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 70ms user=9823"}
+{"ts": "2026-09-16T14:20:54+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 55ms user=5815"}
+{"ts": "2026-09-16T14:20:18+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 112ms user=5385"}
+{"ts": "2026-09-16T14:20:23+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 73ms user=4263"}
+{"ts": "2026-09-16T14:20:28+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 63ms user=5019"}
+{"ts": "2026-09-16T14:20:15+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 76ms user=4084"}
+{"ts": "2026-09-16T14:21:02+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 40ms user=8778"}
+{"ts": "2026-09-16T14:21:56+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 97ms user=7125"}
+{"ts": "2026-09-16T14:21:02+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 69ms user=2953"}
+{"ts": "2026-09-16T14:21:03+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 116ms user=4181"}
+{"ts": "2026-09-16T14:21:59+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 87ms user=9399"}
+{"ts": "2026-09-16T14:21:55+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 97ms user=5258"}
+{"ts": "2026-09-16T14:21:49+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 40ms user=2733"}
+{"ts": "2026-09-16T14:21:40+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 119ms user=6729"}
+{"ts": "2026-09-16T14:21:13+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 87ms user=6570"}
+{"ts": "2026-09-16T14:21:09+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 66ms user=5176"}
+{"ts": "2026-09-16T14:21:02+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 66ms user=1186"}
+{"ts": "2026-09-16T14:21:30+00:00", "level": "warn", "service": "payment-api", "host": "prd-api-02", "msg": "cache miss ratio 0.31 above 0.30"}
+{"ts": "2026-09-16T14:22:30+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 92ms user=2661"}
+{"ts": "2026-09-16T14:22:50+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 110ms user=3532"}
+{"ts": "2026-09-16T14:22:40+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 51ms user=3681"}
+{"ts": "2026-09-16T14:22:25+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 74ms user=7713"}
+{"ts": "2026-09-16T14:22:18+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 79ms user=7845"}
+{"ts": "2026-09-16T14:22:03+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 112ms user=6852"}
+{"ts": "2026-09-16T14:22:26+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 42ms user=6960"}
+{"ts": "2026-09-16T14:22:41+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 90ms user=7635"}
+{"ts": "2026-09-16T14:22:13+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 95ms user=3565"}
+{"ts": "2026-09-16T14:22:27+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 51ms user=7655"}
+{"ts": "2026-09-16T14:22:36+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 98ms user=3663"}
+{"ts": "2026-09-16T14:22:08+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 46ms user=3334"}
+{"ts": "2026-09-16T14:23:59+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 53ms user=7287"}
+{"ts": "2026-09-16T14:23:31+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 78ms user=3075"}
+{"ts": "2026-09-16T14:23:53+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 101ms user=6153"}
+{"ts": "2026-09-16T14:23:03+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 89ms user=2413"}
+{"ts": "2026-09-16T14:23:57+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 119ms user=3625"}
+{"ts": "2026-09-16T14:23:40+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 119ms user=7627"}
+{"ts": "2026-09-16T14:23:39+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 100ms user=3997"}
+{"ts": "2026-09-16T14:23:36+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 45ms user=7549"}
+{"ts": "2026-09-16T14:23:33+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 89ms user=6885"}
+{"ts": "2026-09-16T14:24:53+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 44ms user=6311"}
+{"ts": "2026-09-16T14:24:07+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 116ms user=8466"}
+{"ts": "2026-09-16T14:24:35+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 79ms user=7882"}
+{"ts": "2026-09-16T14:24:19+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 71ms user=7975"}
+{"ts": "2026-09-16T14:24:24+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 87ms user=8320"}
+{"ts": "2026-09-16T14:24:32+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 62ms user=1382"}
+{"ts": "2026-09-16T14:24:00+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 102ms user=8623"}
+{"ts": "2026-09-16T14:24:15+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 119ms user=8508"}
+{"ts": "2026-09-16T14:24:53+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 100ms user=7559"}
+{"ts": "2026-09-16T14:24:06+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 56ms user=6874"}
+{"ts": "2026-09-16T14:24:27+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 51ms user=8241"}
+{"ts": "2026-09-16T14:24:32+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 45ms user=1666"}
+{"ts": "2026-09-16T14:25:32+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 57ms user=1423"}
+{"ts": "2026-09-16T14:25:54+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 118ms user=2795"}
+{"ts": "2026-09-16T14:25:12+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 102ms user=5716"}
+{"ts": "2026-09-16T14:25:51+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 68ms user=2073"}
+{"ts": "2026-09-16T14:25:53+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 118ms user=5132"}
+{"ts": "2026-09-16T14:25:10+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 118ms user=5505"}
+{"ts": "2026-09-16T14:25:57+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 58ms user=5164"}
+{"ts": "2026-09-16T14:25:32+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 66ms user=5306"}
+{"ts": "2026-09-16T14:25:39+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 70ms user=6227"}
+{"ts": "2026-09-16T14:25:23+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 65ms user=3983"}
+{"ts": "2026-09-16T14:25:25+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 75ms user=6371"}
+{"ts": "2026-09-16T14:25:57+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 61ms user=5330"}
+{"ts": "2026-09-16T14:25:07+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 46ms user=6894"}
+{"ts": "2026-09-16T14:25:55+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 111ms user=9543"}
+{"ts": "2026-09-16T14:26:24+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 113ms user=3395"}
+{"ts": "2026-09-16T14:26:23+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 50ms user=8246"}
+{"ts": "2026-09-16T14:26:14+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 118ms user=1791"}
+{"ts": "2026-09-16T14:26:18+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 72ms user=6080"}
+{"ts": "2026-09-16T14:26:40+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 80ms user=1029"}
+{"ts": "2026-09-16T14:26:47+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 68ms user=3447"}
+{"ts": "2026-09-16T14:26:18+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 120ms user=8081"}
+{"ts": "2026-09-16T14:26:26+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 86ms user=1782"}
+{"ts": "2026-09-16T14:26:08+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 69ms user=1746"}
+{"ts": "2026-09-16T14:26:01+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 40ms user=6815"}
+{"ts": "2026-09-16T14:27:39+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 60ms user=3207"}
+{"ts": "2026-09-16T14:27:00+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 59ms user=8386"}
+{"ts": "2026-09-16T14:27:06+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 58ms user=5419"}
+{"ts": "2026-09-16T14:27:25+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 41ms user=1919"}
+{"ts": "2026-09-16T14:27:41+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 84ms user=8270"}
+{"ts": "2026-09-16T14:27:38+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 103ms user=5071"}
+{"ts": "2026-09-16T14:27:10+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 45ms user=2008"}
+{"ts": "2026-09-16T14:27:34+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 91ms user=4041"}
+{"ts": "2026-09-16T14:27:15+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 47ms user=2718"}
+{"ts": "2026-09-16T14:27:00+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 110ms user=4231"}
+{"ts": "2026-09-16T14:28:39+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 105ms user=6068"}
+{"ts": "2026-09-16T14:28:04+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 120ms user=1794"}
+{"ts": "2026-09-16T14:28:56+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 101ms user=9821"}
+{"ts": "2026-09-16T14:28:00+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 95ms user=8622"}
+{"ts": "2026-09-16T14:28:05+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 97ms user=3873"}
+{"ts": "2026-09-16T14:28:14+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 73ms user=4805"}
+{"ts": "2026-09-16T14:28:41+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 55ms user=6497"}
+{"ts": "2026-09-16T14:28:57+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 73ms user=1860"}
+{"ts": "2026-09-16T14:28:17+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 110ms user=8144"}
+{"ts": "2026-09-16T14:28:43+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 73ms user=5843"}
+{"ts": "2026-09-16T14:28:41+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 50ms user=9313"}
+{"ts": "2026-09-16T14:28:00+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 73ms user=4868"}
+{"ts": "2026-09-16T14:28:53+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 65ms user=3608"}
+{"ts": "2026-09-16T14:28:47+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 64ms user=7368"}
+{"ts": "2026-09-16T14:28:30+00:00", "level": "warn", "service": "payment-api", "host": "prd-api-02", "msg": "cache miss ratio 0.31 above 0.30"}
+{"ts": "2026-09-16T14:29:30+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 40ms user=1434"}
+{"ts": "2026-09-16T14:29:27+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 69ms user=6042"}
+{"ts": "2026-09-16T14:29:50+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 90ms user=2274"}
+{"ts": "2026-09-16T14:29:36+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 58ms user=1539"}
+{"ts": "2026-09-16T14:29:01+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 53ms user=3651"}
+{"ts": "2026-09-16T14:29:22+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 43ms user=1505"}
+{"ts": "2026-09-16T14:29:02+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 45ms user=2111"}
+{"ts": "2026-09-16T14:29:47+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 48ms user=6954"}
+{"ts": "2026-09-16T14:29:12+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 48ms user=7288"}
+{"ts": "2026-09-16T14:29:06+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 66ms user=4328"}
+{"ts": "2026-09-16T14:29:07+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 44ms user=2433"}
+{"ts": "2026-09-16T14:30:16+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 84ms user=5205"}
+{"ts": "2026-09-16T14:30:59+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 46ms user=7029"}
+{"ts": "2026-09-16T14:30:58+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 117ms user=9253"}
+{"ts": "2026-09-16T14:30:30+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 119ms user=1507"}
+{"ts": "2026-09-16T14:30:50+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 43ms user=8150"}
+{"ts": "2026-09-16T14:30:33+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 84ms user=8683"}
+{"ts": "2026-09-16T14:30:45+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 108ms user=4548"}
+{"ts": "2026-09-16T14:30:45+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 113ms user=5704"}
+{"ts": "2026-09-16T14:30:10+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 40ms user=9577"}
+{"ts": "2026-09-16T14:30:12+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 46ms user=1071"}
+{"ts": "2026-09-16T14:30:22+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 52ms user=9052"}
+{"ts": "2026-09-16T14:31:52+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 69ms user=9164"}
+{"ts": "2026-09-16T14:31:10+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 50ms user=9032"}
+{"ts": "2026-09-16T14:31:50+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 111ms user=2713"}
+{"ts": "2026-09-16T14:31:40+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 85ms user=2558"}
+{"ts": "2026-09-16T14:31:25+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 51ms user=7916"}
+{"ts": "2026-09-16T14:31:56+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 43ms user=7094"}
+{"ts": "2026-09-16T14:31:13+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 73ms user=8013"}
+{"ts": "2026-09-16T14:31:57+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 104ms user=3803"}
+{"ts": "2026-09-16T14:31:24+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 69ms user=8551"}
+{"ts": "2026-09-16T14:31:08+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 116ms user=1555"}
+{"ts": "2026-09-16T14:32:29+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 72ms user=4785"}
+{"ts": "2026-09-16T14:32:08+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 99ms user=4898"}
+{"ts": "2026-09-16T14:32:32+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 74ms user=5939"}
+{"ts": "2026-09-16T14:32:48+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 119ms user=3532"}
+{"ts": "2026-09-16T14:32:46+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 71ms user=6350"}
+{"ts": "2026-09-16T14:32:38+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 84ms user=3636"}
+{"ts": "2026-09-16T14:32:15+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 64ms user=5238"}
+{"ts": "2026-09-16T14:32:46+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 61ms user=2665"}
+{"ts": "2026-09-16T14:32:12+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 59ms user=3430"}
+{"ts": "2026-09-16T14:33:29+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 41ms user=7537"}
+{"ts": "2026-09-16T14:33:54+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 68ms user=9199"}
+{"ts": "2026-09-16T14:33:40+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 99ms user=1362"}
+{"ts": "2026-09-16T14:33:09+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 117ms user=7630"}
+{"ts": "2026-09-16T14:33:00+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 71ms user=8045"}
+{"ts": "2026-09-16T14:33:44+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 115ms user=7900"}
+{"ts": "2026-09-16T14:33:54+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 114ms user=4745"}
+{"ts": "2026-09-16T14:33:43+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 55ms user=8436"}
+{"ts": "2026-09-16T14:33:27+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 73ms user=2603"}
+{"ts": "2026-09-16T14:33:57+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 71ms user=7555"}
+{"ts": "2026-09-16T14:33:45+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 120ms user=3563"}
+{"ts": "2026-09-16T14:34:11+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 81ms user=1174"}
+{"ts": "2026-09-16T14:34:24+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 53ms user=1624"}
+{"ts": "2026-09-16T14:34:16+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 67ms user=3635"}
+{"ts": "2026-09-16T14:34:45+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 106ms user=6705"}
+{"ts": "2026-09-16T14:34:06+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 98ms user=9864"}
+{"ts": "2026-09-16T14:34:13+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 100ms user=9391"}
+{"ts": "2026-09-16T14:34:01+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 87ms user=9547"}
+{"ts": "2026-09-16T14:34:21+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 98ms user=4442"}
+{"ts": "2026-09-16T14:34:43+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 90ms user=9417"}
+{"ts": "2026-09-16T14:34:48+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 118ms user=6824"}
+{"ts": "2026-09-16T14:34:40+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 72ms user=5495"}
+{"ts": "2026-09-16T14:34:24+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 47ms user=1218"}
+{"ts": "2026-09-16T14:34:04+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 93ms user=6769"}
+{"ts": "2026-09-16T14:34:37+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 53ms user=4677"}
+{"ts": "2026-09-16T14:35:04+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 64ms user=8686"}
+{"ts": "2026-09-16T14:35:41+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 68ms user=3396"}
+{"ts": "2026-09-16T14:35:22+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 92ms user=8669"}
+{"ts": "2026-09-16T14:35:18+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 56ms user=8690"}
+{"ts": "2026-09-16T14:35:22+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 74ms user=7162"}
+{"ts": "2026-09-16T14:35:43+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 94ms user=4045"}
+{"ts": "2026-09-16T14:35:30+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 75ms user=6865"}
+{"ts": "2026-09-16T14:35:15+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 78ms user=6248"}
+{"ts": "2026-09-16T14:35:30+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 94ms user=2399"}
+{"ts": "2026-09-16T14:35:42+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 59ms user=5967"}
+{"ts": "2026-09-16T14:35:54+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 47ms user=2397"}
+{"ts": "2026-09-16T14:35:52+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 81ms user=3300"}
+{"ts": "2026-09-16T14:35:33+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 114ms user=1245"}
+{"ts": "2026-09-16T14:35:42+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 66ms user=2179"}
+{"ts": "2026-09-16T14:35:30+00:00", "level": "warn", "service": "payment-api", "host": "prd-api-02", "msg": "cache miss ratio 0.31 above 0.30"}
+{"ts": "2026-09-16T14:36:09+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 91ms user=9757"}
+{"ts": "2026-09-16T14:36:10+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 117ms user=2481"}
+{"ts": "2026-09-16T14:36:42+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 78ms user=4233"}
+{"ts": "2026-09-16T14:36:31+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 67ms user=9696"}
+{"ts": "2026-09-16T14:36:05+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 96ms user=2916"}
+{"ts": "2026-09-16T14:36:35+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 73ms user=7865"}
+{"ts": "2026-09-16T14:36:14+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 100ms user=9078"}
+{"ts": "2026-09-16T14:36:35+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 101ms user=8652"}
+{"ts": "2026-09-16T14:36:57+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 102ms user=5039"}
+{"ts": "2026-09-16T14:36:31+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 109ms user=1108"}
+{"ts": "2026-09-16T14:36:10+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 99ms user=9152"}
+{"ts": "2026-09-16T14:36:42+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 99ms user=7143"}
+{"ts": "2026-09-16T14:36:27+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 49ms user=3957"}
+{"ts": "2026-09-16T14:36:40+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 43ms user=1336"}
+{"ts": "2026-09-16T14:37:31+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 44ms user=4495"}
+{"ts": "2026-09-16T14:37:45+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 120ms user=3079"}
+{"ts": "2026-09-16T14:37:21+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 86ms user=6592"}
+{"ts": "2026-09-16T14:37:30+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 110ms user=4452"}
+{"ts": "2026-09-16T14:37:18+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 83ms user=7920"}
+{"ts": "2026-09-16T14:37:16+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 46ms user=5737"}
+{"ts": "2026-09-16T14:37:18+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 103ms user=7614"}
+{"ts": "2026-09-16T14:37:21+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 74ms user=9297"}
+{"ts": "2026-09-16T14:37:22+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 103ms user=2932"}
+{"ts": "2026-09-16T14:37:21+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 80ms user=5902"}
+{"ts": "2026-09-16T14:37:08+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 51ms user=1656"}
+{"ts": "2026-09-16T14:38:58+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 117ms user=1985"}
+{"ts": "2026-09-16T14:38:50+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 109ms user=7161"}
+{"ts": "2026-09-16T14:38:39+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 120ms user=2359"}
+{"ts": "2026-09-16T14:38:13+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 98ms user=3849"}
+{"ts": "2026-09-16T14:38:06+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 63ms user=1605"}
+{"ts": "2026-09-16T14:38:26+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 41ms user=7043"}
+{"ts": "2026-09-16T14:38:55+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 79ms user=5227"}
+{"ts": "2026-09-16T14:38:55+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 63ms user=7910"}
+{"ts": "2026-09-16T14:38:02+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 42ms user=8056"}
+{"ts": "2026-09-16T14:38:36+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 114ms user=1894"}
+{"ts": "2026-09-16T14:38:31+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 106ms user=1645"}
+{"ts": "2026-09-16T14:38:52+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 93ms user=7629"}
+{"ts": "2026-09-16T14:38:28+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 41ms user=7342"}
+{"ts": "2026-09-16T14:38:38+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 59ms user=8789"}
+{"ts": "2026-09-16T14:39:42+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 51ms user=4575"}
+{"ts": "2026-09-16T14:39:55+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 56ms user=8738"}
+{"ts": "2026-09-16T14:39:01+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 112ms user=4969"}
+{"ts": "2026-09-16T14:39:28+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 63ms user=1821"}
+{"ts": "2026-09-16T14:39:23+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 58ms user=2381"}
+{"ts": "2026-09-16T14:39:18+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 111ms user=9160"}
+{"ts": "2026-09-16T14:39:29+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 72ms user=1862"}
+{"ts": "2026-09-16T14:39:45+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 41ms user=1992"}
+{"ts": "2026-09-16T14:39:00+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 119ms user=2305"}
+{"ts": "2026-09-16T14:39:24+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 79ms user=3719"}
+{"ts": "2026-09-16T14:39:55+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 117ms user=1979"}
+{"ts": "2026-09-16T14:39:20+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 113ms user=8188"}
+{"ts": "2026-09-16T14:39:30+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 61ms user=3374"}
+{"ts": "2026-09-16T14:40:24+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 74ms user=6470"}
+{"ts": "2026-09-16T14:40:18+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 47ms user=6440"}
+{"ts": "2026-09-16T14:40:55+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 41ms user=3475"}
+{"ts": "2026-09-16T14:40:38+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 114ms user=8021"}
+{"ts": "2026-09-16T14:40:56+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 88ms user=7346"}
+{"ts": "2026-09-16T14:40:43+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 117ms user=4839"}
+{"ts": "2026-09-16T14:40:51+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 76ms user=1027"}
+{"ts": "2026-09-16T14:40:20+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 74ms user=7922"}
+{"ts": "2026-09-16T14:40:10+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 45ms user=5727"}
+{"ts": "2026-09-16T14:40:53+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 113ms user=3408"}
+{"ts": "2026-09-16T14:40:17+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 103ms user=6682"}
+{"ts": "2026-09-16T14:41:59+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 79ms user=1943"}
+{"ts": "2026-09-16T14:41:43+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 99ms user=4384"}
+{"ts": "2026-09-16T14:41:59+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 115ms user=1153"}
+{"ts": "2026-09-16T14:41:50+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 98ms user=9856"}
+{"ts": "2026-09-16T14:41:05+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 85ms user=2026"}
+{"ts": "2026-09-16T14:41:14+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 114ms user=9536"}
+{"ts": "2026-09-16T14:41:57+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 106ms user=6259"}
+{"ts": "2026-09-16T14:41:30+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 115ms user=4307"}
+{"ts": "2026-09-16T14:41:12+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 64ms user=2510"}
+{"ts": "2026-09-16T14:41:11+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 77ms user=6944"}
+{"ts": "2026-09-16T14:41:36+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 85ms user=7594"}
+{"ts": "2026-09-16T14:41:49+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 59ms user=5035"}
+{"ts": "2026-09-16T14:41:02+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 87ms user=2738"}
+{"ts": "2026-09-16T14:42:01+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 44ms user=4352"}
+{"ts": "2026-09-16T14:42:55+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 102ms user=4499"}
+{"ts": "2026-09-16T14:42:16+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 94ms user=2591"}
+{"ts": "2026-09-16T14:42:28+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 117ms user=3144"}
+{"ts": "2026-09-16T14:42:16+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 83ms user=4293"}
+{"ts": "2026-09-16T14:42:11+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 50ms user=1450"}
+{"ts": "2026-09-16T14:42:03+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 111ms user=7056"}
+{"ts": "2026-09-16T14:42:55+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 98ms user=8976"}
+{"ts": "2026-09-16T14:42:54+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 116ms user=7510"}
+{"ts": "2026-09-16T14:42:59+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 51ms user=5213"}
+{"ts": "2026-09-16T14:42:20+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 69ms user=2471"}
+{"ts": "2026-09-16T14:42:58+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 104ms user=7440"}
+{"ts": "2026-09-16T14:42:30+00:00", "level": "warn", "service": "payment-api", "host": "prd-api-02", "msg": "cache miss ratio 0.31 above 0.30"}
+{"ts": "2026-09-16T14:43:22+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 110ms user=1455"}
+{"ts": "2026-09-16T14:43:53+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 73ms user=9410"}
+{"ts": "2026-09-16T14:43:45+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 101ms user=1913"}
+{"ts": "2026-09-16T14:43:06+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 80ms user=1094"}
+{"ts": "2026-09-16T14:43:12+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 78ms user=8229"}
+{"ts": "2026-09-16T14:43:48+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 53ms user=8712"}
+{"ts": "2026-09-16T14:43:20+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 72ms user=7390"}
+{"ts": "2026-09-16T14:43:07+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 101ms user=7220"}
+{"ts": "2026-09-16T14:43:10+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 70ms user=3345"}
+{"ts": "2026-09-16T14:43:58+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 41ms user=8666"}
+{"ts": "2026-09-16T14:44:23+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 57ms user=8327"}
+{"ts": "2026-09-16T14:44:06+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 42ms user=2231"}
+{"ts": "2026-09-16T14:44:28+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 81ms user=4831"}
+{"ts": "2026-09-16T14:44:30+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 120ms user=6997"}
+{"ts": "2026-09-16T14:44:09+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 68ms user=1929"}
+{"ts": "2026-09-16T14:44:11+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 97ms user=3370"}
+{"ts": "2026-09-16T14:44:28+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 74ms user=7852"}
+{"ts": "2026-09-16T14:44:26+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 59ms user=1416"}
+{"ts": "2026-09-16T14:44:17+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 77ms user=6480"}
+{"ts": "2026-09-16T14:44:51+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 73ms user=9044"}
+{"ts": "2026-09-16T14:44:06+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 98ms user=8904"}
+{"ts": "2026-09-16T14:44:07+00:00", "level": "info", "service": "payment-api", "host": "prd-api-01", "msg": "POST /pay 200 in 105ms user=1931"}
+{"ts": "2026-09-16T14:44:40+00:00", "level": "info", "service": "payment-api", "host": "prd-api-03", "msg": "POST /pay 200 in 67ms user=8822"}
+{"ts": "2026-09-16T14:44:53+00:00", "level": "info", "service": "payment-api", "host": "prd-api-02", "msg": "POST /pay 200 in 55ms user=5223"}
+{"ts": "2026-09-16T14:32:00+00:00", "level": "error", "service": "payment-api", "host": "prd-api-03", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=4148 request=711249"}
+{"ts": "2026-09-16T14:32:03+00:00", "level": "error", "service": "payment-api", "host": "prd-api-02", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=4314 request=110523"}
+{"ts": "2026-09-16T14:32:06+00:00", "level": "error", "service": "payment-api", "host": "prd-api-01", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=9512 request=527947"}
+{"ts": "2026-09-16T14:32:09+00:00", "level": "error", "service": "payment-api", "host": "prd-api-03", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=1907 request=643643"}
+{"ts": "2026-09-16T14:32:12+00:00", "level": "error", "service": "payment-api", "host": "prd-api-02", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=6492 request=395444"}
+{"ts": "2026-09-16T14:32:15+00:00", "level": "error", "service": "payment-api", "host": "prd-api-03", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=9077 request=194717"}
+{"ts": "2026-09-16T14:32:18+00:00", "level": "error", "service": "payment-api", "host": "prd-api-01", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=7709 request=900043"}
+{"ts": "2026-09-16T14:32:21+00:00", "level": "error", "service": "payment-api", "host": "prd-api-02", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=3183 request=797808"}
+{"ts": "2026-09-16T14:32:24+00:00", "level": "error", "service": "payment-api", "host": "prd-api-02", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=5068 request=295089"}
+{"ts": "2026-09-16T14:32:27+00:00", "level": "error", "service": "payment-api", "host": "prd-api-03", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=7014 request=138452"}
+{"ts": "2026-09-16T14:32:30+00:00", "level": "error", "service": "payment-api", "host": "prd-api-01", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=7081 request=702847"}
+{"ts": "2026-09-16T14:32:33+00:00", "level": "error", "service": "payment-api", "host": "prd-api-03", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=1076 request=473457"}
+{"ts": "2026-09-16T14:32:36+00:00", "level": "error", "service": "payment-api", "host": "prd-api-03", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=8303 request=640672"}
+{"ts": "2026-09-16T14:32:39+00:00", "level": "error", "service": "payment-api", "host": "prd-api-01", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=2978 request=474046"}
+{"ts": "2026-09-16T14:32:42+00:00", "level": "error", "service": "payment-api", "host": "prd-api-03", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=5009 request=956199"}
+{"ts": "2026-09-16T14:32:45+00:00", "level": "error", "service": "payment-api", "host": "prd-api-02", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=7248 request=704306"}
+{"ts": "2026-09-16T14:32:48+00:00", "level": "error", "service": "payment-api", "host": "prd-api-01", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=5776 request=212919"}
+{"ts": "2026-09-16T14:32:51+00:00", "level": "error", "service": "payment-api", "host": "prd-api-03", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=9106 request=568125"}
+{"ts": "2026-09-16T14:32:54+00:00", "level": "error", "service": "payment-api", "host": "prd-api-03", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=1420 request=656280"}
+{"ts": "2026-09-16T14:32:57+00:00", "level": "error", "service": "payment-api", "host": "prd-api-03", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=3201 request=121692"}
+{"ts": "2026-09-16T14:33:00+00:00", "level": "error", "service": "payment-api", "host": "prd-api-01", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=2451 request=334565"}
+{"ts": "2026-09-16T14:33:03+00:00", "level": "error", "service": "payment-api", "host": "prd-api-03", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=3988 request=276035"}
+{"ts": "2026-09-16T14:33:06+00:00", "level": "error", "service": "payment-api", "host": "prd-api-01", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=6110 request=362624"}
+{"ts": "2026-09-16T14:33:09+00:00", "level": "error", "service": "payment-api", "host": "prd-api-03", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=1492 request=120396"}
+{"ts": "2026-09-16T14:33:12+00:00", "level": "error", "service": "payment-api", "host": "prd-api-01", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=4196 request=374118"}
+{"ts": "2026-09-16T14:33:15+00:00", "level": "error", "service": "payment-api", "host": "prd-api-01", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=8601 request=648312"}
+{"ts": "2026-09-16T14:33:18+00:00", "level": "error", "service": "payment-api", "host": "prd-api-01", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=8277 request=207861"}
+{"ts": "2026-09-16T14:33:21+00:00", "level": "error", "service": "payment-api", "host": "prd-api-02", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=2538 request=851931"}
+{"ts": "2026-09-16T14:33:24+00:00", "level": "error", "service": "payment-api", "host": "prd-api-01", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=1740 request=386274"}
+{"ts": "2026-09-16T14:33:27+00:00", "level": "error", "service": "payment-api", "host": "prd-api-01", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=8616 request=617568"}
+{"ts": "2026-09-16T14:33:30+00:00", "level": "error", "service": "payment-api", "host": "prd-api-03", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=9204 request=898502"}
+{"ts": "2026-09-16T14:33:33+00:00", "level": "error", "service": "payment-api", "host": "prd-api-02", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=2802 request=227965"}
+{"ts": "2026-09-16T14:33:36+00:00", "level": "error", "service": "payment-api", "host": "prd-api-01", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=7646 request=243607"}
+{"ts": "2026-09-16T14:33:39+00:00", "level": "error", "service": "payment-api", "host": "prd-api-03", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=4726 request=338061"}
+{"ts": "2026-09-16T14:33:42+00:00", "level": "error", "service": "payment-api", "host": "prd-api-01", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=8570 request=882844"}
+{"ts": "2026-09-16T14:33:45+00:00", "level": "error", "service": "payment-api", "host": "prd-api-02", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=3692 request=966138"}
+{"ts": "2026-09-16T14:33:48+00:00", "level": "error", "service": "payment-api", "host": "prd-api-01", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=7369 request=827574"}
+{"ts": "2026-09-16T14:33:51+00:00", "level": "error", "service": "payment-api", "host": "prd-api-02", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=9611 request=137966"}
+{"ts": "2026-09-16T14:33:54+00:00", "level": "error", "service": "payment-api", "host": "prd-api-02", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=1851 request=914646"}
+{"ts": "2026-09-16T14:33:57+00:00", "level": "error", "service": "payment-api", "host": "prd-api-02", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=6546 request=520171"}
+{"ts": "2026-09-16T14:34:00+00:00", "level": "error", "service": "payment-api", "host": "prd-api-01", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=6489 request=850286"}
+{"ts": "2026-09-16T14:34:03+00:00", "level": "error", "service": "payment-api", "host": "prd-api-02", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=6253 request=954634"}
+{"ts": "2026-09-16T14:34:06+00:00", "level": "error", "service": "payment-api", "host": "prd-api-02", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=1877 request=440661"}
+{"ts": "2026-09-16T14:34:09+00:00", "level": "error", "service": "payment-api", "host": "prd-api-03", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=3402 request=813203"}
+{"ts": "2026-09-16T14:34:12+00:00", "level": "error", "service": "payment-api", "host": "prd-api-02", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=5084 request=542641"}
+{"ts": "2026-09-16T14:34:15+00:00", "level": "error", "service": "payment-api", "host": "prd-api-03", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=1189 request=482134"}
+{"ts": "2026-09-16T14:34:18+00:00", "level": "error", "service": "payment-api", "host": "prd-api-01", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=9696 request=296603"}
+{"ts": "2026-09-16T14:34:21+00:00", "level": "error", "service": "payment-api", "host": "prd-api-01", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=6314 request=554075"}
+{"ts": "2026-09-16T14:34:24+00:00", "level": "error", "service": "payment-api", "host": "prd-api-01", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=9270 request=801644"}
+{"ts": "2026-09-16T14:34:27+00:00", "level": "error", "service": "payment-api", "host": "prd-api-01", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=4694 request=246178"}
+{"ts": "2026-09-16T14:34:30+00:00", "level": "error", "service": "payment-api", "host": "prd-api-02", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=7505 request=914302"}
+{"ts": "2026-09-16T14:34:33+00:00", "level": "error", "service": "payment-api", "host": "prd-api-02", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=1766 request=948579"}
+{"ts": "2026-09-16T14:34:36+00:00", "level": "error", "service": "payment-api", "host": "prd-api-01", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=1563 request=772739"}
+{"ts": "2026-09-16T14:34:39+00:00", "level": "error", "service": "payment-api", "host": "prd-api-03", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=5354 request=811394"}
+{"ts": "2026-09-16T14:34:42+00:00", "level": "error", "service": "payment-api", "host": "prd-api-03", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=5479 request=758767"}
+{"ts": "2026-09-16T14:34:45+00:00", "level": "error", "service": "payment-api", "host": "prd-api-03", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=1586 request=751436"}
+{"ts": "2026-09-16T14:34:48+00:00", "level": "error", "service": "payment-api", "host": "prd-api-01", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=5105 request=227611"}
+{"ts": "2026-09-16T14:34:51+00:00", "level": "error", "service": "payment-api", "host": "prd-api-03", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=1223 request=554758"}
+{"ts": "2026-09-16T14:34:54+00:00", "level": "error", "service": "payment-api", "host": "prd-api-01", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=1645 request=401489"}
+{"ts": "2026-09-16T14:34:57+00:00", "level": "error", "service": "payment-api", "host": "prd-api-01", "msg": "Connection timeout to db-01 (172.16.1.55:5432) after 5000ms user=6003 request=464436"}

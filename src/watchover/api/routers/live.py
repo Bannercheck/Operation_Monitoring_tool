@@ -151,10 +151,17 @@ def lines(agent: str, source: str, n: int = Query(400, le=5000), errors: bool = 
 
 @router.get("/report", response_class=HTMLResponse)
 def slo_report(window: int = 60, env: str | None = None, host: str | None = None, pool: str | None = None, lang: str = "tr", dataset: str | None = None,
+               start: str | None = None, end: str | None = None,
                user=Depends(require("act.report")), svc=Depends(services), sc=Depends(user_scope)):
-    """The SLO report (availability, error budget, p95, worst services) as a self-contained HTML page; windows above a day come from the rollups."""
+    """The SLO report (availability, error budget, p95, worst services) as a self-contained HTML page; windows above a day come from the rollups.
+    start / end: a fixed range chosen on the operations screen (from the per-minute history)."""
     from pathlib import Path
-    if window <= 1440:
+    if start:
+        from ...timerange import parse_range
+        s_, e_, _ = parse_range(None, start, end)
+        mins = (e_ - s_).total_seconds() / 60
+        fig = svc.history.figures(s_, e_, env or None, _hp(svc, sc, host, pool), "minute" if mins <= 360 else "hour" if mins <= 7 * 1440 else "day")
+    elif window <= 1440:
         fig = wo_report.figures_live(svc.live, env or None, _hp(svc, sc, host, pool), int(window))
     else:
         now = datetime.now(UTC)
@@ -233,3 +240,13 @@ def range_logs(last: int | None = None, start: str | None = None, end: str | Non
                user=Depends(require("page.ops")), svc=Depends(services), sc=Depends(user_scope)):
     s, e, _ = _rng(last, start, end)
     return svc.ranges.logs(s, e, env or None, _hx(svc, sc, host, pool), severity or "INFO", q or "", service or "", limit, before)
+
+
+
+@router.get("/range/detail")
+def range_detail(last: int | None = None, start: str | None = None, end: str | None = None, env: str | None = None, host: str | None = None, pool: str | None = None,
+                 user=Depends(require("page.ops")), svc=Depends(services), sc=Depends(user_scope)):
+    """What is behind the headline numbers for the range: errors by service / host, availability per bar and budget burn, the groups
+    that lower it, latency per service and the slowest lines, the services table."""
+    s, e, live = _rng(last, start, end)
+    return {**svc.ranges.detail(s, e, env or None, _hx(svc, sc, host, pool)), "live": live}

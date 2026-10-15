@@ -1,0 +1,240 @@
+{"log":"  File \"app.py\", line 88, in charge\n","stream":"stderr","time":"2026-10-14T09:30:00.812Z"}
+{"log":"2026-10-14T09:30:00.012Z ERROR payment-api gateway timeout order=465767\n","stream":"stderr","time":"2026-09-22T06:15:03.500981Z"}
+{"log":"2026-10-14T09:30:00.006Z ERROR payment-api gateway timeout order=453340\n","stream":"stderr","time":"2026-09-22T06:15:03.500981Z"}
+{"log":"  File \"app.py\", line 88, in charge\n","stream":"stderr","time":"2026-10-14T09:30:00.916Z"}
+{"log":"2026-10-14T09:30:00.353Z ERROR payment-api gateway timeout order=346861\n","stream":"stderr","time":"2026-09-22T06:15:03.500981Z"}
+{"log":"Traceback (most recent call last):\n","stream":"stderr","time":"2026-10-14T09:30:00.881Z"}
+{"log":"2026-10-14T09:30:00.430Z INFO  auth-api user login ok user=ali\n","stream":"stdout","time":"2026-09-22T06:16:00.000Z"}
+{"log":"2026-10-14T09:30:00.884Z INFO  order-service started on port 8080\n","stream":"stdout","time":"2026-09-22T06:14:02.003412Z"}
+{"log":"requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='gw.example.com', port=443): Read timed out\n","stream":"stderr","time":"2026-10-14T09:30:00.019Z"}
+{"log":"Traceback (most recent call last):\n","stream":"stderr","time":"2026-10-14T09:30:00.221Z"}
+{"log":"2026-10-14T09:30:00.354Z INFO  auth-api user login ok user=ali\n","stream":"stdout","time":"2026-09-22T06:16:00.000Z"}
+{"log":"2026-10-14T09:30:00.270Z ERROR payment-api gateway timeout order=542257\n","stream":"stderr","time":"2026-09-22T06:15:03.500981Z"}
+{"log":"2026-10-14T09:30:00.323Z INFO  order-service started on port 8080\n","stream":"stdout","time":"2026-09-22T06:14:02.003412Z"}
+{"log":"  File \"app.py\", line 88, in charge\n","stream":"stderr","time":"2026-10-14T09:30:00.345Z"}
+{"log":"Traceback (most recent call last):\n","stream":"stderr","time":"2026-10-14T09:30:00.619Z"}
+{"log":"Traceback (most recent call last):\n","stream":"stderr","time":"2026-10-14T09:30:00.015Z"}
+{"log":"2026-10-14T09:30:00.160Z INFO  order-service started on port 8080\n","stream":"stdout","time":"2026-09-22T06:14:02.003412Z"}
+{"log":"2026-10-14T09:30:00.899Z INFO  auth-api user login ok user=ali\n","stream":"stdout","time":"2026-09-22T06:16:00.000Z"}
+{"log":"  File \"app.py\", line 88, in charge\n","stream":"stderr","time":"2026-10-14T09:30:00.356Z"}
+{"log":"2026-10-14T09:30:00.001Z INFO  auth-api user login ok user=ali\n","stream":"stdout","time":"2026-09-22T06:16:00.000Z"}
+{"log":"Traceback (most recent call last):\n","stream":"stderr","time":"2026-10-14T09:30:00.775Z"}
+{"log":"2026-10-14T09:30:00.542Z ERROR payment-api gateway timeout order=86701\n","stream":"stderr","time":"2026-09-22T06:15:03.500981Z"}
+{"log":"requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='gw.example.com', port=443): Read timed out\n","stream":"stderr","time":"2026-10-14T09:30:00.026Z"}
+{"log":"Traceback (most recent call last):\n","stream":"stderr","time":"2026-10-14T09:30:00.609Z"}
+{"log":"requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='gw.example.com', port=443): Read timed out\n","stream":"stderr","time":"2026-10-14T09:30:00.712Z"}
+{"log":"  File \"app.py\", line 88, in charge\n","stream":"stderr","time":"2026-10-14T09:30:00.297Z"}
+{"log":"Traceback (most recent call last):\n","stream":"stderr","time":"2026-10-14T09:30:00.402Z"}
+{"log":"2026-10-14T09:30:00.137Z INFO  auth-api user login ok user=ali\n","stream":"stdout","time":"2026-09-22T06:16:00.000Z"}
+{"log":"2026-10-14T09:30:00.276Z ERROR payment-api gateway timeout order=579571\n","stream":"stderr","time":"2026-09-22T06:15:03.500981Z"}
+{"log":"2026-10-14T09:30:00.983Z ERROR payment-api gateway timeout order=510097\n","stream":"stderr","time":"2026-09-22T06:15:03.500981Z"}
+{"log":"2026-10-14T09:30:00.290Z ERROR payment-api gateway timeout order=593186\n","stream":"stderr","time":"2026-09-22T06:15:03.500981Z"}
+{"log":"  File \"app.py\", line 88, in charge\n","stream":"stderr","time":"2026-10-14T09:30:00.567Z"}
+{"log":"2026-10-14T09:30:00.982Z INFO  auth-api user login ok user=ali\n","stream":"stdout","time":"2026-09-22T06:16:00.000Z"}
+{"log":"2026-10-14T09:30:00.383Z INFO  auth-api user login ok user=ali\n","stream":"stdout","time":"2026-09-22T06:16:00.000Z"}
+{"log":"Traceback (most recent call last):\n","stream":"stderr","time":"2026-10-14T09:30:00.037Z"}
+{"log":"2026-10-14T09:30:00.259Z ERROR payment-api gateway timeout order=284049\n","stream":"stderr","time":"2026-09-22T06:15:03.500981Z"}
+{"log":"Traceback (most recent call last):\n","stream":"stderr","time":"2026-10-14T09:30:00.364Z"}
+{"log":"2026-10-14T09:30:00.753Z ERROR payment-api gateway timeout order=58248\n","stream":"stderr","time":"2026-09-22T06:15:03.500981Z"}
+{"log":"2026-10-14T09:30:00.598Z INFO  auth-api user login ok user=ali\n","stream":"stdout","time":"2026-09-22T06:16:00.000Z"}
+{"log":"2026-10-14T09:30:00.970Z ERROR payment-api gateway timeout order=283955\n","stream":"stderr","time":"2026-09-22T06:15:03.500981Z"}
+{"log":"2026-10-14T09:30:00.599Z ERROR payment-api gateway timeout order=293393\n","stream":"stderr","time":"2026-09-22T06:15:03.500981Z"}
+{"log":"2026-10-14T09:30:00.413Z ERROR payment-api gateway timeout order=308346\n","stream":"stderr","time":"2026-09-22T06:15:03.500981Z"}
+{"log":"2026-10-14T09:30:00.072Z INFO  auth-api user login ok user=ali\n","stream":"stdout","time":"2026-09-22T06:16:00.000Z"}
+{"log":"Traceback (most recent call last):\n","stream":"stderr","time":"2026-10-14T09:30:00.066Z"}
+{"log":"Traceback (most recent call last):\n","stream":"stderr","time":"2026-10-14T09:30:00.514Z"}
+{"log":"  File \"app.py\", line 88, in charge\n","stream":"stderr","time":"2026-10-14T09:30:00.576Z"}
+{"log":"requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='gw.example.com', port=443): Read timed out\n","stream":"stderr","time":"2026-10-14T09:30:00.245Z"}
+{"log":"2026-10-14T09:30:00.504Z INFO  order-service started on port 8080\n","stream":"stdout","time":"2026-09-22T06:14:02.003412Z"}
+{"log":"  File \"app.py\", line 88, in charge\n","stream":"stderr","time":"2026-10-14T09:30:00.478Z"}
+{"log":"2026-10-14T09:30:00.130Z INFO  order-service started on port 8080\n","stream":"stdout","time":"2026-09-22T06:14:02.003412Z"}
+{"log":"Traceback (most recent call last):\n","stream":"stderr","time":"2026-10-14T09:30:00.058Z"}
+{"log":"2026-10-14T09:30:00.080Z INFO  auth-api user login ok user=ali\n","stream":"stdout","time":"2026-09-22T06:16:00.000Z"}
+{"log":"2026-10-14T09:30:00.317Z INFO  order-service started on port 8080\n","stream":"stdout","time":"2026-09-22T06:14:02.003412Z"}
+{"log":"  File \"app.py\", line 88, in charge\n","stream":"stderr","time":"2026-10-14T09:30:00.411Z"}
+{"log":"Traceback (most recent call last):\n","stream":"stderr","time":"2026-10-14T09:30:00.304Z"}
+{"log":"  File \"app.py\", line 88, in charge\n","stream":"stderr","time":"2026-10-14T09:30:00.763Z"}
+{"log":"2026-10-14T09:30:00.667Z INFO  auth-api user login ok user=ali\n","stream":"stdout","time":"2026-09-22T06:16:00.000Z"}
+{"log":"2026-10-14T09:30:00.322Z ERROR payment-api gateway timeout order=136421\n","stream":"stderr","time":"2026-09-22T06:15:03.500981Z"}
+{"log":"2026-10-14T09:30:00.260Z ERROR payment-api gateway timeout order=662657\n","stream":"stderr","time":"2026-09-22T06:15:03.500981Z"}
+{"log":"  File \"app.py\", line 88, in charge\n","stream":"stderr","time":"2026-10-14T09:30:00.002Z"}
+{"log":"2026-10-14T09:30:00.740Z INFO  auth-api user login ok user=ali\n","stream":"stdout","time":"2026-09-22T06:16:00.000Z"}
+{"log":"requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='gw.example.com', port=443): Read timed out\n","stream":"stderr","time":"2026-10-14T09:30:00.325Z"}
+{"log":"  File \"app.py\", line 88, in charge\n","stream":"stderr","time":"2026-10-14T09:30:00.499Z"}
+{"log":"Traceback (most recent call last):\n","stream":"stderr","time":"2026-10-14T09:30:00.184Z"}
+{"log":"Traceback (most recent call last):\n","stream":"stderr","time":"2026-10-14T09:30:00.263Z"}
+{"log":"2026-10-14T09:30:00.398Z ERROR payment-api gateway timeout order=209327\n","stream":"stderr","time":"2026-09-22T06:15:03.500981Z"}
+{"log":"Traceback (most recent call last):\n","stream":"stderr","time":"2026-10-14T09:30:00.067Z"}
+{"log":"Traceback (most recent call last):\n","stream":"stderr","time":"2026-10-14T09:30:00.745Z"}
+{"log":"2026-10-14T09:30:00.416Z ERROR payment-api gateway timeout order=810107\n","stream":"stderr","time":"2026-09-22T06:15:03.500981Z"}
+{"log":"Traceback (most recent call last):\n","stream":"stderr","time":"2026-10-14T09:30:00.970Z"}
+{"log":"Traceback (most recent call last):\n","stream":"stderr","time":"2026-10-14T09:30:00.650Z"}
+{"log":"  File \"app.py\", line 88, in charge\n","stream":"stderr","time":"2026-10-14T09:30:00.887Z"}
+{"log":"  File \"app.py\", line 88, in charge\n","stream":"stderr","time":"2026-10-14T09:30:00.678Z"}
+{"log":"  File \"app.py\", line 88, in charge\n","stream":"stderr","time":"2026-10-14T09:30:00.042Z"}
+{"log":"2026-10-14T09:30:00.839Z INFO  auth-api user login ok user=ali\n","stream":"stdout","time":"2026-09-22T06:16:00.000Z"}
+{"log":"Traceback (most recent call last):\n","stream":"stderr","time":"2026-10-14T09:30:00.765Z"}
+{"log":"  File \"app.py\", line 88, in charge\n","stream":"stderr","time":"2026-10-14T09:30:00.555Z"}
+{"log":"2026-10-14T09:30:00.183Z INFO  auth-api user login ok user=ali\n","stream":"stdout","time":"2026-09-22T06:16:00.000Z"}
+{"log":"requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='gw.example.com', port=443): Read timed out\n","stream":"stderr","time":"2026-10-14T09:30:00.515Z"}
+{"log":"2026-10-14T09:30:00.549Z INFO  auth-api user login ok user=ali\n","stream":"stdout","time":"2026-09-22T06:16:00.000Z"}
+{"log":"  File \"app.py\", line 88, in charge\n","stream":"stderr","time":"2026-10-14T09:30:00.954Z"}
+{"log":"  File \"app.py\", line 88, in charge\n","stream":"stderr","time":"2026-10-14T09:30:00.988Z"}
+{"log":"2026-10-14T09:30:00.775Z INFO  auth-api user login ok user=ali\n","stream":"stdout","time":"2026-09-22T06:16:00.000Z"}
+{"log":"2026-10-14T09:30:00.489Z INFO  order-service started on port 8080\n","stream":"stdout","time":"2026-09-22T06:14:02.003412Z"}
+{"log":"Traceback (most recent call last):\n","stream":"stderr","time":"2026-10-14T09:30:00.071Z"}
+{"log":"2026-10-14T09:30:00.694Z INFO  order-service started on port 8080\n","stream":"stdout","time":"2026-09-22T06:14:02.003412Z"}
+{"log":"2026-10-14T09:30:00.047Z INFO  auth-api user login ok user=ali\n","stream":"stdout","time":"2026-09-22T06:16:00.000Z"}
+{"log":"2026-10-14T09:30:00.780Z INFO  auth-api user login ok user=ali\n","stream":"stdout","time":"2026-09-22T06:16:00.000Z"}
+{"log":"  File \"app.py\", line 88, in charge\n","stream":"stderr","time":"2026-10-14T09:30:00.765Z"}
+{"log":"2026-10-14T09:30:00.148Z INFO  auth-api user login ok user=ali\n","stream":"stdout","time":"2026-09-22T06:16:00.000Z"}
+{"log":"2026-10-14T09:30:00.276Z INFO  order-service started on port 8080\n","stream":"stdout","time":"2026-09-22T06:14:02.003412Z"}
+{"log":"  File \"app.py\", line 88, in charge\n","stream":"stderr","time":"2026-10-14T09:30:00.681Z"}
+{"log":"2026-10-14T09:30:00.647Z INFO  auth-api user login ok user=ali\n","stream":"stdout","time":"2026-09-22T06:16:00.000Z"}
+{"log":"2026-10-14T09:30:00.727Z INFO  auth-api user login ok user=ali\n","stream":"stdout","time":"2026-09-22T06:16:00.000Z"}
+{"log":"  File \"app.py\", line 88, in charge\n","stream":"stderr","time":"2026-10-14T09:30:00.803Z"}
+{"log":"  File \"app.py\", line 88, in charge\n","stream":"stderr","time":"2026-10-14T09:30:00.702Z"}
+{"log":"2026-10-14T09:30:00.690Z INFO  order-service started on port 8080\n","stream":"stdout","time":"2026-09-22T06:14:02.003412Z"}
+{"log":"requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='gw.example.com', port=443): Read timed out\n","stream":"stderr","time":"2026-10-14T09:30:00.094Z"}
+{"log":"2026-10-14T09:30:00.047Z ERROR payment-api gateway timeout order=524139\n","stream":"stderr","time":"2026-09-22T06:15:03.500981Z"}
+{"log":"Traceback (most recent call last):\n","stream":"stderr","time":"2026-10-14T09:30:00.233Z"}
+{"log":"2026-10-14T09:30:00.165Z INFO  auth-api user login ok user=ali\n","stream":"stdout","time":"2026-09-22T06:16:00.000Z"}
+{"log":"  File \"app.py\", line 88, in charge\n","stream":"stderr","time":"2026-10-14T09:30:00.963Z"}
+{"log":"requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='gw.example.com', port=443): Read timed out\n","stream":"stderr","time":"2026-10-14T09:30:00.770Z"}
+{"log":"2026-10-14T09:30:00.687Z INFO  order-service started on port 8080\n","stream":"stdout","time":"2026-09-22T06:14:02.003412Z"}
+{"log":"2026-10-14T09:30:00.165Z INFO  auth-api user login ok user=ali\n","stream":"stdout","time":"2026-09-22T06:16:00.000Z"}
+{"log":"2026-10-14T09:30:00.346Z INFO  auth-api user login ok user=ali\n","stream":"stdout","time":"2026-09-22T06:16:00.000Z"}
+{"log":"2026-10-14T09:30:00.310Z INFO  order-service started on port 8080\n","stream":"stdout","time":"2026-09-22T06:14:02.003412Z"}
+{"log":"Traceback (most recent call last):\n","stream":"stderr","time":"2026-10-14T09:30:00.848Z"}
+{"log":"2026-10-14T09:30:00.200Z INFO  order-service started on port 8080\n","stream":"stdout","time":"2026-09-22T06:14:02.003412Z"}
+{"log":"2026-10-14T09:30:00.367Z INFO  auth-api user login ok user=ali\n","stream":"stdout","time":"2026-09-22T06:16:00.000Z"}
+{"log":"2026-10-14T09:30:00.619Z INFO  order-service started on port 8080\n","stream":"stdout","time":"2026-09-22T06:14:02.003412Z"}
+{"log":"requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='gw.example.com', port=443): Read timed out\n","stream":"stderr","time":"2026-10-14T09:30:00.104Z"}
+{"log":"Traceback (most recent call last):\n","stream":"stderr","time":"2026-10-14T09:30:00.155Z"}
+{"log":"Traceback (most recent call last):\n","stream":"stderr","time":"2026-10-14T09:30:00.695Z"}
+{"log":"Traceback (most recent call last):\n","stream":"stderr","time":"2026-10-14T09:30:00.400Z"}
+{"log":"2026-10-14T09:30:00.428Z INFO  auth-api user login ok user=ali\n","stream":"stdout","time":"2026-09-22T06:16:00.000Z"}
+{"log":"2026-10-14T09:30:00.572Z ERROR payment-api gateway timeout order=659108\n","stream":"stderr","time":"2026-09-22T06:15:03.500981Z"}
+{"log":"2026-10-14T09:30:00.316Z INFO  order-service started on port 8080\n","stream":"stdout","time":"2026-09-22T06:14:02.003412Z"}
+{"log":"  File \"app.py\", line 88, in charge\n","stream":"stderr","time":"2026-10-14T09:30:00.668Z"}
+{"log":"requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='gw.example.com', port=443): Read timed out\n","stream":"stderr","time":"2026-10-14T09:30:00.862Z"}
+{"log":"requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='gw.example.com', port=443): Read timed out\n","stream":"stderr","time":"2026-10-14T09:30:00.865Z"}
+{"log":"requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='gw.example.com', port=443): Read timed out\n","stream":"stderr","time":"2026-10-14T09:30:00.841Z"}
+{"log":"2026-10-14T09:30:00.605Z INFO  auth-api user login ok user=ali\n","stream":"stdout","time":"2026-09-22T06:16:00.000Z"}
+{"log":"Traceback (most recent call last):\n","stream":"stderr","time":"2026-10-14T09:30:00.770Z"}
+{"log":"requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='gw.example.com', port=443): Read timed out\n","stream":"stderr","time":"2026-10-14T09:30:00.768Z"}
+{"log":"  File \"app.py\", line 88, in charge\n","stream":"stderr","time":"2026-10-14T09:30:00.689Z"}
+{"log":"2026-10-14T09:30:00.653Z INFO  order-service started on port 8080\n","stream":"stdout","time":"2026-09-22T06:14:02.003412Z"}
+{"log":"requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='gw.example.com', port=443): Read timed out\n","stream":"stderr","time":"2026-10-14T09:30:00.862Z"}
+{"log":"Traceback (most recent call last):\n","stream":"stderr","time":"2026-10-14T09:30:00.146Z"}
+{"log":"requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='gw.example.com', port=443): Read timed out\n","stream":"stderr","time":"2026-10-14T09:30:00.072Z"}
+{"log":"2026-10-14T09:30:00.581Z ERROR payment-api gateway timeout order=786251\n","stream":"stderr","time":"2026-09-22T06:15:03.500981Z"}
+{"log":"  File \"app.py\", line 88, in charge\n","stream":"stderr","time":"2026-10-14T09:30:00.334Z"}
+{"log":"2026-10-14T09:30:00.738Z INFO  order-service started on port 8080\n","stream":"stdout","time":"2026-09-22T06:14:02.003412Z"}
+{"log":"2026-10-14T09:30:00.625Z INFO  order-service started on port 8080\n","stream":"stdout","time":"2026-09-22T06:14:02.003412Z"}
+{"log":"2026-10-14T09:30:00.033Z ERROR payment-api gateway timeout order=904508\n","stream":"stderr","time":"2026-09-22T06:15:03.500981Z"}
+{"log":"2026-10-14T09:30:00.211Z INFO  order-service started on port 8080\n","stream":"stdout","time":"2026-09-22T06:14:02.003412Z"}
+{"log":"2026-10-14T09:30:00.020Z INFO  order-service started on port 8080\n","stream":"stdout","time":"2026-09-22T06:14:02.003412Z"}
+{"log":"2026-10-14T09:30:00.225Z INFO  auth-api user login ok user=ali\n","stream":"stdout","time":"2026-09-22T06:16:00.000Z"}
+{"log":"  File \"app.py\", line 88, in charge\n","stream":"stderr","time":"2026-10-14T09:30:00.040Z"}
+{"log":"Traceback (most recent call last):\n","stream":"stderr","time":"2026-10-14T09:30:00.005Z"}
+{"log":"2026-10-14T09:30:00.510Z ERROR payment-api gateway timeout order=15499\n","stream":"stderr","time":"2026-09-22T06:15:03.500981Z"}
+{"log":"Traceback (most recent call last):\n","stream":"stderr","time":"2026-10-14T09:30:00.991Z"}
+{"log":"2026-10-14T09:30:00.136Z INFO  order-service started on port 8080\n","stream":"stdout","time":"2026-09-22T06:14:02.003412Z"}
+{"log":"2026-10-14T09:30:00.021Z INFO  auth-api user login ok user=ali\n","stream":"stdout","time":"2026-09-22T06:16:00.000Z"}
+{"log":"requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='gw.example.com', port=443): Read timed out\n","stream":"stderr","time":"2026-10-14T09:30:00.748Z"}
+{"log":"2026-10-14T09:30:00.734Z INFO  auth-api user login ok user=ali\n","stream":"stdout","time":"2026-09-22T06:16:00.000Z"}
+{"log":"2026-10-14T09:30:00.727Z INFO  order-service started on port 8080\n","stream":"stdout","time":"2026-09-22T06:14:02.003412Z"}
+{"log":"2026-10-14T09:30:00.347Z INFO  auth-api user login ok user=ali\n","stream":"stdout","time":"2026-09-22T06:16:00.000Z"}
+{"log":"Traceback (most recent call last):\n","stream":"stderr","time":"2026-10-14T09:30:00.223Z"}
+{"log":"requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='gw.example.com', port=443): Read timed out\n","stream":"stderr","time":"2026-10-14T09:30:00.038Z"}
+{"log":"2026-10-14T09:30:00.582Z ERROR payment-api gateway timeout order=522235\n","stream":"stderr","time":"2026-09-22T06:15:03.500981Z"}
+{"log":"2026-10-14T09:30:00.672Z INFO  auth-api user login ok user=ali\n","stream":"stdout","time":"2026-09-22T06:16:00.000Z"}
+{"log":"2026-10-14T09:30:00.350Z ERROR payment-api gateway timeout order=251483\n","stream":"stderr","time":"2026-09-22T06:15:03.500981Z"}
+{"log":"Traceback (most recent call last):\n","stream":"stderr","time":"2026-10-14T09:30:00.865Z"}
+{"log":"2026-10-14T09:30:00.209Z INFO  auth-api user login ok user=ali\n","stream":"stdout","time":"2026-09-22T06:16:00.000Z"}
+{"log":"2026-10-14T09:30:00.454Z INFO  auth-api user login ok user=ali\n","stream":"stdout","time":"2026-09-22T06:16:00.000Z"}
+{"log":"Traceback (most recent call last):\n","stream":"stderr","time":"2026-10-14T09:30:00.580Z"}
+{"log":"  File \"app.py\", line 88, in charge\n","stream":"stderr","time":"2026-10-14T09:30:00.653Z"}
+{"log":"Traceback (most recent call last):\n","stream":"stderr","time":"2026-10-14T09:30:00.666Z"}
+{"log":"requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='gw.example.com', port=443): Read timed out\n","stream":"stderr","time":"2026-10-14T09:30:00.703Z"}
+{"log":"requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='gw.example.com', port=443): Read timed out\n","stream":"stderr","time":"2026-10-14T09:30:00.859Z"}
+{"log":"requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='gw.example.com', port=443): Read timed out\n","stream":"stderr","time":"2026-10-14T09:30:00.434Z"}
+{"log":"Traceback (most recent call last):\n","stream":"stderr","time":"2026-10-14T09:30:00.512Z"}
+{"log":"2026-10-14T09:30:00.324Z INFO  order-service started on port 8080\n","stream":"stdout","time":"2026-09-22T06:14:02.003412Z"}
+{"log":"  File \"app.py\", line 88, in charge\n","stream":"stderr","time":"2026-10-14T09:30:00.100Z"}
+{"log":"2026-10-14T09:30:00.238Z INFO  auth-api user login ok user=ali\n","stream":"stdout","time":"2026-09-22T06:16:00.000Z"}
+{"log":"2026-10-14T09:30:00.136Z ERROR payment-api gateway timeout order=785708\n","stream":"stderr","time":"2026-09-22T06:15:03.500981Z"}
+{"log":"2026-10-14T09:30:00.486Z ERROR payment-api gateway timeout order=730844\n","stream":"stderr","time":"2026-09-22T06:15:03.500981Z"}
+{"log":"requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='gw.example.com', port=443): Read timed out\n","stream":"stderr","time":"2026-10-14T09:30:00.286Z"}
+{"log":"Traceback (most recent call last):\n","stream":"stderr","time":"2026-10-14T09:30:00.954Z"}
+{"log":"requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='gw.example.com', port=443): Read timed out\n","stream":"stderr","time":"2026-10-14T09:30:00.299Z"}
+{"log":"Traceback (most recent call last):\n","stream":"stderr","time":"2026-10-14T09:30:00.117Z"}
+{"log":"2026-10-14T09:30:00.531Z ERROR payment-api gateway timeout order=515682\n","stream":"stderr","time":"2026-09-22T06:15:03.500981Z"}
+{"log":"  File \"app.py\", line 88, in charge\n","stream":"stderr","time":"2026-10-14T09:30:00.362Z"}
+{"log":"Traceback (most recent call last):\n","stream":"stderr","time":"2026-10-14T09:30:00.607Z"}
+{"log":"2026-10-14T09:30:00.871Z INFO  order-service started on port 8080\n","stream":"stdout","time":"2026-09-22T06:14:02.003412Z"}
+{"log":"2026-10-14T09:30:00.466Z INFO  order-service started on port 8080\n","stream":"stdout","time":"2026-09-22T06:14:02.003412Z"}
+{"log":"  File \"app.py\", line 88, in charge\n","stream":"stderr","time":"2026-10-14T09:30:00.740Z"}
+{"log":"2026-10-14T09:30:00.005Z INFO  auth-api user login ok user=ali\n","stream":"stdout","time":"2026-09-22T06:16:00.000Z"}
+{"log":"2026-10-14T09:30:00.462Z INFO  auth-api user login ok user=ali\n","stream":"stdout","time":"2026-09-22T06:16:00.000Z"}
+{"log":"2026-10-14T09:30:00.319Z ERROR payment-api gateway timeout order=604873\n","stream":"stderr","time":"2026-09-22T06:15:03.500981Z"}
+{"log":"requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='gw.example.com', port=443): Read timed out\n","stream":"stderr","time":"2026-10-14T09:30:00.499Z"}
+{"log":"requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='gw.example.com', port=443): Read timed out\n","stream":"stderr","time":"2026-10-14T09:30:00.666Z"}
+{"log":"2026-10-14T09:30:00.810Z INFO  auth-api user login ok user=ali\n","stream":"stdout","time":"2026-09-22T06:16:00.000Z"}
+{"log":"2026-10-14T09:30:00.833Z INFO  order-service started on port 8080\n","stream":"stdout","time":"2026-09-22T06:14:02.003412Z"}
+{"log":"requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='gw.example.com', port=443): Read timed out\n","stream":"stderr","time":"2026-10-14T09:30:00.211Z"}
+{"log":"2026-10-14T09:30:00.038Z INFO  auth-api user login ok user=ali\n","stream":"stdout","time":"2026-09-22T06:16:00.000Z"}
+{"log":"2026-10-14T09:30:00.564Z INFO  auth-api user login ok user=ali\n","stream":"stdout","time":"2026-09-22T06:16:00.000Z"}
+{"log":"Traceback (most recent call last):\n","stream":"stderr","time":"2026-10-14T09:30:00.890Z"}
+{"log":"2026-10-14T09:30:00.083Z INFO  order-service started on port 8080\n","stream":"stdout","time":"2026-09-22T06:14:02.003412Z"}
+{"log":"  File \"app.py\", line 88, in charge\n","stream":"stderr","time":"2026-10-14T09:30:00.821Z"}
+{"log":"2026-10-14T09:30:00.232Z ERROR payment-api gateway timeout order=367377\n","stream":"stderr","time":"2026-09-22T06:15:03.500981Z"}
+{"log":"2026-10-14T09:30:00.203Z ERROR payment-api gateway timeout order=77898\n","stream":"stderr","time":"2026-09-22T06:15:03.500981Z"}
+{"log":"2026-10-14T09:30:00.299Z ERROR payment-api gateway timeout order=726433\n","stream":"stderr","time":"2026-09-22T06:15:03.500981Z"}
+{"log":"2026-10-14T09:30:00.647Z INFO  order-service started on port 8080\n","stream":"stdout","time":"2026-09-22T06:14:02.003412Z"}
+{"log":"Traceback (most recent call last):\n","stream":"stderr","time":"2026-10-14T09:30:00.502Z"}
+{"log":"2026-10-14T09:30:00.719Z INFO  auth-api user login ok user=ali\n","stream":"stdout","time":"2026-09-22T06:16:00.000Z"}
+{"log":"  File \"app.py\", line 88, in charge\n","stream":"stderr","time":"2026-10-14T09:30:00.868Z"}
+{"log":"Traceback (most recent call last):\n","stream":"stderr","time":"2026-10-14T09:30:00.700Z"}
+{"log":"2026-10-14T09:30:00.499Z ERROR payment-api gateway timeout order=514501\n","stream":"stderr","time":"2026-09-22T06:15:03.500981Z"}
+{"log":"2026-10-14T09:30:00.473Z INFO  auth-api user login ok user=ali\n","stream":"stdout","time":"2026-09-22T06:16:00.000Z"}
+{"log":"  File \"app.py\", line 88, in charge\n","stream":"stderr","time":"2026-10-14T09:30:00.140Z"}
+{"log":"2026-10-14T09:30:00.913Z ERROR  order-service failed: connection timeout to db-01 on port 8080\n","stream":"stdout","time":"2026-09-22T06:14:02.003412Z"}
+{"log":"requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='gw.example.com', port=443): Read timed out\n","stream":"stderr","time":"2026-10-14T09:30:00.206Z"}
+{"log":"2026-10-14T09:30:00.336Z ERROR  order-service failed: connection timeout to db-01 on port 8080\n","stream":"stdout","time":"2026-09-22T06:14:02.003412Z"}
+{"log":"2026-10-14T09:30:00.181Z INFO  order-service started on port 8080\n","stream":"stdout","time":"2026-09-22T06:14:02.003412Z"}
+{"log":"  File \"app.py\", line 88, in charge\n","stream":"stderr","time":"2026-10-14T09:30:00.920Z"}
+{"log":"requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='gw.example.com', port=443): Read timed out\n","stream":"stderr","time":"2026-10-14T09:30:00.171Z"}
+{"log":"requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='gw.example.com', port=443): Read timed out\n","stream":"stderr","time":"2026-10-14T09:30:00.495Z"}
+{"log":"Traceback (most recent call last):\n","stream":"stderr","time":"2026-10-14T09:30:00.814Z"}
+{"log":"Traceback (most recent call last):\n","stream":"stderr","time":"2026-10-14T09:30:00.861Z"}
+{"log":"requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='gw.example.com', port=443): Read timed out\n","stream":"stderr","time":"2026-10-14T09:30:00.861Z"}
+{"log":"Traceback (most recent call last):\n","stream":"stderr","time":"2026-10-14T09:30:00.776Z"}
+{"log":"  File \"app.py\", line 88, in charge\n","stream":"stderr","time":"2026-10-14T09:30:00.782Z"}
+{"log":"requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='gw.example.com', port=443): Read timed out\n","stream":"stderr","time":"2026-10-14T09:30:00.014Z"}
+{"log":"2026-10-14T09:30:00.184Z INFO  order-service started on port 8080\n","stream":"stdout","time":"2026-09-22T06:14:02.003412Z"}
+{"log":"requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='gw.example.com', port=443): Read timed out\n","stream":"stderr","time":"2026-10-14T09:30:00.704Z"}
+{"log":"2026-10-14T09:30:00.868Z INFO  order-service started on port 8080\n","stream":"stdout","time":"2026-09-22T06:14:02.003412Z"}
+{"log":"2026-10-14T09:30:00.195Z ERROR payment-api gateway timeout order=755313\n","stream":"stderr","time":"2026-09-22T06:15:03.500981Z"}
+{"log":"2026-10-14T09:30:00.351Z INFO  order-service started on port 8080\n","stream":"stdout","time":"2026-09-22T06:14:02.003412Z"}
+{"log":"Traceback (most recent call last):\n","stream":"stderr","time":"2026-10-14T09:30:00.730Z"}
+{"log":"Traceback (most recent call last):\n","stream":"stderr","time":"2026-10-14T09:30:00.549Z"}
+{"log":"Traceback (most recent call last):\n","stream":"stderr","time":"2026-10-14T09:30:00.289Z"}
+{"log":"2026-10-14T09:30:00.727Z INFO  order-service started on port 8080\n","stream":"stdout","time":"2026-09-22T06:14:02.003412Z"}
+{"log":"  File \"app.py\", line 88, in charge\n","stream":"stderr","time":"2026-10-14T09:30:00.576Z"}
+{"log":"  File \"app.py\", line 88, in charge\n","stream":"stderr","time":"2026-10-14T09:30:00.613Z"}
+{"log":"requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='gw.example.com', port=443): Read timed out\n","stream":"stderr","time":"2026-10-14T09:30:00.064Z"}
+{"log":"Traceback (most recent call last):\n","stream":"stderr","time":"2026-10-14T09:30:00.388Z"}
+{"log":"2026-10-14T09:30:00.613Z ERROR payment-api gateway timeout order=736929\n","stream":"stderr","time":"2026-09-22T06:15:03.500981Z"}
+{"log":"2026-10-14T09:30:00.245Z INFO  order-service started on port 8080\n","stream":"stdout","time":"2026-09-22T06:14:02.003412Z"}
+{"log":"requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='gw.example.com', port=443): Read timed out\n","stream":"stderr","time":"2026-10-14T09:30:00.353Z"}
+{"log":"Traceback (most recent call last):\n","stream":"stderr","time":"2026-10-14T09:30:00.033Z"}
+{"log":"Traceback (most recent call last):\n","stream":"stderr","time":"2026-10-14T09:30:00.841Z"}
+{"log":"requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='gw.example.com', port=443): Read timed out\n","stream":"stderr","time":"2026-10-14T09:30:00.776Z"}
+{"log":"requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='gw.example.com', port=443): Read timed out\n","stream":"stderr","time":"2026-10-14T09:30:00.134Z"}
+{"log":"2026-10-14T09:30:00.239Z INFO  order-service started on port 8080\n","stream":"stdout","time":"2026-09-22T06:14:02.003412Z"}
+{"log":"2026-10-14T09:30:00.129Z ERROR payment-api gateway timeout order=366074\n","stream":"stderr","time":"2026-09-22T06:15:03.500981Z"}
+{"log":"2026-10-14T09:30:00.694Z ERROR payment-api gateway timeout order=12659\n","stream":"stderr","time":"2026-09-22T06:15:03.500981Z"}
+{"log":"Traceback (most recent call last):\n","stream":"stderr","time":"2026-10-14T09:30:00.862Z"}
+{"log":"  File \"app.py\", line 88, in charge\n","stream":"stderr","time":"2026-10-14T09:30:00.335Z"}

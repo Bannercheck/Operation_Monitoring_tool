@@ -1,0 +1,12 @@
+oracle/jdbc/driver/T4CMarshaller.class
+oracle/jdbc/driver/RawNullBinder.class
+oracle/sql/CharacterRepConstants.class
+oracle/jdbc/driver/RefTypeNullBinder.class
+oracle/jdbc/aq/AQEnqueueOptions.class
+oracle/jdbc/driver/OracleConversionReader.class
+com/sap/tc/logging/EventDispatcher.class
+com/sap/sql/setup/SQLTraceSetup.class
+com/sap/sql/tree/builder/JoinedTableBuilder.class
+oracle/jdbc/driver/OracleSQLException.class
+oracle/jdbc/driver/Messages_en_US.class
+oracle/jdbc/driver/BlockSource$ThreadedCachingBlockSource$BlockReleaser.class

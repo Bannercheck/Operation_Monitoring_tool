@@ -1,0 +1,4 @@
+time,severity,alertname,service,host,description
+2026-09-16 14:35:10,critical,PAYMENT_FAILURE,payment-api,prd-api-01,payment failure rate 38% over 5m
+2026-09-16 14:36:00,warning,HTTP_5XX_RATE,checkout-api,prd-api-02,5xx rate 21% over 5m
+2026-09-16 14:11:00,warning,DISK_USAGE,worker,worker-02,disk usage 97% on /var
