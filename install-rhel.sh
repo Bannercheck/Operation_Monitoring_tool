@@ -252,14 +252,20 @@ elif [ "$OFFLINE" = 1 ] && [ "$(mf compose)" = 1 ]; then COMPOSE_SRC="bundle"
 elif [ -n "$LOCAL_COMPOSE" ]; then COMPOSE_SRC="file"
 elif [ "$OFFLINE" != 0 ]; then COMPOSE_SRC="none"; bad "Compose v2 yok ve internet kullanılmıyor: docker-compose-linux-$ARCH dosyasını (github.com/docker/compose/releases) bu betiğin yanına koyun"
 else COMPOSE_SRC="repo"; fi
-repo_urls() {   # enabled repositories of /etc/yum.repos.d: "id URL" (first baseurl / mirrorlist / metalink)
+repo_urls() {   # enabled repositories of /etc/yum.repos.d: "id URL CA CERT KEY" (first baseurl / mirrorlist / metalink; the TLS files
+                # dnf uses for it, "-" when none: the Red Hat CDN and Satellite answer with their own CA and want the entitlement certificate)
   cat "$R"/etc/yum.repos.d/*.repo 2>/dev/null | awk '
-    function flush() { if (id != "" && en && url != "") print id, url; id = ""; url = ""; en = 1 }
+    function flush() { if (id != "" && en && url != "") print id, url, (ca != "" ? ca : "-"), (crt != "" ? crt : "-"), (key != "" ? key : "-"); id = ""; url = ""; ca = ""; crt = ""; key = ""; en = 1 }
+    function val() { v = $0; sub(/^[^=]*=[[:space:]]*/, "", v); sub(/[[:space:]]+$/, "", v); return v }
     /^[[:space:]]*\[/ { flush(); id = $0; gsub(/[][[:space:]]/, "", id); next }
-    /^[[:space:]]*enabled[[:space:]]*=/ { v = $0; sub(/^[^=]*=[[:space:]]*/, "", v); en = (v ~ /^(1|[Tt]rue|[Yy]es)/); next }
-    /^[[:space:]]*(baseurl|mirrorlist|metalink)[[:space:]]*=/ { if (url == "") { v = $0; sub(/^[^=]*=[[:space:]]*/, "", v); split(v, a, /[[:space:],]+/); url = a[1] } next }
+    /^[[:space:]]*enabled[[:space:]]*=/ { en = (val() ~ /^(1|[Tt]rue|[Yy]es)/); next }
+    /^[[:space:]]*(baseurl|mirrorlist|metalink)[[:space:]]*=/ { if (url == "") { split(val(), a, /[[:space:],]+/); url = a[1] } next }
+    /^[[:space:]]*sslcacert[[:space:]]*=/ { ca = val(); next }
+    /^[[:space:]]*sslclientcert[[:space:]]*=/ { crt = val(); next }
+    /^[[:space:]]*sslclientkey[[:space:]]*=/ { key = val(); next }
     END { flush() }'
 }
+declare -A REPO_TLS=()   # https://host -> "CA CERT KEY" of its repository (the probe uses what dnf uses)
 REPO_HOSTS=""
 if [ "$NEED_PKGS" = 1 ] || [ "$COMPOSE_SRC" = repo ]; then
   repos=$(repo_urls || true)
@@ -268,6 +274,9 @@ if [ "$NEED_PKGS" = 1 ] || [ "$COMPOSE_SRC" = repo ]; then
     else bad "Etkin paket deposu yok (/etc/yum.repos.d): podman paketleri kurulamaz"; fi
   else
     REPO_HOSTS=$(echo "$repos" | awk '{print $2}' | sed -nE 's#^((https?)://[^/]+).*#\1#p' | sort -u | tr '\n' ' ')
+    while read -r _id u ca crt key; do
+      b=$(echo "$u" | sed -nE 's#^((https?)://[^/]+).*#\1#p'); [ -n "$b" ] && [ -z "${REPO_TLS[$b]:-}" ] && REPO_TLS[$b]="$ca $crt $key"
+    done <<< "$repos"
     if out=$(timeout 300 dnf -q repolist --enabled 2>&1); then ok "Paket depoları erişilebilir: $(echo "$repos" | awk '{print $1}' | head -4 | paste -sd' ' -)$([ "$(echo "$repos" | wc -l)" -gt 4 ] && echo ' …')"
     else bad "dnf repolist başarısız: $(echo "$out" | grep -m2 -iE 'error|fail|cannot' | tr '\n' ' ')"; fi
   fi
@@ -279,8 +288,12 @@ hub_mirror() { cat "$R"/etc/containers/registries.conf "$R"/etc/containers/regis
   /^[[:space:]]*\[\[registry\.mirror\]\]/ { inm = 1; next }
   /^[[:space:]]*(location|prefix)[[:space:]]*=/ { v = $0; sub(/^[^=]*=[[:space:]]*"/, "", v); sub(/".*/, "", v)
     if (inm && hub) { print v; exit } else if (!inm && v ~ /^(docker\.io|registry-1\.docker\.io|index\.docker\.io)$/) hub = 1 }'; }
-probe() {   # URL -> empty when anything answers (any HTTP status), else the reason
-  local rc=0; curl -sS -o /dev/null --connect-timeout 8 --max-time 20 "$1" 2>/dev/null || rc=$?
+probe() {   # URL [CA CERT KEY] -> empty when anything answers (any HTTP status), else the reason
+  local rc=0 tls=() ca="${2:--}" crt="${3:--}" key="${4:--}"
+  [ "$ca" != - ] && [ -r "$R$ca" ] && tls+=(--cacert "$R$ca")          # a repository's own CA (Red Hat CDN: redhat-uep.pem)
+  [ "$crt" != - ] && [ -r "$R$crt" ] && tls+=(--cert "$R$crt")        # its entitlement certificate, as dnf sends it
+  [ "$key" != - ] && [ -r "$R$key" ] && tls+=(--key "$R$key")
+  curl -sS -o /dev/null --connect-timeout 8 --max-time 20 "${tls[@]}" "$1" 2>/dev/null || rc=$?
   case $rc in 0|22) ;; 6) echo "DNS çözülemiyor" ;; 7) echo "bağlantı reddedildi" ;; 28) echo "zaman aşımı (güvenlik duvarı paketleri düşürüyor olabilir)" ;;
     5) echo "proxy adı çözülemiyor" ;; 56) echo "bağlantı kesildi / proxy izin vermiyor" ;; 97) echo "proxy kimlik doğrulaması" ;;
     35|51|58|59|60|77|83|90|91) echo "TLS doğrulanamadı (proxy SSL denetimi? bu adresler denetimden muaf olmalı)" ;; *) echo "curl hata $rc" ;; esac
@@ -303,7 +316,7 @@ for u in $REPO_HOSTS; do H+=("$u|paket deposu (RHEL CDN / Satellite / ayna)|need
 LLM_NET_FAIL=""; NET_FAIL=()
 if [ "${#H[@]}" -gt 0 ]; then
   tmpd=$(mktemp -d); i=0; pids=()
-  for h in "${H[@]}"; do ( probe "${h%%|*}" > "$tmpd/$i" ) & pids+=($!); i=$((i + 1)); done; wait "${pids[@]}" || true
+  for h in "${H[@]}"; do u=${h%%|*}; ( probe "$u" ${REPO_TLS[$u]:-} > "$tmpd/$i" ) & pids+=($!); i=$((i + 1)); done; wait "${pids[@]}" || true
   i=0
   for h in "${H[@]}"; do
     url=${h%%|*}; rest=${h#*|}; why=${rest%|*}; lvl=${rest##*|}; host=${url#*://}; host=${host%%/*}; r=$(cat "$tmpd/$i"); i=$((i + 1))

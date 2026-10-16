@@ -84,7 +84,9 @@ esac; done; exit 0''',
     "curl": r'''
 url=""; for a in "$@"; do case "$a" in http://*|https://*) url="$a" ;; esac; done
 echo "curl $url" >> "$FAKE_LOG"; h=${url#*://}; h=${h%%/*}; h=${h%%:*}
+[[ "$*" != *--cacert* ]] || echo "curl-tls $url $*" >> "$FAKE_LOG"
 for b in ${FAKE_BLOCK:-}; do [ "$h" != "$b" ] || exit "${FAKE_BLOCK_RC:-7}"; done
+if [ "$h" = cdn.redhat.com ] && [ -n "${FAKE_RHSM_CA:-}" ] && [[ "$*" != *"--cacert"*"redhat-uep.pem"* ]]; then exit 60; fi   # the CDN's own CA
 [[ "$*" != *http_code* ]] || printf 200; exit 0''',
     "ss": r'''
 p=$(echo "$*" | sed -n 's/.*sport = :\([0-9]*\).*/\1/p')
@@ -383,3 +385,20 @@ def test_upgrade_takes_a_backup_and_removes_stale_files_downgrade_refused(rhel):
     (dest / "pyproject.toml").write_text((dest / "pyproject.toml").read_text().replace(f'version = "{VER}"', 'version = "99.0"'))
     res = run(rhel)
     assert res.returncode == 1 and "daha yeni bir sürüm kurulu (v99.0" in res.stdout and "Geri al" in res.stdout
+
+
+def test_red_hat_cdn_is_probed_with_its_own_ca_and_entitlement(rhel):
+    """cdn.redhat.com answers with Red Hat's own CA (not in the system store) and wants the entitlement certificate: the probe uses
+    what dnf uses (the repository's sslcacert / sslclientcert / sslclientkey), so a registered server is not reported unreachable
+    (seen on the first real RHEL 9.8 run)."""
+    r = rhel[1]
+    for f in ("etc/rhsm/ca/redhat-uep.pem", "etc/pki/entitlement/123.pem", "etc/pki/entitlement/123-key.pem"):
+        (r / f).parent.mkdir(parents=True, exist_ok=True); (r / f).write_text("x")
+    (r / "etc/yum.repos.d/redhat.repo").write_text(
+        "[rhel-9-for-x86_64-baseos-rpms]\nname = BaseOS\nbaseurl = https://cdn.redhat.com/content/dist/rhel9/$releasever/x86_64/baseos/os\nenabled = 1\n"
+        "sslverify = 1\nsslcacert = /etc/rhsm/ca/redhat-uep.pem\nsslclientkey = /etc/pki/entitlement/123-key.pem\nsslclientcert = /etc/pki/entitlement/123.pem\n")
+    res = run(rhel, "--check", FAKE_RHSM_CA="1")
+    out = res.stdout + res.stderr
+    assert "Erişim: cdn.redhat.com" in out and "Erişilemiyor: cdn.redhat.com" not in out, out[-2000:]
+    tls = [l for l in calls(rhel).splitlines() if l.startswith("curl-tls https://cdn.redhat.com")]
+    assert tls and "redhat-uep.pem" in tls[0] and "--cert" in tls[0] and "--key" in tls[0]
