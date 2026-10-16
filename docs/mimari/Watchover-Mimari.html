@@ -1,0 +1,301 @@
+<!doctype html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>body{margin:0}</style></head><body>
+<title>Watchover Mimarisi</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: one wide flow diagram read left to right (intake, pipeline, outputs) with storage and analysis bands below, then measurements and the two install shapes. */
+:root {
+  --bg: #0e1923; --panel: #13222f; --panel2: #102030; --line: #29425a; --fg: #dbe6ee; --muted: #8aa1b3;
+  --accent: #3fc1de; --queue: #3cc08a; --store: #3fb6d6; --storefg: #06222c; --opt: #73899a; --edge: #4fb3cf; --warn: #e3b341;
+  --sans: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif; --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) {
+  --bg: #eef3f6; --panel: #ffffff; --panel2: #f6f9fb; --line: #c4d2dc; --fg: #0f212e; --muted: #4e6576;
+  --accent: #0a7894; --queue: #13865b; --store: #0d7f9e; --storefg: #ffffff; --opt: #6f8391; --edge: #1b84a3; --warn: #a86f00; color-scheme: light } }
+:root[data-theme="light"] {
+  --bg: #eef3f6; --panel: #ffffff; --panel2: #f6f9fb; --line: #c4d2dc; --fg: #0f212e; --muted: #4e6576;
+  --accent: #0a7894; --queue: #13865b; --store: #0d7f9e; --storefg: #ffffff; --opt: #6f8391; --edge: #1b84a3; --warn: #a86f00; color-scheme: light }
+body { background: var(--bg); color: var(--fg); font-family: var(--sans); font-size: 15px; line-height: 1.5; }
+.wrap { max-width: 1480px; margin: 0 auto; padding-block: 28px 48px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: flex; flex-direction: column; gap: 28px; }
+header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 16px; }
+h1 { font-size: 28px; margin: 0; letter-spacing: -0.01em; text-wrap: balance; }
+.sub { color: var(--muted); margin: 4px 0 0; max-width: 70ch; }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 13px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 22px; height: 14px; border-radius: 3px; border: 1.5px solid var(--accent); background: var(--panel); }
+.sw.q { border-style: dashed; border-color: var(--queue); }
+.sw.s { background: var(--store); border-color: var(--store); }
+.sw.o { border-style: dashed; border-color: var(--opt); }
+figure { margin: 0; background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+.scroll { overflow-x: auto; }
+svg.arch { display: block; width: 100%; min-width: 1150px; height: auto; font-family: var(--sans); }
+figcaption { color: var(--muted); font-size: 13px; padding: 10px 6px 2px; max-width: 110ch; }
+/* svg parts */
+.zone { fill: var(--muted); font: 600 13px var(--mono); letter-spacing: 0.14em; }
+.bx { fill: var(--panel); stroke: var(--accent); stroke-width: 1.6; }
+.bx.src { stroke: var(--line); }
+.bx.q { fill: var(--panel2); stroke: var(--queue); stroke-dasharray: 6 5; }
+.bx.opt { fill: var(--panel2); stroke: var(--opt); stroke-dasharray: 6 5; }
+.bx.st { fill: var(--store); stroke: none; }
+.rail { fill: var(--accent); }
+.t { fill: var(--fg); font-size: 15px; font-weight: 600; }
+.f { fill: var(--accent); font: 11.5px var(--mono); }
+.q .f, .f.q { fill: var(--queue); }
+.d { fill: var(--muted); font-size: 12px; }
+.st-t { fill: var(--storefg); font-size: 16px; font-weight: 700; }
+.st-f, .st-d { fill: var(--storefg); font-size: 12px; opacity: 0.9; }
+.st-f { font-family: var(--mono); font-size: 11.5px; }
+.e { fill: none; stroke: var(--edge); stroke-width: 1.6; }
+.e.g { stroke: var(--queue); }
+.e.o { stroke: var(--opt); stroke-dasharray: 6 5; }
+.mh { fill: var(--edge); } .mhg { fill: var(--queue); } .mho { fill: var(--opt); }
+.el { fill: var(--accent); font: 11px var(--mono); paint-order: stroke; stroke: var(--panel2); stroke-width: 5px; stroke-linejoin: round; }
+.el.g { fill: var(--queue); } .el.o { fill: var(--opt); }
+.pn { fill: var(--panel); stroke: var(--line); stroke-width: 1; }
+.pn-e { fill: var(--muted); font: 600 11px var(--mono); letter-spacing: 0.12em; }
+.pn-l { fill: var(--muted); font-size: 12px; }
+.pn-v { fill: var(--fg); font-size: 30px; font-weight: 700; }
+.pn-v.a { fill: var(--accent); }
+.pn-u { fill: var(--muted); font-size: 12px; }
+.chip { fill: var(--queue); } .chip-t { fill: var(--storefg); font: 600 11px var(--mono); }
+.bar0 { fill: var(--line); } .bar1 { fill: var(--muted); } .bar2 { fill: var(--accent); }
+/* below the figure */
+.grid2 { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 900px) { .grid2 { grid-template-columns: minmax(0, 1fr); } }
+section.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; min-width: 0; }
+h2 { font-size: 13px; margin: 0 0 12px; font-family: var(--mono); letter-spacing: 0.12em; color: var(--muted); font-weight: 600; text-transform: uppercase; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-weight: 500; font-size: 12.5px; }
+td.n, th.n { text-align: right; white-space: nowrap; }
+td.now { color: var(--accent); font-weight: 600; }
+.note { color: var(--muted); font-size: 13px; margin: 10px 0 0; }
+.plat { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
+@media (max-width: 560px) { .plat { grid-template-columns: minmax(0, 1fr); } }
+.plat h3 { margin: 0 0 4px; font-size: 16px; }
+.plat .cmd { font-family: var(--mono); font-size: 12.5px; color: var(--accent); margin: 0 0 10px; overflow-wrap: anywhere; }
+.plat ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 5px; font-size: 14px; }
+.plat li span { font-family: var(--mono); font-size: 12.5px; color: var(--accent); }
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Watchover mimarisi</h1>
+      <p class="sub">Bir log satırının sunucudan ekrana, alarma ve aksiyona kadar izlediği yol. Kutularda gerçek dosya adları ve portlar var; sayılar yük testinden (300 ajan).</p>
+    </div>
+    <div class="legend" aria-label="Gösterim">
+      <span><i class="sw"></i>süreç</span>
+      <span><i class="sw q"></i>disk kuyruğu</span>
+      <span><i class="sw s"></i>depo</span>
+      <span><i class="sw o"></i>isteğe bağlı / sonraki aşama</span>
+    </div>
+  </header>
+
+  <figure>
+    <div class="scroll">
+    <svg class="arch" viewBox="0 0 2000 940" role="img" aria-label="Watchover veri akışı: ajanlar ve sensörler Go alıcıya gönderir, alıcı diske yazar, Go ayrıştırır, alım hattı maskeler ve sayar; satırlar sıcak log deposuna, eskileri soğuk arşive, sayaçlar ve kayıtlar PostgreSQL'e gider; analiz döngüleri alarm ve vaka üretir; web arayüzü, MCP ve bildirim çıkıştır.">
+      <defs>
+        <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mh" d="M0,0 L10,5 L0,10 z"/></marker>
+        <marker id="ahg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mhg" d="M0,0 L10,5 L0,10 z"/></marker>
+        <marker id="aho" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="mho" d="M0,0 L10,5 L0,10 z"/></marker>
+      </defs>
+
+      <!-- zone labels -->
+      <text class="zone" x="30" y="36">01 KABUL</text>
+      <text class="zone" x="810" y="36">02 HAT · TAŞIMA VE AYRIŞTIRMA</text>
+      <text class="zone" x="1640" y="36">03 ÇIKIŞ</text>
+      <text class="zone" x="290" y="430">04 DEPO</text>
+      <text class="zone" x="290" y="598">05 ANALİZ</text>
+
+      <!-- capacity panel -->
+      <g>
+        <rect class="pn" x="290" y="58" width="470" height="142" rx="10"/>
+        <text class="pn-e" x="308" y="84">ALIM KAPASİTESİ · YÜK TESTİ</text>
+        <rect class="chip" x="660" y="70" width="84" height="22" rx="11"/><text class="chip-t" x="702" y="85" text-anchor="middle">Go ×4,8</text>
+        <text class="pn-l" x="308" y="112">Rahat (4 vCPU)</text>
+        <text class="pn-v" x="308" y="148">100 bin</text><text class="pn-u" x="436" y="148">satır/dk</text>
+        <rect class="bar0" x="308" y="164" width="190" height="6" rx="3"/><rect class="bar1" x="308" y="164" width="66" height="6" rx="3"/>
+        <line x1="528" y1="102" x2="528" y2="184" stroke="var(--line)"/>
+        <text class="pn-l" x="548" y="112">Sınır</text>
+        <text class="pn-v a" x="548" y="148">~290 bin</text><text class="pn-u" x="690" y="148">satır/dk</text>
+        <rect class="bar0" x="548" y="164" width="190" height="6" rx="3"/><rect class="bar2" x="548" y="164" width="190" height="6" rx="3"/>
+        <text class="pn-u" x="308" y="190">Go ayrıştırma: Python'un paket başına işi 20,3 → 4,2 ms</text>
+      </g>
+
+      <!-- sources -->
+      <g><rect class="bx src" x="30" y="60" width="210" height="70" rx="8"/>
+        <text class="t" x="46" y="84">Çekme kaynakları</text><text class="f" x="46" y="102">sources.py</text><text class="d" x="46" y="119">Elastic · Loki · Splunk · HTTP</text></g>
+      <g><rect class="bx src" x="30" y="145" width="210" height="70" rx="8"/>
+        <text class="t" x="46" y="169">MCP kaynakları</text><text class="f" x="46" y="187">mcpclient.py</text><text class="d" x="46" y="204">dış MCP araçları, aralıklı</text></g>
+      <g><rect class="bx src" x="30" y="245" width="210" height="70" rx="8"/>
+        <text class="t" x="46" y="269">Sunucu ajanı</text><text class="f" x="46" y="287">agent.py 0.6.0</text><text class="d" x="46" y="304">log · metrik · bağlantı</text></g>
+      <g><rect class="bx src" x="30" y="325" width="210" height="70" rx="8"/>
+        <text class="t" x="46" y="349">Web / mobil sensör</text><text class="f" x="46" y="367">rum.js · mobil SDK</text><text class="d" x="46" y="384">oturum · adım · hata</text></g>
+
+      <!-- pipeline -->
+      <g><rect class="bx" x="290" y="250" width="230" height="110" rx="8"/><rect class="rail" x="290" y="250" width="4" height="110" rx="2"/>
+        <text class="t" x="308" y="276">Go alıcı</text><text class="f" x="308" y="296">receiver/main.go · :8600</text>
+        <text class="d" x="308" y="318">token doğrular, diske yazar,</text><text class="d" x="308" y="336">hemen 200; kuyruk dolarsa 503</text></g>
+      <g class="q"><rect class="bx q" x="570" y="250" width="190" height="110" rx="8"/>
+        <text class="t" x="586" y="276">spool</text><text class="f" x="586" y="296">/data/spool · seg-*.raw</text>
+        <text class="d" x="586" y="318">süreç değil, disk kuyruğu;</text><text class="d" x="586" y="336">ajan hiç beklemez</text></g>
+      <g><rect class="bx" x="810" y="250" width="230" height="110" rx="8"/><rect class="rail" x="810" y="250" width="4" height="110" rx="2"/>
+        <text class="t" x="828" y="276">Go ayrıştırma</text><text class="f" x="828" y="296">receiver/parsestage.go</text>
+        <text class="d" x="828" y="318">izinli biçimler, 120/120 Python</text><text class="d" x="828" y="336">eşitliği · işçi = pod CPU'su</text></g>
+      <g class="q"><rect class="bx q" x="1090" y="250" width="170" height="110" rx="8"/>
+        <text class="t" x="1106" y="276">spool</text><text class="f" x="1106" y="296">pseg-*.wo · v=2</text>
+        <text class="d" x="1106" y="318">ayrışmış + ham kalan</text><text class="d" x="1106" y="336">sıra korunur</text></g>
+      <g><rect class="bx" x="1310" y="250" width="240" height="110" rx="8"/><rect class="rail" x="1310" y="250" width="4" height="110" rx="2"/>
+        <text class="t" x="1328" y="276">Alım hattı</text><text class="f" x="1328" y="296">spool_consumer → live.py</text>
+        <text class="d" x="1328" y="318">ekip koruması · KVKK maskesi</text><text class="d" x="1328" y="336">sayaçlar · halka tampon</text></g>
+
+      <!-- storage -->
+      <g><rect class="bx opt" x="290" y="440" width="270" height="100" rx="8"/>
+        <text class="t" x="308" y="465">Yerel LLM <tspan class="d">(isteğe bağlı)</tspan></text><text class="f" x="308" y="484">Ollama · CPU · qwen2.5 3B / 7B</text>
+        <text class="d" x="308" y="505">Watchover'a sor · özet</text><text class="d" x="308" y="523">eğitim: LoRA, takvim penceresi</text></g>
+      <g><rect class="bx st" x="720" y="440" width="270" height="100" rx="8"/>
+        <text class="st-t" x="738" y="466">PostgreSQL</text><text class="st-f" x="738" y="485">kendi pod'u / konteyneri</text>
+        <text class="st-d" x="738" y="506">kullanıcı · ekip · envanter · eşik</text><text class="st-d" x="738" y="524">aksiyon · bilgi · sayaçlar (400 gün)</text></g>
+      <g><rect class="bx st" x="1030" y="440" width="240" height="100" rx="8"/>
+        <text class="st-t" x="1048" y="466">Soğuk arşiv</text><text class="st-f" x="1048" y="485">logtiers.py · /logs/cold</text>
+        <text class="st-d" x="1048" y="506">şablon + lzma · 7–8 B/satır</text><text class="st-d" x="1048" y="524">7–30 gün · tavanla silinir</text></g>
+      <g><rect class="bx st" x="1310" y="440" width="240" height="100" rx="8"/>
+        <text class="st-t" x="1328" y="466">Sıcak log</text><text class="st-f" x="1328" y="485">logtiers.py · /logs/hot</text>
+        <text class="st-d" x="1328" y="506">gün dosyası · 65–90 B/satır</text><text class="st-d" x="1328" y="524">48 saat · anında arama</text></g>
+
+      <!-- analysis -->
+      <g><rect class="bx" x="290" y="660" width="230" height="100" rx="8"/><rect class="rail" x="290" y="660" width="4" height="100" rx="2"/>
+        <text class="t" x="308" y="686">Anomali</text><text class="f" x="308" y="705">anomaly.py · 60 sn</text>
+        <text class="d" x="308" y="726">sinyal bazlı dinamik öğrenme</text><text class="d" x="308" y="744">saat / hafta profili</text></g>
+      <g><rect class="bx" x="540" y="660" width="230" height="100" rx="8"/><rect class="rail" x="540" y="660" width="4" height="100" rx="2"/>
+        <text class="t" x="558" y="686">Eşikler</text><text class="f" x="558" y="705">thresholds.py</text>
+        <text class="d" x="558" y="726">sunucu · pool · ortam</text><text class="d" x="558" y="744">uyarı / kritik, süre, bekleme</text></g>
+      <g><rect class="bx" x="790" y="660" width="230" height="100" rx="8"/><rect class="rail" x="790" y="660" width="4" height="100" rx="2"/>
+        <text class="t" x="808" y="686">Log uyarısı</text><text class="f" x="808" y="705">logwatch.py</text>
+        <text class="d" x="808" y="726">sorgudan uyarı</text><text class="d" x="808" y="744">M dakikada ≥ N ya da &lt; N</text></g>
+      <g><rect class="bx" x="1040" y="660" width="230" height="100" rx="8"/><rect class="rail" x="1040" y="660" width="4" height="100" rx="2"/>
+        <text class="t" x="1058" y="686">Kurumsal hafıza</text><text class="f" x="1058" y="705">autolearn.py · 15 dk</text>
+        <text class="d" x="1058" y="726">kök neden dersleri</text><text class="d" x="1058" y="744">→ bilgi tabanı, eğitim</text></g>
+      <g><rect class="bx" x="1290" y="660" width="230" height="100" rx="8"/><rect class="rail" x="1290" y="660" width="4" height="100" rx="2"/>
+        <text class="t" x="1308" y="686">Vaka</text><text class="f" x="1308" y="705">act/cases.py</text>
+        <text class="d" x="1308" y="726">runbook eşleşmesi</text><text class="d" x="1308" y="744">act_mode varsayılan kapalı</text></g>
+
+      <!-- outputs -->
+      <g><rect class="bx src" x="1730" y="58" width="160" height="52" rx="8"/>
+        <text class="t" x="1810" y="80" text-anchor="middle">Kullanıcı</text><text class="d" x="1810" y="98" text-anchor="middle">tarayıcı · telefon</text></g>
+      <g><rect class="bx" x="1640" y="150" width="340" height="110" rx="8"/><rect class="rail" x="1640" y="150" width="4" height="110" rx="2"/>
+        <text class="t" x="1658" y="176">Web arayüzü + API</text><text class="f" x="1658" y="196">FastAPI + React · :8501 (443)</text>
+        <text class="d" x="1658" y="218">Panolar · Loglar · İzler · Servisler</text><text class="d" x="1658" y="236">Eşikler · İş kutusu · Ayarlar</text></g>
+      <g><rect class="bx" x="1640" y="300" width="340" height="90" rx="8"/><rect class="rail" x="1640" y="300" width="4" height="90" rx="2"/>
+        <text class="t" x="1658" y="326">MCP sunucusu</text><text class="f" x="1658" y="346">/api/mcp · mcp_server.py :8765</text>
+        <text class="d" x="1658" y="368">dış yapay zekâ araçlarına 21 araç</text></g>
+      <g><rect class="bx opt" x="1640" y="670" width="340" height="80" rx="8"/>
+        <text class="t" x="1658" y="696">Aksiyon yürütücü <tspan class="d">(2. aşama)</tspan></text><text class="f" x="1658" y="716">eylem ajanı · AWX · Rundeck · Jenkins</text>
+        <text class="d" x="1658" y="736">imzalı iş, izinli komut şablonu</text></g>
+      <g><rect class="bx" x="1640" y="830" width="340" height="80" rx="8"/><rect class="rail" x="1640" y="830" width="4" height="80" rx="2"/>
+        <text class="t" x="1658" y="856">Bildirim</text><text class="f" x="1658" y="876">notify.py</text>
+        <text class="d" x="1658" y="896">e-posta · SMS · Teams / Slack</text></g>
+
+      <!-- edges: intake -->
+      <path class="e" d="M240,280 H286" marker-end="url(#ah)"/>
+      <path class="e" d="M240,350 H286" marker-end="url(#ah)"/>
+      <text class="el" x="246" y="273">HTTPS</text>
+      <path class="e" d="M240,95 H265 V225 H1520 V246" marker-end="url(#ah)"/>
+      <path class="e" d="M240,180 H265"/>
+      <text class="el" x="810" y="219">panel içinde çekme · aynı kabul kuralları</text>
+      <!-- pipeline -->
+      <path class="e g" d="M520,305 H566" marker-end="url(#ahg)"/>
+      <path class="e g" d="M760,305 H806" marker-end="url(#ahg)"/>
+      <text class="el g" x="764" y="297">raw</text>
+      <path class="e g" d="M1040,305 H1086" marker-end="url(#ahg)"/>
+      <text class="el g" x="1046" y="297">v=2</text>
+      <path class="e g" d="M1260,305 H1306" marker-end="url(#ahg)"/>
+      <text class="el g" x="1266" y="297">sıra</text>
+      <!-- to storage -->
+      <path class="e" d="M1430,360 V436" marker-end="url(#ah)"/>
+      <text class="el" x="1438" y="405">v2 paket</text>
+      <path class="e" d="M1330,360 V400 H855 V436" marker-end="url(#ah)"/>
+      <text class="el" x="880" y="394">sayaçlar · akış · iz · envanter</text>
+      <path class="e" d="M1310,490 H1274" marker-end="url(#ah)"/>
+      <text class="el" x="1272" y="560">← saatlik arşiv</text>
+      <path class="e o" d="M720,490 H564" marker-end="url(#aho)"/>
+      <text class="el o" x="574" y="482">eğitim örnekleri</text>
+      <!-- feed to analysis -->
+      <path class="e" d="M855,540 V610"/>
+      <path class="e" d="M1405,540 V656" marker-end="url(#ah)"/>
+      <path class="e" d="M405,610 H1405"/>
+      <path class="e" d="M405,610 V656" marker-end="url(#ah)"/>
+      <path class="e" d="M655,610 V656" marker-end="url(#ah)"/>
+      <path class="e" d="M905,610 V656" marker-end="url(#ah)"/>
+      <path class="e" d="M1155,610 V656" marker-end="url(#ah)"/>
+      <text class="el" x="960" y="603">her dakika: sayaçlar, metrikler, yeni satırlar</text>
+      <!-- alarms and cases -->
+      <path class="e" d="M405,760 V800 H1810 V826" marker-end="url(#ah)"/>
+      <path class="e" d="M655,760 V800"/>
+      <path class="e" d="M905,760 V800"/>
+      <text class="el" x="1100" y="794">alarm · bildirim kuralları</text>
+      <path class="e o" d="M1520,710 H1636" marker-end="url(#aho)"/>
+      <text class="el o" x="1526" y="702">runbook adımı</text>
+      <!-- queries and MCP -->
+      <path class="e" d="M1550,490 H1595 V205 H1636" marker-end="url(#ah)"/>
+      <text class="el" x="1600" y="288">sorgular</text>
+      <path class="e" d="M1810,110 V146" marker-end="url(#ah)"/>
+      <path class="e" d="M1810,260 V296" marker-end="url(#ah)"/>
+      <text class="el" x="1820" y="284">aynı yetki ve ekip kapsamı</text>
+    </svg>
+    </div>
+    <figcaption>Ajanlar ve sensörler logu Go alıcıya gönderir; alıcı diske yazıp hemen yanıt verir, Go ayrıştırır, alım hattı ekip koruması ve maskelemeden geçirip sayar. Satırlar 48 saat sıcak depoda, sonra sıkıştırılmış soğuk arşivde durur; sayaçlar ve kayıtlar PostgreSQL'de. Analiz döngüleri her dakika bu veriden alarm ve vaka üretir. Çekme ve MCP kaynakları alıcıyı atlayıp aynı alım hattına girer.</figcaption>
+  </figure>
+
+  <div class="grid2">
+    <section class="card" aria-labelledby="m-h">
+      <h2 id="m-h">Ölçümler · yük testi, 300 ajan</h2>
+      <table>
+        <thead><tr><th>Ölçüm</th><th class="n">Önce</th><th class="n">Şimdi</th></tr></thead>
+        <tbody>
+          <tr><td>Python'un paket başına işi (Go ayrıştırma)</td><td class="n">20,3 ms</td><td class="n now">4,2 ms</td></tr>
+          <tr><td>İşlenen olay / sn</td><td class="n">3.130</td><td class="n now">3.989</td></tr>
+          <tr><td>Canlı akış gecikmesi (veritabanı yazma ayarı)</td><td class="n">218 sn</td><td class="n now">~1 sn</td></tr>
+          <tr><td>Diskte satır başına</td><td class="n">283 B</td><td class="n now">65–90 B sıcak · 7–8 B soğuk</td></tr>
+          <tr><td>Operasyon ekranı uçları p95 (dakikada ~290 bin satırda)</td><td class="n">–</td><td class="n now">&lt; 100 ms</td></tr>
+          <tr><td>Pano uçları p95</td><td class="n">–</td><td class="n now">≤ 26 ms</td></tr>
+          <tr><td>Arşivde nadir terim, 1 günlük (735 bin satır)</td><td class="n">–</td><td class="n now">0,5–0,8 sn</td></tr>
+        </tbody>
+      </table>
+      <p class="note">Dakikada 100 bin satır 4 vCPU'da rahat, ~290 bin sınırda. Dakikada 100 bin satırda sıcak depo günde ~13 GB, soğuk arşiv ~1,1 GB büyür.</p>
+    </section>
+
+    <section class="card" aria-labelledby="p-h">
+      <h2 id="p-h">Aynı mimari, iki kurulum</h2>
+      <div class="plat">
+        <div>
+          <h3>RHEL sunucu</h3>
+          <p class="cmd">./watchover.sh install --production</p>
+          <ul>
+            <li>Docker ya da Podman, Compose ile konteynerler: <span>dashboard</span>, <span>receiver</span>, <span>postgres</span>, <span>edge :443</span></li>
+            <li>İsteğe bağlı: <span>mcp :8765</span>, <span>ollama</span>, <span>trainer</span></li>
+            <li>Kaynaklar makinenin CPU ve belleğine göre kendiliğinden</li>
+            <li>Sıcak ve soğuk log ayrı disklerde olabilir</li>
+            <li>Gece yedeği: <span>backup-timer on</span></li>
+          </ul>
+        </div>
+        <div>
+          <h3>OpenShift</h3>
+          <p class="cmd">helm upgrade --install watchover …</p>
+          <ul>
+            <li>Tek pod: <span>dashboard</span> + <span>receiver</span>, ortak veri diski</li>
+            <li>Ayrı PVC'ler: <span>data</span>, <span>logs-hot</span>, <span>logs-cold</span>; PostgreSQL kendi StatefulSet'i</li>
+            <li>İsteğe bağlı MCP ve Ollama pod'ları; Route'lar ve ağ kuralları</li>
+            <li>Kaynaklar <span>values-performance.yaml</span> ile; alıcı pod sınırını okur</li>
+            <li>Root olmadan, rastgele kullanıcı numarasıyla</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+</body></html>
