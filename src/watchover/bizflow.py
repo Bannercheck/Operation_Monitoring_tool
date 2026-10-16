@@ -48,6 +48,8 @@ class BizFlows:
         kb._exec("""CREATE TABLE IF NOT EXISTS biz_events (flow_id INTEGER, bkey TEXT, step INTEGER, ts TEXT, service TEXT, host TEXT, error INTEGER DEFAULT 0,
             message TEXT DEFAULT '', PRIMARY KEY (flow_id, bkey, step))""")
         kb._exec("CREATE INDEX IF NOT EXISTS biz_events_ts ON biz_events(flow_id, ts)")
+        from .demo import ensure_column
+        ensure_column(kb, "biz_flows"); ensure_column(kb, "biz_events")   # 1 = the seeded demo flow / steps seen in simulator lines
         self._compiled: tuple[float, list] | None = None
 
     # ---------------------------------------------------------------- definitions
@@ -55,6 +57,7 @@ class BizFlows:
         out = []
         for r in self.kb._exec("SELECT * FROM biz_flows ORDER BY name"):
             d = dict(r); d["steps"] = json.loads(d["steps"] or "[]"); d["hash_keys"] = bool(d["hash_keys"]); d["enabled"] = bool(d["enabled"])
+            d["demo"] = bool(d.get("demo"))
             out.append(d)
         return out
 
@@ -80,14 +83,15 @@ class BizFlows:
             raise ValueError("a flow needs at least two steps")
         return clean
 
-    def save(self, name: str, key_regex: str, steps: list, hash_keys: bool = False, enabled: bool = True, fid: int | None = None) -> dict:
+    def save(self, name: str, key_regex: str, steps: list, hash_keys: bool = False, enabled: bool = True, fid: int | None = None, demo: bool = False) -> dict:
         steps = self._check(key_regex, steps)
         name = name.strip()[:80]
         if not name:
             raise ValueError("flow name required")
         if fid is None:
-            fid = self.kb._insert("INSERT INTO biz_flows (name, key_regex, steps, hash_keys, enabled, created_at) VALUES (?,?,?,?,?,?)",
-                                  (name, key_regex, json.dumps(steps, ensure_ascii=False), int(hash_keys), int(enabled), datetime.now(UTC).isoformat(timespec="seconds")))
+            fid = self.kb._insert("INSERT INTO biz_flows (name, key_regex, steps, hash_keys, enabled, created_at, demo) VALUES (?,?,?,?,?,?,?)",
+                                  (name, key_regex, json.dumps(steps, ensure_ascii=False), int(hash_keys), int(enabled), datetime.now(UTC).isoformat(timespec="seconds"),
+                                   int(bool(demo))))
         else:
             self.kb._exec("UPDATE biz_flows SET name=?, key_regex=?, steps=?, hash_keys=?, enabled=? WHERE id=?",
                           (name, key_regex, json.dumps(steps, ensure_ascii=False), int(hash_keys), int(enabled), fid))
@@ -115,6 +119,7 @@ class BizFlows:
 
     # ---------------------------------------------------------------- intake
     def add_events(self, events) -> int:
+        from .demo import is_demo, keep_real
         flows = self._flows()
         if not flows:
             return 0
@@ -123,6 +128,7 @@ class BizFlows:
             msg = o.message or ""
             if not msg:
                 continue
+            dm = 1 if is_demo(o) else 0                      # simulator lines feed a flow's funnel as demo rows only
             for f, krx, steps in flows:
                 m = krx.search(msg)
                 if not m:
@@ -139,14 +145,15 @@ class BizFlows:
                     if svc and o.service != svc:
                         continue
                     if srx.search(msg):
-                        rows.append((f["id"], key, i, ts, o.service or "", o.host or "", err, scrub(msg)[:240]))
+                        rows.append((f["id"], key, i, ts, o.service or "", o.host or "", err, scrub(msg)[:240], dm))
                         break
                 else:
                     if err:     # an error carrying the key that is no step of its own: the failure that blocks the next step
-                        rows.append((f["id"], key, FAIL, ts, o.service or "", o.host or "", 1, scrub(msg)[:240]))
+                        rows.append((f["id"], key, FAIL, ts, o.service or "", o.host or "", 1, scrub(msg)[:240], dm))
         if rows:
-            sql = ("INSERT INTO biz_events (flow_id, bkey, step, ts, service, host, error, message) VALUES (?,?,?,?,?,?,?,?)"
-                   + self.kb.upsert_suffix("flow_id, bkey, step", "error=CASE WHEN excluded.error > biz_events.error THEN excluded.error ELSE biz_events.error END"))
+            sql = ("INSERT INTO biz_events (flow_id, bkey, step, ts, service, host, error, message, demo) VALUES (?,?,?,?,?,?,?,?,?)"
+                   + self.kb.upsert_suffix("flow_id, bkey, step", "error=CASE WHEN excluded.error > biz_events.error THEN excluded.error ELSE biz_events.error END, "
+                                           + keep_real("biz_events")))
             with self.lock:
                 self.kb.executemany(sql, rows)
         return len(rows)
@@ -300,5 +307,5 @@ class BizFlows:
                     keys = [hashlib.sha256(str(k).encode()).hexdigest()[:12] for k in keys]
                 out.append({"flow_id": f["id"], "flow": f["name"], "step": st["index"], "step_name": st["name"], "stuck": len(at),
                             "oldest_s": oldest, "hosts": sorted({x["last_host"] for x in at if x.get("last_host")})[:5], "samples": keys,
-                            "team_id": f.get("team_id")})
+                            "team_id": f.get("team_id"), "demo": bool(f.get("demo"))})
         return out

@@ -6,6 +6,7 @@ import { useAuth } from "../auth";
 import { useT } from "../i18n";
 import { Btn, Card, Confirm, Empty, Err, Field, Modal } from "../components/ui";
 import { PermGrid, type Catalogue, type PermCol } from "../components/PermGrid";
+import { InstallCmds } from "../components/InstallCmd";
 
 /** Teams, their roles and their hosts. A team owns hosts by rules (any rule matching is enough) and by explicit assignment; each
  *  member has one team role (three ready-made roles come with every new team) whose ticks apply only on the team's hosts.
@@ -156,16 +157,13 @@ function EnrollKey({ tid, title }: { tid: number; title?: string }) {
   const rot = useMutation({ mutationFn: () => post(`/teams/${tid}/enroll-key/rotate`), onSuccess: () => qc.invalidateQueries({ queryKey: ["team-key", tid] }) });
   const off = useMutation({ mutationFn: () => del(`/teams/${tid}/enroll-key`), onSuccess: () => qc.invalidateQueries({ queryKey: ["team-key", tid] }) });
   const [show, setShow] = useState(false);
-  const key: string = q.data?.key ?? ""; const host = typeof window !== "undefined" ? window.location.hostname : "watchover";
-  const hq = useQuery({ queryKey: ["api-health"], queryFn: () => get("/health"), staleTime: 300000 });
-  const base = ((hq.data as any)?.ingest as string) || `http://${host}:8600`;   // OpenShift: the ingest Route (WATCHOVER_INGEST_URL)
-  const cmd = `curl -fsSL ${base}/agent/install.sh | sudo bash -s -- --url ${base}/ingest --enroll-key ${key} --env prod`;
+  const key: string = q.data?.key ?? "";
   return <Card className="tight" title={title ? `${t("tmr_enroll")} · ${title}` : t("tmr_enroll")}>
     <div className="dim small" style={{ marginBottom: 6 }}>{t("tmr_enroll_hint")}</div>
     {key ? <div className="stack" style={{ gap: 6 }}>
       <div className="row"><code className="mono grow" onClick={() => setShow(!show)} style={{ cursor: "pointer" }}>{show ? key : key.slice(0, 6) + "••••••••••••"}</code>
         <Btn sm onClick={() => navigator.clipboard?.writeText(key)}>{t("tmr_copy")}</Btn><Btn sm onClick={() => rot.mutate()}>{t("tmr_key_rotate")}</Btn><Confirm onConfirm={() => off.mutate()}>{t("tmr_key_disable")}</Confirm></div>
-      {show && <div className="small"><span className="muted">{t("tmr_install_cmd")}: </span><code className="mono">{cmd}</code></div>}</div>
+      {show && <div className="small"><span className="muted">{t("tmr_install_cmd")}: </span><InstallCmds auth={`--enroll-key ${key} --env prod`} compact /></div>}</div>
       : <div className="row"><span className="dim small">{t("tmr_key_off")}</span><Btn sm onClick={() => rot.mutate()}>{t("tmr_key_make")}</Btn></div>}
     <Err e={q.error || rot.error || off.error} />
   </Card>;

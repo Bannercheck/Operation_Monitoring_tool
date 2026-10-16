@@ -132,6 +132,8 @@ class Applications:
         kb._exec("""CREATE TABLE IF NOT EXISTS app_namespaces (namespace TEXT NOT NULL, service TEXT NOT NULL, host TEXT NOT NULL DEFAULT '',
             last_seen TEXT, PRIMARY KEY (namespace, service, host))""")
         kb._exec("CREATE TABLE IF NOT EXISTS app_dismissed (key TEXT NOT NULL, owner TEXT NOT NULL, at TEXT, PRIMARY KEY (key, owner))")
+        from .demo import ensure_column
+        ensure_column(kb, "app_namespaces")                  # 1 = a namespace only simulator lines carried (demo.py purges these)
         self._rows: Optional[tuple] = None
         self._mcache: dict = {}
         self._uni: Optional[tuple] = None
@@ -374,6 +376,7 @@ class Applications:
 
     def observe(self, events) -> None:
         """Live ingest hook: remember which services (and hosts) carry each OTel service.namespace. Bounded, flushed every 30 s."""
+        from .demo import is_demo
         pend = self._ns_pending
         now = time.time()
         for o in events:
@@ -383,7 +386,7 @@ class Applications:
             ns = a.get(NS_ATTR)
             if ns:
                 if len(pend) < 20000:
-                    pend[(str(ns)[:120], o.service[:200], (o.host or "")[:200])] = now
+                    pend[(str(ns)[:120], o.service[:200], (o.host or "")[:200], 1 if is_demo(o) else 0)] = now
         if pend and now - self._ns_flush > 30:
             self.flush_namespaces()
 
@@ -392,10 +395,16 @@ class Applications:
         pend, self._ns_pending = self._ns_pending, {}
         if not pend:
             return 0
-        rows = [(ns, s, h, datetime.fromtimestamp(t, UTC).isoformat(timespec="seconds")) for (ns, s, h), t in pend.items()]
+        from .demo import keep_real
+        merged: dict = {}
+        for (ns, s, h, *dm), t in pend.items():               # real input for a key wins over demo input
+            k = (ns, s, h); d = int(dm[0]) if dm else 0
+            old = merged.get(k)
+            merged[k] = (max(t, old[0]), min(d, old[1])) if old else (t, d)
+        rows = [(ns, s, h, datetime.fromtimestamp(t, UTC).isoformat(timespec="seconds"), d) for (ns, s, h), (t, d) in merged.items()]
         try:
-            self.kb.executemany("INSERT INTO app_namespaces (namespace, service, host, last_seen) VALUES (?,?,?,?)"
-                                + self.kb.upsert_suffix("namespace, service, host", "last_seen=excluded.last_seen"), rows)
+            self.kb.executemany("INSERT INTO app_namespaces (namespace, service, host, last_seen, demo) VALUES (?,?,?,?,?)"
+                                + self.kb.upsert_suffix("namespace, service, host", "last_seen=excluded.last_seen, " + keep_real("app_namespaces")), rows)
             if int(self._ns_flush) % 3600 < 31:
                 cut = (datetime.now(UTC) - timedelta(days=30)).isoformat(timespec="seconds")
                 self.kb._exec("DELETE FROM app_namespaces WHERE last_seen < ?", (cut,))

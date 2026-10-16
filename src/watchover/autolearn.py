@@ -26,8 +26,9 @@ class LiveLearner:
     def learn_once(self, env: str | None = None) -> dict:
         """Analyse the last window of live events and record patterns; returns what happened."""
         from .analysis import Analysis
+        from .demo import is_demo
         start = datetime.now(UTC) - timedelta(minutes=self.window_min)
-        obs = [o for o in self.ls.snapshot(env) if o.timestamp >= start]
+        obs = [o for o in self.ls.snapshot(env) if o.timestamp >= start and not is_demo(o)]    # never learns from simulator lines
         out = {"ts": datetime.now(UTC).isoformat(timespec="seconds"), "events": len(obs), "incidents": 0, "lessons": 0, "note": ""}
         if len(obs) < self.min_events:
             out["note"] = "too few events"
@@ -69,7 +70,8 @@ class LiveLearner:
 def training_examples(kb, lang: str = "tr") -> tuple[list[dict], dict]:
     """Chat-format examples (system / user / assistant) from everything the company taught Watchover: root-cause patterns,
     anomalies, resolutions (closed actions), notes, runbook chunks, saved chats, approved rules and thumbs-up answers.
-    Deduplicated on (question, answer); returns (examples, counts-by-source)."""
+    Deduplicated on (question, answer); returns (examples, counts-by-source). Rows flagged demo (made from simulator data or in
+    demo context, demo.py) are never examples."""
     sys_tr = "Sen Watchover operasyon asistanısın. Kanıta dayalı, kısa ve gerekçeli yanıt verirsin."
     sys_en = "You are the Watchover operations assistant. Answer briefly, with evidence and reasons."
     system = sys_tr if lang == "tr" else sys_en
@@ -93,17 +95,21 @@ def training_examples(kb, lang: str = "tr") -> tuple[list[dict], dict]:
         seen.add(h); counts[src] = counts.get(src, 0) + 1
         out.append({"messages": [{"role": "system", "content": system}, {"role": "user", "content": question}, {"role": "assistant", "content": answer}]})
 
-    for r in kb._exec("SELECT kind, title, text FROM lessons WHERE kind IN ('pattern', 'anomaly', 'resolution', 'note', 'doc', 'chat') ORDER BY id"):
+    nd = " AND COALESCE(demo, 0) = 0" if "demo" in kb.columns("lessons") else ""
+    for r in kb._exec(f"SELECT kind, title, text FROM lessons WHERE kind IN ('pattern', 'anomaly', 'resolution', 'note', 'doc', 'chat'){nd} ORDER BY id"):
         if r["kind"] == "chat":
             if r["text"].startswith("Q: ") and "\nA: " in r["text"]:
                 qq, aa = r["text"][3:].split("\nA: ", 1)
                 add("chat", qq, aa)
             continue
         add(r["kind"], q[r["kind"]].format(t=r["title"]), r["text"])
-    for r in kb._exec("SELECT kind, key, value, reason FROM rules WHERE status='approved' ORDER BY id"):
+    nd = " AND COALESCE(demo, 0) = 0" if "demo" in kb.columns("rules") else ""
+    for r in kb._exec(f"SELECT kind, key, value, reason FROM rules WHERE status='approved'{nd} ORDER BY id"):
         add("rule", q["rule"].format(k=r["key"]), f"{r['kind']}: {r['key']} → {r['value']}" + (f" ({r['reason']})" if r["reason"] else ""))
-    if "answer" in kb.columns("answer_feedback"):
-        for r in kb._exec("SELECT question, answer FROM answer_feedback WHERE verdict='up' AND answer <> '' ORDER BY id"):
+    fcols = kb.columns("answer_feedback")
+    if "answer" in fcols:
+        nd = " AND COALESCE(demo, 0) = 0" if "demo" in fcols else ""
+        for r in kb._exec(f"SELECT question, answer FROM answer_feedback WHERE verdict='up' AND answer <> ''{nd} ORDER BY id"):
             add("feedback", r["question"], r["answer"])
     return out, counts
 

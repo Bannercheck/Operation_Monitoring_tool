@@ -16,6 +16,10 @@ the same installer (scripts/agent-install.sh) sets up dormant next to it.
 On Linux amd64 / arm64 the installer ships logs with `wo-agent ship` instead (goagent/internal/ship: this collector in Go, same
 flags, WATCHOVER_* settings, wire format and spool, plus file positions across restarts); agent.py stays the collector for
 macOS, Windows, other CPUs and installs made with --python-agent.
+On Linux amd64 / arm64 with systemd, running as root with a pinned release key (WATCHOVER_RELEASE_KEY, written by the installer),
+this collector moves itself to wo-agent when the dashboard offers it (see migrate_check): the signed manifest is verified here
+(Ed25519, standard library only), the installer is taken from it by sha256 and runs in its own systemd scope, keeping the
+token, identity, spool and file positions; if wo-agent does not reach the dashboard, the installer puts agent.py back.
 """
 from __future__ import annotations
 
@@ -104,11 +108,17 @@ class Sender:
         self.sent = self.failed = self.spooled = self.dropped = 0
 
     def _post(self, data: bytes, name: str) -> dict:
-        headers = {"Content-Type": "application/octet-stream", "X-Agent": self.agent, "X-File-Name": name, "X-Agent-Version": __version__}
+        headers = {"Content-Type": "application/octet-stream", "X-Agent": self.agent, "X-File-Name": name, "X-Agent-Version": __version__,
+                   "X-Agent-Engine": "agent.py"}
         if self.key:
             headers["Authorization"] = f"Bearer {self.key}"
+        st = MIGRATION.header()
+        if st:
+            headers["X-Agent-Update"] = st                     # the migration's state, shown in the Agents panel
         req = urllib.request.Request(self.url, data=data, headers=headers, method="POST")
         with urllib.request.urlopen(req, timeout=self.timeout, context=self.ctx) as r:
+            if r.headers.get("X-Watchover-Update"):
+                MIGRATION.kick()                               # the dashboard offers wo-agent to this host now
             return json.loads(r.read() or b"{}")
 
     def send(self, data: bytes, name: str) -> dict | None:
@@ -167,6 +177,221 @@ class Sender:
         finally:
             self._lock.release()
         return n
+
+
+# ---------------------------------------------------------------- self-migration to wo-agent (Linux + systemd + root)
+def ed25519_verify(pub: bytes, msg: bytes, sig: bytes) -> bool:
+    """RFC 8032 Ed25519 verification in pure Python (cofactorless, as Go's crypto/ed25519): one signature per check."""
+    import hashlib
+    p = 2 ** 255 - 19
+    L = 2 ** 252 + 27742317777372353535851937790883648493
+    d = -121665 * pow(121666, p - 2, p) % p
+    sqrt_m1 = pow(2, (p - 1) // 4, p)
+
+    def xrecover(y: int):
+        xx = (y * y - 1) * pow(d * y * y + 1, p - 2, p) % p
+        x = pow(xx, (p + 3) // 8, p)
+        if (x * x - xx) % p:
+            x = x * sqrt_m1 % p
+        return None if (x * x - xx) % p else x
+
+    def decode(b: bytes):
+        y = int.from_bytes(b, "little") & ((1 << 255) - 1)
+        x = xrecover(y) if y < p else None
+        if x is None or (x == 0 and b[31] >> 7):
+            return None
+        if x & 1 != b[31] >> 7:
+            x = p - x
+        return (x, y, 1, x * y % p)
+
+    def add(P, Q):
+        a = (P[1] - P[0]) * (Q[1] - Q[0]) % p
+        b = (P[1] + P[0]) * (Q[1] + Q[0]) % p
+        c = 2 * P[3] * Q[3] * d % p
+        dd = 2 * P[2] * Q[2] % p
+        e, f, g, h = b - a, dd - c, dd + c, b + a
+        return (e * f % p, g * h % p, f * g % p, e * h % p)
+
+    def mul(k: int, P):
+        Q = (0, 1, 1, 0)
+        while k:
+            if k & 1:
+                Q = add(Q, P)
+            P, k = add(P, P), k >> 1
+        return Q
+
+    if len(pub) != 32 or len(sig) != 64:
+        return False
+    A, R = decode(pub), decode(sig[:32])
+    s = int.from_bytes(sig[32:], "little")
+    if A is None or R is None or s >= L:
+        return False
+    gy = 4 * pow(5, p - 2, p) % p
+    gx = xrecover(gy)
+    gx = p - gx if gx & 1 else gx
+    k = int.from_bytes(hashlib.sha512(sig[:32] + pub + msg).digest(), "little") % L
+    P1, P2 = mul(s, (gx, gy, 1, gx * gy % p)), add(R, mul(k, A))
+    return (P1[0] * P2[2] - P2[0] * P1[2]) % p == 0 and (P1[1] * P2[2] - P2[1] * P1[2]) % p == 0
+
+
+class Migration:
+    """agent.py → wo-agent, by the dashboard's offer (GET /agent/update: its switch, pause and rollout apply). Only with a
+    release key pinned by the installer: the signed manifest names the installer's sha256; the installer then verifies the
+    binary against the same key, keeps token / identity / spool, seeds the file positions, rewrites the unit, and waits for
+    wo-agent to reach the dashboard (--gate) or restores agent.py. It runs under systemd-run, outside this service, which it
+    stops. Everything else (not root, no systemd, macOS / Windows / other CPUs, no pinned key) is reported, never attempted."""
+
+    CHECK_S = 6 * 3600
+    BACKOFF_S = 24 * 3600
+
+    def __init__(self):
+        self.root = os.environ.get("WO_INSTALL_ROOT", "").rstrip("/")     # tests: a sandbox root, as the installer's
+        self.dir = Path(os.environ.get("WO_UPDATE_DIR") or (self.root + "/var/lib/watchover/update"))
+        self.evt = threading.Event()
+        self._hdr, self._hdr_at = "", 0.0
+        self.sender: Sender | None = None
+
+    def header(self) -> str:
+        if time.time() - self._hdr_at > 30:
+            self._hdr_at = time.time()
+            try:
+                st = json.loads((self.dir / "state.json").read_text())
+                self._hdr = ";".join(str(st.get(k) or "").replace(";", " ")[:200] for k in ("phase", "to", "from", "at", "error"))
+            except (OSError, ValueError):
+                self._hdr = self._hdr if self._hdr.startswith("unsupported") else ""
+        return self._hdr
+
+    def kick(self) -> None:
+        self.evt.set()
+
+    def _state(self, phase: str, to: str = "", error: str = "") -> None:
+        st = {"phase": phase, "to": to, "from": f"agent.py {__version__}", "at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "error": error[:200]}
+        try:
+            self.dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+            tmp = self.dir / "state.json.tmp"
+            tmp.write_text(json.dumps(st)); os.replace(tmp, self.dir / "state.json")
+        except OSError:
+            pass
+        self._hdr_at = 0.0
+
+    def blocker(self) -> str:
+        """Why this host cannot migrate itself ("" = it can)."""
+        import platform
+        import shutil
+        if not sys.platform.startswith("linux"):
+            return f"{sys.platform}: wo-agent is built for Linux only (agent.py stays)"
+        if platform.machine().lower() not in ("x86_64", "amd64", "aarch64", "arm64"):
+            return f"{platform.machine()}: no wo-agent build for this CPU (agent.py stays)"
+        if not self.root and os.geteuid() != 0:
+            return "agent.py does not run as root: it cannot rewrite its service; re-run the install command from the Agents panel"
+        if not os.path.isdir(self.root + "/run/systemd/system") or not shutil.which("systemd-run"):
+            return "no systemd: re-run the install command from the Agents panel"
+        unit = Path(self.root + "/etc/systemd/system/watchover-agent.service")
+        if not unit.exists() or "agent.py" not in unit.read_text(errors="replace"):
+            return "agent.py does not run as the installer's watchover-agent service: re-run the install command"
+        if not os.environ.get("WATCHOVER_RELEASE_KEY", "").startswith("ed25519:"):
+            return "no release key pinned on this host (installed before signed releases): re-run the install command from the Agents panel"
+        return ""
+
+    def run(self, sender: Sender, stop: threading.Event) -> None:
+        self.sender = sender
+        why = self.blocker()
+        if why:
+            self._state("unsupported", error=why)
+            return
+        if stop.wait(random.uniform(60, 180)):
+            return
+        while not stop.is_set():
+            try:
+                wait = self.check()
+            except Exception as e:  # noqa: BLE001 - a failed check never stops the collector
+                print(f"self-migration: {e}", file=sys.stderr)
+                wait = 3600
+            last = time.time()
+            self.evt.clear()
+            while not stop.wait(5):                        # the next look: when due, or on a hint (at most every 15 minutes)
+                el = time.time() - last
+                if el >= wait or (self.evt.is_set() and el >= 900):
+                    break
+
+    def _get(self, url: str, limit: int) -> bytes:
+        s = self.sender
+        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {s.key}", "X-Agent-Version": __version__, "X-Agent-Engine": "agent.py"})
+        with urllib.request.urlopen(req, timeout=60, context=s.ctx) as r:
+            data = r.read(limit + 1)
+        if len(data) > limit:
+            raise ValueError(f"{url}: answer too large")
+        return data
+
+    def check(self) -> float:
+        """One look at the dashboard's offer; returns the seconds until the next one."""
+        import base64
+        import hashlib
+        import subprocess
+        try:
+            st = json.loads((self.dir / "state.json").read_text())
+        except (OSError, ValueError):
+            st = {}
+        if st.get("phase") == "migrating":
+            rc = (self.dir / "migrate.rc")
+            if not rc.exists():
+                return 600                                     # the installer still runs (it stops this service when done)
+            code = rc.read_text().strip()
+            self._state("failed", st.get("to", ""), f"installer exit {code} (journalctl -u {st.get('unit', 'watchover-migrate-*')})")
+            return self.BACKOFF_S
+        base = self.sender.url.rsplit("/ingest", 1)[0].rstrip("/")
+        try:
+            d = json.loads(self._get(base + "/agent/update", 1 << 20))
+        except urllib.error.HTTPError as e:
+            if e.code == 404:                                  # a dashboard without self-update: ask again later
+                return self.CHECK_S
+            if e.code in (401, 403):
+                self._state("unsupported", error="the dashboard offers updates to agents with their own token (wo_…), not the shared key")
+                return self.BACKOFF_S
+            raise
+        rel = d.get("release") or {}
+        if not d.get("update") or not rel.get("body"):
+            return self.CHECK_S
+        pub = base64.b64decode(os.environ["WATCHOVER_RELEASE_KEY"].split(":", 1)[1])
+        body = base64.b64decode(rel["body"])
+        if not ed25519_verify(pub, b"wo-release-v1\n" + body, base64.b64decode(rel.get("sig") or "")):
+            self._state("failed", "", "the release manifest does not verify against the pinned release key: not migrated")
+            return self.BACKOFF_S
+        man = json.loads(body)
+        want = ((man.get("files") or {}).get("agent-install.sh") or {}).get("sha256", "")
+        script = self._get(base + "/agent/install.sh", 4 << 20)
+        if not want or hashlib.sha256(script).hexdigest() != want:
+            self._state("failed", man.get("version", ""), "the installer does not match the signed manifest: not migrated")
+            return self.BACKOFF_S
+        self.dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+        stamp = time.strftime("%Y%m%d%H%M%S")
+        path = self.dir / f"install-{stamp}.sh"
+        path.write_bytes(script); os.chmod(path, 0o700)
+        (self.dir / "migrate.rc").unlink(missing_ok=True)
+        fp = "SHA256:" + base64.b64encode(hashlib.sha256(pub).digest()).decode().rstrip("=")
+        args = ["--url", self.sender.url, "--token", self.sender.key or "", "--logs", os.environ.get("WATCHOVER_LOGS") or "auto",
+                "--env", os.environ.get("AGENT_ENV", ""), "--interval", os.environ.get("WATCHOVER_INTERVAL", "10"), "--release-key", fp,
+                "--dir", str(Path(os.environ["WATCHOVER_SPOOL"]).parent if os.environ.get("WATCHOVER_SPOOL") else Path(__file__).resolve().parent),
+                "--gate", os.environ.get("WO_MIGRATE_GATE", "120")]
+        if os.environ.get("WATCHOVER_CA"):
+            args += ["--ca", os.environ["WATCHOVER_CA"]]
+        if os.environ.get("WATCHOVER_FLOWS", "").lower() not in ("1", "true", "yes"):
+            args.append("--no-flows")
+        unit = f"watchover-migrate-{stamp}"
+        rc = str(self.dir / "migrate.rc")
+        self._state("migrating", man.get("version", ""))
+        try:
+            st = json.loads((self.dir / "state.json").read_text()); st["unit"] = unit
+            (self.dir / "state.json").write_text(json.dumps(st))
+        except (OSError, ValueError):
+            pass
+        print(f"self-migration: wo-agent {man.get('version')} offered and verified: running the installer as {unit}", file=sys.stderr)
+        subprocess.run(["systemd-run", "--unit", unit, "--collect", "--quiet", "-p", "Type=oneshot",
+                        "/bin/bash", "-c", 'bash "$0" "$@"; echo $? > "' + rc + '"', str(path), *args], check=True, timeout=60)
+        return 600
+
+
+MIGRATION = Migration()
 
 
 def hello(sender: Sender, env: str) -> dict | None:
@@ -671,6 +896,9 @@ def main(argv=None) -> int:
         out = sender.send(p.read_bytes(), p.name)
         print("ok" if out else "failed", out or ""); return 0 if out else 2
     if args.simulate:
+        if (args.key or "").startswith("wo_"):                  # a per-agent token is a real server's identity: synthetic data never lands as it
+            print("--simulate does not run with an agent token: use a demo installation's shared key or open mode"); return 2
+        sender.agent = "simulator"                             # stored as simulator (demo) data: marked, never learned from, purged with it
         sys.path.insert(0, str(Path(__file__).with_name("src")))
         from watchover.live import simulate_batch  # noqa: E402
         rng, tick = random.Random(), 0
@@ -693,6 +921,7 @@ def main(argv=None) -> int:
         threads.append(threading.Thread(target=journal_loop, args=(sender, 1.0, stop), daemon=True))
     if args.windows_events:
         threads.append(threading.Thread(target=windows_events_loop, args=(sender, max(args.interval, 5.0), stop), daemon=True))
+    threads.append(threading.Thread(target=MIGRATION.run, args=(sender, stop), daemon=True, name="self-migration"))
     for th in threads:
         th.start()
     apps = ", ".join(f"{f['app']} ({len(f['files'])})" for f in found) if found else "-"

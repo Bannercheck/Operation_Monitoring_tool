@@ -23,6 +23,7 @@ RUN apk upgrade --no-cache && adduser -D -u 10001 -G root -h /home/watchover wat
 COPY --from=build /out/wo-receiver /usr/local/bin/wo-receiver
 COPY agent.py /app/agent/agent.py
 COPY scripts/agent-install.sh /app/agent/agent-install.sh
+COPY scripts/agent-boot.sh /app/agent/agent-boot.sh
 COPY --from=build /out/wo-agent-linux-amd64 /out/wo-agent-linux-arm64 /app/agent/
 COPY sensors/web/rum.js /app/agent/rum.js
 USER 10001

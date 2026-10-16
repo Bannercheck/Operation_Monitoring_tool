@@ -75,6 +75,8 @@ class RumStore:
             requests INTEGER DEFAULT 0, errors INTEGER DEFAULT 0, crashes INTEGER DEFAULT 0, duration_ms DOUBLE PRECISION DEFAULT 0, entry TEXT DEFAULT '', exit TEXT DEFAULT '')""")
         kb._exec("CREATE INDEX IF NOT EXISTS rum_sessions_app ON rum_sessions(app, last)")
         kb._exec("CREATE INDEX IF NOT EXISTS rum_sessions_user ON rum_sessions(user_ref)")
+        from .demo import ensure_column
+        ensure_column(kb, "rum_apps"); ensure_column(kb, "rum_sessions")   # 1 = the simulator's HR apps and their sessions (demo.py)
 
     # ---------------------------------------------------------------- apps (keys the sensors carry; public by nature, origin-bound)
     def apps(self) -> list[dict]:
@@ -86,7 +88,7 @@ class RumStore:
         rows = self.kb._exec("SELECT * FROM rum_apps WHERE key=? AND status='active'", (key,))
         return dict(rows[0]) if rows else None
 
-    def create_app(self, name: str, platform: str = "web", origins: str = "", sample_pct: int = 100, note: str = "") -> dict:
+    def create_app(self, name: str, platform: str = "web", origins: str = "", sample_pct: int = 100, note: str = "", demo: bool = False) -> dict:
         name = re.sub(r"[^\w.\- ]", "", name or "").strip()[:60]
         if not name:
             raise ValueError("app name required")
@@ -95,8 +97,8 @@ class RumStore:
         if self.kb._exec("SELECT id FROM rum_apps WHERE name=?", (name,)):
             raise ValueError(f"an app named '{name}' exists")
         key = "pk_" + secrets.token_urlsafe(18)
-        self.kb._insert("INSERT INTO rum_apps (name, key, platform, origins, sample_pct, status, created_at, note) VALUES (?,?,?,?,?,'active',?,?)",
-                        (name, key, platform, origins.strip()[:1000], max(1, min(100, int(sample_pct))), _now(), note[:200]))
+        self.kb._insert("INSERT INTO rum_apps (name, key, platform, origins, sample_pct, status, created_at, note, demo) VALUES (?,?,?,?,?,'active',?,?,?)",
+                        (name, key, platform, origins.strip()[:1000], max(1, min(100, int(sample_pct))), _now(), note[:200], int(bool(demo))))
         return self.app_by_key(key)
 
     def update_app(self, aid: int, **kw) -> dict:
@@ -143,6 +145,8 @@ class RumStore:
         os_, br = _ua_family(ua) if platform == "web" else (scrub(str(dev.get("os") or ""))[:40], "")
         user_ref = pseudonym(str(doc.get("user") or "")) if doc.get("user") else ""
         svc = app["name"]
+        from .demo import DEMO_OWNER
+        demo = bool(app.get("demo")) or app.get("note") == DEMO_OWNER    # the simulator's demo app: every row it yields is demo (demo.py)
         events = [e for e in (doc.get("events") or []) if isinstance(e, dict)][:MAX_EVENTS]
         spans, errors_out = [], []
         counts = {"view": 0, "action": 0, "http": 0, "error": 0, "crash": 0}
@@ -170,7 +174,7 @@ class RumStore:
             base = {"env": scrub(str(doc.get("env") or ""))[:20], "host": "", "user_ref": user_ref, "session_id": sess, "ref": f"rum:{svc}:{sess}",
                     "severity": "INFO", "status": 0, "error": 0, "has_duration": dur is not None, "duration_ms": round(dur or 0.0, 3), "start": ts,
                     "service": svc, "trace_id": trace, "span_id": span, "parent_id": parent, "link": "explicit" if trace else "session",
-                    "confidence": 1.0 if trace else 0.7}
+                    "confidence": 1.0 if trace else 0.7, "demo": int(demo)}
             if t in ("view", "action", "start"):
                 name = _clean_name(e.get("name") or ("app start" if t == "start" else ""), t)
                 counts["view" if t in ("view", "start") else "action"] += 1
@@ -212,12 +216,13 @@ class RumStore:
             self.traces.add_spans(spans)
         if errors_out and self.live is not None:
             try:
-                self.live.ingest(f"rum-{svc}.jsonl", ("\n".join(json.dumps(x) for x in errors_out) + "\n").encode(), f"rum:{svc}")
+                from .demo import SIM_AGENT                      # a demo app's errors are simulator lines (sender "simulator")
+                self.live.ingest(f"rum-{svc}.jsonl", ("\n".join(json.dumps(x) for x in errors_out) + "\n").encode(), SIM_AGENT if demo else f"rum:{svc}")
             except Exception:  # noqa: BLE001
                 pass
         if first is not None:
             self._upsert_session(sess, svc, platform, version, user_ref, os_, br, scrub(str(dev.get("model") or ""))[:40], str(dev.get("net") or "")[:20],
-                                 scrub(str(dev.get("carrier") or ""))[:40], first, last or first, counts, entry, exit_)
+                                 scrub(str(dev.get("carrier") or ""))[:40], first, last or first, counts, entry, exit_, demo)
         with self.lock:
             self.received += 1
             due = time.time() - self._pruned > 3600
@@ -230,7 +235,7 @@ class RumStore:
                 pass
         return {"session": sess, "spans": len(spans), "errors": counts["error"] + counts["crash"]}
 
-    def _upsert_session(self, sess, app, platform, version, user_ref, os_, br, model, net, carrier, first, last, c, entry, exit_):
+    def _upsert_session(self, sess, app, platform, version, user_ref, os_, br, model, net, carrier, first, last, c, entry, exit_, demo=False):
         rows = self.kb._exec("SELECT * FROM rum_sessions WHERE session_id=?", (sess,))
         if rows:
             r = rows[0]
@@ -241,9 +246,9 @@ class RumStore:
                           (lst, c["view"], c["action"], c["http"], c["error"], c["crash"], dur, exit_, exit_, user_ref, started, sess))
         else:
             self.kb._exec("INSERT INTO rum_sessions (session_id, app, platform, version, user_ref, os, browser, model, net, carrier, started, last, views, actions, requests, "
-                          "errors, crashes, duration_ms, entry, exit) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                          "errors, crashes, duration_ms, entry, exit, demo) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                           (sess, app, platform, version, user_ref, os_, br, model, net, carrier, first.isoformat(), last.isoformat(), c["view"], c["action"],
-                           c["http"], c["error"], c["crash"], (last - first).total_seconds() * 1000, entry, exit_))
+                           c["http"], c["error"], c["crash"], (last - first).total_seconds() * 1000, entry, exit_, int(bool(demo))))
 
     # ---------------------------------------------------------------- read
     def sessions(self, app: str | None = None, platform: str | None = None, user_ref: str | None = None, errors: bool = False, minutes: int | None = 1440,

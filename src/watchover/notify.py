@@ -159,6 +159,8 @@ class Notifier:
         kb._exec(f"""CREATE TABLE IF NOT EXISTS alerts (id {pk}, ts TEXT, rule_id INTEGER, key TEXT, severity TEXT, title TEXT, body TEXT, channels TEXT, recipients TEXT,
             ok INTEGER, detail TEXT DEFAULT '')""")
         kb._exec("CREATE INDEX IF NOT EXISTS alerts_key ON alerts(key, ts)")
+        from .demo import ensure_column
+        ensure_column(kb, "alerts")                          # 1 = fired from simulator data ("[DEMO]" title; demo.py purges these)
         for t in ("recipients", "notify_groups", "notify_rules", "alerts"):      # team-owned rows (NULL: installation-wide)
             try:
                 if "team_id" not in kb.columns(t):
@@ -309,10 +311,16 @@ class Notifier:
     def alerts(self, n: int = 50) -> list[dict]:
         return [dict(r) for r in self.kb._exec("SELECT * FROM alerts ORDER BY id DESC LIMIT ?", (n,))]
 
-    def dispatch(self, rule: dict, key: str, title: str, body: str, force: bool = False) -> dict:
-        """Send one alert for a rule unless the same key fired within the cooldown; returns the log row."""
+    def dispatch(self, rule: dict, key: str, title: str, body: str, force: bool = False, demo: bool = False) -> dict:
+        """Send one alert for a rule unless the same key fired within the cooldown; returns the log row. demo=True: the alert comes
+        from simulator data - its title says [DEMO] wherever it lands, the row is flagged (removed with the demo data) and its cooldown
+        key is its own, so a demo alert never silences a real one."""
+        if demo:
+            key = f"demo:{key}"
         if not force and self.recent(key, int(rule.get("cooldown_min") or 30)):
             return {"skipped": "cooldown"}
+        if demo and not title.startswith("[DEMO]"):
+            title = "[DEMO] " + title
         team = rule.get("team_id")
         emails, phones = self.resolve(rule.get("targets", ""), team)
         chans = [c.strip() for c in (rule.get("channels") or "email").split(",") if c.strip()]
@@ -351,8 +359,9 @@ class Notifier:
         row = {"ts": datetime.now(UTC).isoformat(timespec="seconds"), "rule_id": rule.get("id"), "key": key, "severity": rule.get("severity", "high"), "title": title[:200],
                "body": body[:1000], "channels": ",".join(chans), "recipients": ", ".join(emails + phones)[:500], "ok": int(ok), "detail": "; ".join(errors)[:400] if errors else ", ".join(sent)}
         row["team_id"] = team
-        self.kb._exec("INSERT INTO alerts (ts, rule_id, key, severity, title, body, channels, recipients, ok, detail, team_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                      tuple(row[k] for k in ("ts", "rule_id", "key", "severity", "title", "body", "channels", "recipients", "ok", "detail", "team_id")))
+        row["demo"] = int(bool(demo))
+        self.kb._exec("INSERT INTO alerts (ts, rule_id, key, severity, title, body, channels, recipients, ok, detail, team_id, demo) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                      tuple(row[k] for k in ("ts", "rule_id", "key", "severity", "title", "body", "channels", "recipients", "ok", "detail", "team_id", "demo")))
         return row
 
     def test_channel(self, channel: str, target: str) -> tuple[bool, str]:
@@ -382,6 +391,11 @@ def _html(title: str, body: str, severity: str) -> str:
 
 
 # ---------------------------------------------------------------- evaluation against the live feed
+def _dm(flag) -> dict:
+    """dispatch(..., demo=True) only for demo alerts: a notifier without the demo keyword (tests, older plug-ins) keeps working."""
+    return {"demo": True} if flag else {}
+
+
 class AlertEngine:
     def __init__(self, notifier: Notifier, live, registry=None, sources=None, every: float = 60.0):
         self.n, self.live, self.registry, self.sources, self.every = notifier, live, registry, sources, every
@@ -396,6 +410,8 @@ class AlertEngine:
     def evaluate(self, now_iso: str | None = None) -> list[dict]:
         from . import scenario
         fired = []
+        is_demo_host = getattr(self.live, "is_demo_host", None) or (lambda h: False)
+        demo_window = bool(getattr(self.live, "demo_active", None) and self.live.demo_active())   # simulator data in the window
         for rule in self.n.rules():
             if not rule["enabled"]:
                 continue
@@ -412,13 +428,15 @@ class AlertEngine:
                     s = self.live.slo(15, env, hf) if hf is not None else self.live.slo(15, env)
                     if s["availability"] is not None and s["total"] >= 20 and s["availability"] < (thr or s["slo"]["availability"]):
                         fired.append(self.n.dispatch(rule, pre + f"slo:{env or 'all'}", f"Availability {s['availability']*100:.2f}% below SLO ({(thr or s['slo']['availability'])*100:.1f}%)" + (f" · {env}" if env else ""),
-                                                     f"{s['errors']} ERROR+ of {s['total']} events in the last 15 minutes; error budget left {(s['error_budget'] or 0)*100:.0f}%."))
+                                                     f"{s['errors']} ERROR+ of {s['total']} events in the last 15 minutes; error budget left {(s['error_budget'] or 0)*100:.0f}%.",
+                                                     **_dm(demo_window)))
                 elif cond == "errors":
                     st_ = self.live.stats(5, env, hf) if hf is not None else self.live.stats(5, env)
                     per_min = st_["errors"] / 5 if st_.get("errors") is not None else 0
                     if per_min >= (thr or 10):
                         fired.append(self.n.dispatch(rule, pre + f"errors:{env or 'all'}", f"{per_min:.0f} ERROR+ per minute" + (f" · {env}" if env else ""),
-                                                     f"{st_['errors']} ERROR+ events in 5 minutes; busiest services: " + ", ".join(f"{a} ({b})" for a, b in list(st_.get("services", []))[:5])))
+                                                     f"{st_['errors']} ERROR+ events in 5 minutes; busiest services: " + ", ".join(f"{a} ({b})" for a, b in list(st_.get("services", []))[:5]),
+                                                     **_dm(demo_window)))
                 elif cond == "metric":
                     ms = self.live.metric_stats(5, env, hf) if hf is not None else self.live.metric_stats(5, env)
                     for b in ms.get("breaches", []):
@@ -426,13 +444,15 @@ class AlertEngine:
                             continue
                         limit = thr or scenario.METRIC_THRESHOLDS.get(b["metric"], 90)
                         if b["value"] >= limit:
-                            fired.append(self.n.dispatch(rule, pre + f"metric:{b['host']}:{b['metric']}", f"{b['host']} {b['metric']} {b['value']:.0f}% (limit {limit:.0f}%)", f"Host {b['host']} · {b['metric']} at {b['value']:.0f}% in the last 5 minutes."))
+                            fired.append(self.n.dispatch(rule, pre + f"metric:{b['host']}:{b['metric']}", f"{b['host']} {b['metric']} {b['value']:.0f}% (limit {limit:.0f}%)", f"Host {b['host']} · {b['metric']} at {b['value']:.0f}% in the last 5 minutes.",
+                                                         **_dm(is_demo_host(b["host"]))))
                 elif cond == "anomaly" and self.anomalies is not None:
                     for a in self.anomalies.list("open"):
                         if hs is not None and a.get("host") not in hs:
                             continue
                         if a["hits"] == 1 and float(a["score"]) >= (thr or 0):
-                            fired.append(self.n.dispatch(rule, pre + f"anomaly:{a['key']}", f"Anomaly · {a['title']}", f"{a['detail']} · score {a['score']} · kind {a['kind']}"))
+                            fired.append(self.n.dispatch(rule, pre + f"anomaly:{a['key']}", f"Anomaly · {a['title']}", f"{a['detail']} · score {a['score']} · kind {a['kind']}",
+                                                         **_dm(a.get("demo"))))
                 elif cond == "agent_offline" and self.registry is not None:
                     from datetime import datetime as _dt
                     for a in self.registry.list():

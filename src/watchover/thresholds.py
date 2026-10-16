@@ -61,6 +61,8 @@ class Thresholds:
             cooldown_min INTEGER DEFAULT 30, notify_resolved INTEGER DEFAULT 1, enabled INTEGER DEFAULT 1, note TEXT DEFAULT '', updated_at TEXT)""")
         kb._exec("""CREATE TABLE IF NOT EXISTS threshold_state (host TEXT NOT NULL, metric TEXT NOT NULL, level TEXT NOT NULL, since TEXT, value REAL,
             limit_value REAL, policy_id INTEGER, notified_level TEXT DEFAULT '', notified_at TEXT DEFAULT '', updated_at TEXT, PRIMARY KEY (host, metric))""")
+        from .demo import ensure_column
+        ensure_column(kb, "threshold_state")                 # 1 = the state of a host only simulator input wrote (demo.py purges these)
         try:
             if "team_id" not in kb.columns("threshold_policies"):
                 kb._exec("ALTER TABLE threshold_policies ADD COLUMN team_id INTEGER")   # a team's policy (NULL: installation-wide)
@@ -305,10 +307,12 @@ class Thresholds:
         # beyond a level
         if not st or st["level"] == "ok":
             since = now_iso
-            self.kb._exec("INSERT INTO threshold_state (host, metric, level, since, value, limit_value, policy_id, notified_level, notified_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?) "
+            demo = int(bool(getattr(self.live, "is_demo_host", None) and self.live.is_demo_host(host)))
+            self.kb._exec("INSERT INTO threshold_state (host, metric, level, since, value, limit_value, policy_id, notified_level, notified_at, updated_at, demo) "
+                          "VALUES (?,?,?,?,?,?,?,?,?,?,?) "
                           "ON CONFLICT(host, metric) DO UPDATE SET level=excluded.level, since=excluded.since, value=excluded.value, limit_value=excluded.limit_value, "
-                          "policy_id=excluded.policy_id, notified_level='', updated_at=excluded.updated_at",
-                          (host, metric, lvl, since, v, limit, p.get("id"), "", "", now_iso))
+                          "policy_id=excluded.policy_id, notified_level='', updated_at=excluded.updated_at, demo=excluded.demo",
+                          (host, metric, lvl, since, v, limit, p.get("id"), "", "", now_iso, demo))
             st = {"level": lvl, "since": since, "notified_level": "", "notified_at": ""}
         elif st["level"] != lvl:
             self.kb._exec("UPDATE threshold_state SET level=?, value=?, limit_value=?, policy_id=?, updated_at=? WHERE host=? AND metric=?", (lvl, v, limit, p.get("id"), now_iso, host, metric))
@@ -347,7 +351,8 @@ class Thresholds:
             return {"skipped": "no notifier", "title": title}
         rule = {"id": None, "severity": sev, "channels": p.get("channels") or "email", "targets": p.get("targets") or "", "cooldown_min": 0, "team_id": p.get("team_id")}
         try:
-            return self.notifier.dispatch(rule, f"thr:{host}:{metric}:{lvl}", title, body, force=True)
+            demo = bool(getattr(self.live, "is_demo_host", None) and self.live.is_demo_host(host))
+            return self.notifier.dispatch(rule, f"thr:{host}:{metric}:{lvl}", title, body, force=True, **({"demo": True} if demo else {}))
         except Exception as e:  # noqa: BLE001
             return {"error": f"{type(e).__name__}: {str(e)[:120]}", "title": title}
 

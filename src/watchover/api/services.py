@@ -2,11 +2,12 @@
 the live feed with its rollups, alerting and anomaly tracking, plus the dataset registry with background loads."""
 from __future__ import annotations
 
+import json
 import os
 import threading
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from .. import admin as wo_admin
 from .. import anomaly as wo_anomaly
@@ -21,7 +22,7 @@ from ..history import History
 from ..i18n import t
 from ..inventory import Inventory
 from ..knowledge import Knowledge
-from ..live import LiveStore, start_receiver, start_simulator, SIM_HOSTS
+from ..live import LiveStore, start_receiver, start_simulator
 from ..llm import LLMConfig, embed as llm_embed, set_sink as llm_set_sink
 from .. import ollama as wo_ollama
 from .. import selfmon as wo_selfmon
@@ -57,13 +58,15 @@ class Services:
             for h, ip, role in wo_demo.DEMO_PEERS:
                 try:
                     if self.inventory.get(h) is None:
-                        self.inventory.upsert({"hostname": h, "ip": ip, "env": "prod", "role": role, "application": SIM_TECH_EXTRA_INVENTORY.get(h, ""), "owner": "demo (simulator)"})
+                        self.inventory.upsert({"hostname": h, "ip": ip, "env": "prod", "role": role, "application": SIM_TECH_EXTRA_INVENTORY.get(h, ""), "owner": wo_demo.DEMO_OWNER,
+                                               "demo": 1})
                 except Exception:  # noqa: BLE001
                     pass
             for h, ip, os_, app, role in SIM_TECH_INVENTORY:        # the integration map's technology demo: varied stacks
                 try:
                     if self.inventory.get(h) is None:
-                        self.inventory.upsert({"hostname": h, "ip": ip, "env": "prod", "os": os_, "application": app, "role": role, "owner": "demo (simulator)"})
+                        self.inventory.upsert({"hostname": h, "ip": ip, "env": "prod", "os": os_, "application": app, "role": role, "owner": wo_demo.DEMO_OWNER,
+                                               "demo": 1})
                 except Exception:  # noqa: BLE001
                     pass
         if not hasattr(self, "_sim_tech_n"):
@@ -76,7 +79,7 @@ class Services:
             self._sim_flow = True
             if not any(f["name"] == wo_demo.DEMO_FLOW["name"] for f in self.bizflows.list()):
                 try:
-                    self.bizflows.save(wo_demo.DEMO_FLOW["name"], wo_demo.DEMO_FLOW["key_regex"], [dict(s) for s in wo_demo.DEMO_FLOW["steps"]])
+                    self.bizflows.save(wo_demo.DEMO_FLOW["name"], wo_demo.DEMO_FLOW["key_regex"], [dict(s) for s in wo_demo.DEMO_FLOW["steps"]], demo=True)
                 except Exception:  # noqa: BLE001
                     pass
             try:                                              # sample applications over the demo hosts (watchover.applications)
@@ -87,12 +90,13 @@ class Services:
         apps = {a["name"]: a for a in self.rum.apps()}
         for name, platform in wo_demo.DEMO_RUM_APPS:
             if name not in apps:
-                apps[name] = self.rum.create_app(name, platform, note="demo (simulator)")
+                apps[name] = self.rum.create_app(name, platform, note=wo_demo.DEMO_OWNER, demo=True)
         sessions, backend = simulate_rum(rng, incident)
         if backend:
             self.live.ingest("hr-api.jsonl", ("\n".join(backend) + "\n").encode(), "simulator")
         for app, doc in sessions:
-            self.rum.ingest(apps[app], doc, "Mozilla/5.0 (Windows NT 10.0) Chrome/130.0" if doc["platform"] == "web" else "")
+            if apps[app].get("demo") or apps[app].get("note") == wo_demo.DEMO_OWNER:   # a real app of the same name never gets demo sessions
+                self.rum.ingest(apps[app], doc, "Mozilla/5.0 (Windows NT 10.0) Chrome/130.0" if doc["platform"] == "web" else "")
 
     def _pool_of(self, host: str):
         """The inventory cluster of a host, from one inventory read per minute (not one query per host)."""
@@ -107,7 +111,9 @@ class Services:
 
     def _on_anomaly_open(self, row: dict) -> None:
         """Every newly opened anomaly (threshold breaches included): company memory, then the action agent (a no-op while
-        act_mode = off; never raises). Learning-period anomalies never reach here."""
+        act_mode = off; never raises). Learning-period anomalies never reach here; simulator anomalies go nowhere (demo.py)."""
+        if row.get("demo"):
+            return
         try:
             self.memory.remember_anomaly(row)
         except Exception:  # noqa: BLE001
@@ -153,6 +159,11 @@ class Services:
         bg = (os.environ.get("WATCHOVER_API_BACKGROUND", "1") != "0") if background is None else background
         self.lang = wo_settings.load().get("lang", "tr") or "tr"
         self.kb = Knowledge(os.environ.get("DATABASE_URL") or os.environ.get("KNOWLEDGE_DB", "knowledge.db"))
+        self.sim_stop = None
+        self.demo_notice: dict | None = None                 # why the simulator stopped by itself (real data arrived)
+        self.demo_purged_at = 0.0
+        self._demo_check = (0.0, False)
+        self.kb.demo_fn = self.demo_present                  # LLM calls / ratings / saved chats in demo context are demo rows
         wo_migrate.auto(self.kb)
         self.kb.apply_rules()
         self.users = Users(self.kb); self.users.bootstrap()
@@ -184,6 +195,7 @@ class Services:
         self.agents = AgentRegistry(self.kb)
         self.sources = SourceStore(self.kb)
         self.inventory = Inventory(self.kb); self.live.enricher = self.inventory.enrich
+        self.inventory.demo_host_fn = self.live.is_demo_host
         self._pools = (0.0, {})
         self.live.rollup.pool_fn = self._pool_of                 # pools: inventory cluster, else the name stem
         self.history = History(self.kb, retention_days=int(cfg0.get("history_retention_days", 400) or 400))
@@ -229,7 +241,6 @@ class Services:
         self.poller = Poller(self.sources, self.live)
         self.receiver = None
         self.spool_consumer = None
-        self.sim_stop = None
         self.selfmon = None
         self._live_an: tuple[int, object] | None = None
         self.datasets = DatasetRegistry(self)
@@ -237,9 +248,12 @@ class Services:
         _wire_access(self)                                   # role-based teams: effective permissions, team hooks on agents / thresholds / alerts
         from ..act import ActService                         # log-driven action agent (docs/design/action-agent.md): no-op while act_mode = off
         self.act = ActService(self)
+        from ..agent_update import AgentUpdates              # agent self-update: keyd's signed release, switch / pause / rollout / pin
+        self.agent_updates = AgentUpdates(self.agents, lambda: self.act.keys)
         self.logwatch.on_case = self.act.from_query           # log-query rules with "Vaka aç" (open_case)
         self.memory.learner.on_incidents = self.act.from_analysis   # live incidents of severity >= high
         self.started = time.time()
+        self._restore_demo_hosts()                           # stored simulator rows after a restart: their hosts are still demo hosts
         llm_set_sink(self.kb.log_call)                       # every LLM call lands in the quality log
         self.refresh_llm()
         if bg:
@@ -255,12 +269,15 @@ class Services:
                 self.spool_consumer = SpoolConsumer(os.environ.get("WATCHOVER_SPOOL", os.path.join(os.environ.get("WATCHOVER_HOME", "data") or "data", "spool")),
                                                     self.live, self.agents, key_fn=lambda: wo_settings.load().get("live_key") or "",
                                                     handlers={"/rum": rum_h, "/mobile": rum_h, "/otlp/traces": lambda h, body: self.traces.add_otlp(body)},
-                                                    apps_fn=self.rum.apps).start()
+                                                    apps_fn=self.rum.apps)
+                self.spool_consumer.exporters.append(self.agent_updates.export)   # agent-update.json + the signed files
+                self.spool_consumer.start()
                 port = int(os.environ.get("WATCHOVER_INTERNAL_PORT", "8601") or 8601)    # enrolment (proxied by Go) and this machine's own agent
             if os.environ.get("WATCHOVER_API_RECEIVER", "1") == "1":      # the API is the product now: it owns the agent receiver
                 try:
                     self.receiver = start_receiver(self.live, port, c.get("live_key") or None, self.agents, self.rum,
-                                                   jobs=getattr(self.act, "jobs", None))   # /agent/v1/: the action agent's job channel
+                                                   jobs=getattr(self.act, "jobs", None),   # /agent/v1/: the action agent's job channel
+                                                   updates=self.agent_updates)              # /agent/update, signed manifest
                 except OSError:
                     self.receiver = None
             if os.environ.get("WATCHOVER_SELFMON", "1") != "0" and c.get("self_monitor", True) and self.receiver is not None:
@@ -354,22 +371,92 @@ class Services:
             self._live_an = (n, Analysis(list(obs), []) if obs else None)
         return self._live_an[1]
 
-    def simulate(self, on: bool) -> bool:
+    # ---- the simulator (demo.py): never next to real data; "off" purges everything it made
+    def _restore_demo_hosts(self) -> None:
         from .. import demo as wo_demo
-        if on and not wo_demo.enabled():                     # production install: the API answers 403
-            raise wo_demo.DemoDisabled("the simulator is disabled on this installation (WATCHOVER_DEMO=0)")
-        if on and self.sim_stop is None:
-            self.sim_stop = start_simulator(self.live, interval=1.0, extra=self._simulate_users)
-        elif not on and self.sim_stop is not None:
-            self.sim_stop.set(); self.sim_stop = None
-            self.live.purge("simulator", tuple(SIM_HOSTS))
-        return self.sim_stop is not None
+        try:
+            rows = self.kb._exec(f"SELECT DISTINCT host FROM slo_minute WHERE sender = '{wo_demo.SIM_AGENT}' AND minute >= ?",
+                                 ((datetime.now(timezone.utc) - timedelta(days=2)).strftime("%Y-%m-%dT%H:%M"),))
+            hs = {str(r["host"]).lower() for r in rows if r["host"] and r["host"] != "-"}
+            self.live.demo_hosts.update(hs - wo_demo.claimed(self, hs))     # a name a real source also uses stays real
+        except Exception:  # noqa: BLE001
+            pass
+
+    def demo_present(self, fresh: bool = False) -> bool:
+        """Demo context: the simulator runs, or its data is still stored (checked against the database at most every 30 s)."""
+        if self.sim_stop is not None:
+            return True
+        t, v = self._demo_check
+        if fresh or time.time() - t > 30:
+            from .. import demo as wo_demo
+            try:
+                v = wo_demo.present(self) or any(wo_demo.is_demo(o) for o in list(self.live.buf)[-5000:])
+            except Exception:  # noqa: BLE001
+                v = bool(self.live.demo_hosts)
+            if not v:
+                self.live.demo_hosts.clear()                 # purged elsewhere (CLI): nothing of it is a demo host any more
+            self._demo_check = (time.time(), v)
+        return v
+
+    def demo_state(self) -> dict:
+        """on: the simulator runs · paused: it stopped (real data arrived, or a restart) and its data is still stored · off: spotless."""
+        from .. import demo as wo_demo
+        running = self.sim_stop is not None
+        present = running or self.demo_present()
+        return {"demo": wo_demo.enabled(), "simulator": running, "state": "on" if running else ("paused" if present else "off"),
+                "notice": self.demo_notice, "purged_at": self.demo_purged_at or None}
+
+    def _real_arrived(self, sender: str) -> None:
+        """LiveStore.real_guard while the simulator runs: a real sender (not this machine's own agent) stops it at once."""
+        if str(sender).lower() in getattr(self, "_sim_exempt", set()):
+            return
+        st, self.sim_stop = self.sim_stop, None
+        self.live.real_guard = None
+        if st is None:
+            return
+        st.set()
+        self.demo_notice = {"code": "real_data", "sender": str(sender)[:120], "at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+        try:
+            self.users._event("system", "simulator-stopped", True, f"real data arrived from {str(sender)[:120]}: simulator stopped, demo data waits for its purge")
+        except Exception:  # noqa: BLE001
+            pass
+
+    def simulate(self, on: bool, confirm: bool = False, by: str = "") -> dict:
+        """on: refused on a production install (DemoDisabled, 403) and next to real data (RealDataPresent, 409).
+        off: stops the simulator and purges every demo-derived item (demo.purge); with demo data present the caller must confirm
+        after the counts (ConfirmRequired, 409, carries demo.preview)."""
+        from .. import demo as wo_demo
+        if on:
+            if not wo_demo.enabled():                        # production install: the API answers 403
+                raise wo_demo.DemoDisabled("the simulator is disabled on this installation (WATCHOVER_DEMO=0)")
+            if self.sim_stop is None:
+                real = wo_demo.real_sources(self)
+                if real:
+                    raise wo_demo.RealDataPresent(real)
+                self.demo_notice = None
+                self._sim_exempt = {n.lower() for n in wo_demo.self_agents(self)}
+                self.live.real_guard = self._real_arrived
+                self.sim_stop = start_simulator(self.live, interval=1.0, extra=self._simulate_users)
+                self._demo_check = (time.time(), True)
+            return {**self.demo_state(), "purge": None}
+        if self.sim_stop is None and not self.demo_present(fresh=True):
+            self.live.real_guard = None
+            return {**self.demo_state(), "purge": None}
+        if not confirm:
+            raise wo_demo.ConfirmRequired(wo_demo.preview(self))
+        out = wo_demo.purge(self)
+        try:
+            self.users._event(by or "system", "demo-clean", True, f"simulation off, demo data removed: {out['total']} ({json.dumps(out['categories'], sort_keys=True)})")
+        except Exception:  # noqa: BLE001 - the audit log never blocks the purge
+            pass
+        return {**self.demo_state(), "purge": out}
 
     def status(self) -> dict:
         from .. import __version__
         from ..demo import enabled as demo_enabled
         return {"version": {"version": __version__, **wo_admin.version_info()}, "database": wo_admin.db_info(self.kb), "uptime_s": int(time.time() - self.started),
                 "live": {"received": self.live.received, "agents": len(self.live.agents), "receiver": bool(self.receiver), "simulator": self.sim_stop is not None, "demo": demo_enabled(),
+                         "demo_state": self.demo_state()["state"], "demo_notice": self.demo_notice,
                          "selfmon": self.selfmon.status() if self.selfmon else None},
                 "llm": {"provider": self.llm_cfg().kind, "model": self.llm_cfg().model, "enabled": self.llm_cfg().enabled},
                 "services": {"history": bool(self.history.thread and self.history.thread.is_alive()) if hasattr(self.history, "thread") else None,
@@ -377,6 +464,8 @@ class Services:
                 "anomalies": self.anomalies.stats(), "datasets": len(self.datasets.items), "users": self.users.count(), "capacity": {**self.live.capacity(), "receiver": self.spool_consumer.stats() if self.spool_consumer else {"engine": "python"}}}
 
     def close(self) -> None:
+        if self.sim_stop is not None:
+            self.sim_stop.set()
         for obj in (self.anomalies, self.alerts, self.memory.learner):
             try:
                 obj.stop.set()
@@ -406,9 +495,10 @@ class DatasetRegistry:
         self.lock = threading.Lock()
 
     # ---- loading
-    def submit(self, name: str, data: bytes, mapping: dict | None = None) -> dict:
+    def submit(self, name: str, data: bytes, mapping: dict | None = None, demo: bool = False) -> dict:
         jid = uuid.uuid4().hex[:10]
-        job = {"id": jid, "name": name, "size": len(data), "state": "running", "stage": "parse", "pct": 0, "file": "", "started": time.time(), "error": "", "dataset": ""}
+        job = {"id": jid, "name": name, "size": len(data), "state": "running", "stage": "parse", "pct": 0, "file": "", "started": time.time(), "error": "", "dataset": "",
+               "demo": bool(demo)}
         inv = self.svc.inventory.as_engine()
 
         def on_progress(frac: float, fname: str) -> None:
@@ -416,11 +506,11 @@ class DatasetRegistry:
 
         def run():
             try:
-                obs, report = ingest_bytes(name, data, mapping, progress=on_progress)
+                obs, report = ingest_bytes(name, data, mapping, progress=on_progress, learn=not demo)
                 job.update({"pct": 50, "stage": "analyze", "file": ""})
                 analysis = Analysis(obs, report, inv)
                 job.update({"pct": 85, "stage": "profile"})
-                key = self.register(name, analysis, profile(obs, report), time.time() - job["started"], len(data), mapping)
+                key = self.register(name, analysis, profile(obs, report), time.time() - job["started"], len(data), mapping, demo=demo)
                 job.update({"state": "done", "pct": 100, "dataset": key, "elapsed": round(time.time() - job["started"], 2)})
             except Exception as e:  # noqa: BLE001
                 job.update({"state": "error", "error": f"{type(e).__name__}: {str(e)[:200]}"})
@@ -429,19 +519,30 @@ class DatasetRegistry:
         threading.Thread(target=run, daemon=True, name=f"api-load-{jid}").start()
         return self.job_view(job)
 
-    def load_path(self, path: str, mapping: dict | None = None) -> dict:
+    def load_path(self, path: str, mapping: dict | None = None, demo: bool = False) -> dict:
         t0 = time.time()
-        obs, report = ingest_path(path, mapping)
+        obs, report = ingest_path(path, mapping, learn=not demo)
         analysis = Analysis(obs, report, self.svc.inventory.as_engine())
-        key = self.register(os.path.basename(path), analysis, profile(obs, report), time.time() - t0, os.path.getsize(path) if os.path.isfile(path) else 0, mapping)
+        key = self.register(os.path.basename(path), analysis, profile(obs, report), time.time() - t0, os.path.getsize(path) if os.path.isfile(path) else 0, mapping,
+                            demo=demo)
         return self.summary(key)
 
-    def register(self, name: str, analysis, prof, elapsed: float, size: int, mapping: dict | None) -> str:
+    def register(self, name: str, analysis, prof, elapsed: float, size: int, mapping: dict | None, demo: bool = False) -> str:
+        """demo: a shipped demo / sample set, or lines the simulator made (demo.py): shown, never learned from (playbook, Drain,
+        lessons), its first actions are demo rows, and the simulator's "off" removes it."""
+        from .. import demo as wo_demo
+        demo = bool(demo)
+        if not demo:                                         # only the caller decides: an uploaded file cannot claim the demo marker
+            for o in analysis.observations:
+                if wo_demo.DEMO_ATTR in o.attributes:
+                    o.attributes.pop(wo_demo.DEMO_ATTR, None)
         key = uuid.uuid4().hex[:8]
         with self.lock:
             self.items[key] = {"id": key, "name": name, "analysis": analysis, "profile": prof, "elapsed": round(elapsed, 2), "size": size,
-                               "mapping": mapping or {}, "loaded_at": datetime.now(UTC).isoformat(timespec="seconds")}
-        self.record_first_actions(analysis, name)
+                               "mapping": mapping or {}, "loaded_at": datetime.now(UTC).isoformat(timespec="seconds"), "demo": demo}
+        self.record_first_actions(analysis, name, demo=demo)
+        if demo:
+            return key
         self.svc.playbook.record(analysis, name)
         try:
             self.svc.templates.learn(analysis.observations[:50000], source=name)          # Drain: every dataset teaches the template miner
@@ -453,7 +554,7 @@ class DatasetRegistry:
             pass
         return key
 
-    def record_first_actions(self, a, dataset: str) -> int:
+    def record_first_actions(self, a, dataset: str, demo: bool = False) -> int:
         """Every incident card gets its recommended first action on record (deduplicated per dataset + incident), like the dashboard."""
         from ..analysis import suggested_owner
         st_ = self.svc.actions
@@ -465,7 +566,7 @@ class DatasetRegistry:
                 continue
             root = a.signal_by_id[inc.root_cause_signal]
             prio = "P1" if inc.severity == "critical" else "P2" if inc.severity == "high" else "P3"
-            st_.create(inc.id, inc.recommendations[0][:120], prio, suggested_owner(inc, root), inc.recommendations[0], tag)
+            st_.create(inc.id, inc.recommendations[0][:120], prio, suggested_owner(inc, root), inc.recommendations[0], tag, demo=demo)
             n += 1
         return n
 
@@ -490,7 +591,7 @@ class DatasetRegistry:
         d = self.items[key]
         a = d["analysis"]
         prof = {k: v for k, v in d["profile"].items() if k != "per_minute"}
-        return {"id": key, "name": d["name"], "loaded_at": d["loaded_at"], "elapsed": d["elapsed"], "size": d["size"], "funnel": a.funnel(),
+        return {"id": key, "name": d["name"], "loaded_at": d["loaded_at"], "elapsed": d["elapsed"], "size": d["size"], "demo": bool(d.get("demo")), "funnel": a.funnel(),
                 "incidents": len(a.incidents), "signals": len(a.signals), "events": len(a.observations), "profile": prof, "stamp": stamp.stamp(a),
                 "files": a.report}
 

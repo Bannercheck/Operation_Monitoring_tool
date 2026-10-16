@@ -32,6 +32,8 @@ class Memory:
 
     # ---------------------------------------------------------------- feeds
     def remember_anomaly(self, rec: dict) -> int | None:
+        if rec.get("demo"):                                  # simulator anomalies never become company memory (demo.py)
+            return None
         try:
             text = (f"{rec.get('detail', '')}\nkind: {rec.get('kind', '')} · env: {rec.get('env', '')} · host: {rec.get('host', '')}"
                     f" · service: {rec.get('service', '') or '-'} · metric: {rec.get('metric', '') or '-'}\n"
@@ -45,8 +47,8 @@ class Memory:
 
     def remember_action(self, action: dict) -> int | None:
         """A closed action: what was done for which incident, by whom. Open actions are not memories yet."""
-        if str(action.get("status", "")) not in ("done", "closed"):
-            return None
+        if str(action.get("status", "")) not in ("done", "closed") or action.get("demo"):
+            return None                                      # open actions are no memories yet; demo actions never are
         try:
             text = (f"Action: {action.get('title', '')}\nIncident: {action.get('incident_id', '') or '-'} · priority: {action.get('priority', '')}"
                     f" · owner: {action.get('owner', '') or '-'} · status: {action.get('status', '')}\n"

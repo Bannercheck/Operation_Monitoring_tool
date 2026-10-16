@@ -5,6 +5,7 @@ import { MessageSquare, X } from "lucide-react";
 import { get, post } from "../api";
 import { useT } from "../i18n";
 import { Btn, Err } from "./ui";
+import { useForgetAfterPurge } from "./ops/SimControl";
 
 type Msg = { role: "user" | "assistant"; content: string; meta?: any; rated?: string };
 
@@ -16,6 +17,7 @@ export function ChatWidget() {
   const ds = useQuery({ queryKey: ["datasets"], queryFn: () => get("/datasets"), enabled: open });
   const llm = useQuery({ queryKey: ["llm"], queryFn: () => get("/llm"), enabled: open, staleTime: 60000 });
   const endRef = useRef<HTMLDivElement>(null); const inputRef = useRef<HTMLInputElement>(null);
+  useForgetAfterPurge(() => setHist([]));                    // a chat about simulation data goes with it
   useEffect(() => { try { sessionStorage.setItem("wo_chat", JSON.stringify(hist.slice(-40))); } catch { /* ignore */ } endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [hist, open]);
   useEffect(() => { if (open) setTimeout(() => inputRef.current?.focus(), 50); }, [open]);
   const ask = useMutation({ mutationFn: (question: string) => post("/assist/ask", { question, history: hist.map((m) => ({ role: m.role, content: m.content })), dataset: dataset || (ds.data?.[0]?.id ?? null), lang }),

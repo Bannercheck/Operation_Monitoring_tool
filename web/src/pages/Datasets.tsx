@@ -24,11 +24,13 @@ export default function Datasets() {
     if (team != null) fd.append("team_id", String(team));
     try { await api(`/datasets?combine=${combine}`, { method: "POST", form: fd }); qc.invalidateQueries({ queryKey: ["jobs"] }); } catch (e) { setErr(e); }
   };
+  const health = useQuery({ queryKey: ["api-health"], queryFn: () => get("/health"), staleTime: 300000 });
+  const demoMode = (health.data as any)?.demo === true;              // a production install has no demo / sample sets
   const demo = useMutation({ mutationFn: () => post(`/datasets/demo${tq ? `?${tq}` : ""}`), onSuccess: () => qc.invalidateQueries({ queryKey: ["datasets"] }) });
   const remove = useMutation({ mutationFn: (k: string) => del(`/datasets/${k}`), onSuccess: () => qc.invalidateQueries({ queryKey: ["datasets"] }) });
   return (
     <div className="stack">
-      <div className="row between"><h2>{t("ds_title")}</h2><div className="row"><TeamPick perm="page.data" value={team} onChange={setTeam} style={{ width: 200 }} />{(list.data?.length ?? 0) >= 2 && <Btn onClick={() => setCmp([list.data[0].id, list.data[1].id])}>{t("ds_compare")}</Btn>}<Btn onClick={() => demo.mutate()} disabled={demo.isPending}>{t("ds_demo")}</Btn></div></div>
+      <div className="row between"><h2>{t("ds_title")}</h2><div className="row"><TeamPick perm="page.data" value={team} onChange={setTeam} style={{ width: 200 }} />{(list.data?.length ?? 0) >= 2 && <Btn onClick={() => setCmp([list.data[0].id, list.data[1].id])}>{t("ds_compare")}</Btn>}{demoMode && <Btn onClick={() => demo.mutate()} disabled={demo.isPending}>{t("ds_demo")}</Btn>}</div></div>
       <Card title={t("ds_upload")}>
         <div className={`drop ${drag ? "on" : ""}`} onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)} onDrop={(e) => { e.preventDefault(); setDrag(false); upload(e.dataTransfer.files); }} onClick={() => fileRef.current?.click()}>
           📂 {t("ds_drop")}<input ref={fileRef} type="file" multiple style={{ display: "none" }} onChange={(e) => e.target.files && upload(e.target.files)} /></div>

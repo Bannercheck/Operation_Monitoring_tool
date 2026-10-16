@@ -262,7 +262,15 @@ LLM'i açmak: `./watchover.sh llm on` (Ollama başlar, modeller iner: günlük k
 
 **Eğitim takvimi:** LLM › Kalite › Eğitim takvimi: günler, başlangıç / bitiş saati ve saat dilimi. Takvim açıkken otomatik eğitim yalnız bu pencerede başlar (bitiş başlangıçtan önceyse pencere gece yarısını geçer, ör. 22:00-05:00); "Şimdi eğit" takvimi beklemez, başlamış eğitim pencere bitince kesilmez.
 
-**Demo verisi:** simülatörün ürettiği veriyi silmek için `./watchover.sh demo-clean --dry-run` (ne silineceğini gösterir), sonra `./watchover.sh demo-clean`; ya da Sistem › Demo verisi. Gerçek kaynakların kullandığı sunucu adlarına dokunmaz. Üretimde simülatörü tamamen kapatmak için `.env`'de `WATCHOVER_DEMO=0`.
+**Demo verisi ve simülasyon:** simülasyon (Operasyon › ⋯ › Simülasyon) gerçek veri ile asla karışmaz:
+
+* **Yalnız boş kurulumda açılır.** Kayıtlı bir ajan (Watchover'ın kendi sunucusunu izleyen yerleşik ajan hariç), son 30 günde veri göndermiş başka bir gönderen, gerçek oturumu olan bir RUM uygulaması, açık bir çekme kaynağı ya da gerçek iz varsa simülasyon başlamaz; ekran nedenini Türkçe gösterir.
+* **Çalışırken gerçek veri gelirse kendiliğinden durur.** Gerçek veri hiç reddedilmez; ekranda "Simülasyon durdu: gerçek veri geldi" uyarısı ve *Kapat ve temizle* düğmesi çıkar.
+* **Her şey kaynağında işaretlenir.** Simülatörün satırlarının göndereni `simulator`'dır ve `wo.demo` işareti taşır (başka bir gönderen bu adı ya da işareti kullanamaz: ad `simulator-ext` olur, işaret silinir); bunlardan türeyen her kayıt (`demo = 1` sütunu: izler, metrik özetleri, anomaliler, uyarılar — başlıkta `[DEMO]` —, eşik durumları, envanter, akışlar, teknoloji izleri, iş akışı olayları, aksiyonlar, LLM çağrıları, sohbetler, değerlendirmeler, kural önerileri) işaretlidir.
+* **Hiçbir öğrenme demo verisinden beslenmez:** anomali tabanı / öğrenme süresi, yeni desen şablonları, Drain, öğrenilmiş sütun profilleri, kurumsal hafıza (canlı öğrenici, anomali ve aksiyon hafızası), demo / örnek veri setlerinin playbook ve ders kayıtları, eğitim örnekleri, otomatik eğitim ve aksiyon ajanı (vaka, kanıt, eşleştirici, metrik, güven olayları).
+* **Kapatmak = tertemiz.** Kapatırken önce kategori başına neyin silineceği gösterilir (log satırları, metrikler, izler ve RUM, anomaliler, uyarılar, topoloji, iş akışları, aksiyonlar, veri setleri, **LLM hafızası**, **öğrenilmiş modeller**); onaydan sonra simülasyonun ürettiği her şey her depodan (veritabanı, sıcak / soğuk log dosyaları, `data/live/events.jsonl`, `profiles.json`, bellek) silinir, demo verisiyle eğitilmiş bir ince ayar modeli devreden çıkar (indirilmiş temel modellere dokunulmaz). Gerçek veriye dokunulmaz.
+
+Aynı temizlik terminalden: `./watchover.sh demo-clean --dry-run` (sayar), sonra `./watchover.sh demo-clean`; ya da Sistem › Demo verisi. Üretimde (`.env`'de `WATCHOVER_DEMO=0`, `install --production`) simülatör, Veri setleri'ndeki demo / örnek veri seti düğmeleri ve ITSM demo ticket'ları görünmez ve API'de reddedilir (403); gerçek sunucuya geçmeden önce eski demo verisini `./watchover.sh demo-clean` ile silin.
 
 ## 3. Günlük işletim: watchover.sh
 
@@ -372,7 +380,7 @@ Geçişten sonraki bir adım başarısız olursa ve "otomatik geri dön" açıks
 | `WATCHOVER_ENGINE` | algılanır | `docker` ya da `podman` (RHEL, rootful Podman: bölüm 1b) |
 | `WATCHOVER_LOG_HOT_PATH` / `WATCHOVER_LOG_COLD_PATH` | boş | Ham logların ayrı diskleri (ana makine dizinleri, sahibi `10001:0`); boşsa veri biriminde |
 | `WATCHOVER_BACKUP_DIR` / `WATCHOVER_BACKUP_KEEP` | `backups` / `14` | Yedeklerin klasörü (başka disk önerilir) ve saklanacak sayı |
-| `WATCHOVER_DEMO` | `1` | `0` = üretim: simülatör yok, demo verisi yazılmaz (`install --production` yazar) |
+| `WATCHOVER_DEMO` | `1` | `0` = üretim: simülatör, demo / örnek veri seti düğmeleri ve ITSM demo ticket'ları yok (API 403), demo verisi yazılmaz (`install --production` yazar). `1`: simülatör yalnız gerçek verisi olmayan kurulumda açılır, kapatılınca ürettiği her şeyi siler |
 | `WATCHOVER_SELFMON` | `1` | Konteynerin kendini izlemesi; ana makinede ayrı ajan varsa `0` |
 | `WATCHOVER_PARALLEL` | boş | Çoklu dosya ayrıştırmada paralellik: boş otomatik (8+ çekirdek), `1` zorla, `0` kapalı |
 | `TZ` | `Europe/Istanbul` | Konteyner saat dilimi |
@@ -384,9 +392,10 @@ Değişiklikten sonra `./watchover.sh start` yeni ayarları uygular. Kaynak kull
 
 Kurulum bittikten sonra izleme üç yoldan başlar; hepsi dashboard'dan yönetilir:
 
-1. **Ajan (push):** izlenecek her sunucuda tek satır; ajan CPU / bellek / disk / servis durumunu ve seçilen log dosyalarını 8600'e gönderir. Komut Bağlantı ayarları › Ajanlar sekmesinde hazır çıkar (kayıt anahtarıyla):
+1. **Ajan (push):** izlenecek her sunucuda tek satır; ajan CPU / bellek / disk / servis durumunu ve seçilen log dosyalarını 8600'e (edge açıkken `https://<ad>`'a) gönderir. Komut Bağlantı ayarları › Ajanlar sekmesinde hazır çıkar (kayıt anahtarıyla, doğrulamalı; ayrıntı: bölüm 5a):
    ```bash
-   curl -fsSL http://<watchover-sunucusu>:8600/agent/install.sh | sudo bash -s -- --url http://<watchover-sunucusu>:8600/ingest --enroll-key wk_… --env prod
+   f=$(mktemp) && curl -fsSL -o "$f" http://<watchover-sunucusu>:8600/agent/boot.sh && echo "<boot.sh sha256>  $f" | sha256sum -c --quiet \
+     && sudo bash "$f" --url http://<watchover-sunucusu>:8600/ingest --release-key SHA256:<sürüm anahtarı> --enroll-key wk_… --env prod
    ```
    Windows sunucular için Görev Zamanlayıcı ile aynı ajan (`docs/KURULUM_WINDOWS.md`).
 
@@ -395,7 +404,7 @@ Kurulum bittikten sonra izleme üç yoldan başlar; hepsi dashboard'dan yönetil
    - macOS, Windows ve diğer işlemcilerde ajan `agent.py`'dir (Python 3 standart kütüphanesi). Linux'ta da Python ajanı isteniyorsa kurulum komutuna `--python-agent` eklenir; alıcı imajında Go ajanı yoksa kurulum kendiliğinden `agent.py`'ye döner. `--uninstall` her ikisini, eylem ajanını ve kuyruğu kaldırır.
 
    **Eylem ajanı (aynı komutla, uykuda).** Linux + systemd sunucularda (amd64 / arm64) aynı komut, aksiyon ajanının sunucu tarafını da kurar: aynı `wo-agent` dosyası ikinci bir rolle (`wo-agent act`, ayrı servis `watchover-actuator`, ayrı jeton `wa_…`). İki rol iki ayrı servistir: eylem ajanı kendi kısıtlarıyla (CPU %25, 128 MB, salt okunur sistem) çalışır, durdurulması ya da uykuda olması log gönderimini etkilemez. Otomasyon kapalıyken ajan **uykuda** bekler: beş dakikada bir merhaba der, hiçbir iş almaz, hiçbir şey çalıştırmaz. Kayıt anahtarıyla kurulumda log jetonu (`wo_…`) ve eylem jetonu (`wa_…`) birlikte verilir; panelin imza anahtarları varsa (`dispatch.pub` / `anchor.pub`) kurulumda, yoksa ilk bağlantıda sabitlenir.
-   - İkili dosya alıcıdan indirilir ve `/agent/manifest.json`'daki sha256 ile doğrulanır. Düz HTTP ile ve `--agent-sha256 <sürüm notlarındaki değer>` verilmeden kurulan sunucu **"güvensiz kurulum"** olarak işaretlenir: orada yalnız teşhis çalışır, değişiklik adımı gönderilmez (https ya da `--agent-sha256` ile yeniden kurun).
+   - İkili dosya alıcıdan indirilir ve imzalı manifestteki sha256 ile doğrulanır (bölüm 5a). Düz HTTP ile, ne sürüm anahtarı (`--release-key`, paneldeki komutta hep vardır) ne de `--agent-sha256` verilmeden kurulan sunucu **"güvensiz kurulum"** olarak işaretlenir: orada yalnız teşhis çalışır, değişiklik adımı gönderilmez (paneldeki komutla yeniden kurun; kimlik, jeton ve konumlar korunur).
    - Sunucunun izin listesi `/etc/watchover/actions.d` (root, yalnız okunur) ikili dosyanın içindeki paketlerden yazılır; `local.json` varsayılanı `max_risk: R0` (yalnız teşhis). Değişikliğe izin vermek sunucu yöneticisinin kararıdır: `--actions-max-risk R1` ya da `local.json`. `--criticality high|critical` her zaman R0'dır. Sunucuda `touch /etc/watchover/actions.halt` her şeyi yerelde durdurur.
    - Komutlar kabuk olmadan, şablonun `run_as` hesabıyla (yoksa ayrı kullanıcı `wo-act`) çalışır; ajan her işi yerel defterine (`/var/lib/watchover/actions/ledger.jsonl`) yazar.
    - İlk bağlantıda ajan anahtar parmak izini günlüğe yazar (`sudo /usr/local/lib/watchover/wo-agent act fingerprint`). Bir kişi **Sistem › Durum › Eylem ajanları**'nda aynı parmak izini yapıştırıp onaylayana kadar o sunucuya iş gönderilmez.
@@ -407,6 +416,40 @@ Kurulum bittikten sonra izleme üç yoldan başlar; hepsi dashboard'dan yönetil
 Ajanlar ve kaynaklar veri göndermeye başladıktan yaklaşık yarım saat sonra Operasyon sayfasının altındaki **Anomali takibi** çalışır: her sunucu kendi normaline göre izlenir (hata sıçraması, log fırtınası, sessizlik, yeni örüntü, metrik) ve her anomali operasyonel adım listesiyle takip edilir; Sistem › Bildirimler'deki *Yeni anomali açıldı* kuralı e-posta / SMS gönderir.
 
 Konteynerin kendi ajanı Watchover sunucusunun konteynerini raporlar; ana makinenin kendisini izlemek için ona da normal bir ajan kurun ve `WATCHOVER_SELFMON=0` yapın. Uyarılar (e-posta / SMS) Sistem › Bildirimler'den, roller Users sayfasından ayarlanır.
+
+## 5a. Ajan güncellemesi ve güvenli kurulum
+
+**Ajanlar kendini günceller.** Watchover yükseltildiğinde sunuculara bir daha dokunmak gerekmez: Linux + systemd sunucularda kurulum, `wo-agent`'ın yanına kısa ömürlü bir güncelleme servisi koyar (`watchover-update.service` + `watchover-update.timer`, root). Altı saatte bir ve alıcı daha yeni bir sürüm olduğunu bildirdiğinde (yanıt başlığı `X-Watchover-Update`) hemen çalışır:
+
+1. Alıcıya sorar (`GET /agent/update`, sunucunun kendi jetonuyla): panelin anahtarı **"Ajanlar kendini güncellesin"** (varsayılan açık), sunucunun duraklatılıp duraklatılmadığı, kademeli dağıtım payı (%5 / 10 / 25 / 50 / tümü; her sunucunun yeri sürümle birlikte sabit) ve varsa "bu sürüme döndür" sabitlemesi burada uygulanır.
+2. İmzalı manifesti doğrular: imza, kurulumda sunucuya sabitlenen **sürüm anahtarıyla** (`WATCHOVER_RELEASE_KEY`, `/opt/watchover-agent/agent.env`) tutmalıdır; başka bir anahtarla, değiştirilmiş ya da imzasız manifest reddedilir.
+3. İkili dosyayı indirir; sha256 ve boyut imzalı manifestle, dosyanın içine derlenmiş sürüm (`WO-AGENT-VERSION=…`) manifestin sürümüyle aynı olmalıdır. **Eski bir sürüm kabul edilmez**; tek istisna panelden "bu sürüme döndür" ile o sunucu adına imzalanmış, süreli bir sabitlemedir.
+4. Yeni dosya bu sunucuda çalışıyor mu (`wo-agent version`) bakar; çalışan dosyayı `wo-agent.prev` olarak saklar, yenisini tek bir `rename` ile yerine koyar, `watchover-agent`'ı yeniden başlatır (eylem ajanı yalnız çalışıyorsa yeniden başlar: `try-restart`).
+5. Yeni ajan 2 dakika içinde alıcıya ulaşmazsa (`/var/lib/watchover/update/hello.json`) **önceki dosyayı kendiliğinden geri koyar**, servisi yeniden başlatır ve durumu bildirir. Aynı derleme üç kez başarısız olursa daha yenisi çıkana dek denenmez.
+
+Güncelleme eylem ajanının yetkisini genişletmez: yalnız ikili dosya değişir; root'a ait izin listesi (`/etc/watchover/actions.d`), `local.json`, servis dosyaları ve `wo-agent.env` (ör. `WO_INSECURE_INSTALL`) olduğu gibi kalır, uykudaki eylem ajanı uykuda kalır.
+
+Ajanlar paneli her sunucunun sürümünü ve güncelleme durumunu gösterir (*güncel, güncelleniyor, sırada, duraklatıldı, başarısız, geri alındı, kendini güncelleyemez*); sunucu başına **Duraklat / Sürdür** ve **Bu sürüme döndür** (keyd'in daha önce imzaladığı sürümlerden biri; ajan saklı önceki dosyasını kullanır) vardır.
+
+**agent.py'den wo-agent'a kendiliğinden geçiş.** Linux amd64 / arm64'te systemd servisi olarak root ile çalışan ve sürüm anahtarı sabitlenmiş `agent.py`, panel izin verdiğinde (aynı anahtar, duraklatma ve kademeli dağıtım) kendini taşır: imzalı manifesti saf Python ile doğrular, kurulum betiğini manifestteki sha256 ile alır ve kendi servisinin dışında (`systemd-run`) çalıştırır. Betik jetonu, kimliği ve yerel kuyruğu korur, dosya konumlarını geçiş anında kaydeder (`wo-agent ship --seed-positions`), servisi yeniden yazar ve `wo-agent` 2 dakika içinde alıcıya ulaşmazsa `agent.py`'yi geri getirir. Root olmayan, systemd'siz, macOS / Windows / başka işlemcili ya da sürüm anahtarı olmadan (eski kurulum betiğiyle) kurulmuş `agent.py` kendini taşımaz; panel nedenini "kendini güncelleyemez" olarak gösterir: o sunucularda paneldeki komutu bir kez çalıştırın.
+
+**Güven zinciri.** İmzayı yalnız anahtar servisi atar (`watchover-keyd`, ayrı `release.key`; aksiyon işlerini imzalayan `dispatch.key`'den bilerek ayrı: bir iş imzası yalnız sunucunun izin listesindeki şablonları çalıştırır, bir sürüm imzası ise o listeyi uygulayan programı değiştirir). keyd imzaladığı dosyaların sha256'sını **kendi imajındaki** dosyalardan kendisi hesaplar (`wo-agent-linux-amd64/arm64`, `agent-install.sh`, `agent-boot.sh`, `agent.py`); panel ya da alıcı ona özet veremez, bu yüzden ele geçirilmiş bir API bile istediği dosyayı imzalatamaz. Panel imzalı manifesti ve bu dosyaların kopyasını alıcının kuyruk dizinine yazar (`/data/spool/agent-update.json`, `/data/spool/release/`); alıcı yalnız sunar, anahtar tutmaz. `release.key` anahtar yedeğine (Otomasyon › Anahtarlar) dahildir; kaybolursa sunucuların sabitlediği anahtar artık tutmaz ve kendini güncelleme durur: paneldeki yeni komutu sunucularda bir kez çalıştırın.
+
+**Güvenli kurulum komutu.** Paneldeki komut her zaman güncel değerleri taşır:
+```bash
+# düz http (8600): önce boot.sh sha256 ile, sonra imzalı manifest sürüm anahtarıyla (openssl >= 1.1.1) doğrulanır
+f=$(mktemp) && curl -fsSL -o "$f" http://<sunucu>:8600/agent/boot.sh && echo "<boot.sh sha256>  $f" | sha256sum -c --quiet \
+  && sudo bash "$f" --url http://<sunucu>:8600/ingest --release-key SHA256:<sürüm anahtarı> --enroll-key wk_… --env prod
+# edge açıkken https: Caddy'nin kendi CA'sı sha256 ile sabitlenir ve ajan için kurulur (elle CA kopyalamak yok)
+f=$(mktemp) && curl -fsSLk -o "$f" https://<ad>/agent/boot.sh && echo "<boot.sh sha256>  $f" | sha256sum -c --quiet \
+  && sudo bash "$f" --url https://<ad>/ingest --ca-sha256 <CA sha256> --release-key SHA256:<sürüm anahtarı> --enroll-key wk_… --env prod
+```
+- `boot.sh` bilerek küçük ve sabittir: komuttaki sha256'sı Watchover yükseltmelerinde ve ajan güncellemelerinde değişmez; sürüm anahtarı da değişmez. Yani bir kez dağıtılan komut (ör. Ansible'da) geçerli kalır, panel ayrıca hep güncelini gösterir. `boot.sh` kurulum betiğinin sha256'sını imzalı manifestten alır; betik de ikili dosyayı aynı manifestle doğrular ve anahtarı sunucuya sabitler. Böyle kurulan sunucu **güvensiz sayılmaz**, düz http ile bile.
+- `-k` yalnız boot.sh'ın indirildiği ilk istekte vardır ve zararsızdır: dosya sha256 ile doğrulanır; CA da (`/agent/ca.crt`) `--ca-sha256` ile. Ondan sonraki her bağlantı bu CA ile normal TLS doğrulamasıyla yapılır; CA `/etc/watchover/ca.pem` olarak kurulur ve iki ajan da onu kullanır (`WATCHOVER_CA`, `WO_CA`).
+- Şirket sertifikası (`./certs/watchover.crt`) kullanılıyorsa ve sunucular o CA'ya zaten güveniyorsa komutta `-k` ve `--ca-sha256` yoktur. Güvenmiyorlarsa şirket kök sertifikasını `./certs/watchover-ca.crt` olarak koyun; alıcı onu sunar, komut onu sabitler.
+- Sunucuda `openssl` (>= 1.1.1; RHEL 8+, Ubuntu 18.04+, Debian 10+'da var) gerekir; yoksa https komutunu kullanın.
+- Eski, güvensiz işaretli kurulumlar kendini güncelleyerek güvenli hale **gelmez**: ilk ikili ve sabitlenen anahtar aynı korumasız kanaldan geldiği için sonraki her "doğrulama" de o kanala dayanır. Bu sunucularda paneldeki komutu bir kez çalıştırmak yeter (kimlik, jeton, kuyruk ve konumlar korunur, güvensiz işareti kalkar).
+- Edge açıkken Caddy ajan yollarını da alıcıya yönlendirir: `/ingest`, `/enroll`, `/agent.py`, `/agent/*` (kurulum, `boot.sh`, `ca.crt`, manifest, ikili dosyalar, `/agent/update`, eylem ajanlarının `/agent/v1/` iş kanalı), `/rum`, `/rum.js`, `/mobile` ve OTLP/HTTP `/v1/*`. 8600 açık kalır; `./watchover.sh edge on` Caddy'nin kök sertifikasını `./certs/watchover-root.crt` olarak dışa aktarır, alıcı onu `/agent/ca.crt` olarak sunar.
 
 ## 6. PostgreSQL: ürün veritabanı
 
@@ -503,7 +546,7 @@ Kapatmak: `./watchover.sh edge off` (8501 yeniden yayınlanır; Mac'te başka bi
 
 ### 8.2 Sunucuda
 
-Aynı komutlar; ek olarak güvenlik duvarında yalnızca 443 (ve yönlendirme için 80) açılır: `ufw allow 80,443/tcp`. 8501, 8600 ve 5433 dışarıya kapalı kalır; ajanlar `https://<adres>/ingest` kullanır. Şirket DNS'inde A kaydı ve şirket CA'sından sertifika (`./certs/`) en temiz kurulumdur. Kendi Caddy / nginx / Traefik'iniz zaten varsa `edge` yerine `docker/Caddyfile` içindeki iki `reverse_proxy` satırını oraya taşıyın: arayüz + API `watchover:8501`, `/ingest` `watchover:8600`.
+Aynı komutlar; ek olarak güvenlik duvarında yalnızca 443 (ve yönlendirme için 80) açılır: `ufw allow 80,443/tcp`. 8501, 8600 ve 5433 dışarıya kapalı kalır; ajanlar `https://<adres>/ingest` kullanır (Ajanlar panelindeki https komutu CA'yı kendisi sabitleyip kurar, bölüm 5a). Şirket DNS'inde A kaydı ve şirket CA'sından sertifika (`./certs/`) en temiz kurulumdur. Kendi Caddy / nginx / Traefik'iniz zaten varsa `edge` yerine `docker/Caddyfile` içindeki iki `reverse_proxy` satırını oraya taşıyın: arayüz + API `watchover:8501`, `/ingest` `watchover:8600`.
 
 **Güvenlik notu.** Giriş 5 hatalı denemede geçici kilitlenir (`./watchover.sh user unlock EMAIL` açar), yönetici olmayan hesaplara e-posta ile ikinci faktör sorulur (Sistem › Ayarlar), parolalar scrypt ile, sırlar şifreli tutulur. Yönetici parolasını ilk girişte değiştirin ve `.env`'yi paylaşmayın.
 

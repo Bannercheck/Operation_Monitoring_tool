@@ -2,6 +2,8 @@
 import { createContext, useContext } from "react";
 import { APP_STRINGS } from "./i18n_apps";
 import { UPD_STRINGS } from "./i18n_updates";
+import { AGU_STRINGS } from "./i18n_agentupd";
+import { SIM_STRINGS } from "./i18n_demo";
 
 export type Lang = "tr" | "en";
 const S: Record<string, [string, string]> = {
@@ -58,7 +60,7 @@ const S: Record<string, [string, string]> = {
   ds_fetch_tool: ["MCP aracı", "MCP tool"], ds_fetch_tools: ["Araçları listele", "List tools"], ds_fetch_go: ["Çek ve yükle", "Fetch and load"], ds_mapping: ["Sütun eşlemesi (JSON, isteğe bağlı)", "Column mapping (JSON, optional)"],
   kb_doc_upload: ["Belge yükle (txt / md)", "Upload a document (txt / md)"], kb_propose_llm: ["LLM'den kural önerisi iste", "Ask the LLM for rules"],
   sys_demo: ["Demo verisi", "Demo data"], sys_demo_clean: ["Demo verisini temizle", "Clean demo data"], sys_demo_preview: ["Önizle", "Preview"],
-  sys_demo_lead: ["Yalnız simülatörün ürettiği veriyi siler: simülatör satırları, \"demo (simulator)\" envanter kayıtları, demo RUM uygulamaları ve oturumları, demo iş akışı ve yalnız simülatörün kullandığı sunucu adlarına ait kayıtlar. Aynı adı taşıyan gerçek bir sunucunun verisine dokunulmaz.", "Deletes only what the simulator made: its lines, \"demo (simulator)\" inventory rows, demo RUM apps and sessions, the demo business flow and rows of host names only the simulator used. A real server with the same name is left alone."],
+  sys_demo_lead: ["Simülasyonun ürettiği her şeyi her depodan siler: log satırları, metrikler, izler ve RUM, anomaliler, uyarılar, envanter / uygulama / topoloji kayıtları, iş akışları, aksiyonlar, demo veri setleri, LLM hafızası (sohbetler, değerlendirmeler, LLM çağrıları) ve demo verisiyle eğitilmiş modeller. Gerçek veriye dokunulmaz. Simülasyonu kapatmak da aynı temizliği yapar.", "Deletes everything the simulator produced, from every store: log lines, metrics, traces and RUM, anomalies, alerts, inventory / application / topology rows, business flows, actions, demo datasets, the LLM memory (chats, ratings, LLM calls) and models trained with demo data. Real data is not touched. Switching the simulator off does the same purge."],
   sys_demo_on: ["Demo modu açık (WATCHOVER_DEMO=1)", "Demo mode on (WATCHOVER_DEMO=1)"], sys_demo_off: ["Üretim modu: simülatör kapalı (WATCHOVER_DEMO=0)", "Production mode: simulator disabled (WATCHOVER_DEMO=0)"],
   sys_demo_found: ["Silinecek kayıt: {n}", "Rows to delete: {n}"], sys_demo_done: ["Silinen kayıt: {n}", "Rows deleted: {n}"], sys_demo_kept: ["Gerçek kaynağı olduğu için korunan adlar: {h}", "Kept (a real source uses these names): {h}"],
   sys_demo_pending: ["Sıcak log dosyalarındaki {n} simülatör kaydı silinemedi; saklama süresi dolunca kendiliğinden gider.", "{n} simulator rows in the hot log files cannot be deleted here; they go when their retention ends."],
@@ -684,6 +686,8 @@ const S: Record<string, [string, string]> = {
 };
 Object.assign(S, APP_STRINGS);                       // the applications pages (i18n_apps.ts)
 Object.assign(S, UPD_STRINGS);                       // the in-app update card (i18n_updates.ts)
+Object.assign(S, AGU_STRINGS);                       // agent self-update and the verified install command (i18n_agentupd.ts)
+Object.assign(S, SIM_STRINGS);                       // the simulator switch and the demo purge (i18n_demo.ts)
 
 export function tr(lang: Lang, key: string, kw: Record<string, any> = {}): string {
   const e = S[key];

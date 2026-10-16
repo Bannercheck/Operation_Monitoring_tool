@@ -154,7 +154,10 @@ def test_live_inventory_sources_notify_agents_system(client):
     assert client.post("/api/live/simulate", json={"on": True}, headers=h).json()["simulator"] is True
     time.sleep(1.5)
     assert client.get("/api/live/events?n=5", headers=h).status_code == 200
-    assert client.post("/api/live/simulate", json={"on": False}, headers=h).json()["simulator"] is False
+    r = client.post("/api/live/simulate", json={"on": False}, headers=h)          # "off" deletes the demo data: the counts first
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "confirm" and r.json()["detail"]["preview"]["total"] > 0
+    off = client.post("/api/live/simulate", json={"on": False, "confirm": True}, headers=h).json()
+    assert off["simulator"] is False and off["state"] == "off" and off["purge"]["total"] > 0
     assert client.get("/api/live/history?hours=1", headers=h).status_code == 200
     r = client.put("/api/inventory", json={"hostname": "WEB-01", "dc": "dc1", "owner": "platform"}, headers=h)
     assert r.status_code == 201 and client.get("/api/inventory/web-01", headers=h).json()["owner"] == "platform"
@@ -228,7 +231,7 @@ def test_spa_is_served_when_built(client):
 def test_phase3_map_assist_llm_itsm_search_settings(client, monkeypatch):
     """The endpoints that replaced the last Streamlit pages: failure map, ask, LLM settings, ITSM tickets, log search, compare, report, settings / channels, update info."""
     h = token(client)
-    key = client.get("/api/datasets", headers=h).json()[0]["id"]
+    key = any_dataset(client, h)          # (the simulator's "off" removed the demo set loaded earlier: it is demo content)
     m = client.get(f"/api/map?dataset={key}&lang=tr", headers=h).json()
     assert not m["empty"] and m["nodes"] >= 3 and m["root"] and "<svg" in m["html"] and m["incidents"]
     assert client.get("/api/map?dataset=live", headers=h).json()["empty"] is True
@@ -246,8 +249,9 @@ def test_phase3_map_assist_llm_itsm_search_settings(client, monkeypatch):
     tok = client.get("/api/llm/tokens", headers=h).json()
     assert set(tok) >= {"today", "week", "month", "all", "last", "by_kind", "by_model"} and tok["today"]["total"] >= 0
     client.put("/api/llm", json={"llm_base": "", "llm_model": "", "llm_key": ""}, headers=h)
-    # itsm demo tickets correlated with the dataset's incidents
-    assert client.get("/api/itsm/config", headers=h).json()["system"] == "demo"
+    # itsm demo tickets correlated with the dataset's incidents (nothing is connected until a system is picked: no demo tickets by default)
+    cfg = client.get("/api/itsm/config", headers=h).json()
+    assert cfg["system"] == "" and "demo" in cfg["systems"] and client.get("/api/itsm/tickets", headers=h).json()["tickets"] == []
     client.put("/api/itsm/config", json={"system": "demo", "token": "tok"}, headers=h)
     assert client.get("/api/itsm/config", headers=h).json()["token"] == "•••"
     tk = client.get(f"/api/itsm/tickets?dataset={key}", headers=h).json()
@@ -291,7 +295,7 @@ def test_restored_features_api(client):
     """Endpoints behind the features restored from Streamlit: samples, mapping upload, incident feedback / related / prompt, noise audit shape,
     dataset actions, discoveries, prune, readme, doc upload."""
     h = token(client)
-    key = client.get("/api/datasets", headers=h).json()[0]["id"]
+    key = any_dataset(client, h)
     assert [s["name"] for s in client.get("/api/datasets/samples", headers=h).json()] == ["alarm_storm.zip", "demo_mixed.zip", "sap_logs.zip"]
     r = client.post("/api/datasets/samples/alarm_storm.zip", headers=h)
     assert r.status_code == 202

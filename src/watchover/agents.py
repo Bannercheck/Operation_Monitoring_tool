@@ -34,8 +34,15 @@ class AgentRegistry:
             id {pk}, name TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, env TEXT DEFAULT '', site TEXT DEFAULT '', tags TEXT DEFAULT '',
             status TEXT DEFAULT 'active', created_at TEXT, last_seen TEXT DEFAULT '', last_ip TEXT DEFAULT '', events INTEGER DEFAULT 0, note TEXT DEFAULT '')""")
         try:
-            if "team_id" not in kb.columns("agents"):
+            cols = kb.columns("agents")
+            if "team_id" not in cols:
                 kb._exec("ALTER TABLE agents ADD COLUMN team_id INTEGER")      # the team that enrolled it (NULL: installation-wide)
+            # self-update (agent_update.py): the build it reports (X-Agent-Version / -Engine), its update state (X-Agent-Update),
+            # the operator's pause and "go back to this version" pin
+            for col, typ in (("agent_version", "TEXT DEFAULT ''"), ("agent_engine", "TEXT DEFAULT ''"), ("agent_update", "TEXT DEFAULT ''"),
+                             ("update_paused", "INTEGER DEFAULT 0"), ("update_pin", "TEXT DEFAULT ''")):
+                if col not in cols:
+                    kb._exec(f"ALTER TABLE agents ADD COLUMN {col} {typ}")
         except Exception:  # noqa: BLE001
             pass
         self._cache: dict[str, dict] = {}
@@ -44,6 +51,9 @@ class AgentRegistry:
 
     def enroll(self, name: str, env: str = "", site: str = "", tags: str = "", note: str = "") -> tuple[dict, str]:
         """Returns (agent record, plaintext token). The token is shown once and never stored."""
+        from .demo import SIM_AGENT
+        if name.strip().lower() == SIM_AGENT:                 # the name marks the built-in simulator's (demo) data: never a real agent's
+            raise ValueError(f"'{name.strip()}' is reserved for the built-in simulator: choose another agent name")
         if any(r["name"].lower() == name.strip().lower() and r["status"] == "active" for r in self.list()):
             raise ValueError(f"an active agent named '{name.strip()}' already exists: rotate its token instead of enrolling it twice")
         token = "wo_" + secrets.token_urlsafe(32)
@@ -145,8 +155,12 @@ class AgentRegistry:
         self.kb._exec("DELETE FROM agents WHERE id=?", (aid,))
         self._cache.clear(); self._active = None
 
-    def touch(self, aid: int, ip: str, n: int) -> None:
-        self.kb._exec("UPDATE agents SET last_seen=?, last_ip=?, events=events+? WHERE id=?", (_now(), ip, int(n), aid))
+    def touch(self, aid: int, ip: str, n: int, version: str = "", engine: str = "", update: str | None = None) -> None:
+        if version:                                    # the build the agent reports, and its self-update state (agent_update.py)
+            self.kb._exec("UPDATE agents SET last_seen=?, last_ip=?, events=events+?, agent_version=?, agent_engine=?, agent_update=? WHERE id=?",
+                          (_now(), ip, int(n), version[:40], (engine or "")[:20], (update or "")[:300], aid))
+        else:
+            self.kb._exec("UPDATE agents SET last_seen=?, last_ip=?, events=events+? WHERE id=?", (_now(), ip, int(n), aid))
         for rec in self._cache.values():
             if rec["id"] == aid:
                 rec["last_seen"] = _now(); rec["events"] = int(rec.get("events") or 0) + int(n)

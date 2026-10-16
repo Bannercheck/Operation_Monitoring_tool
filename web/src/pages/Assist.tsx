@@ -3,6 +3,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { get, post } from "../api";
 import { useT } from "../i18n";
 import { Btn, Card, Err } from "../components/ui";
+import { useForgetAfterPurge } from "../components/ops/SimControl";
 
 type Msg = { role: "user" | "assistant"; content: string; meta?: any; rated?: string };
 
@@ -12,6 +13,7 @@ export default function Assist() {
   const llm = useQuery({ queryKey: ["llm"], queryFn: () => get("/llm") });
   const [dataset, setDataset] = useState(""); const [q, setQ] = useState(""); const [hist, setHist] = useState<Msg[]>(() => { try { return JSON.parse(sessionStorage.getItem("wo_chat") || "[]"); } catch { return []; } });
   const endRef = useRef<HTMLDivElement>(null);
+  useForgetAfterPurge(() => setHist([]));                    // a chat about simulation data goes with it
   useEffect(() => { try { sessionStorage.setItem("wo_chat", JSON.stringify(hist.slice(-40))); } catch { /* ignore */ } endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [hist]);
   const ask = useMutation({ mutationFn: (question: string) => post("/assist/ask", { question, history: hist.map((m) => ({ role: m.role, content: m.content })), dataset: dataset || (ds.data?.[0]?.id ?? null), lang }),
     onSuccess: (r: any) => { setHist((h) => [...h, { role: "assistant", content: r.text, meta: r }]); window.dispatchEvent(new Event("wo:llm")); } });

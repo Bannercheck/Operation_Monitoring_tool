@@ -21,9 +21,21 @@ class EnrollIn(BaseModel):
     team_id: Optional[int] = None
 
 
+class UpdateSettingsIn(BaseModel):
+    enabled: Optional[bool] = None
+    pct: Optional[int] = None
+
+
+class PinIn(BaseModel):
+    version: str = ""
+
+
 def _with_team(svc, rows: list) -> list:
     names = {t["id"]: t["name"] for t in svc.teams.list()}
-    return [{**r, "team": names.get(r.get("team_id"), "")} for r in rows]
+    upd = getattr(svc, "agent_updates", None)
+    rel = (upd.release() or {}).get("version", "") if upd is not None else ""
+    st = upd.settings() if upd is not None else None
+    return [{**r, "team": names.get(r.get("team_id"), ""), **({"update": upd.state(r, rel, st)} if upd is not None else {})} for r in rows]
 
 
 def _agent(svc, acc, aid: int, perm: str) -> dict:
@@ -71,6 +83,49 @@ def rotate_key(user=Depends(require_install("act.connect")), svc=Depends(service
 def disable_key(user=Depends(require_install("act.connect")), svc=Depends(services)):
     svc.agents.disable_enroll_key()
     return {"ok": True}
+
+
+@router.get("/install-info")
+def install_info(user=Depends(current_user), svc=Depends(services)):
+    """The current one-line install commands: {BASE} is the receiver address the panel uses, {AUTH} the --enroll-key / --token
+    part. Fingerprints only (release key, boot.sh, edge CA): nothing secret."""
+    sc = getattr(svc, "spool_consumer", None)
+    return svc.agent_updates.install_info(str(sc.dir) if sc is not None else None)
+
+
+@router.get("/updates")
+def update_status(svc=Depends(services), _u=Depends(perm_scope("page.conn"))):
+    """Self-update: the signed release, the global switch "Ajanlar kendini güncellesin", the rollout share, keyd's releases."""
+    return {**svc.agent_updates.status(), "versions": svc.agent_updates.versions()}
+
+
+@router.put("/updates")
+def update_settings(body: UpdateSettingsIn, user=Depends(require_install("act.connect")), svc=Depends(services)):
+    svc.agent_updates.set_settings(body.enabled, body.pct)
+    return svc.agent_updates.status()
+
+
+@router.post("/{aid}/update/pause")
+def update_pause(aid: int, acc=Depends(access), svc=Depends(services), _u=Depends(perm_scope("act.connect"))):
+    _agent(svc, acc, aid, "act.connect")
+    svc.agent_updates.set_paused(aid, True)
+    return _with_team(svc, [svc.agents.get(aid)])[0]
+
+
+@router.post("/{aid}/update/resume")
+def update_resume(aid: int, acc=Depends(access), svc=Depends(services), _u=Depends(perm_scope("act.connect"))):
+    _agent(svc, acc, aid, "act.connect")
+    svc.agent_updates.set_paused(aid, False)
+    return _with_team(svc, [svc.agents.get(aid)])[0]
+
+
+@router.post("/{aid}/update/pin")
+def update_pin(aid: int, body: PinIn, acc=Depends(access), svc=Depends(services), _u=Depends(perm_scope("act.connect"))):
+    """"Bu sürüme döndür": keyd signs a pin bound to this host for a version it signed before (empty version: clear the pin).
+    The agent switches to it from the binary it kept, older or not; without a pin it never accepts an older build."""
+    _agent(svc, acc, aid, "act.connect")
+    svc.agent_updates.set_pin(aid, body.version)
+    return _with_team(svc, [svc.agents.get(aid)])[0]
 
 
 @router.get("/{aid}")

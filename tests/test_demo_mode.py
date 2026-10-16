@@ -155,13 +155,13 @@ def test_demo_clean_removes_only_simulator_data(client, monkeypatch):
     assert any(e["event"] == "demo-clean" and e["email"] == "admin@watchover.local" for e in ev)
     # idempotent
     assert client.post("/api/system/demo-clean", headers=h).json()["total"] == 0
-    # a running simulator is stopped first (it would write everything again), the real db-01 still stays
-    assert client.post("/api/live/simulate", json={"on": True}, headers=h).json()["simulator"] is True
-    import time
-    time.sleep(1.5)
-    out = client.post("/api/system/demo-clean", headers=h).json()
-    assert svc.sim_stop is None and out["total"] > 0 and out["kept_hosts"] == ["db-01"] and svc.inventory.get("db-01")["owner"] == "dba"
-    assert all(o.attributes.get("agent") != "simulator" for o in svc.live.buf)
+    # no mixing: next to the real dba-agent the simulator refuses to start, with the reasons in Turkish
+    r = client.post("/api/live/simulate", json={"on": True}, headers=h)
+    assert r.status_code == 409 and svc.sim_stop is None, r.text
+    d = r.json()["detail"]
+    assert d["code"] == "real_data" and "dba-agent" in d["reasons"]["senders"] and "gerçek veri" in d["tr"]
+    st = client.get("/api/live/simulate?check=true", headers=h).json()
+    assert st["state"] == "off" and st["blocked"]["code"] == "real_data"
 
 
 def test_cli_dry_run_and_clean(tmp_path, monkeypatch, capsys):

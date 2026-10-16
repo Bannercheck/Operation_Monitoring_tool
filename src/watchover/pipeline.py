@@ -22,9 +22,11 @@ PARALLEL_MIN_CPUS = 8                     # ...on machines with enough cores: re
                                           # fewer cores lose. WATCHOVER_PARALLEL=1 forces it on, =0 off.
 
 
-def _parse_one(fname: str, text: str, mapping: dict | None, progress=None, base: float = 0.0, span: float = 1.0, hint: dict | None = None) -> tuple[list[Observation], dict]:
+def _parse_one(fname: str, text: str, mapping: dict | None, progress=None, base: float = 0.0, span: float = 1.0, hint: dict | None = None,
+               learn: bool = True) -> tuple[list[Observation], dict]:
     """Parse one file (runs in the main process or in a worker); pure function of its inputs, so the order of results
-    is fixed by the caller and the outcome is identical either way."""
+    is fixed by the caller and the outcome is identical either way. learn=False: the shape is not remembered (demo input,
+    demo.py: learned column profiles never come from the simulator or the shipped sample sets)."""
     if tables.is_side_table(fname):        # reference data (dependencies, inventory, dictionary): kept, not parsed as events
         rows = tables.read_table(fname, text)
         return [], {"file": fname, "format": "table", "confidence": 1.0, "rows": len(rows), "kind": "table",
@@ -60,7 +62,7 @@ def _parse_one(fname: str, text: str, mapping: dict | None, progress=None, base:
             if len(rows) % 5000 == 0:
                 progress(base + span * min(o.line_no / n_lines, 1.0), fname)
         progress(base + span, fname)
-    if keys and fmt in ("json", "jsonl", "csv", "kv", "grok"):
+    if learn and keys and fmt in ("json", "jsonl", "csv", "kv", "grok"):
         try:
             from . import profiles as wo_profiles
             wo_profiles.remember(fmt, keys, {k: v for k, v in roles.items() if v}, name=fname, source="user" if (mapping and not learned) else "auto")
@@ -111,7 +113,8 @@ def _workers(items: list[tuple[str, str]]) -> int:
     return max(1, min(len(items), cpus - 2, 8))
 
 
-def ingest(files: Iterator[tuple[str, str]], mapping: dict | None = None, progress=None, hint: dict | None = None) -> tuple[list[Observation], list[dict]]:
+def ingest(files: Iterator[tuple[str, str]], mapping: dict | None = None, progress=None, hint: dict | None = None,
+           learn: bool = True) -> tuple[list[Observation], list[dict]]:
     """progress(fraction 0..1, current file name) is called while parsing (by bytes of input done), so a UI can show a percentage."""
     mapping = mapping or scenario.MAPPING or None
     items = list(files)
@@ -125,7 +128,7 @@ def ingest(files: Iterator[tuple[str, str]], mapping: dict | None = None, progre
             from concurrent.futures import ProcessPoolExecutor
             order = sorted(range(len(items)), key=lambda i: -len(items[i][1]))      # biggest files first: better packing
             with ProcessPoolExecutor(max_workers=n) as ex:
-                futs = {i: ex.submit(_parse_one, items[i][0], items[i][1], mapping) for i in order}
+                futs = {i: ex.submit(_parse_one, items[i][0], items[i][1], mapping, None, 0.0, 1.0, None, learn) for i in order}
                 done_bytes = 0
                 for i in order:                                                       # completion order ~ submission order
                     futs[i].result(); done_bytes += len(items[i][1])
@@ -137,7 +140,7 @@ def ingest(files: Iterator[tuple[str, str]], mapping: dict | None = None, progre
     if results is None:
         results, done_bytes = [], 0
         for fname, text in items:
-            results.append(_parse_one(fname, text, mapping, progress, done_bytes / total_bytes, len(text) / total_bytes, hint))
+            results.append(_parse_one(fname, text, mapping, progress, done_bytes / total_bytes, len(text) / total_bytes, hint, learn))
             done_bytes += len(text)
     for rows, rep in results:
         observations.extend(rows)
@@ -192,9 +195,9 @@ def fill_missing_timestamps(observations: list[Observation]) -> None:
             o.timestamp = fallback
 
 
-def ingest_path(path: str, mapping: dict | None = None):
-    return ingest(iter_path(path), mapping)
+def ingest_path(path: str, mapping: dict | None = None, learn: bool = True):
+    return ingest(iter_path(path), mapping, learn=learn)
 
 
-def ingest_bytes(name: str, data: bytes, mapping: dict | None = None, progress=None, hint: dict | None = None):
-    return ingest(iter_bytes(name, data), mapping, progress, hint)
+def ingest_bytes(name: str, data: bytes, mapping: dict | None = None, progress=None, hint: dict | None = None, learn: bool = True):
+    return ingest(iter_bytes(name, data), mapping, progress, hint, learn=learn)

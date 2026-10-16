@@ -67,7 +67,7 @@ def create_app(services=None) -> FastAPI:
     app.include_router(mcp_router.router, prefix="/api")
     app.include_router(mcp_router.endpoint)
     mcp_router.start(app.state.services)
-    from ..demo import DemoDisabled, enabled as demo_enabled
+    from ..demo import ConfirmRequired, DemoDisabled, RealDataPresent, enabled as demo_enabled
     from ..act.audit import AuditError
     from ..act.keys import KeyRefused, SigningUnavailable
 
@@ -81,6 +81,11 @@ def create_app(services=None) -> FastAPI:
     async def _demo_off(_: Request, e: DemoDisabled):
         return JSONResponse({"detail": str(e)[:300]}, status_code=403)
 
+    @app.exception_handler(RealDataPresent)                   # no mixing: the simulator never starts next to real data
+    @app.exception_handler(ConfirmRequired)                   # "off" deletes the demo data: the caller confirms after the counts
+    async def _demo_409(_: Request, e: Exception):
+        return JSONResponse({"detail": e.detail()}, status_code=409)
+
     @app.exception_handler(KeyError)
     async def _not_found(_: Request, e: KeyError):
         return JSONResponse({"detail": f"not found: {e.args[0] if e.args else ''}"}, status_code=404)
@@ -93,6 +98,7 @@ def create_app(services=None) -> FastAPI:
     def health():
         svc = app.state.services
         return {"ok": True, "version": __version__, "database": svc.kb.backend, "live_events": svc.live.received, "demo": demo_enabled(),
+                "demo_purged_at": svc.demo_purged_at or None,     # the browser forgets its assistant history from before a purge
                 "ingest": os.environ.get("WATCHOVER_INGEST_URL", "").strip().rstrip("/")}   # agents' address when it is not <host>:8600 (OpenShift Route)
 
     dist = Path(os.environ.get("WATCHOVER_WEB_DIST") or WEB_DIST)

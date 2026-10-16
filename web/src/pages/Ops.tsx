@@ -14,6 +14,7 @@ import { RangeDetail, type DTab } from "../components/ops/RangeDetail";
 import { Attention, buildAttention } from "../components/ops/Attention";
 import { LogExplorer } from "../components/ops/LogExplorer";
 import { DetailPanel, type Kind } from "../components/ops/Details";
+import { SimBanner, SimDialog, useSimState } from "../components/ops/SimControl";
 import { delta, fmtN, fmtPct, hostState, rangeLabel, useOpsState } from "../components/ops/util";
 import { opsToQuery } from "../components/logs/lib";
 import { Grid, NowCtx, Panel, Stat, seriesCsv } from "../components/dash/kit";
@@ -81,9 +82,12 @@ export default function Ops() {
     { pool: st.setPool, hosts: (hs) => { st.clearScope(); setTimeout(() => hs.forEach((h) => st.toggleHost(h)), 0); }, group: (g) => goLogs({ tab: "groups", sev: "ERROR", q: "", service: g.service === "-" ? "" : g.service }) }), [fleet, errG.data, anom.data, metrics.data, lang]);  // eslint-disable-line
   const nCrit = items.filter((i) => i.level === 3).length; const crit = nCrit > 0;
   const health = !s ? "" : !s.total ? t("ops_h_nodata") : !items.length ? t("ops_h_ok") : crit ? t("ops_h_crit", { n: items.length, c: nCrit }) : t("ops_h_warn", { n: items.length });
-  const simOn = !!sys.data?.live?.simulator;
   const apiHealth = useQuery({ queryKey: ["api-health"], queryFn: () => get("/health"), staleTime: 300000 });
   const demoMode = (apiHealth.data as any)?.demo === true;          // production installs (WATCHOVER_DEMO=0) have no simulator at all
+  const simAllowed = demoMode && can("act.sim") && user?.all !== false;
+  const [simDlg, setSimDlg] = useState(false);
+  const sim = useSimState(simAllowed);
+  const simState: string = sim.data?.state ?? (sys.data?.live?.simulator ? "on" : "off");
   const services: string[] = (s?.services ?? []).map((x: any) => x[0]);
   const slo = 0.999;
   // live: the rate of the last complete bar; a fixed range: its average
@@ -117,12 +121,14 @@ export default function Ops() {
         {menu && <div className="menu card" onMouseLeave={() => setMenu(false)}>
           {can("act.report") && <button onClick={() => { setMenu(false); report(); }}>📄 {t("ops_report")}</button>}
           {can("act.connect") && <Link to="/connections">🔗 {t("ops_connect")}</Link>}
-          {demoMode && can("act.sim") && user?.all !== false && <button onClick={async () => { setMenu(false); await post("/live/simulate", { on: !simOn }); qc.invalidateQueries(); }}>🧪 {t("ops_sim")} {simOn ? "ON → OFF" : "OFF → ON"}</button>}
+          {simAllowed && <button onClick={() => { setMenu(false); setSimDlg(true); }}>🧪 {t("ops_sim")}: {t(`sim_state_${simState}`)}</button>}
           {can("page.data") && <button onClick={async () => { setMenu(false); await post("/live/analyze"); nav("/datasets"); }}>🗂 {t("ops_analyze")}</button>}
           <button onClick={() => { setMenu(false); setDetail("files"); }}>📁 {t("od_files")}</button>
         </div>}
       </div>
     </div>
+    <SimBanner enabled={simAllowed} onClean={() => setSimDlg(true)} />
+    {simDlg && <SimDialog onClose={() => setSimDlg(false)} />}
 
     <DashTabs value={dp.d} onChange={dp.setD} />
 

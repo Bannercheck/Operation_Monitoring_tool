@@ -18,7 +18,7 @@ metadata:
   labels:
     app.kubernetes.io/name: watchover
     app.kubernetes.io/instance: watchover
-    app.kubernetes.io/version: "1.55.0"
+    app.kubernetes.io/version: "1.56.0"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: watchover
     helm.sh/chart: watchover-0.1.0
@@ -47,7 +47,7 @@ metadata:
   labels:
     app.kubernetes.io/name: watchover
     app.kubernetes.io/instance: watchover
-    app.kubernetes.io/version: "1.55.0"
+    app.kubernetes.io/version: "1.56.0"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: watchover
     helm.sh/chart: watchover-0.1.0
@@ -77,7 +77,7 @@ metadata:
   labels:
     app.kubernetes.io/name: watchover
     app.kubernetes.io/instance: watchover
-    app.kubernetes.io/version: "1.55.0"
+    app.kubernetes.io/version: "1.56.0"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: watchover
     helm.sh/chart: watchover-0.1.0
@@ -92,7 +92,7 @@ metadata:
   labels:
     app.kubernetes.io/name: watchover
     app.kubernetes.io/instance: watchover
-    app.kubernetes.io/version: "1.55.0"
+    app.kubernetes.io/version: "1.56.0"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: watchover
     helm.sh/chart: watchover-0.1.0
@@ -114,7 +114,7 @@ metadata:
   labels:
     app.kubernetes.io/name: watchover
     app.kubernetes.io/instance: watchover
-    app.kubernetes.io/version: "1.55.0"
+    app.kubernetes.io/version: "1.56.0"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: watchover
     helm.sh/chart: watchover-0.1.0
@@ -136,7 +136,7 @@ metadata:
   labels:
     app.kubernetes.io/name: watchover
     app.kubernetes.io/instance: watchover
-    app.kubernetes.io/version: "1.55.0"
+    app.kubernetes.io/version: "1.56.0"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: watchover
     helm.sh/chart: watchover-0.1.0
@@ -158,7 +158,7 @@ metadata:
   labels:
     app.kubernetes.io/name: watchover
     app.kubernetes.io/instance: watchover
-    app.kubernetes.io/version: "1.55.0"
+    app.kubernetes.io/version: "1.56.0"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: watchover
     helm.sh/chart: watchover-0.1.0
@@ -180,7 +180,7 @@ metadata:
   labels:
     app.kubernetes.io/name: watchover
     app.kubernetes.io/instance: watchover
-    app.kubernetes.io/version: "1.55.0"
+    app.kubernetes.io/version: "1.56.0"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: watchover
     helm.sh/chart: watchover-0.1.0
@@ -202,7 +202,7 @@ metadata:
   labels:
     app.kubernetes.io/name: watchover
     app.kubernetes.io/instance: watchover
-    app.kubernetes.io/version: "1.55.0"
+    app.kubernetes.io/version: "1.56.0"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: watchover
     helm.sh/chart: watchover-0.1.0
@@ -228,7 +228,7 @@ metadata:
   labels:
     app.kubernetes.io/name: watchover
     app.kubernetes.io/instance: watchover
-    app.kubernetes.io/version: "1.55.0"
+    app.kubernetes.io/version: "1.56.0"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: watchover
     helm.sh/chart: watchover-0.1.0
@@ -267,7 +267,7 @@ metadata:
   labels:
     app.kubernetes.io/name: watchover
     app.kubernetes.io/instance: watchover
-    app.kubernetes.io/version: "1.55.0"
+    app.kubernetes.io/version: "1.56.0"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: watchover
     helm.sh/chart: watchover-0.1.0
@@ -287,7 +287,7 @@ spec:
       labels:
         app.kubernetes.io/name: watchover
         app.kubernetes.io/instance: watchover
-        app.kubernetes.io/version: "1.55.0"
+        app.kubernetes.io/version: "1.56.0"
         app.kubernetes.io/managed-by: Helm
         app.kubernetes.io/part-of: watchover
         helm.sh/chart: watchover-0.1.0
@@ -305,7 +305,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: dashboard
-          image: image-registry.openshift-image-registry.svc:5000/watchover/watchover:1.55.0
+          image: image-registry.openshift-image-registry.svc:5000/watchover/watchover:1.56.0
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -385,7 +385,7 @@ spec:
             timeoutSeconds: 5
             failureThreshold: 6
         - name: keyd                              # watchover-keyd: only this container mounts the keys volume (I17)
-          image: image-registry.openshift-image-registry.svc:5000/watchover/watchover:1.55.0
+          image: image-registry.openshift-image-registry.svc:5000/watchover/watchover:1.56.0
           imagePullPolicy: IfNotPresent
           command: ["python", "-m", "watchover.act.keyd", "serve", "--dir", "/keys/store", "--unix", "/run/keyd/keyd.sock"]
           env:
@@ -420,7 +420,7 @@ spec:
             periodSeconds: 30
             timeoutSeconds: 5
         - name: receiver
-          image: image-registry.openshift-image-registry.svc:5000/watchover/watchover-receiver:1.55.0
+          image: image-registry.openshift-image-registry.svc:5000/watchover/watchover-receiver:1.56.0
           imagePullPolicy: IfNotPresent
           ports:
             - name: ingest
@@ -503,7 +503,7 @@ metadata:
   labels:
     app.kubernetes.io/name: watchover
     app.kubernetes.io/instance: watchover
-    app.kubernetes.io/version: "1.55.0"
+    app.kubernetes.io/version: "1.56.0"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: watchover
     helm.sh/chart: watchover-0.1.0
@@ -527,7 +527,7 @@ spec:
       labels:
         app.kubernetes.io/name: watchover
         app.kubernetes.io/instance: watchover
-        app.kubernetes.io/version: "1.55.0"
+        app.kubernetes.io/version: "1.56.0"
         app.kubernetes.io/managed-by: Helm
         app.kubernetes.io/part-of: watchover
         helm.sh/chart: watchover-0.1.0
@@ -610,7 +610,7 @@ spec:
         labels:
           app.kubernetes.io/name: watchover
           app.kubernetes.io/instance: watchover
-          app.kubernetes.io/version: "1.55.0"
+          app.kubernetes.io/version: "1.56.0"
           app.kubernetes.io/managed-by: Helm
           app.kubernetes.io/part-of: watchover
           helm.sh/chart: watchover-0.1.0
@@ -630,7 +630,7 @@ metadata:
   labels:
     app.kubernetes.io/name: watchover
     app.kubernetes.io/instance: watchover
-    app.kubernetes.io/version: "1.55.0"
+    app.kubernetes.io/version: "1.56.0"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: watchover
     helm.sh/chart: watchover-0.1.0
@@ -659,7 +659,7 @@ metadata:
   labels:
     app.kubernetes.io/name: watchover
     app.kubernetes.io/instance: watchover
-    app.kubernetes.io/version: "1.55.0"
+    app.kubernetes.io/version: "1.56.0"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: watchover
     helm.sh/chart: watchover-0.1.0
@@ -690,7 +690,7 @@ metadata:
   labels:
     app.kubernetes.io/name: watchover
     app.kubernetes.io/instance: watchover
-    app.kubernetes.io/version: "1.55.0"
+    app.kubernetes.io/version: "1.56.0"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: watchover
     helm.sh/chart: watchover-0.1.0
@@ -721,7 +721,7 @@ metadata:
   labels:
     app.kubernetes.io/name: watchover
     app.kubernetes.io/instance: watchover
-    app.kubernetes.io/version: "1.55.0"
+    app.kubernetes.io/version: "1.56.0"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: watchover
     helm.sh/chart: watchover-0.1.0
@@ -752,7 +752,7 @@ metadata:
   labels:
     app.kubernetes.io/name: watchover
     app.kubernetes.io/instance: watchover
-    app.kubernetes.io/version: "1.55.0"
+    app.kubernetes.io/version: "1.56.0"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: watchover
     helm.sh/chart: watchover-0.1.0
@@ -783,7 +783,7 @@ metadata:
   labels:
     app.kubernetes.io/name: watchover
     app.kubernetes.io/instance: watchover
-    app.kubernetes.io/version: "1.55.0"
+    app.kubernetes.io/version: "1.56.0"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: watchover
     helm.sh/chart: watchover-0.1.0
@@ -809,12 +809,105 @@ spec:
 apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
+  name: watchover-ingest-agent-boot
+  namespace: watchover
+  labels:
+    app.kubernetes.io/name: watchover
+    app.kubernetes.io/instance: watchover
+    app.kubernetes.io/version: "1.56.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/part-of: watchover
+    helm.sh/chart: watchover-0.1.0
+    app.kubernetes.io/component: app
+    watchover.io/route: ingest
+  annotations:
+    haproxy.router.openshift.io/timeout: "60s"
+spec:
+  host: "watchover-ingest.apps.example.com"
+  path: /agent/boot.sh
+  to:
+    kind: Service
+    name: watchover
+    weight: 100
+  port:
+    targetPort: ingest
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None
+---
+# Source: watchover/templates/routes.yaml
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: watchover-ingest-agent-ca
+  namespace: watchover
+  labels:
+    app.kubernetes.io/name: watchover
+    app.kubernetes.io/instance: watchover
+    app.kubernetes.io/version: "1.56.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/part-of: watchover
+    helm.sh/chart: watchover-0.1.0
+    app.kubernetes.io/component: app
+    watchover.io/route: ingest
+  annotations:
+    haproxy.router.openshift.io/timeout: "60s"
+spec:
+  host: "watchover-ingest.apps.example.com"
+  path: /agent/ca.crt
+  to:
+    kind: Service
+    name: watchover
+    weight: 100
+  port:
+    targetPort: ingest
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None
+---
+# Source: watchover/templates/routes.yaml
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: watchover-ingest-agent-update
+  namespace: watchover
+  labels:
+    app.kubernetes.io/name: watchover
+    app.kubernetes.io/instance: watchover
+    app.kubernetes.io/version: "1.56.0"
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/part-of: watchover
+    helm.sh/chart: watchover-0.1.0
+    app.kubernetes.io/component: app
+    watchover.io/route: ingest
+  annotations:
+    haproxy.router.openshift.io/timeout: "60s"
+spec:
+  host: "watchover-ingest.apps.example.com"
+  path: /agent/update
+  to:
+    kind: Service
+    name: watchover
+    weight: 100
+  port:
+    targetPort: ingest
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None
+---
+# Source: watchover/templates/routes.yaml
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
   name: watchover-ingest-agent-bin
   namespace: watchover
   labels:
     app.kubernetes.io/name: watchover
     app.kubernetes.io/instance: watchover
-    app.kubernetes.io/version: "1.55.0"
+    app.kubernetes.io/version: "1.56.0"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: watchover
     helm.sh/chart: watchover-0.1.0
@@ -845,7 +938,7 @@ metadata:
   labels:
     app.kubernetes.io/name: watchover
     app.kubernetes.io/instance: watchover
-    app.kubernetes.io/version: "1.55.0"
+    app.kubernetes.io/version: "1.56.0"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: watchover
     helm.sh/chart: watchover-0.1.0
@@ -876,7 +969,7 @@ metadata:
   labels:
     app.kubernetes.io/name: watchover
     app.kubernetes.io/instance: watchover
-    app.kubernetes.io/version: "1.55.0"
+    app.kubernetes.io/version: "1.56.0"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: watchover
     helm.sh/chart: watchover-0.1.0
@@ -907,7 +1000,7 @@ metadata:
   labels:
     app.kubernetes.io/name: watchover
     app.kubernetes.io/instance: watchover
-    app.kubernetes.io/version: "1.55.0"
+    app.kubernetes.io/version: "1.56.0"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: watchover
     helm.sh/chart: watchover-0.1.0
@@ -938,7 +1031,7 @@ metadata:
   labels:
     app.kubernetes.io/name: watchover
     app.kubernetes.io/instance: watchover
-    app.kubernetes.io/version: "1.55.0"
+    app.kubernetes.io/version: "1.56.0"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: watchover
     helm.sh/chart: watchover-0.1.0

@@ -10,7 +10,8 @@
 //	wo-agent act writes                                     union of the installed templates' writes (systemd ReadWritePaths)
 //	wo-agent act fingerprint                                the agent key's fingerprint (created on first use)
 //	wo-agent act check                                      allowlist permissions and lint, exit 1 on a problem
-//	wo-agent version
+//	wo-agent update [--url U --release-key ed25519:… --dir D]   self-update: signed release, verified, rolled back on a failed start
+//	wo-agent version [--marker]
 package main
 
 import (
@@ -19,13 +20,18 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"os/signal"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
+	"time"
 	_ "time/tzdata" // local.json hours and freeze ranges name time zones; hosts may lack /usr/share/zoneinfo
 
 	"watchover/goagent/internal/act"
 	"watchover/goagent/internal/ship"
+	"watchover/goagent/internal/update"
 )
 
 func env(k, def string) string {
@@ -36,7 +42,7 @@ func env(k, def string) string {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: wo-agent [ship] [flags] | enroll | act [run flags] | act install | act writes | act fingerprint | act check | version")
+	fmt.Fprintln(os.Stderr, "usage: wo-agent [ship] [flags] | enroll | act [run flags] | act install | act writes | act fingerprint | act check | update | version")
 	os.Exit(2)
 }
 
@@ -46,7 +52,13 @@ func main() {
 	}
 	switch os.Args[1] {
 	case "version":
-		fmt.Println("wo-agent ship " + ship.Version + " · act " + act.Version)
+		if len(os.Args) > 2 && os.Args[2] == "--marker" {
+			fmt.Println(ship.Marker) // the literal keyd and `wo-agent update` read from the file itself
+			return
+		}
+		fmt.Println("wo-agent " + ship.Version + " (ship " + ship.Version + " · act " + act.Version + ")")
+	case "update":
+		os.Exit(updateMain(os.Args[2:]))
 	case "ship":
 		os.Exit(ship.Main(os.Args[2:]))
 	case "enroll":
@@ -197,6 +209,64 @@ func actMain(args []string) int {
 	if err := a.Run(ctx); err != nil {
 		fmt.Fprintln(os.Stderr, "wo-agent act:", err)
 		return 1
+	}
+	return 0
+}
+
+// updateMain is `wo-agent update`, run as root by watchover-update.service (a oneshot unit outside the services it
+// restarts): on its timer and when the ship role saw the receiver hint a newer release. It never touches the actuator's
+// allowlist, local policy, unit files or environment: it replaces the one binary both roles run and restarts them.
+func updateMain(args []string) int {
+	fs := flag.NewFlagSet("update", flag.ExitOnError)
+	base := fs.String("url", env("WATCHOVER_URL", ""), "receiver URL (…/ingest or the base); env WATCHOVER_URL")
+	tok := fs.String("token", env("WATCHOVER_TOKEN", ""), "this host's collector token (the receiver applies its switch, pause, rollout and pins)")
+	ca := fs.String("ca", env("WATCHOVER_CA", ""), "CA bundle for an https receiver")
+	key := fs.String("release-key", env("WATCHOVER_RELEASE_KEY", ""), "the pinned release key (ed25519:…), written by the installer")
+	host := fs.String("name", env("WATCHOVER_AGENT_NAME", ""), "this host's enrolled name (pins are bound to it)")
+	dir := fs.String("dir", env("WO_UPDATE_DIR", "/var/lib/watchover/update"), "state directory (state.json, hello.json)")
+	gate := fs.Duration("gate", 120*time.Second, "how long the new binary has to reach the receiver before it is rolled back")
+	units := fs.String("units", env("WO_UPDATE_UNITS", "watchover-agent,watchover-actuator"), "services to restart (the first must report back)")
+	bin := fs.String("binary", "", "the binary to replace (default: this executable)")
+	_ = fs.Parse(args)
+	if *host == "" {
+		*host, _ = os.Hostname()
+	}
+	if *bin == "" {
+		p, err := os.Executable()
+		if err == nil {
+			p, err = filepath.EvalSymlinks(p)
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "wo-agent update:", err)
+			return 1
+		}
+		*bin = p
+	}
+	pub, err := update.ParseKey(*key)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "wo-agent update: no usable release key pinned (WATCHOVER_RELEASE_KEY): re-run the install command from the Agents panel:", err)
+		return 2
+	}
+	cl, err := ship.NewClient(*ca, false, 60*time.Second)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "wo-agent update:", err)
+		return 1
+	}
+	b := strings.TrimSuffix(strings.TrimRight(*base, "/"), "/ingest")
+	cfg := &update.Config{Base: b, Token: *tok, Host: *host, Arch: runtime.GOARCH, Current: ship.Version, Key: pub, Binary: *bin, Dir: *dir,
+		Units: strings.Split(*units, ","), Gate: *gate, Client: cl,
+		Systemctl: func(a ...string) error { return exec.Command("systemctl", a...).Run() },
+		Logf:      func(f string, a ...any) { fmt.Fprintf(os.Stderr, f+"\n", a...) }}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	st, err := update.Run(ctx, cfg)
+	fmt.Printf("update: %s %s%s\n", st.Phase, st.To, map[bool]string{true: " (" + st.Reason + ")", false: ""}[st.Reason != ""])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "wo-agent update:", err)
+		return 1
+	}
+	if st.Phase == update.PhaseRolledBack {
+		return 3
 	}
 	return 0
 }

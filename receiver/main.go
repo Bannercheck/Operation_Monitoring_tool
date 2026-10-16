@@ -10,6 +10,7 @@
 //	POST /rum, /mobile        browser / mobile sensor batches (?k=<app key>, CORS, origin check)   -> spooled, 202
 //	GET  /rum.js              the browser sensor
 //	GET  /agent.py, /agent/install.sh                                                             -> the collector itself
+//	GET  /agent/update, /agent/boot.sh, /agent/ca.crt  self-update decision, verified bootstrap, edge CA (agentupdate.go)
 //	GET  /health, /metrics    counters, backlog, auth state (JSON / Prometheus text)
 //	GET/POST /agent/v1/…      action-agent job channel: actuator tokens (wa_, auth.json "actuators") only -> proxied to the dashboard
 //	POST /v1/logs|traces|metrics  OpenTelemetry OTLP/HTTP (also :4318; OTLP/gRPC on :4317)          -> converted in Go, spooled (otlp_http.go)
@@ -50,6 +51,7 @@ import (
 
 type config struct {
 	listen, spool, authFile, upstream, agentDir string
+	agentCA                                     string // WO_AGENT_CA: the https edge's CA served at /agent/ca.crt (comma separated candidates)
 	maxBody, segBytes, maxBacklog               int64
 	segEvery                                    time.Duration
 	fsync                                       bool
@@ -81,7 +83,7 @@ func loadConfig() config {
 	spool := env("WO_SPOOL", "/data/spool")
 	return config{
 		listen: env("WO_LISTEN", ":8600"), spool: spool, authFile: env("WO_AUTH", filepath.Join(spool, "auth.json")),
-		upstream: env("WO_UPSTREAM", "http://dashboard:8601"), agentDir: env("WO_AGENT_DIR", "/app/agent"),
+		upstream: env("WO_UPSTREAM", "http://dashboard:8601"), agentDir: env("WO_AGENT_DIR", "/app/agent"), agentCA: agentCAs(),
 		maxBody: envInt("WO_MAX_BODY_MB", 16) << 20, segBytes: envInt("WO_SEGMENT_MB", 8) << 20, maxBacklog: envInt("WO_MAX_BACKLOG_MB", 2048) << 20,
 		segEvery: time.Duration(envInt("WO_SEGMENT_MS", 1000)) * time.Millisecond, fsync: env("WO_FSYNC", "rotate") != "off",
 		parse: parseModeOf(os.Getenv("WATCHOVER_GO_PARSE")), parseWorkers: int(envInt("WO_PARSE_WORKERS", 0)),
@@ -89,6 +91,16 @@ func loadConfig() config {
 		parseOnly:    csvList(os.Getenv("WATCHOVER_GO_PARSE_FORMATS")), parseDeny: csvList(os.Getenv("WATCHOVER_GO_PARSE_DENY")),
 		profiles: env("WO_PROFILES", filepath.Join(spool, "profiles.json")), shadowMax: envInt("WO_SHADOW_MAX_MB", 256) << 20,
 	}
+}
+
+// agentCAs: WO_AGENT_CA, plus WO_AGENT_CA_INTERNAL (Caddy's own CA) only while the edge uses it (WATCHOVER_EDGE_TLS=internal):
+// a company certificate must never be paired with a stale internal root the installer would then pin.
+func agentCAs() string {
+	ca := os.Getenv("WO_AGENT_CA")
+	if in := os.Getenv("WO_AGENT_CA_INTERNAL"); in != "" && env("WATCHOVER_EDGE_TLS", "internal") == "internal" {
+		ca += "," + in
+	}
+	return ca
 }
 
 // ---------------------------------------------------------------- authentication (auth.json written by the dashboard)
@@ -370,7 +382,8 @@ type server struct {
 	jobProxy *httputil.ReverseProxy // /agent/v1/ (built from proxy's upstream when nil)
 	start    time.Time
 	stats    struct{ batches, bytes, rejected, busy, unauth, sensor atomic.Int64 }
-	otlp     *otlpIn // OpenTelemetry intake (otlp_http.go)
+	otlp     *otlpIn   // OpenTelemetry intake (otlp_http.go)
+	rel      *releases // agent self-update: the dashboard's export, the served files (agentupdate.go)
 }
 
 func (s *server) json(w http.ResponseWriter, code int, v any) {
@@ -453,6 +466,7 @@ func (s *server) ingest(w http.ResponseWriter, r *http.Request) {
 		}
 		h["agent"] = agentName
 	}
+	agentHeaders(h, r)
 	hb, _ := json.Marshal(h)
 	rec := record{header: hb, body: body, done: make(chan error, 1)}
 	select {
@@ -475,6 +489,7 @@ func (s *server) ingest(w http.ResponseWriter, r *http.Request) {
 	if lines == 0 || body[len(body)-1] != '\n' {
 		lines++
 	}
+	s.hint(w, r, ag)
 	s.json(w, 200, map[string]any{"accepted": lines, "agent": agentName, "identity": identity, "queued": true})
 }
 
@@ -603,6 +618,9 @@ func (s *server) health() map[string]any {
 }
 
 func (s *server) routes() http.Handler {
+	if s.rel == nil {
+		s.rel = newReleases(s.cfg.spool, s.cfg.agentDir, s.cfg.agentCA)
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) { s.json(w, 200, s.health()) })
 	mux.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
@@ -677,19 +695,25 @@ func (s *server) routes() http.Handler {
 	}
 	mux.HandleFunc("/rum", s.rum)
 	mux.HandleFunc("/mobile", s.rum)
-	files := map[string]string{"/agent.py": "agent.py", "/agent/install.sh": "agent-install.sh", "/rum.js": "rum.js"}
+	mux.HandleFunc("/agent/update", s.agentUpdate)
+	files := map[string]string{"/agent.py": "agent.py", "/agent/install.sh": "agent-install.sh", "/agent/boot.sh": "agent-boot.sh", "/rum.js": "rum.js"}
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet && r.URL.Path == "/agent/manifest.json" {
-			s.json(w, http.StatusOK, agentManifest(s.cfg.agentDir))
+			s.json(w, http.StatusOK, s.agentManifest())
 			return
 		}
-		if bin, ok := agentBins[r.URL.Path]; ok && r.Method == http.MethodGet {
-			b, err := os.ReadFile(filepath.Join(s.cfg.agentDir, bin))
-			if err == nil {
-				w.Header().Set("Content-Type", "application/octet-stream")
+		if r.Method == http.MethodGet && r.URL.Path == "/agent/ca.crt" {
+			if b := s.rel.ca(); b != nil {
+				w.Header().Set("Content-Type", "application/x-pem-file")
 				_, _ = w.Write(b)
 				return
 			}
+		}
+		if bin, ok := agentBins[r.URL.Path]; ok && r.Method == http.MethodGet && s.serveAgentFile(w, bin, "application/octet-stream") {
+			return
+		}
+		if f, ok := files[r.URL.Path]; ok && r.Method == http.MethodGet && f != "rum.js" && s.serveAgentFile(w, f, "text/plain; charset=utf-8") {
+			return
 		}
 		if f, ok := files[r.URL.Path]; ok && r.Method == http.MethodGet {
 			b, err := os.ReadFile(filepath.Join(s.cfg.agentDir, f))
@@ -759,6 +783,8 @@ func main() {
 	a.reload()
 	s := &server{cfg: cfg, auth: a, sp: sp, proxy: httputil.NewSingleHostReverseProxy(up), start: time.Now()}
 	s.otlp = newOTLP(s)
+	s.rel = newReleases(cfg.spool, cfg.agentDir, cfg.agentCA)
+	s.rel.exportCA()
 	if cfg.parse != parseOff {
 		s.stage = newParseStage(cfg, sp)
 		s.stage.needExport = true // parse only once the dashboard has exported profiles.json (see parseStage.needExport)
@@ -773,12 +799,15 @@ func main() {
 	go func() {
 		t := time.NewTicker(2 * time.Second)
 		defer t.Stop()
-		for {
+		for n := 1; ; n++ {
 			select {
 			case <-ctx.Done():
 				return
 			case <-t.C:
 				a.reload()
+				if n%30 == 0 {
+					s.rel.exportCA() // a renewed edge CA reaches the dashboard's install command within a minute
+				}
 			}
 		}
 	}()
@@ -814,18 +843,3 @@ func main() {
 
 // agentBins is the Go host agent (goagent/, wo-agent: log shipping and the action agent's actuator) built into this image for Linux.
 var agentBins = map[string]string{"/agent/wo-agent-linux-amd64": "wo-agent-linux-amd64", "/agent/wo-agent-linux-arm64": "wo-agent-linux-arm64"}
-
-// agentManifest lists sha256 and size of what the installer downloads (/agent/manifest.json): integrity of the download over
-// the same channel, not authenticity (an install line can pin --agent-sha256 from the release notes for that).
-func agentManifest(dir string) map[string]any {
-	files := map[string]any{}
-	for _, name := range []string{"agent.py", "agent-install.sh", "wo-agent-linux-amd64", "wo-agent-linux-arm64"} {
-		b, err := os.ReadFile(filepath.Join(dir, name))
-		if err != nil {
-			continue
-		}
-		h := sha256.Sum256(b)
-		files[name] = map[string]any{"sha256": hex.EncodeToString(h[:]), "size": len(b)}
-	}
-	return map[string]any{"files": files}
-}

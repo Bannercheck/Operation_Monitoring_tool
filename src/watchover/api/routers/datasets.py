@@ -101,21 +101,29 @@ async def upload(files: list[UploadFile] = File(...), combine: bool = Query(True
 
 @router.post("/demo")
 def load_demo(team_id: Optional[int] = None, acc=Depends(access), user=Depends(require("page.data")), svc=Depends(services)):
-    return ownership.load_path(svc, _team(acc, team_id), str(ROOT / "samples" / "demo_mixed.zip"))
+    """The shipped demo set (demo mode only: 403 on a production install). Demo content: never learned from, removed with the demo data."""
+    from ... import demo as wo_demo
+    wo_demo.require()
+    return ownership.load_path(svc, _team(acc, team_id), str(ROOT / "samples" / "demo_mixed.zip"), demo=True)
 
 
 @router.get("/samples")
 def samples(user=Depends(require("page.data"))):
-    """The sample sets shipped with the product (samples/*.zip)."""
+    """The sample sets shipped with the product (samples/*.zip); none on a production install (they are demo content)."""
+    from ... import demo as wo_demo
+    if not wo_demo.enabled():
+        return []
     return [{"name": p.name, "size": p.stat().st_size} for p in sorted((ROOT / "samples").glob("*.zip"))]
 
 
 @router.post("/samples/{name}", status_code=202)
 def load_sample(name: str, team_id: Optional[int] = None, acc=Depends(access), user=Depends(require("page.data")), svc=Depends(services)):
+    from ... import demo as wo_demo
+    wo_demo.require()                                          # a production install has no shipped sample sets (403)
     p = ROOT / "samples" / os.path.basename(name)
     if not p.is_file() or p.suffix != ".zip":
         raise KeyError(name)
-    return ownership.submit(svc, _team(acc, team_id), p.name, p.read_bytes())
+    return ownership.submit(svc, _team(acc, team_id), p.name, p.read_bytes(), demo=True)
 
 
 class FetchIn(BaseModel):
@@ -292,7 +300,8 @@ def feedback(key: str, iid: str, body: FeedbackIn, user=Depends(require("page.da
         correct_txt = f"{x.get('template', '')[:80]} ({', '.join(x.get('services', [])[:2])})"
     else:
         correct_txt = {"__keep__": "", "__noise__": "noise", "__other__": body.comment}.get(body.correct, body.comment)
-    out = svc.kb.add_feedback(d["name"], inc, root, body.verdict, correct=correct_txt, comment=body.comment, alt_type=alt_type, root_type=root_type, mark_noise=(body.correct == "__noise__"))
+    out = svc.kb.add_feedback(d["name"], inc, root, body.verdict, correct=correct_txt, comment=body.comment, alt_type=alt_type, root_type=root_type, mark_noise=(body.correct == "__noise__"),
+                               demo=bool(d.get("demo")))
     tid = ownership.dataset_team(svc, key)
     if tid is not None:                                        # the verdict and its rule proposals belong to the dataset's team
         svc.kb._exec("UPDATE lessons SET team_id=? WHERE id=?", (tid, out.get("lesson")))

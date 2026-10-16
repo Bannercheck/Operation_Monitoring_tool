@@ -28,6 +28,7 @@ from .models import SEV_RANK, Observation
 from .pipeline import ingest_bytes
 from .rollup import session_of
 from . import scenario
+from .demo import DEMO_ATTR, SIM_AGENT, sender_name
 
 UTC = timezone.utc
 
@@ -62,6 +63,8 @@ class LiveStore:
         self.host_guard = None                   # optional fn(agent_id, team_id, sender, hosts) -> {host: replacement}: team senders (ingest_guard)
         self.metric_hosts: dict[str, set] = {}   # sender -> hosts it reported metrics for (purge on simulation off)
         self.metric_agent: dict[str, int] = {}   # host -> agent_id of the last metric batch for it (action agent: trusted metric evidence)
+        self.demo_hosts: set = set()             # hosts (lower-case) demo input wrote: derived rows of these are demo (demo.py)
+        self.real_guard = None                   # optional fn(sender): a real sender arrived while the simulator runs (Services stops it)
         self.matched = 0                         # events matched to the inventory
         self.started = time.time()
         self.db = None                           # attach_db(): the durable live window (live_batches) behind the ring buffer
@@ -100,6 +103,10 @@ class LiveStore:
         self._v2 = logstore.migrate(db)                      # v2 rows: compressed, line ids, raw, attributes (log explorer)
         if not self._v2:                                     # v2 replaces this index with (ts_max, ts_min): one index less to update per row
             db._exec("CREATE INDEX IF NOT EXISTS live_batches_ts ON live_batches(ts_max)")
+        try:                                                 # the simulator's rows only (demo.py finds / purges them without a scan)
+            db._exec("CREATE INDEX IF NOT EXISTS live_batches_sim ON live_batches(id) WHERE agent = 'simulator'")
+        except Exception:  # noqa: BLE001
+            pass
         self.seq = max(self.seq, logstore.last_seq(db)) if self._v2 else self.seq   # line ids survive a restart
         self.db = db
 
@@ -118,6 +125,8 @@ class LiveStore:
             d["site"] = a["site"]
         if a.get("agent_id") is not None:
             d["aid"] = a["agent_id"]
+        if a.get(DEMO_ATTR):
+            d["demo"] = 1                               # the demo marker survives storage (stored lines, hot / cold tiers)
         ses = session_of(a) if a else None              # the client session, already pseudonymised: a past range can still list sessions
         if ses:
             d["ses"] = ses
@@ -130,6 +139,8 @@ class LiveStore:
             attrs["site"] = d["site"]
         if d.get("aid") is not None:
             attrs["agent_id"] = d["aid"]
+        if d.get("demo") or attrs["agent"] == SIM_AGENT:
+            attrs[DEMO_ATTR] = 1
         if d.get("ses"):
             attrs["_ses"] = tuple(d["ses"])             # a tuple: JSON never makes one, so a line cannot forge it (rollup.session_of)
         ts = datetime.fromisoformat(d["ts"])
@@ -366,7 +377,7 @@ class LiveStore:
     def _parse(self, name: str, data: bytes, agent: str) -> list[Observation]:
         key = (agent, name)
         hint = self._hint_next(key)
-        obs, rep = ingest_bytes(name, data, hint=hint)
+        obs, rep = ingest_bytes(name, data, hint=hint, learn=agent != SIM_AGENT)   # demo input never teaches the column profiles
         fmt = rep[0].get("format") if rep else None
         if fmt == "json" and data.strip().count(b"\n") == 0 and data.lstrip()[:1] == b"{":
             fmt = "jsonl"               # one object in the first batch of a stream is one JSON line: later batches carry many
@@ -381,7 +392,7 @@ class LiveStore:
         Go parser off continues the stream as before."""
         t0 = time.perf_counter()
         try:
-            agent = h.get("agent") or "unknown"
+            agent = sender_name(h.get("agent") or "unknown")   # the simulator never goes through the Go receiver
             name = h.get("file") or "agent.log"
             key = (agent, name)
             hint = self._hint_next(key)
@@ -432,6 +443,12 @@ class LiveStore:
         events: list[Observation] = []
         flows: list[Observation] = []
         horizon = now + timedelta(days=1)
+        demo = agent == SIM_AGENT                            # the simulator's sender: every line is demo input, marked here (demo.py)
+        if not demo and self.real_guard is not None and obs:
+            try:
+                self.real_guard(agent)                       # real data while the simulator runs: it stops (real data is never refused)
+            except Exception:  # noqa: BLE001
+                pass
         moved: dict = {}                                     # a team sender posts only for its team's hosts (ingest_guard): host -> replacement
         if self.host_guard is not None and (agent_id is not None or team_id is not None) and obs:
             dflt = agent if agent and agent != "unknown" else ""
@@ -447,6 +464,10 @@ class LiveStore:
                     o.timestamp = ts - timedelta(seconds=off)
                     o.attributes["clock_offset_s"] = -off
             o.attributes["agent"] = agent
+            if demo:
+                o.attributes[DEMO_ATTR] = 1
+            elif DEMO_ATTR in o.attributes:                  # a real line can never claim the demo marker
+                o.attributes.pop(DEMO_ATTR, None)
             if o.host and BAD_HOST.search(o.host):           # "Ax32Serv:", "[NavServer]": a process or component taken for a host
                 o.attributes.setdefault("component", o.host.strip("[]:"))
                 o.host = ""
@@ -485,6 +506,10 @@ class LiveStore:
                 self.seq = q
             self.buf.extend(events)
             self.metrics.extend(metric_rows)
+            if demo:
+                self.demo_hosts.update(h.lower() for h in ({o.host for o in events} | {r[1] for r in metric_rows} | {o.host for o in flows}) if h)
+            elif self.demo_hosts:                            # a real sender of the same name: the host is real (real wins; nothing of it is purged)
+                self.demo_hosts.difference_update(h.lower() for h in ({o.host for o in events} | {r[1] for r in metric_rows} | {o.host for o in flows}) if h)
             if metric_rows:
                 self.metric_hosts.setdefault(agent, set()).update(r[1] for r in metric_rows)
                 for h in {r[1] for r in metric_rows}:
@@ -517,7 +542,8 @@ class LiveStore:
                 with self.spool.open("a", encoding="utf-8") as f:
                     for o in obs:
                         f.write(json.dumps({"ts": o.timestamp.isoformat(), "severity": o.severity, "service": o.service, "host": o.host,
-                                            "env": o.environment, "message": o.message, "source": o.source, "agent": agent}, ensure_ascii=False) + "\n")
+                                            "env": o.environment, "message": o.message, "source": o.source, **({"demo": 1} if demo else {}),
+                                            "agent": agent}, ensure_ascii=False) + "\n")
             except OSError:                                    # a full disk must not stop ingestion into the ring buffer
                 pass
         return len(obs)
@@ -681,6 +707,13 @@ class LiveStore:
                 "errors": errors, "per_minute_now": recent, "agents": {k: round(time.time() - v) for k, v in self.agents.items()},
                 "last": obs[-1].timestamp if obs else None}
 
+    def is_demo_host(self, host: str | None) -> bool:
+        """A host demo input wrote (from the marker): rows derived for it are demo rows."""
+        return bool(host) and host.lower() in self.demo_hosts
+
+    def demo_active(self) -> bool:
+        return bool(self.demo_hosts)
+
     def to_dataset(self) -> tuple[str, bytes]:
         """Everything in the buffer as a JSONL dataset for the full pipeline."""
         lines = [json.dumps({"ts": o.timestamp.isoformat(), "severity": o.severity, "service": o.service, "host": o.host, "env": o.environment,
@@ -697,8 +730,9 @@ class LiveStore:
 
     def purge(self, agent: str, hosts: tuple = ()) -> int:
         """Drop everything one sender shipped (simulation mode off): its events, its metrics rows (by host) and its presence."""
+        demo = agent == SIM_AGENT
         with self.lock:
-            keep = [o for o in self.buf if o.attributes.get("agent") != agent]
+            keep = [o for o in self.buf if o.attributes.get("agent") != agent and not (demo and o.attributes.get(DEMO_ATTR))]
             n = len(self.buf) - len(keep)
             self.buf.clear(); self.buf.extend(keep)
         from .rollup import Rollup                            # counters rebuilt from what stays: the sender's hosts vanish from them too
@@ -710,6 +744,11 @@ class LiveStore:
                 mk = [r for r in self.metrics if r[1] not in gone]
                 self.metrics.clear(); self.metrics.extend(mk)
             self.agents.pop(agent, None)
+            if demo:
+                for h in gone:
+                    self.metric_agent.pop(h, None)
+                self.demo_hosts.difference_update(h.lower() for h in gone)
+        self._memo.clear()
         return n
 
     # ---- infra metrics
@@ -884,7 +923,8 @@ def metric_of(o: Observation) -> list[tuple] | None:
 MAX_BODY = 16 * 1024 * 1024                                    # one POST at most 16 MB (agents batch every second anyway)
 RUM_MAX_BODY = 512 * 1024                                       # one sensor batch from a browser or a phone
 _ROOT = Path(__file__).resolve().parents[2]
-AGENT_FILES = {"/agent.py": _ROOT / "agent.py", "/agent/install.sh": _ROOT / "scripts" / "agent-install.sh", "/rum.js": _ROOT / "sensors" / "web" / "rum.js"}
+AGENT_FILES = {"/agent.py": _ROOT / "agent.py", "/agent/install.sh": _ROOT / "scripts" / "agent-install.sh", "/rum.js": _ROOT / "sensors" / "web" / "rum.js",
+               "/agent/boot.sh": _ROOT / "scripts" / "agent-boot.sh"}       # the verified bootstrap of the install command
 RUM_PATHS = ("/rum", "/mobile")
 AGENT_BINS = ("wo-agent-linux-amd64", "wo-agent-linux-arm64")       # the Go host agent (goagent/; the actuator role)
 
@@ -899,7 +939,8 @@ def agent_manifest() -> dict:
     not authenticity: an install line may pin --agent-sha256 from the release notes for that."""
     import hashlib
     files = {}
-    for name, p in [("agent.py", AGENT_FILES["/agent.py"]), ("agent-install.sh", AGENT_FILES["/agent/install.sh"])] + \
+    for name, p in [("agent.py", AGENT_FILES["/agent.py"]), ("agent-install.sh", AGENT_FILES["/agent/install.sh"]),
+                    ("agent-boot.sh", AGENT_FILES["/agent/boot.sh"])] + \
             [(b, agent_bin_dir() / b) for b in AGENT_BINS]:
         try:
             data = p.read_bytes()
@@ -932,7 +973,7 @@ def rum_request(rum, key: str, origin: str | None, ua: str, body: bytes) -> tupl
     return 202, {"ok": True, **res}
 
 
-def make_handler(store: LiveStore, api_key: str | None, registry=None, rum=None, jobs=None):
+def make_handler(store: LiveStore, api_key: str | None, registry=None, rum=None, jobs=None, updates=None):
     """Auth order: per-agent token from the registry (identity = the registered record) > legacy shared key > open when no key is set.
     GET /agent.py and /agent/install.sh serve the collector itself, so a server needs nothing but python3 and this port.
     /agent/v1/* is the action agent's job channel (`jobs` = act.jobs.Jobs): only an actuator token (`wa_`, act_actuators) gets in,
@@ -946,9 +987,11 @@ def make_handler(store: LiveStore, api_key: str | None, registry=None, rum=None,
         def log_message(self, *a):
             pass
 
-        def _send(self, code: int, body: dict):
+        def _send(self, code: int, body: dict, headers: dict | None = None):
             data = json.dumps(body).encode()
             self.send_response(code)
+            for k, v in (headers or {}).items():
+                self.send_header(k, v)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
@@ -1040,8 +1083,18 @@ def make_handler(store: LiveStore, api_key: str | None, registry=None, rum=None,
             if self.path.startswith("/health"):
                 return self._send(200, {"status": "ok", "received": store.received, "buffered": len(store.buf), "agents": len(store.agents)})
             path = self.path.split("?", 1)[0]
-            if path == "/agent/manifest.json":
-                return self._send(200, agent_manifest())
+            if path == "/agent/manifest.json":           # + the signed release (agent_update.py): installer, boot.sh, self-update
+                return self._send(200, {**agent_manifest(), **(updates.manifest_fields() if updates is not None else {})})
+            if path == "/agent/update":                  # an agent asks whether to update (its own token): agent_update.decide
+                rec = registry.verify(self._token()) if (registry is not None and updates is not None) else None
+                if not rec:
+                    return self._send(401, {"error": "an agent token is required"})
+                return self._send(200, updates.decide(rec, self._engine(), self.headers.get("X-Agent-Version", "")))
+            if path == "/agent/ca.crt" and updates is not None and updates.ca_pem():
+                data = updates.ca_pem()
+                self.send_response(200); self.send_header("Content-Type", "application/x-pem-file")
+                self.send_header("Content-Length", str(len(data))); self.end_headers()
+                return self.wfile.write(data)
             if path.startswith("/agent/wo-agent-") and path[7:] in AGENT_BINS and (agent_bin_dir() / path[7:]).exists():
                 data = (agent_bin_dir() / path[7:]).read_bytes()
                 self.send_response(200)
@@ -1083,7 +1136,12 @@ def make_handler(store: LiveStore, api_key: str | None, registry=None, rum=None,
             if not data:
                 return self._send(400, {"error": "empty body"})
             rec = getattr(self, "agent_rec", None)
-            agent = (rec["name"] if rec else self.headers.get("X-Agent", self.client_address[0]))[:120]
+            agent = sender_name((rec["name"] if rec else self.headers.get("X-Agent", self.client_address[0]))[:120])   # "simulator" marks demo data
+            if rec is None and str(self.headers.get("X-Agent", "")).strip().lower() == SIM_AGENT:   # declared synthetic (agent.py --simulate): demo input
+                from .demo import enabled as demo_enabled
+                if not demo_enabled():
+                    return self._send(403, {"error": "simulator data is refused on this installation (WATCHOVER_DEMO=0)"})
+                agent = SIM_AGENT
             name = Path(self.headers.get("X-File-Name", "agent.log")).name[:200] or "agent.log"
             try:
                 count = store.ingest(name, data, agent, env=(rec or {}).get("env", ""), site=(rec or {}).get("site", ""), agent_id=(rec or {}).get("id"))
@@ -1091,10 +1149,23 @@ def make_handler(store: LiveStore, api_key: str | None, registry=None, rum=None,
                 return self._send(400, {"error": str(e)})
             if rec and registry is not None:
                 try:
-                    registry.touch(rec["id"], self.client_address[0], count)
+                    registry.touch(rec["id"], self.client_address[0], count, version=self.headers.get("X-Agent-Version", ""),
+                                   engine=self._engine(), update=self.headers.get("X-Agent-Update", ""))
                 except Exception:  # noqa: BLE001
                     pass
-            self._send(200, {"accepted": count, "agent": agent, "identity": "token" if rec else ("key" if api_key else "open")})
+            hint = {}
+            if rec and updates is not None and self.headers.get("X-Agent-Version"):
+                try:
+                    d = updates.decide(rec, self._engine(), self.headers.get("X-Agent-Version", ""))
+                    if d.get("update"):
+                        hint = {"X-Watchover-Update": d["version"]}    # the agent starts its update unit now, not at its timer
+                except Exception:  # noqa: BLE001 - an update hint never costs a batch
+                    pass
+            self._send(200, {"accepted": count, "agent": agent, "identity": "token" if rec else ("key" if api_key else "open")}, hint)
+
+        def _engine(self) -> str:
+            e = self.headers.get("X-Agent-Engine", "")
+            return e or ("wo-agent" if self.headers.get("User-Agent", "").startswith("wo-agent/") else "agent.py")
 
         def _enroll(self):
             """A server presents the fleet enrolment key and gets its own token: {name, env, site, tags} in a JSON body."""
@@ -1128,8 +1199,9 @@ def make_handler(store: LiveStore, api_key: str | None, registry=None, rum=None,
     return H
 
 
-def start_receiver(store: LiveStore, port: int = 8600, api_key: str | None = None, registry=None, rum=None, jobs=None) -> ThreadingHTTPServer:
-    server = ThreadingHTTPServer(("0.0.0.0", port), make_handler(store, api_key, registry, rum, jobs))
+def start_receiver(store: LiveStore, port: int = 8600, api_key: str | None = None, registry=None, rum=None, jobs=None,
+                   updates=None) -> ThreadingHTTPServer:
+    server = ThreadingHTTPServer(("0.0.0.0", port), make_handler(store, api_key, registry, rum, jobs, updates))
     server.daemon_threads = True
     threading.Thread(target=server.serve_forever, daemon=True, name=f"live-receiver-{port}").start()
     return server

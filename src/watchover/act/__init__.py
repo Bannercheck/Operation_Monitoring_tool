@@ -218,8 +218,9 @@ class ActService:
         return n
 
     def from_anomaly(self, anomaly: Dict[str, Any]) -> bool:
-        """The anomaly tracker's on_open fan-out (threshold breaches arrive here too, C7)."""
-        if not self.enabled or self.cases is None:
+        """The anomaly tracker's on_open fan-out (threshold breaches arrive here too, C7). Simulator anomalies never become
+        triggers: the agent acts on real servers, and its matcher / metrics / trust never learn from demo input (demo.py)."""
+        if not self.enabled or self.cases is None or (isinstance(anomaly, dict) and anomaly.get("demo")):
             return False
         try:
             trig = self.cases.trigger_from_anomaly(anomaly)
@@ -239,8 +240,12 @@ class ActService:
             return 0
 
     def from_analysis(self, analysis) -> int:
-        """LiveLearner.learn_once: live incidents of severity >= high whose root cause is not noise."""
+        """LiveLearner.learn_once: live incidents of severity >= high whose root cause is not noise (the learner's window holds no
+        simulator lines; an analysis that still carries demo observations is ignored)."""
         if not self.enabled or self.cases is None:
+            return 0
+        from ..demo import is_demo
+        if any(is_demo(o) for o in getattr(analysis, "observations", []) or []):
             return 0
         try:
             return sum(1 for t in self.cases.triggers_from_analysis(analysis) if self.emit(t))
@@ -254,6 +259,9 @@ class ActService:
             return 0
         try:
             stuck = self.svc.bizflows.check_stuck(int(self.policy.get("act_bizflow_min", 20) or 20))
+            live = getattr(self.svc, "live", None)
+            demo_host = getattr(live, "is_demo_host", None) or (lambda h: False)
+            stuck = [s for s in stuck if not s.get("demo") and not any(demo_host(h) for h in s.get("hosts") or [])]   # never demo flows
             return sum(1 for t in self.cases.triggers_from_bizflow(stuck) if self.emit(t))
         except Exception:  # noqa: BLE001
             self.stats["errors"] += 1

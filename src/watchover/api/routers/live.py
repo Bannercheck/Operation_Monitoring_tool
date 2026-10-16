@@ -117,11 +117,29 @@ def history(hours: int = 24, env: str | None = None, host: str | None = None, po
 
 class SimIn(BaseModel):
     on: bool
+    confirm: bool = False          # off: the caller saw the counts (GET /simulate/preview) and agrees to delete them
+
+
+@router.get("/simulate")
+def simulate_state(check: bool = False, user=Depends(require_install("act.sim")), svc=Depends(services)):
+    """on / paused / off and why it stopped by itself; check=true (the switch dialog) also says whether real data refuses a start."""
+    from ... import demo as wo_demo
+    st = svc.demo_state()
+    real = wo_demo.real_sources(svc) if (check and st["demo"] and st["state"] == "off") else {}
+    return {**st, "blocked": wo_demo.RealDataPresent(real).detail() if real else None}
+
+
+@router.get("/simulate/preview")
+def simulate_preview(user=Depends(require_install("act.sim")), svc=Depends(services)):
+    """What switching the simulator off deletes, per category (nothing is deleted): the confirmation dialog."""
+    from ... import demo as wo_demo
+    return wo_demo.preview(svc)
 
 
 @router.post("/simulate")
 def simulate(body: SimIn, user=Depends(require_install("act.sim")), svc=Depends(services)):    # installation-wide: fake hosts for everyone
-    return {"simulator": svc.simulate(body.on)}
+    """on: 403 on a production install, 409 next to real data. off: 409 with the counts unless confirm=true, then the purge."""
+    return svc.simulate(body.on, confirm=body.confirm, by=user.get("email", ""))
 
 
 @router.post("/analyze", status_code=202)
@@ -139,7 +157,7 @@ def analyze(team_id: int | None = None, user=Depends(require("page.data")), svc=
         if not data:
             raise ValueError("the live buffer holds no line of your team's hosts")
     tid = pick_team(acc, "page.data", team_id) if not acc.wide else None
-    return ownership.submit(svc, tid, name, data)
+    return ownership.submit(svc, tid, name, data, demo=svc.demo_present())     # a snapshot taken while demo data is shown is demo
 
 
 @router.post("/clear")

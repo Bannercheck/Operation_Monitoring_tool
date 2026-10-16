@@ -296,6 +296,18 @@ class KeyClient:
     def rotate_dispatch(self) -> dict:
         return self._call("rotate_dispatch", long=True)
 
+    # ---------------------------------------------------------------- host-agent releases (agent self-update)
+    def release(self) -> dict:
+        """keyd's signed manifest of the wo-agent release in its own image (release.key; independent of act_mode and the act
+        keys). SigningUnavailable without custody or when keyd is unreachable, KeyRefused when keyd has no valid release."""
+        return self._call("release", long=True)
+
+    def releases(self) -> List[dict]:
+        return self._call("releases", long=True)
+
+    def sign_pin(self, host: str, version: str, ttl_s: int = 7 * 86400) -> dict:
+        return self._call("sign_pin", {"host": host, "version": version, "ttl_s": int(ttl_s)}, long=True)
+
     def export_begin(self, part: str, by: str) -> dict:
         return self._call("export_begin", {"part": part, "by": by}, long=True)
 

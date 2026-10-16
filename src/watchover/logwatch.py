@@ -228,8 +228,11 @@ class LogWatch:
         link = f"/logs?q={quote(rule.get('query') or '')}&start={quote(c['start'].isoformat())}&end={quote(c['end'].isoformat())}"
         body = "\n".join([f"Sorgu / query: {norm or '*'}", f"{c['n']} satır / lines in {win} dk (eşik / threshold {op} {thr:g})",
                           "Sunucular / hosts: " + (", ".join(f"{h} ({n})" for h, n in c["hosts"]) or "-")] + [f"  {x}" for x in c["samples"][:3]] + [link])
-        res = [notifier.dispatch(rule, f"query:{rule['id']}", f"{rule.get('name', '')}: {c['n']} satır / {win} dk", body)]
-        if self.on_case is not None and rule.get("open_case"):     # "Vaka aç": sent or skipped by cooldown alike
+        live = getattr(self.logs, "live", None)
+        is_demo_host = getattr(live, "is_demo_host", None) or (lambda h: False)
+        demo = bool(c["hosts"]) and all(is_demo_host(h) for h, _n in c["hosts"])      # lines of simulator hosts only
+        res = [notifier.dispatch(rule, f"query:{rule['id']}", f"{rule.get('name', '')}: {c['n']} satır / {win} dk", body, **({"demo": True} if demo else {}))]
+        if self.on_case is not None and rule.get("open_case") and not demo:     # "Vaka aç" (never for demo lines): sent or skipped by cooldown alike
             try:
                 self.on_case(rule, c)
             except Exception:  # noqa: BLE001 - the action agent never breaks alerting

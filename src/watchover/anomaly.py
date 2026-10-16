@@ -39,6 +39,7 @@ import threading
 import time
 from datetime import datetime, timedelta, timezone
 
+from .demo import SIM_AGENT, is_demo
 from .models import SEV_RANK
 
 UTC = timezone.utc
@@ -303,6 +304,13 @@ class AnomalyTracker:
         kb._exec("""CREATE TABLE IF NOT EXISTS anomaly_signal (host TEXT NOT NULL, env TEXT NOT NULL, sig TEXT NOT NULL, status TEXT DEFAULT 'learning',
             started TEXT, graduated_at TEXT DEFAULT '', relearned_at TEXT DEFAULT '', note TEXT DEFAULT '{}', state TEXT DEFAULT '{}', updated_at TEXT,
             PRIMARY KEY (host, env, sig))""")
+        from .demo import ensure_column
+        ensure_column(kb, "anomalies")                       # 1 = opened on a host only simulator input wrote (demo.py purges these)
+
+    def _demo(self, host: str | None) -> bool:
+        """A host demo input wrote (demo.py): its anomalies are flagged demo, and nothing about it is ever learned."""
+        f = getattr(self.live, "is_demo_host", None)
+        return bool(f and host and f(host))
 
     # ---------------------------------------------------------------- learning mode
     def _learn_cfg(self) -> dict:
@@ -350,6 +358,8 @@ class AnomalyTracker:
         sabit: the host learns for `anomaly_learning_days` from its first minute in the rollups (signal is ignored).
         dinamik: per-signal maturity (see the module doc); the host is learning while any key signal is."""
         now = now or datetime.now(UTC)
+        if self._demo(host):                                 # simulator hosts never learn (no anomaly_learning / anomaly_signal row)
+            return {"host": host, "env": env, "learning": False, "started": "", "ends": "", "pct": 100.0, "graduated_at": "", "demo": True}
         if not self._dynamic():
             return self._learning_fixed(host, env, now)
         m = self._refresh(host, env, now)
@@ -367,7 +377,8 @@ class AnomalyTracker:
             if rows:
                 started, grad = rows[0]["started"], rows[0]["graduated_at"] or ""
             else:
-                first = self.kb._exec("SELECT MIN(minute) AS m FROM slo_minute WHERE host=? AND env=?", (host, env))[0]["m"] if self._has_rollups() else None
+                first = self.kb._exec("SELECT MIN(minute) AS m FROM slo_minute WHERE host=? AND env=? AND sender <> ?", (host, env, SIM_AGENT))[0]["m"] \
+                    if self._has_rollups() else None
                 started = (datetime.fromisoformat(first + ":00").replace(tzinfo=UTC) if first else now).isoformat(timespec="seconds")
                 grad = ""
                 self.kb._exec("INSERT INTO anomaly_learning (host, env, started, graduated_at) VALUES (?,?,?,'')" + self.kb.upsert_suffix("host, env", "started=anomaly_learning.started"), (host, env, started))
@@ -452,8 +463,8 @@ class AnomalyTracker:
 
     def _slo_query(self, start: datetime, end: datetime, host: str | None = None, env: str | None = None) -> dict:
         sql = ("SELECT host, env, substr(minute, 1, 13) AS h, SUM(total) AS t, SUM(errors) AS e, MIN(minute) AS f FROM slo_minute WHERE minute >= ? AND minute < ?"
-               + (" AND host=? AND env=?" if host is not None else "") + " GROUP BY host, env, substr(minute, 1, 13)")
-        args = (start.strftime("%Y-%m-%dT%H:%M"), end.strftime("%Y-%m-%dT%H:%M")) + ((host, env) if host is not None else ())
+               " AND sender <> ?" + (" AND host=? AND env=?" if host is not None else "") + " GROUP BY host, env, substr(minute, 1, 13)")   # learning: never simulator rows
+        args = (start.strftime("%Y-%m-%dT%H:%M"), end.strftime("%Y-%m-%dT%H:%M"), SIM_AGENT) + ((host, env) if host is not None else ())
         out: dict = {}
         for r in self.kb._exec(sql, args):
             out.setdefault((r["host"], r["env"]), {})[r["h"]] = r
@@ -514,6 +525,8 @@ class AnomalyTracker:
         low = end - timedelta(hours=2)
         groups: dict[tuple, dict] = {}
         for r in per_minute:
+            if self._demo(r.get("host")):                    # simulator metrics never teach a baseline
+                continue
             m = r["minute"]
             if not isinstance(m, datetime):
                 m = datetime.fromisoformat(str(m))
@@ -735,6 +748,8 @@ class AnomalyTracker:
 
     def _seasonal(self, host: str, env: str, now: datetime) -> dict | None:
         """Per-minute totals and errors of this host at the same weekday and hour (± 1 h) over the last 4 weeks, cached per hour."""
+        if self._demo(host):
+            return None
         key = (host, env, now.strftime("%Y-%m-%dT%H"))
         if key in self._season:
             return self._season[key]
@@ -742,8 +757,8 @@ class AnomalyTracker:
             self._season.clear()
         start = (now - timedelta(days=28)).strftime("%Y-%m-%dT%H:%M")
         cut = (now - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M")
-        rows = self.kb._exec("SELECT minute, SUM(total) AS t, SUM(errors) AS e FROM slo_minute WHERE host=? AND env=? AND minute >= ? AND minute < ? GROUP BY minute",
-                             (host, env, start, cut))
+        rows = self.kb._exec("SELECT minute, SUM(total) AS t, SUM(errors) AS e FROM slo_minute WHERE host=? AND env=? AND minute >= ? AND minute < ? AND sender <> ? "
+                             "GROUP BY minute", (host, env, start, cut, SIM_AGENT))
         tot, err = [], []
         for r in rows:
             m = datetime.fromisoformat(r["minute"] + ":00")
@@ -813,8 +828,9 @@ class AnomalyTracker:
         """Per-minute totals and errors of one host over the baseline window, from the slo_minute rollups (older than the current window)."""
         start = (now - timedelta(minutes=BASELINE_MIN)).strftime("%Y-%m-%dT%H:%M")
         cut = (now - timedelta(minutes=WINDOW_MIN)).strftime("%Y-%m-%dT%H:%M")
-        rows = self.kb._exec("SELECT minute, SUM(total) AS t, SUM(errors) AS e FROM slo_minute WHERE host=? AND env=? AND minute >= ? AND minute < ? GROUP BY minute",
-                             (host, env, start, cut))
+        demo = self._demo(host)                              # a simulator host's normal is its simulator rows; a real host's never includes them
+        rows = self.kb._exec("SELECT minute, SUM(total) AS t, SUM(errors) AS e FROM slo_minute WHERE host=? AND env=? AND minute >= ? AND minute < ? "
+                             f"AND sender {'=' if demo else '<>'} ? GROUP BY minute", (host, env, start, cut, SIM_AGENT))
         minutes = max(1, min(BASELINE_MIN, int((now - datetime.fromisoformat(min(r["minute"] for r in rows) + ":00").replace(tzinfo=UTC)).total_seconds() // 60))) if rows else 0
         totals = [float(r["t"]) for r in rows] + [0.0] * max(0, minutes - len(rows))       # quiet minutes are real zeros
         errors = [float(r["e"]) for r in rows] + [0.0] * max(0, minutes - len(rows))
@@ -864,12 +880,13 @@ class AnomalyTracker:
         # silence: hosts that logged steadily over the baseline window but sent nothing in this one
         start_iso = (now - timedelta(minutes=BASELINE_MIN)).strftime("%Y-%m-%dT%H:%M")
         cut_iso = (now - timedelta(minutes=WINDOW_MIN)).strftime("%Y-%m-%dT%H:%M")
-        rows = self.kb._exec("SELECT host, env, COUNT(*) AS m, SUM(total) AS t FROM slo_minute WHERE minute >= ? AND minute < ? GROUP BY host, env", (start_iso, cut_iso))
+        rows = self.kb._exec("SELECT host, env, COUNT(*) AS m, SUM(total) AS t FROM slo_minute WHERE minute >= ? AND minute < ? AND sender <> ? GROUP BY host, env",
+                             (start_iso, cut_iso, SIM_AGENT))           # a stopped simulator is no silent server
         for r in rows:
             host, env = r["host"], r["env"]
             if (host, env) in seen_hosts or host in ("-", "") or int(r["m"]) < BASELINE_MIN * 0.5:
                 continue
-            last = self.kb._exec("SELECT MAX(minute) AS m FROM slo_minute WHERE host=? AND env=?", (host, env))[0]["m"] or ""
+            last = self.kb._exec("SELECT MAX(minute) AS m FROM slo_minute WHERE host=? AND env=? AND sender <> ?", (host, env, SIM_AGENT))[0]["m"] or ""
             quiet = max(0.0, (now - datetime.fromisoformat(last + ":00").replace(tzinfo=UTC)).total_seconds() / 60) if last else float(WINDOW_MIN)
             if quiet < WINDOW_MIN * 2:
                 continue
@@ -886,7 +903,7 @@ class AnomalyTracker:
         counts: dict[str, dict] = {}
         memo: dict[str, str] = {}                      # live traffic repeats messages heavily: template each distinct text once per scan
         for o in obs:
-            if o.timestamp < start or SEV_RANK.get(o.severity, 0) < 2:
+            if o.timestamp < start or SEV_RANK.get(o.severity, 0) < 2 or is_demo(o):     # demo lines never become known templates
                 continue
             msg = o.message or ""
             tpl = o.template or memo.get(msg)
@@ -953,7 +970,7 @@ class AnomalyTracker:
         since = getattr(self, "_mined_until", None) or (now - timedelta(minutes=WINDOW_MIN))
         obs = self._window(since)
         try:
-            store.learn(obs[:20000], source="live")
+            store.learn([o for o in obs if not is_demo(o)][:20000], source="live")      # Drain never learns from simulator lines
         except Exception:  # noqa: BLE001
             return
         self._mined_until = now
@@ -982,20 +999,22 @@ class AnomalyTracker:
 
     # ---------------------------------------------------------------- store
     def _upsert(self, kind: str, key: str, *, env: str, host: str, title: str, detail: str, observed: float, baseline: float, spread: float,
-                score: float, series: list, service: str = "", metric: str = "", learning: bool = False) -> dict:
+                score: float, series: list, service: str = "", metric: str = "", learning: bool = False, demo: bool | None = None) -> dict:
         now = _now()
+        demo = self._demo(host) if demo is None else demo
         live_states = "('learning')" if learning else "('open', 'ack')"
         rows = self.kb._exec(f"SELECT id, hits FROM anomalies WHERE key=? AND status IN {live_states} ORDER BY id DESC LIMIT 1", (key,))
         ser = json.dumps([round(float(v), 2) for v in series][-61:])
         if rows:
-            self.kb._exec("UPDATE anomalies SET title=?, detail=?, observed=?, baseline=?, spread=?, score=?, hits=hits+1, last_seen=?, cleared_at='', series=?, updated_at=? WHERE id=?",
-                          (title, detail, float(observed), float(baseline), float(spread), round(float(score), 2), now, ser, now, rows[0]["id"]))
+            self.kb._exec("UPDATE anomalies SET title=?, detail=?, observed=?, baseline=?, spread=?, score=?, hits=hits+1, last_seen=?, cleared_at='', series=?, updated_at=?, "
+                          "demo=CASE WHEN ? = 0 THEN 0 ELSE demo END WHERE id=?",
+                          (title, detail, float(observed), float(baseline), float(spread), round(float(score), 2), now, ser, now, int(bool(demo)), rows[0]["id"]))
             return self.get(rows[0]["id"])
         steps = json.dumps([{"id": s, "done": False, "ts": ""} for s in STEPS[kind]])
-        aid = self.kb._insert("INSERT INTO anomalies (kind, key, env, host, service, metric, title, detail, observed, baseline, spread, score, hits, first_seen, last_seen, status, steps, series, updated_at) "
-                              "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?,?,?,?)",
+        aid = self.kb._insert("INSERT INTO anomalies (kind, key, env, host, service, metric, title, detail, observed, baseline, spread, score, hits, first_seen, last_seen, status, steps, series, updated_at, demo) "
+                              "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?,?,?,?,?)",
                               (kind, key, env, host, service, metric, title, detail, float(observed), float(baseline), float(spread), round(float(score), 2), now, now,
-                               "learning" if learning else "open", steps, ser, now))
+                               "learning" if learning else "open", steps, ser, now, int(bool(demo))))
         row = self.get(aid)
         if not learning and self.on_open is not None:            # the company memory learns from every anomaly that really opened
             try:

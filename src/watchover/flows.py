@@ -75,12 +75,15 @@ class FlowStore:
                 kb._exec("ALTER TABLE net_flows ADD COLUMN tech TEXT DEFAULT ''")
         except Exception:  # noqa: BLE001 - another process added it first
             pass
+        from .demo import ensure_column
+        ensure_column(kb, "net_flows")                       # 1 = an edge only the simulator reported (demo.py purges these)
         self._names: dict[str, str] = {}
         self._names_at = 0.0
         self.tech = None                                     # TechStack (set by Services): technology of each integration
 
     def add(self, events) -> int:
         """Flow observations (attributes flow.dir / flow.process / flow.remote | flow.port / flow.count) -> upserts."""
+        from .demo import is_demo, keep_real
         rows = []
         for o in events:
             a = o.attributes or {}
@@ -96,13 +99,14 @@ class FlowStore:
             except (TypeError, ValueError):
                 n = 1
             ts = (o.timestamp if o.timestamp.tzinfo else o.timestamp.replace(tzinfo=UTC)).isoformat()
-            rows.append((o.host[:120], str(a.get("flow.process") or "?")[:60], d, str(ep)[:80], o.environment or "", n, ts, ts, clean_tags(a.get("flow.tech"))))
+            rows.append((o.host[:120], str(a.get("flow.process") or "?")[:60], d, str(ep)[:80], o.environment or "", n, ts, ts, clean_tags(a.get("flow.tech")),
+                         1 if is_demo(o) else 0))
         if not rows:
             return 0
         with self.lock:
-            sql = ("INSERT INTO net_flows (host, process, dir, endpoint, env, last_count, samples, first_seen, last_seen, tech) VALUES (?,?,?,?,?,?,1,?,?,?)"
+            sql = ("INSERT INTO net_flows (host, process, dir, endpoint, env, last_count, samples, first_seen, last_seen, tech, demo) VALUES (?,?,?,?,?,?,1,?,?,?,?)"
                    + self.kb.upsert_suffix("host, process, dir, endpoint", "last_count=excluded.last_count, samples=net_flows.samples+1, last_seen=excluded.last_seen, "
-                                           "env=excluded.env, tech=CASE WHEN excluded.tech <> '' THEN excluded.tech ELSE net_flows.tech END"))
+                                           "env=excluded.env, tech=CASE WHEN excluded.tech <> '' THEN excluded.tech ELSE net_flows.tech END, " + keep_real("net_flows")))
             self.kb.executemany(sql, rows)
         return len(rows)
 

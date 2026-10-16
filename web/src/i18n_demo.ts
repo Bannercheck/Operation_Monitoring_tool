@@ -1,0 +1,27 @@
+// UI strings of the simulator switch and the demo purge (Operations › ⋯ › Simulation, System › Demo data), Turkish first;
+// merged into the main table by i18n.ts. Category keys match watchover.demo.CATEGORIES.
+export const SIM_STRINGS: Record<string, [string, string]> = {
+  sim_state_on: ["AÇIK", "ON"], sim_state_off: ["KAPALI", "OFF"], sim_state_paused: ["DURDU, demo verisi duruyor", "STOPPED, demo data kept"],
+  sim_title_on: ["Simülasyonu başlat", "Start the simulator"], sim_title_off: ["Simülasyonu kapat ve temizle", "Switch the simulator off and purge"],
+  sim_on_lead: ["Simülasyon yalnız gerçek verisi olmayan bir kurulumda çalışır. Ürettiği her şey demo olarak işaretlenir; hiçbir öğrenme (anomali tabanı, hafıza, eğitim örnekleri, aksiyon ajanı) ondan beslenmez. Kapatıldığında simülasyonun ürettiği her şey silinir.",
+    "The simulator runs only on an installation without real data. Everything it produces is marked as demo; no learning (anomaly baselines, memory, training examples, the action agent) is ever fed from it. Switching it off deletes everything it produced."],
+  sim_start: ["Başlat", "Start"],
+  sim_blocked: ["Simülasyon başlatılamaz: bu kurulumda gerçek veri var. Gerçek veri ile simülasyon verisi asla karışmaz.", "The simulator cannot start: this installation has real data. Real and simulated data never mix."],
+  sim_reason_agents: ["Kayıtlı ajan", "Enrolled agent"], sim_reason_senders: ["Veri gönderen", "Sender"], sim_reason_rum_apps: ["RUM uygulaması", "RUM app"],
+  sim_reason_sources: ["Çekme kaynağı", "Pull source"], sim_reason_traces: ["İz gönderen sunucu", "Traced host"],
+  sim_off_lead: ["Simülasyon kapatılınca ürettiği her şey her depodan silinir: aşağıdaki sayılar. Gerçek veriye dokunulmaz. Bu işlem geri alınamaz.",
+    "Switching the simulator off deletes everything it produced from every store: the counts below. Real data is not touched. This cannot be undone."],
+  sim_total: ["Toplam: {n} kayıt", "Total: {n} items"], sim_confirm: ["Kapat ve hepsini sil", "Switch off and delete it all"], sim_cancel: ["Vazgeç", "Cancel"],
+  sim_counting: ["Sayılıyor…", "Counting…"], sim_done: ["Simülasyon kapatıldı, {n} demo kaydı silindi. Sistem temiz.", "Simulator off, {n} demo items deleted. The system is clean."],
+  sim_nothing: ["Silinecek demo verisi yok.", "No demo data to delete."],
+  sim_paused_banner: ["Simülasyon durdu: gerçek veri geldi ({s}). Gerçek veri ile karışmasın diye simülasyon kendiliğinden durdu; demo verisi hiçbir öğrenmeye girmez ve 'Kapat ve temizle' ile silinir.",
+    "The simulator stopped: real data arrived ({s}). It stopped by itself so the data never mix; its demo data feeds no learning and goes with 'Switch off and purge'."],
+  sim_leftover_banner: ["Önceki simülasyondan kalan demo verisi var. 'Kapat ve temizle' ile silin.", "Demo data from an earlier simulation is still stored. Delete it with 'Switch off and purge'."],
+  sim_details: ["Ayrıntı", "Details"],
+  sim_cat_lines: ["Log satırları", "Log lines"], sim_cat_metrics: ["Metrikler ve geçmiş", "Metrics and history"], sim_cat_traces: ["İzler ve RUM", "Traces and RUM"],
+  sim_cat_anomalies: ["Anomaliler ve öğrenme durumu", "Anomalies and learning state"], sim_cat_alerts: ["Uyarılar ve eşik durumları", "Alerts and threshold states"],
+  sim_cat_topology: ["Envanter, uygulamalar, topoloji", "Inventory, applications, topology"], sim_cat_bizflow: ["İş akışları", "Business flows"],
+  sim_cat_actions: ["Aksiyonlar ve vakalar", "Actions and cases"], sim_cat_datasets: ["Veri setleri ve ITSM demo", "Datasets and ITSM demo"],
+  sim_cat_llm_memory: ["LLM hafızası (sohbetler, değerlendirmeler, LLM çağrıları, kurallar)", "LLM memory (chats, ratings, LLM calls, rules)"],
+  sim_cat_models: ["Öğrenilmiş modeller ve şablonlar", "Learned models and templates"],
+};

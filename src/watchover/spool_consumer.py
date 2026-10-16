@@ -24,6 +24,18 @@ import threading
 import time
 from pathlib import Path
 
+from .demo import sender_name
+
+
+def _sender(h: dict) -> str:
+    """The stored sender of a spooled batch: "simulator" only for declared synthetic data (agent.py --simulate) in demo mode;
+    anywhere else that name is a real sender's and is renamed (demo.sender_name)."""
+    from .demo import SIM_AGENT, enabled
+    name = h.get("agent") or "unknown"
+    if str(name).strip().lower() == SIM_AGENT and enabled() and not h.get("agent_id"):
+        return SIM_AGENT
+    return sender_name(name)
+
 
 def _sha(s: str) -> str:
     return hashlib.sha256(s.encode()).hexdigest()
@@ -42,6 +54,7 @@ class SpoolConsumer:
         self.dir = Path(spool_dir)
         self.dir.mkdir(parents=True, exist_ok=True)
         self.store, self.registry, self.key_fn = store, registry, key_fn or (lambda: "")
+        self.exporters: list = []                           # fn(spool_dir) run with the auth export (agent_update: agent-update.json)
         self.handlers = handlers or {}                      # path -> fn(header, body) for non-/ingest paths (sensors, OTLP)
         self.apps_fn = apps_fn                              # RUM / mobile apps: key -> name, origins (checked by the Go side too)
         self.interval = interval
@@ -157,11 +170,12 @@ class SpoolConsumer:
                 self._parsed_ms += (time.perf_counter() - t0) * 1000
             else:
                 self.raw_records += 1
-                n = self.store.ingest(h.get("file") or "agent.log", body, h.get("agent") or "unknown", env=h.get("env") or "", site=h.get("site") or "",
+                n = self.store.ingest(h.get("file") or "agent.log", body, _sender(h), env=h.get("env") or "", site=h.get("site") or "",
                                       agent_id=h.get("agent_id"))
             if h.get("agent_id") is not None and self.registry is not None:
                 try:
-                    self.registry.touch(int(h["agent_id"]), h.get("ip", ""), n)
+                    self.registry.touch(int(h["agent_id"]), h.get("ip", ""), n, version=h.get("ver") or "", engine=h.get("eng") or "",
+                                        update=h.get("upd") or "")          # the agent's build and self-update state (agent_update.py)
                 except Exception:  # noqa: BLE001
                     pass
         elif path in ("/otlp/logs", "/otlp/metrics") and h.get("v") == 2 and h.get("kind") == "parsed":
@@ -224,6 +238,11 @@ class SpoolConsumer:
             if self.go_parse != "off":
                 try:
                     self.export_profiles()
+                except Exception:  # noqa: BLE001
+                    pass
+            for fn in self.exporters:
+                try:
+                    fn(self.dir)
                 except Exception:  # noqa: BLE001
                     pass
             self._auth_at = time.time()

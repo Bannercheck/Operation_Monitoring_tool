@@ -13,6 +13,14 @@ RUN npm ci --no-audit --no-fund
 COPY web ./
 RUN npm run build
 
+# stage 2: the Go host agent (wo-agent), built exactly as Dockerfile.receiver builds it. keyd (same image) hashes and signs these
+# binaries for the agents' self-update; the dashboard copies them into the receiver's spool, so what is served is what was signed.
+FROM docker.io/library/golang:1.24-alpine AS goagent
+WORKDIR /build/goagent
+COPY goagent/ ./
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /out/wo-agent-linux-amd64 . \
+    && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o /out/wo-agent-linux-arm64 .
+
 FROM docker.io/library/python:3.11-slim AS base
 ARG GIT_REV=-
 ARG VERSION=dev
@@ -36,6 +44,7 @@ COPY scripts ./scripts
 COPY agent_actions ./agent_actions
 COPY .streamlit ./.streamlit
 COPY --from=web /web/dist ./web/dist
+COPY --from=goagent /out/ ./goagent/dist/
 RUN chown -R 10001:0 /app && chmod -R g=u /app
 USER 10001
 VOLUME ["/data"]

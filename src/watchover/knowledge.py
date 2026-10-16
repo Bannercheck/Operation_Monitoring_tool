@@ -90,6 +90,7 @@ class Knowledge(Database):
         super().__init__(url)
         self.embedder = embedder
         self.embed_name = ""            # name of the model behind `embedder` (bge-m3 …); "" -> hash fallback
+        self.demo_fn = None             # set by Services: True while the simulator runs or its data is still stored (demo.py)
         self._schema()
         self._base: dict | None = None
 
@@ -121,6 +122,17 @@ class Knowledge(Database):
         self._exec(f"""CREATE TABLE IF NOT EXISTS rules (
             id {pk}, kind TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, reason TEXT DEFAULT '', source TEXT DEFAULT '',
             status TEXT DEFAULT 'proposed', created_at TEXT, decided_at TEXT)""")
+        from .demo import ensure_column
+        for t in ("lessons", "rules", "llm_calls", "answer_feedback", "eval_runs"):     # 1 = made in demo context (demo.py purges these)
+            ensure_column(self, t)
+
+    def _demo_now(self) -> bool:
+        """Demo context: the simulator runs or its data is still stored, so what the assistant sees now is demo data."""
+        f = self.demo_fn
+        try:
+            return bool(f and f())
+        except Exception:  # noqa: BLE001
+            return False
 
     # ---------------------------------------------------------------- write
     @property
@@ -144,8 +156,12 @@ class Knowledge(Database):
         return _pack(vec), model
 
     def add(self, kind: str, title: str, text: str, *, key: str = "", dataset: str = "", incident_id: str = "", root_cause: str = "",
-            services: list | None = None, recovery: str = "", tags: list | None = None, refs: list | None = None, meta: dict | None = None) -> int:
-        """Insert one lesson; identical (kind, title, text) is a no-op that returns the existing id."""
+            services: list | None = None, recovery: str = "", tags: list | None = None, refs: list | None = None, meta: dict | None = None,
+            demo: bool | None = None) -> int:
+        """Insert one lesson; identical (kind, title, text) is a no-op that returns the existing id. demo=None: a saved chat made in
+        demo context is demo (removed with the demo data, never a training example); notes and documents people write are not."""
+        if demo is None:
+            demo = kind == "chat" and self._demo_now()
         h = hashlib.sha256(f"{kind}|{title}|{text}".encode()).hexdigest()[:16]
         ex = self._exec("SELECT id FROM lessons WHERE content_hash=?", (h,))
         if ex:
@@ -153,11 +169,11 @@ class Knowledge(Database):
         toks = " ".join(sorted(_tokens(f"{title} {text} {' '.join(services or [])} {' '.join(tags or [])}")))
         emb, model = self._embed2(f"{title}\n{text}")
         return self._insert(
-            "INSERT INTO lessons (kind, key, title, text, tokens, dataset, incident_id, root_cause, services, recovery, tags, refs, occurrences, content_hash, embedding, embed_model, meta, created_at, updated_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO lessons (kind, key, title, text, tokens, dataset, incident_id, root_cause, services, recovery, tags, refs, occurrences, content_hash, embedding, embed_model, meta, created_at, updated_at, demo) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (kind, key, title, text, toks, dataset, incident_id, root_cause, json.dumps(services or [], ensure_ascii=False), recovery,
              json.dumps(tags or [], ensure_ascii=False), json.dumps(refs or [], ensure_ascii=False), 1, h, emb, model,
-             json.dumps(meta or {}, ensure_ascii=False, default=str), _now(), _now()))
+             json.dumps(meta or {}, ensure_ascii=False, default=str), _now(), _now(), int(bool(demo))))
 
     def add_event(self, kind: str, key: str, title: str, text: str, *, services: list | None = None, tags: list | None = None,
                   meta: dict | None = None, dataset: str = "") -> int:
@@ -247,25 +263,27 @@ class Knowledge(Database):
         return ids
 
     def add_feedback(self, dataset: str, inc, root, verdict: str, correct: str = "", comment: str = "", alt_type: str = "",
-                     root_type: str = "", mark_noise: bool = False) -> dict:
-        """Thumbs up/down on a card, with an optional corrected root cause. Wrong verdicts turn into rule proposals."""
+                     root_type: str = "", mark_noise: bool = False, demo: bool = False) -> dict:
+        """Thumbs up/down on a card, with an optional corrected root cause. Wrong verdicts turn into rule proposals. demo=True: a card
+        of a demo / sample dataset: the verdict and its proposals are demo rows (never applied as real rules, removed with the demo data)."""
         text = (f"{'👍' if verdict == 'up' else '👎'} {inc.id} {inc.title[:120]}\nRoot cause shown: {root.template[:120]} ({', '.join(root.services)})"
                 + (f"\nCorrect root cause: {correct}" if correct else "") + (f"\nComment: {comment}" if comment else ""))
         lid = self.add("feedback", f"{inc.id} {verdict}", text, dataset=dataset, incident_id=inc.id, root_cause=root.template,
-                       services=inc.affected_services, tags=[verdict], meta={"correct": correct, "alt_type": alt_type, "root_type": root_type, "noise": mark_noise})
+                       services=inc.affected_services, tags=[verdict], meta={"correct": correct, "alt_type": alt_type, "root_type": root_type, "noise": mark_noise},
+                       demo=demo)
         proposals = []
         if verdict == "down":
             if mark_noise and root_type:
-                proposals.append(self.propose("noise_type", root_type, "1", f"{inc.id}: card marked as noise", f"feedback:{lid}"))
+                proposals.append(self.propose("noise_type", root_type, "1", f"{inc.id}: card marked as noise", f"feedback:{lid}", demo=demo))
             elif mark_noise:                                   # log data without alarm types: the root template itself is the noise key
-                proposals.append(self.propose("noise_template", root.template[:200], "1", f"{inc.id}: card marked as noise", f"feedback:{lid}"))
+                proposals.append(self.propose("noise_template", root.template[:200], "1", f"{inc.id}: card marked as noise", f"feedback:{lid}", demo=demo))
             elif alt_type and alt_type != root_type:
                 cur = float(scenario.CAUSE_RANK.get(alt_type, 1.0))
                 proposals.append(self.propose("cause_rank", alt_type, str(max(cur + 1.0, float(scenario.CAUSE_RANK.get(root_type, 1.0)) + 0.5)),
-                                              f"{inc.id}: '{alt_type}' chosen as the real root cause over '{root_type}'", f"feedback:{lid}"))
+                                              f"{inc.id}: '{alt_type}' chosen as the real root cause over '{root_type}'", f"feedback:{lid}", demo=demo))
                 if root_type:
                     proposals.append(self.propose("cause_rank", root_type, str(max(0.5, float(scenario.CAUSE_RANK.get(root_type, 1.0)) - 1.0)),
-                                                  f"{inc.id}: '{root_type}' was shown as root cause but rejected", f"feedback:{lid}"))
+                                                  f"{inc.id}: '{root_type}' was shown as root cause but rejected", f"feedback:{lid}", demo=demo))
         return {"lesson": lid, "proposals": proposals}
 
     def delete(self, lesson_id: int) -> None:
@@ -351,13 +369,16 @@ class Knowledge(Database):
                 "index_model": self.index_model, "embedded": self.embed_coverage()}
 
     # ---------------------------------------------------------------- rules: proposed by feedback / facts, approved by a human
-    def propose(self, kind: str, key: str, value: str, reason: str = "", source: str = "manual") -> int:
+    def propose(self, kind: str, key: str, value: str, reason: str = "", source: str = "manual", demo: bool | None = None) -> int:
+        """A rule proposal; one the LLM made in demo context (or from demo data) is demo: removed with the demo data, never applied as real."""
         assert kind in RULE_KINDS, kind
+        if demo is None:
+            demo = str(source).startswith("llm") and self._demo_now()
         ex = self._exec("SELECT id FROM rules WHERE kind=? AND key=? AND value=? AND status='proposed'", (kind, key, value))
         if ex:
             return int(ex[0]["id"])
-        return self._insert("INSERT INTO rules (kind, key, value, reason, source, status, created_at) VALUES (?,?,?,?,?,'proposed',?)",
-                            (kind, key, value, reason, source, _now()))
+        return self._insert("INSERT INTO rules (kind, key, value, reason, source, status, created_at, demo) VALUES (?,?,?,?,?,'proposed',?,?)",
+                            (kind, key, value, reason, source, _now(), int(bool(demo))))
 
     def rules(self, status: str | None = None) -> list[dict]:
         return self._exec("SELECT * FROM rules WHERE (?='' OR status=?) ORDER BY id DESC", (status or "", status or ""))
@@ -406,12 +427,12 @@ class Knowledge(Database):
 
     # ---------------------------------------------------------------- LLM quality: every call, every verdict, every benchmark run
     def log_call(self, rec: dict) -> None:
-        self._exec("INSERT INTO llm_calls (ts, provider, model, kind, ok, latency_ms, prompt_chars, answer_chars, citations, grounded, invalid, error, tokens_in, tokens_out, tokens_est) "
-                   "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        self._exec("INSERT INTO llm_calls (ts, provider, model, kind, ok, latency_ms, prompt_chars, answer_chars, citations, grounded, invalid, error, tokens_in, tokens_out, tokens_est, demo) "
+                   "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                    (_now(), rec.get("provider", ""), rec.get("model", ""), rec.get("kind", ""), int(rec.get("ok", 1)), int(rec.get("latency_ms", 0)),
                     int(rec.get("prompt_chars", 0)), int(rec.get("answer_chars", 0)), int(rec.get("citations", 0)), int(rec.get("grounded", 0)),
                     int(rec.get("invalid", 0)), str(rec.get("error", ""))[:300], int(rec.get("tokens_in", 0) or 0), int(rec.get("tokens_out", 0) or 0),
-                    int(rec.get("tokens_est", 0) or 0)))
+                    int(rec.get("tokens_est", 0) or 0), int(self._demo_now())))
 
     def token_usage(self) -> dict:
         """The token meter: in / out / total and call count for today, the last 7 and 30 days and all time (UTC), the latest
@@ -447,12 +468,13 @@ class Knowledge(Database):
             self._exec("ALTER TABLE answer_feedback ADD COLUMN answer TEXT DEFAULT ''")
         except Exception:  # noqa: BLE001 - column already there
             pass
-        self._exec("INSERT INTO answer_feedback (ts, model, question, verdict, note, answer) VALUES (?,?,?,?,?,?)", (_now(), model, question[:300], verdict, note[:300], answer[:4000]))
+        self._exec("INSERT INTO answer_feedback (ts, model, question, verdict, note, answer, demo) VALUES (?,?,?,?,?,?,?)",
+                   (_now(), model, question[:300], verdict, note[:300], answer[:4000], int(self._demo_now())))
 
     def save_eval(self, model: str, dataset: str, result: dict) -> int:
-        return self._insert("INSERT INTO eval_runs (ts, model, dataset, n, correct, cited, grounded, latency_ms, detail) VALUES (?,?,?,?,?,?,?,?,?)",
+        return self._insert("INSERT INTO eval_runs (ts, model, dataset, n, correct, cited, grounded, latency_ms, detail, demo) VALUES (?,?,?,?,?,?,?,?,?,?)",
                             (_now(), model, dataset, result["n"], result["correct"], result["cited"], result["grounded"], result["latency_ms"],
-                             json.dumps(result.get("detail", []), ensure_ascii=False)[:20000]))
+                             json.dumps(result.get("detail", []), ensure_ascii=False)[:20000], int(self._demo_now())))
 
     def eval_runs(self, limit: int = 20) -> list[dict]:
         return self._exec("SELECT * FROM eval_runs ORDER BY id DESC LIMIT ?", (limit,))

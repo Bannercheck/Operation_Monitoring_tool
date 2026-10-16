@@ -35,9 +35,19 @@ class ConfigIn(BaseModel):
     mapping: Optional[str] = None
 
 
+def _systems() -> list:
+    """The selectable systems; the demo ticket set only in demo mode (WATCHOVER_DEMO=1)."""
+    from ... import demo as wo_demo
+    return (["demo"] if wo_demo.enabled() else []) + [*SYSTEMS, "generic"]
+
+
 def _cfg() -> dict:
+    from ... import demo as wo_demo
     c = wo_settings.load()
-    return {"system": c.get("x_itsm_system") or "demo", "base": c.get("x_itsm_base", ""), "user": c.get("x_itsm_user", ""), "password": c.get("x_itsm_pass", ""),
+    system = c.get("x_itsm_system") or ""                     # nothing connected until someone picks a system (no demo tickets by default)
+    if system == "demo" and not wo_demo.enabled():
+        system = ""                                           # a production install never shows the demo tickets
+    return {"system": system, "base": c.get("x_itsm_base", ""), "user": c.get("x_itsm_user", ""), "password": c.get("x_itsm_pass", ""),
             "token": c.get("x_itsm_token", ""), "query": c.get("x_itsm_query", ""), "path": c.get("x_itsm_path", ""), "mapping": c.get("x_itsm_mapping", "")}
 
 
@@ -62,6 +72,8 @@ def live_signals(ls, window_min: int = 15, allow=None) -> list[dict]:
 
 
 def fetch(c: dict) -> list:
+    if not c["system"]:
+        return []
     if c["system"] == "demo":
         return wo_itsm.demo_tickets()
     if c["system"] == "generic":
@@ -84,14 +96,17 @@ def get_config(acc=Depends(access), user=Depends(require("page.itsm"))):
     c = _cfg()
     if not acc.install("act.itsm"):
         return {"system": c["system"], "base": "", "user": "", "password": "", "token": "", "query": "", "path": "", "mapping": "",
-                "systems": ["demo", *SYSTEMS, "generic"], "readonly": True}
-    return {**c, "password": MASK if c["password"] else "", "token": MASK if c["token"] else "", "systems": ["demo", *SYSTEMS, "generic"]}
+                "systems": _systems(), "readonly": True}
+    return {**c, "password": MASK if c["password"] else "", "token": MASK if c["token"] else "", "systems": _systems()}
 
 
 @router.put("/config")
 def put_config(body: ConfigIn, user=Depends(require_install("act.itsm"))):
     m = {"system": "x_itsm_system", "base": "x_itsm_base", "user": "x_itsm_user", "password": "x_itsm_pass", "token": "x_itsm_token", "query": "x_itsm_query", "path": "x_itsm_path", "mapping": "x_itsm_mapping"}
     vals = {m[k]: v for k, v in body.model_dump().items() if v is not None and v != MASK}
+    if vals.get("x_itsm_system") == "demo":
+        from ... import demo as wo_demo
+        wo_demo.require()                                     # 403 on a production install
     cur = _cfg()
     new_base = body.model_dump().get("base")
     if new_base is not None and new_base != cur.get("base") and body.password is None and body.token is None:

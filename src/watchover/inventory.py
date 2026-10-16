@@ -49,6 +49,9 @@ class Inventory:
         pk = kb.pk
         cols = ", ".join(f"{f} TEXT DEFAULT ''" for f in FIELDS if f != "hostname")
         kb._exec(f"CREATE TABLE IF NOT EXISTS inventory (id {pk}, hostname TEXT NOT NULL UNIQUE, {cols}, created_at TEXT, updated_at TEXT)")
+        from .demo import ensure_column
+        ensure_column(kb, "inventory")                       # 1 = seeded by the simulator or added for a host only it wrote (demo.py)
+        self.demo_host_fn = None                             # set by Services: live.is_demo_host
         self._index: dict[str, dict] | None = None
         self._index_at = 0.0
         self.lock = threading.Lock()
@@ -85,10 +88,17 @@ class Inventory:
             sets = ", ".join(f"{k}=?" for k in vals)
             self.kb._exec(f"UPDATE inventory SET {sets}, updated_at=? WHERE hostname=?", (*vals.values(), now, h))
         else:
-            cols = ", ".join(["hostname", *vals, "created_at", "updated_at"])
-            self.kb._exec(f"INSERT INTO inventory ({cols}) VALUES ({', '.join('?' * (len(vals) + 3))})", (h, *vals.values(), now, now))
+            cols = ", ".join(["hostname", *vals, "created_at", "updated_at", "demo"])
+            self.kb._exec(f"INSERT INTO inventory ({cols}) VALUES ({', '.join('?' * (len(vals) + 4))})", (h, *vals.values(), now, now, int(self._demo(h, rec))))
         self._index = None
         return self.get(h)
+
+    def _demo(self, h: str, rec: dict | None = None) -> bool:
+        """A new row is demo when the simulator seeds it or it names a host only demo input wrote (removed with the demo data)."""
+        if rec and rec.get("demo"):
+            return True
+        f = self.demo_host_fn
+        return bool(f and f(h))
 
     def promote(self, hosts: list, criticality: str = "normal") -> int:
         """Discovered hosts into the inventory in one call: a pool of 20 is one click and one multi-row INSERT, not 20 PUTs.
@@ -105,9 +115,9 @@ class Inventory:
             recs[h] = vals
         known = {r["hostname"]: r for r in self.kb._exec("SELECT * FROM inventory")} if recs else {}
         now = datetime.now(UTC).isoformat(timespec="seconds")
-        new = [(h, *v.values(), now, now) for h, v in recs.items() if h not in known]
+        new = [(h, *v.values(), now, now, int(self._demo(h))) for h, v in recs.items() if h not in known]
         if new:
-            cols = ["hostname", *next(iter(recs.values())), "created_at", "updated_at"]
+            cols = ["hostname", *next(iter(recs.values())), "created_at", "updated_at", "demo"]
             self.kb.executemany(f"INSERT INTO inventory ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})", new)
         for h, v in recs.items():
             if h in known:

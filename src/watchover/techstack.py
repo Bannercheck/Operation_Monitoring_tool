@@ -337,6 +337,8 @@ class TechStack:
         kb._exec("CREATE INDEX IF NOT EXISTS integ_tech_target ON integ_tech(target)")
         kb._exec("""CREATE TABLE IF NOT EXISTS tech_seen (host TEXT NOT NULL, source TEXT NOT NULL, k TEXT NOT NULL, v TEXT NOT NULL, n INTEGER DEFAULT 0,
             last_seen TEXT, PRIMARY KEY (host, source, k, v))""")
+        from .demo import ensure_column
+        ensure_column(kb, "tech_seen")                       # 1 = evidence only simulator input gave (demo.py purges these)
         self._plock = threading.Lock()
         self._pending: dict[tuple, list] = {}
         self._flushed_at = time.time()
@@ -351,11 +353,15 @@ class TechStack:
     def observe(self, events) -> None:
         """Live events (Services._on_ingest): canonical technology tokens per host. Cheap: a few dict lookups per event, the
         rest per unique (host, value) of the batch."""
+        from .demo import is_demo
         uniq: set = set()
+        demo_hosts: set = set()
         for o in events:
             h = o.host
             if not h:
                 continue
+            if is_demo(o):
+                demo_hosts.add(h)
             a = o.attributes
             if a:
                 for k in TRACE_ATTRS:
@@ -396,7 +402,7 @@ class TechStack:
                 fam = (det.get((agent, k)) or {}).get("family") if agent else None
                 if fam in LOG_FAMILY:
                     out.append((h, "log", "family", fam))
-        self._note(out)
+        self._note([(*r, 1) for r in out if r[0] in demo_hosts] + [r for r in out if r[0] not in demo_hosts])
 
     def observe_spans(self, spans) -> None:
         """TraceStore.add_spans hook: the services each host runs (for the integration map) and SOAP-looking operations."""
@@ -406,11 +412,12 @@ class TechStack:
             if not h or sp.get("kind") in ("user", "mobile", "log"):
                 continue
             s = sp.get("service")
+            dm = (1,) if sp.get("demo") else ()
             if s:
-                out.add((h, "trace", "service", str(s)[:120]))
+                out.add((h, "trace", "service", str(s)[:120], *dm))
             op = (sp.get("operation") or "").lower()
             if sp.get("kind") == "server" and (".asmx" in op or ".svc" in op or "wsdl" in op or "/soap" in op):
-                out.add((h, "trace", "soap", "1"))
+                out.add((h, "trace", "soap", "1", *dm))
         self._note(out)
 
     def _note(self, rows) -> None:
@@ -420,13 +427,14 @@ class TechStack:
         with self._plock:
             for r in rows:
                 key = (str(r[0])[:120], r[1], r[2], str(r[3])[:120])
+                demo = 1 if len(r) > 4 and r[4] else 0
                 p = self._pending.get(key)
                 if p is None:
                     if len(self._pending) > 20000:
                         continue
-                    self._pending[key] = [1, now]
+                    self._pending[key] = [1, now, demo]
                 else:
-                    p[0] += 1; p[1] = now
+                    p[0] += 1; p[1] = now; p[2] = p[2] and demo     # real evidence for the key: the row is real
             due = time.time() - self._flushed_at > 30
         if due:
             self.flush()
@@ -436,9 +444,10 @@ class TechStack:
             items, self._pending, self._flushed_at = self._pending, {}, time.time()
         if items:
             try:
-                self.kb.executemany("INSERT INTO tech_seen (host, source, k, v, n, last_seen) VALUES (?,?,?,?,?,?)" + self.kb.upsert_suffix(
-                    "host, source, k, v", "n=CASE WHEN tech_seen.n > 1000000000 THEN tech_seen.n ELSE tech_seen.n + excluded.n END, last_seen=excluded.last_seen"),
-                    [(h, s, k, v, n, ts) for (h, s, k, v), (n, ts) in items.items()])
+                from .demo import keep_real
+                self.kb.executemany("INSERT INTO tech_seen (host, source, k, v, n, last_seen, demo) VALUES (?,?,?,?,?,?,?)" + self.kb.upsert_suffix(
+                    "host, source, k, v", "n=CASE WHEN tech_seen.n > 1000000000 THEN tech_seen.n ELSE tech_seen.n + excluded.n END, last_seen=excluded.last_seen, "
+                    + keep_real("tech_seen")), [(h, s, k, v, n, ts, int(dm)) for (h, s, k, v), (n, ts, *rest) in items.items() for dm in [rest[0] if rest else 0]])
             except Exception:  # noqa: BLE001 - evidence is best effort
                 pass
         if time.time() - self._pruned_at > 3600:

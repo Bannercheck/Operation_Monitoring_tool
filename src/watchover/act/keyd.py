@@ -13,15 +13,24 @@ to rewrite history:
 * sign_job(envelope)                Ed25519 (dispatch.key) only for well-formed envelopes: window <= 10 min, per-agent seq above the
                                     last it signed, within keyd.json limits (the API cannot write that file), never while KILL exists.
 * pseudo(email)                     op_<hex12> actor pseudonyms (pseudo.key).
+* release()                         Ed25519 (release.key, created on first use) over the manifest of the host-agent release that
+                                    keyd hashes ITSELF from its own read-only release directory (the wo-agent binaries and the
+                                    installer scripts in its image): the caller passes no hash, so a compromised API or receiver
+                                    cannot get a binary of its choosing signed. Agents pin this key at install and accept a
+                                    self-update only with this signature (docs/KURULUM_DOCKER.md, "Ajan güncellemesi").
+* sign_pin(host, version)           Ed25519 (release.key) over a host-bound, expiring "go back to this version" order, only for a
+                                    version keyd signed before (releases.json): the one way an agent accepts an older binary.
 * rotate_dispatch, export_begin / export_finish (two pass-phrase halves, one per act.policy holder), status, create.
 
-Every MAC, signature and refusal is appended to sig.log. Files: dispatch.key, anchor.key (Ed25519 seeds), audit.key, pseudo.key
-(32 random bytes), head.json, keyd.json (limits), sig.log, anchors.log, jobs.json, KILL — all in one 0700 directory.
+Every MAC, signature and refusal is appended to sig.log. Files: dispatch.key, anchor.key, release.key (Ed25519 seeds), audit.key,
+pseudo.key (32 random bytes), head.json, keyd.json (limits), sig.log, anchors.log, jobs.json, releases.json, KILL — all in one
+0700 directory. release.key is separate from dispatch.key on purpose: a dispatch signature only runs templates the host's
+root-owned allowlist already holds, a release signature replaces the program that enforces that allowlist.
 
 Transport: one JSON object per line over a Unix socket (single-host installs: own OS user, socket 0660) or TCP with mutual TLS
 (compose: `python -m watchover.act.keyd serve --tcp 0.0.0.0:8650 --tls /keys/tls --client-out /secrets/keyd`).
 
-    python -m watchover.act.keyd serve  --dir /keys (--unix /run/watchover-keyd/keyd.sock | --tcp HOST:PORT --tls DIR)
+    python -m watchover.act.keyd serve  --dir /keys (--unix /run/watchover-keyd/keyd.sock | --tcp HOST:PORT --tls DIR) [--release-dir D]
     python -m watchover.act.keyd init   --dir /keys            create the keys now (otherwise the API asks when act_mode leaves off)
     python -m watchover.act.keyd tls-init --dir /keys/tls --client-out /secrets/keyd
     python -m watchover.act.keyd status --dir /keys
@@ -39,6 +48,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import secrets
 import socket
 import socketserver
@@ -56,6 +66,30 @@ DEFAULT_LIMITS = {"act_per_hour": 120, "act_per_host_hour": 10, "max_window_s": 
 JOB_FIELDS = ("job_id", "agent_id", "host", "seq", "mode", "not_before", "expires_at", "nonce")
 EXPORT_TTL_S = 900
 MAX_LINE = 8 << 20
+# the host-agent release keyd signs: the Go binaries (WATCHOVER_AGENT_BIN_DIR, else <repo>/goagent/dist) and the installer scripts
+RELEASE_BINS = ("wo-agent-linux-amd64", "wo-agent-linux-arm64")
+RELEASE_SCRIPTS = ("agent-install.sh", "agent-boot.sh")
+RELEASE_KEY = "release.key"
+PIN_MAX_S = 30 * 86400
+_REPO = Path(__file__).resolve().parents[3]
+# goagent/internal/ship.Marker: "WO-AGENT-VERSION=<semver>;" is a literal in every wo-agent build
+VERSION_RE = re.compile(rb"WO-AGENT-VERSION=([0-9]+\.[0-9]+\.[0-9]+[0-9A-Za-z.+-]*);")
+
+
+def binary_version(data: bytes) -> str:
+    """The release version compiled into a wo-agent binary ("" without a marker, KeydError when two markers disagree)."""
+    found = {m.group(1).decode() for m in VERSION_RE.finditer(data)}
+    if len(found) > 1:
+        raise KeydError("release", "binary carries more than one version marker")
+    return found.pop() if found else ""
+
+
+def release_sources(release_dir: Optional[str] = None) -> Dict[str, Path]:
+    bins = Path(release_dir or os.environ.get("WATCHOVER_AGENT_BIN_DIR") or (_REPO / "goagent" / "dist"))
+    out = {n: bins / n for n in RELEASE_BINS}
+    out.update({n: _REPO / "scripts" / n for n in RELEASE_SCRIPTS})
+    out["agent.py"] = _REPO / "agent.py"                # the collector elsewhere (macOS, other CPUs, --python-agent)
+    return out
 
 
 class KeydError(Exception):
@@ -103,9 +137,11 @@ def fingerprint(pub: str) -> str:
 class KeyStore:
     """The keys and the head. Thread-safe; one instance per key directory (the keyd process, or the embedded demo custody)."""
 
-    def __init__(self, path, prefix: str = "k1", durable: bool = True):
+    def __init__(self, path, prefix: str = "k1", durable: bool = True, release_dir: Optional[str] = None):
         self.dir = Path(path)
         self.prefix = prefix
+        self.release_dir = release_dir                 # None: WATCHOVER_AGENT_BIN_DIR of this process, else <repo>/goagent/dist
+        self._rel_cache: tuple = (None, None)
         self.durable = durable                 # fsync head.json on every MAC (tests on tmpfs may turn it off)
         self._lock = threading.RLock()
         self._keys: Dict[str, bytes] = {}
@@ -407,11 +443,110 @@ class KeyStore:
                 raise KeydError("export", "the second half must come from a second person")
             if len(part or "") < 8:
                 raise KeydError("export", "each pass-phrase half needs at least 8 characters")
-            files = {n: (self.dir / n).read_text().strip() for n in ED_KEYS + HMAC_KEYS + ("keyd.json", "head.json", "jobs.json")
+            files = {n: (self.dir / n).read_text().strip() for n in ED_KEYS + HMAC_KEYS + (RELEASE_KEY, "releases.json", "keyd.json",
+                                                                                         "head.json", "jobs.json")
                      if (self.dir / n).exists()}
             blob = seal_export(files, p["part"], part)
             self.log("export", by=[p["by"], by])
             return {"blob": blob}
+
+    # ---------------------------------------------------------------- host-agent releases (self-update)
+    def _release_key(self):
+        """release.key, created (0600, never overwritten) on first use: independent of the act keys and of act_mode."""
+        if not (self.dir / RELEASE_KEY).exists():
+            self.dir.mkdir(parents=True, exist_ok=True)
+            try:
+                os.chmod(self.dir, 0o700)
+            except OSError:
+                pass
+            self._write_new(RELEASE_KEY, base64.b64encode(secrets.token_bytes(32)))
+            self.log("create", keys=[RELEASE_KEY])
+        return self._ed(RELEASE_KEY)
+
+    def _releases(self) -> List[dict]:
+        p = self.dir / "releases.json"
+        if not p.exists():
+            return []
+        try:
+            v = json.loads(p.read_text())
+            return v if isinstance(v, list) else []
+        except ValueError:
+            raise KeydError("release", "releases.json unreadable")
+
+    def _release_files(self) -> tuple:
+        """sha256 / size of the release files in keyd's own release directory and the version compiled into the binaries."""
+        src = release_sources(self.release_dir)
+        stats = []
+        for n, p in sorted(src.items()):
+            try:
+                st = p.stat()
+                stats.append((n, st.st_size, st.st_mtime_ns))
+            except OSError:
+                stats.append((n, -1, 0))
+        key, val = self._rel_cache
+        if key == stats:
+            return val
+        files, versions = {}, set()
+        for n, p in sorted(src.items()):
+            try:
+                data = p.read_bytes()
+            except OSError:
+                continue
+            files[n] = {"sha256": hashlib.sha256(data).hexdigest(), "size": len(data)}
+            if n in RELEASE_BINS:
+                v = binary_version(data)
+                if not v:
+                    raise KeydError("release", f"{n} carries no version marker (not a wo-agent build)")
+                versions.add(v)
+        if not any(n in files for n in RELEASE_BINS):
+            raise KeydError("release", f"no wo-agent binary in {src[RELEASE_BINS[0]].parent}")
+        if len(versions) != 1:
+            raise KeydError("release", f"the binaries disagree on their version: {sorted(versions)}")
+        val = (files, versions.pop())
+        self._rel_cache = (stats, val)
+        return val
+
+    def release(self) -> dict:
+        """The signed manifest of the release in keyd's release directory. The same files give the same body (and, Ed25519 being
+        deterministic, the same signature); new files get the next seq in releases.json."""
+        from cryptography.hazmat.primitives import serialization
+        with self._lock:
+            files, version = self._release_files()
+            ed = self._release_key()
+            hist = self._releases()
+            body = next((r for r in reversed(hist) if r.get("files") == files), None)
+            if body is None:
+                body = {"v": 1, "seq": (int(hist[-1].get("seq") or 0) if hist else 0) + 1, "version": version, "issued": _ts(), "files": files}
+                hist.append(body)
+                self._write_atomic("releases.json", json.dumps(hist[-50:], sort_keys=True).encode())
+                self.log("release", seq=body["seq"], version=version, sha256=hashlib.sha256(_canon(body)).hexdigest())
+            raw = _canon(body)
+            pub = "ed25519:" + base64.b64encode(ed.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)).decode()
+            return {"body": base64.b64encode(raw).decode(), "sig": base64.b64encode(ed.sign(b"wo-release-v1\n" + raw)).decode(),
+                    "key": pub, "fp": fingerprint(pub), "version": body["version"], "seq": body["seq"]}
+
+    def releases(self) -> List[dict]:
+        with self._lock:
+            return [{"seq": r.get("seq"), "version": r.get("version"), "issued": r.get("issued")} for r in self._releases()]
+
+    def sign_pin(self, host: str, version: str, ttl_s: int = 7 * 86400) -> dict:
+        """A host-bound, expiring order to run `version` (the dashboard's "bu sürüme döndür"): only for a release keyd signed."""
+        host = str(host or "").strip()[:120]
+        if not host:
+            raise KeydError("bad_request", "host required")
+        with self._lock:
+            rel = next((r for r in reversed(self._releases()) if r.get("version") == version), None)
+            if rel is None:
+                self.log("refuse_pin", host=host, version=str(version)[:40])
+                raise KeydError("release", f"keyd never signed release {version!r}")
+            ttl = min(max(int(ttl_s or 0), 600), PIN_MAX_S)
+            body = {"v": 1, "host": host, "version": rel["version"], "seq": rel.get("seq"), "issued": _ts(),
+                    "expires_at": (_now() + timedelta(seconds=ttl)).isoformat(timespec="seconds"),
+                    "files": {n: f for n, f in (rel.get("files") or {}).items() if n in RELEASE_BINS}}
+            raw = _canon(body)
+            sig = base64.b64encode(self._release_key().sign(b"wo-pin-v1\n" + raw)).decode()
+            self.log("pin", host=host, version=rel["version"], expires_at=body["expires_at"])
+            return {"body": base64.b64encode(raw).decode(), "sig": sig, "version": rel["version"], "expires_at": body["expires_at"]}
 
     # ---------------------------------------------------------------- status
     def status(self) -> dict:
@@ -423,6 +558,8 @@ class KeyStore:
                 out["st_dev"] = os.stat(self.dir).st_dev
             except OSError:
                 out["st_dev"] = None
+            if (self.dir / RELEASE_KEY).exists():
+                out["release_fingerprint"] = fingerprint(self._pub(RELEASE_KEY))
             if ok:
                 d, a = self._pub("dispatch.key"), self._pub("anchor.key")
                 out.update({"dispatch_pub": d, "anchor_pub": a, "dispatch_fingerprint": fingerprint(d),
@@ -466,6 +603,12 @@ class KeyStore:
             return self.export_begin(str(a.get("part") or ""), str(a.get("by") or ""))
         if op == "export_finish":
             return self.export_finish(str(a.get("token") or ""), str(a.get("part") or ""), str(a.get("by") or ""))
+        if op == "release":
+            return self.release()
+        if op == "releases":
+            return self.releases()
+        if op == "sign_pin":
+            return self.sign_pin(str(a.get("host") or ""), str(a.get("version") or ""), int(a.get("ttl_s") or 7 * 86400))
         raise KeydError("bad_request", f"unknown op {op!r}")
 
 
@@ -647,6 +790,8 @@ def main(argv=None) -> int:
             p.add_argument("--tls", default="", help="directory with ca.crt, server.crt, server.key (mutual TLS)")
             p.add_argument("--client-out", default="", help="write the API's client certificate here on first start")
             p.add_argument("--create", action="store_true", help="create the keys at start (normally the API asks)")
+            p.add_argument("--release-dir", default="", help="the wo-agent binaries keyd signs (default: WATCHOVER_AGENT_BIN_DIR, "
+                                                             "else goagent/dist next to this package)")
         if name == "kill":
             p.add_argument("--resume", action="store_true")
             p.add_argument("--reason", default="")
@@ -657,7 +802,7 @@ def main(argv=None) -> int:
         if name == "tls-init":
             p.add_argument("--client-out", required=True)
     args = ap.parse_args(argv)
-    store = KeyStore(args.dir)
+    store = KeyStore(args.dir, release_dir=getattr(args, "release_dir", "") or None)
     if args.cmd == "tls-init":
         print(json.dumps(tls_init(args.dir, args.client_out)))
         return 0

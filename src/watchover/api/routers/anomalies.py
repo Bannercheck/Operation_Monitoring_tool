@@ -162,7 +162,8 @@ def set_step(aid: int, step: str, body: StepIn, user=Depends(require("act.anomal
 def create_action(aid: int, user=Depends(require("act.anomaly")), svc=Depends(services), sc=Depends(user_scope)):
     _mine(svc, sc, aid)
     a = svc.anomalies.get(aid)
-    act = svc.actions.create(f"ANOM-{aid}", a["title"][:120], "P1" if a["score"] >= 8 else "P2", a["owner"] or user["name"], recommendation=a["detail"][:400], evidence=a["key"])
+    act = svc.actions.create(f"ANOM-{aid}", a["title"][:120], "P1" if a["score"] >= 8 else "P2", a["owner"] or user["name"], recommendation=a["detail"][:400], evidence=a["key"],
+                             demo=bool(a.get("demo")))          # an action for a simulator anomaly goes with the demo data
     from .actions import tag
     act = tag(svc, act["id"], None, a.get("host") or "")             # the action follows the anomaly's host (and so its teams)
     return {"action": act, "anomaly": svc.anomalies.attach_action(aid, act["id"])}

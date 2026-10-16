@@ -11,6 +11,7 @@ import { UpdateCenter, useStepUp } from "../components/sys/Updates";
 import { useSearchParams } from "react-router-dom";
 import Notify from "./Notify";
 import Readme from "./Readme";
+import { PurgeCounts, forgetChat } from "../components/ops/SimControl";
 
 export default function System() {
   const { t } = useT(); const qc = useQueryClient(); const { can, user } = useAuth();
@@ -121,12 +122,12 @@ function Settings() {
     {saved && <div className="ok">{t("saved")}</div>}<Err e={save.error} /></div></Collapsible>;
 }
 
-/** Demo data clean-up (installation administrators): deletes only what the simulator made; a real host with a demo name stays. */
+/** Demo data purge (installation administrators): everything the simulator made, in every store (the same purge as switching it off). */
 function DemoClean() {
   const { t } = useT(); const qc = useQueryClient();
   const preview = useMutation({ mutationFn: () => get("/system/demo") });
-  const clean = useMutation({ mutationFn: () => post("/system/demo-clean"), onSuccess: () => { preview.reset(); qc.invalidateQueries(); } });
-  const res: any = clean.data ?? preview.data; const counts: Record<string, number> = res?.counts ?? {};
+  const clean = useMutation({ mutationFn: () => post("/system/demo-clean"), onSuccess: () => { preview.reset(); forgetChat(); qc.invalidateQueries(); } });
+  const res: any = clean.data ?? preview.data;
   return <Collapsible id="sys-demo" defaultOpen={false} title={`🧹 ${t("sys_demo")}`}>
     <div className="stack small">
       <p className="muted" style={{ margin: 0 }}>{t("sys_demo_lead")}</p>
@@ -135,8 +136,7 @@ function DemoClean() {
         <Confirm onConfirm={() => clean.mutate()}>🧹 {t("sys_demo_clean")}</Confirm>
         {preview.data && <span className="chip">{preview.data.demo ? t("sys_demo_on") : t("sys_demo_off")}</span>}
       </div>
-      {res && <div className="row">{Object.entries(counts).filter(([, n]) => n).map(([k, n]) => <span key={k} className="chip mono">{k}: {n}</span>)}
-        <b>{clean.data ? t("sys_demo_done", { n: res.total }) : t("sys_demo_found", { n: res.total })}</b></div>}
+      {res && <><b>{clean.data ? t("sys_demo_done", { n: res.total }) : t("sys_demo_found", { n: res.total })}</b><PurgeCounts res={res} /></>}
       {!!res?.kept_hosts?.length && <div className="muted">{t("sys_demo_kept", { h: res.kept_hosts.join(", ") })}</div>}
       {!!Object.keys(res?.pending ?? {}).length && <div className="muted">{t("sys_demo_pending", { n: Object.values(res.pending as Record<string, number>).reduce((a, b) => a + b, 0) })}</div>}
       <Err e={clean.error || preview.error} />

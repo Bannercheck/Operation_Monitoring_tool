@@ -41,10 +41,15 @@ class History:
         kb._exec("""CREATE TABLE IF NOT EXISTS slo_hour_service (hour TEXT NOT NULL, env TEXT NOT NULL DEFAULT '', service TEXT NOT NULL DEFAULT '',
             total INTEGER DEFAULT 0, errors INTEGER DEFAULT 0, PRIMARY KEY (hour, env, service))""")
         kb._exec("CREATE INDEX IF NOT EXISTS slo_minute_t ON slo_minute(minute)")
+        try:                                                 # the simulator's rows only (demo.py finds / purges them without a scan)
+            kb._exec("CREATE INDEX IF NOT EXISTS slo_minute_sim ON slo_minute(minute) WHERE sender = 'simulator'")
+        except Exception:  # noqa: BLE001
+            pass
 
     # ---- write side
     def add(self, events: list) -> None:
         """LiveStore hook: aggregate freshly ingested observations (never blocks on the database)."""
+        from .demo import is_demo
         from .live import LATENCY_RE
         with self.lock:
             for o in events:
@@ -55,6 +60,8 @@ class History:
                 m = LATENCY_RE.search(o.message or "")
                 if m:
                     row[2 + _bucket(float(m[1]))] += 1
+                if is_demo(o):                               # simulator lines: their sender row above only (demo.py purges it);
+                    continue                                 # the per-service hours have no sender column and stay real
                 srow = self.pending_svc[(minute[:13], o.environment or "unknown", o.service or "-")]
                 srow[0] += 1; srow[1] += err
 

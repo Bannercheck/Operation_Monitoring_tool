@@ -64,18 +64,19 @@ def dataset_team(svc, key: str) -> Optional[int]:
     return d.get("team_id")
 
 
-def submit(svc, team_id: Optional[int], name: str, data: bytes, mapping: Optional[dict] = None) -> dict:
-    """DatasetRegistry.submit with an owning team, race-free: the load thread reads the job's team under the same lock."""
+def submit(svc, team_id: Optional[int], name: str, data: bytes, mapping: Optional[dict] = None, demo: bool = False) -> dict:
+    """DatasetRegistry.submit with an owning team, race-free: the load thread reads the job's team under the same lock. demo=True:
+    demo content (a shipped sample set, a live snapshot with simulator lines): never learned from, removed with the demo data."""
     with _LOCK:
-        job = svc.datasets.submit(name, data, mapping)
+        job = svc.datasets.submit(name, data, mapping, demo=demo)
         svc.datasets.jobs[job["id"]]["team_id"] = team_id
     return {**job, "team_id": team_id}
 
 
-def load_path(svc, team_id: Optional[int], path: str, mapping: Optional[dict] = None) -> dict:
+def load_path(svc, team_id: Optional[int], path: str, mapping: Optional[dict] = None, demo: bool = False) -> dict:
     _TL.team = team_id
     try:
-        out = svc.datasets.load_path(path, mapping)
+        out = svc.datasets.load_path(path, mapping, demo=demo)
     finally:
         _TL.team = None
     return {**out, "team_id": team_id}
@@ -89,14 +90,14 @@ def _wrap_register(svc) -> None:
         return
     orig = reg.register
 
-    def register(name, analysis, prof, elapsed, size, mapping):
+    def register(name, analysis, prof, elapsed, size, mapping, demo=False):
         team = getattr(_TL, "team", None)
         tn = threading.current_thread().name
         if team is None and tn.startswith("api-load-"):
             with _LOCK:
                 job = reg.jobs.get(tn[len("api-load-"):])
                 team = job.get("team_id") if job else None
-        key = orig(name, analysis, prof, elapsed, size, mapping)
+        key = orig(name, analysis, prof, elapsed, size, mapping, demo=demo)
         if team is not None:
             reg.items[key]["team_id"] = team
             stamp_dataset_rows(svc, name, team)

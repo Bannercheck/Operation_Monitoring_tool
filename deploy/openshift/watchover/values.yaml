@@ -41,6 +41,10 @@ receiver:
     limits: {cpu: "2", memory: 2Gi}
   goMemLimit: 1800MiB                  # Go çöp toplayıcısının hedefi: bellek sınırının biraz altında
   maxBacklogMB: 1024                   # arayüz yetişemezse /data/spool'da birikebilecek en çok veri (data PVC'ye sığmalı)
+  # Ajan Route sertifikasını imzalayan CA (PEM). Sunucular bu CA'ya güvenmiyorsa (örn. kümenin kendi ingress CA'sı) doldurun:
+  # alıcı /agent/ca.crt olarak sunar, Ajanlar panelindeki https komutu onu sha256 ile sabitleyip ajan için kurar. Boşsa
+  # routes.tls.caCertificate kullanılır; ikisi de boşsa sertifikanın sunucularda zaten güvenilir olduğu varsayılır.
+  agentCA: ""
   extraEnv: []
 
 # ---------------------------------------------------------------- kalıcı diskler (PVC)

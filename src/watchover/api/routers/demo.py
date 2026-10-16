@@ -1,4 +1,4 @@
-"""Demo mode (WATCHOVER_DEMO) and the clean-up of simulator-made data (watchover.demo): installation administrators only."""
+"""Demo mode (WATCHOVER_DEMO) and the purge of simulator-made data (watchover.demo): installation administrators only."""
 from __future__ import annotations
 
 import json
@@ -20,16 +20,16 @@ def install_admin(request: Request, user: dict = Depends(current_user)) -> dict:
 
 @router.get("/demo")
 def demo_status(user=Depends(install_admin), svc=Depends(services)):
-    """Demo mode and what a clean-up would delete now (nothing is deleted)."""
-    return {"demo": wo_demo.enabled(), "simulator": svc.sim_stop is not None, **wo_demo.clean(svc, dry_run=True)}
+    """Demo mode, the simulator's state and what the purge would delete now, per category (nothing is deleted)."""
+    return {**svc.demo_state(), **wo_demo.preview(svc)}
 
 
 @router.post("/demo-clean")
 def demo_clean(user=Depends(install_admin), svc=Depends(services)):
-    """Delete only what the simulator made (marked rows; host-keyed rows of simulator-only host names). Audited."""
-    out = wo_demo.clean(svc)
+    """Stop the simulator and delete everything it made, in every store (demo.purge; real data stays). Audited."""
+    out = wo_demo.purge(svc)
     try:
-        svc.users._event(user.get("email", ""), "demo-clean", True, f"demo data removed: {out['total']} ({json.dumps(out['counts'], sort_keys=True)})")
+        svc.users._event(user.get("email", ""), "demo-clean", True, f"demo data removed: {out['total']} ({json.dumps(out['categories'], sort_keys=True)})")
     except Exception:  # noqa: BLE001 - the audit log never blocks the clean-up
         pass
     return out

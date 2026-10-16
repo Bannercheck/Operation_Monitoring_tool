@@ -120,6 +120,8 @@ class AutoTrainer:
         pk = kb.pk
         kb._exec(f"""CREATE TABLE IF NOT EXISTS train_runs (id {pk}, ts TEXT, status TEXT, examples INTEGER DEFAULT 0, new_examples INTEGER DEFAULT 0,
             base TEXT DEFAULT '', loss REAL DEFAULT 0, seconds INTEGER DEFAULT 0, gate TEXT DEFAULT '{{}}', model TEXT DEFAULT '', note TEXT DEFAULT '')""")
+        from .demo import ensure_column
+        ensure_column(kb, "train_runs")                      # 1 = trained with demo examples (never: they are excluded); demo.py retires those
 
     # ---------------------------------------------------------------- state
     def settings(self) -> dict:
@@ -192,7 +194,15 @@ class AutoTrainer:
             try:
                 if not Path(src).exists() or Path(src).stat().st_size == 0:
                     continue
-                obs, rep = ingest_path(src)
+                if src == spool:                                 # the live spool: real lines only (the simulator's never grade a model)
+                    from .demo import spool_line_demo
+                    from .pipeline import ingest_bytes
+                    keep = [ln for ln in Path(src).read_text(encoding="utf-8", errors="replace").splitlines(keepends=True) if not spool_line_demo(ln)]
+                    if not keep:
+                        continue
+                    obs, rep = ingest_bytes("events.jsonl", "".join(keep).encode("utf-8"), learn=False)
+                else:
+                    obs, rep = ingest_path(src, learn=False)
                 a = Analysis(obs, rep)
                 if len(a.incidents) >= 3:
                     return a, src

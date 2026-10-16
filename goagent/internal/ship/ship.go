@@ -21,8 +21,13 @@ import (
 	"time"
 )
 
-// Version of the log-shipping role (agent.py is 0.6.0); sent as X-Agent-Version.
-const Version = "0.7.0"
+// Version of the wo-agent build (the release version keyd signs and `wo-agent update` compares; agent.py is 0.6.0); sent as
+// X-Agent-Version.
+const Version = "0.8.0"
+
+// Marker is Version as a literal in the binary ("WO-AGENT-VERSION=0.8.0;"): keyd and `wo-agent update` read the version of
+// a file from its bytes, so the signed manifest's version and the binary's own can never disagree unnoticed.
+const Marker = "WO-AGENT-VERSION=" + Version + ";"
 
 func getenv(k, def string) string {
 	if v := os.Getenv(k); v != "" {
@@ -211,6 +216,9 @@ func Main(args []string) int {
 		return 2
 	}
 	snd := &Sender{URL: c.URL, Key: c.Key, Agent: c.Agent, Version: Version, Client: client, Logf: logf}
+	if !c.Test && c.File == "" {
+		selfUpdate(snd, logf)
+	}
 	if c.Test { // no spool: a failed hello must not linger in it
 		res, out := snd.SendAnswer(context.Background(), helloBody(c.Agent, c.Env, time.Now()), "agent.jsonl")
 		if res != Delivered {

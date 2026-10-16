@@ -35,6 +35,7 @@ EXTRA_COLS = (
     ("parent_id", "INTEGER"), ("prev_id", "INTEGER"), ("suppressed_until", "TEXT DEFAULT ''"), ("blind", "INTEGER DEFAULT 0"),
     ("peeked", "INTEGER DEFAULT 0"), ("injection_suspect", "INTEGER DEFAULT 0"), ("provenance", "TEXT DEFAULT ''"),
     ("ood", "INTEGER DEFAULT 0"), ("storm", "INTEGER DEFAULT 0"),
+    ("demo", "INTEGER DEFAULT 0"),                 # 1 = made from demo input (a demo dataset's first action, an action of a demo anomaly; demo.py)
 )
 INDEXES = (("ix_actions_kind", "kind, team_id, phase"), ("ix_actions_case_key", "case_key, phase"), ("ix_actions_host", "host, phase"))
 
@@ -77,13 +78,13 @@ class ActionStore:
         return self.db._exec(q + " ORDER BY id", tuple(args))
 
     def create(self, incident_id: str, title: str, priority: str = "P2", owner: str = "",
-               recommendation: str = "", evidence: str = "") -> dict:
+               recommendation: str = "", evidence: str = "", demo: bool = False) -> dict:
         if priority not in PRIORITIES:
             raise ValueError("bad priority")
         now = self._now()
         aid = self.db._insert(
-            "INSERT INTO actions (incident_id,title,priority,owner,recommendation,evidence,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)",
-            (incident_id, title, priority, owner, recommendation, evidence, now, now))
+            "INSERT INTO actions (incident_id,title,priority,owner,recommendation,evidence,created_at,updated_at,demo) VALUES (?,?,?,?,?,?,?,?,?)",
+            (incident_id, title, priority, owner, recommendation, evidence, now, now, int(bool(demo))))
         return self.get(aid)
 
     def update(self, action_id: int, **fields) -> dict:

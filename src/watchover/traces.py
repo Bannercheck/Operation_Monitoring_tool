@@ -243,13 +243,13 @@ def _minute(ts: datetime) -> str:
 class TraceStore:
     """Spans + per-minute service rollups in the product database (SQLite or PostgreSQL)."""
     COLS = ("trace_id", "span_id", "parent_id", "ts", "start_ms", "duration_ms", "service", "operation", "kind", "status", "error", "env",
-            "host", "user_ref", "session_id", "link", "confidence", "ref", "message", "severity", "attrs")
+            "host", "user_ref", "session_id", "link", "confidence", "ref", "message", "severity", "attrs", "demo")
 
     def __init__(self, db, settings=None):
         self.db = db
         self.settings = settings or (lambda: {})
         self.lock = threading.Lock()
-        self._agg: dict[tuple, list] = {}                    # (minute, service, operation, kind, env) -> [n, err, sum, max, hist]
+        self._agg: dict[tuple, list] = {}                    # (minute, service, operation, kind, env, demo) -> [n, err, sum, max, hist]
         from collections import OrderedDict
         self._held: OrderedDict = OrderedDict()              # trace id -> unsampled spans, kept ~2 min in case a user step claims the trace
         self._held_n = 0
@@ -266,6 +266,8 @@ class TraceStore:
         db._exec(f"""CREATE TABLE IF NOT EXISTS svc_minute (minute TEXT, service TEXT, operation TEXT, kind TEXT, env TEXT, n INTEGER,
             err INTEGER, sum_ms {dbl}, max_ms {dbl}, hist TEXT, PRIMARY KEY (minute, service, operation, kind, env))""")
         db._exec("CREATE INDEX IF NOT EXISTS svc_minute_service ON svc_minute(service, minute)")
+        from .demo import ensure_column
+        ensure_column(db, "spans"); ensure_column(db, "svc_minute")      # 1 = made from simulator input (demo.py purges these)
 
     def _cfg(self, k: str, d):
         now = time.time()
@@ -310,7 +312,7 @@ class TraceStore:
                 else:
                     counted = False; sp["_counted"] = True; self.received += 1
                 if not counted and sp.get("has_duration", True) and sp["kind"] not in ("log",):
-                    key = (_minute(sp["start"]), sp["service"], sp["operation"], sp["kind"], sp["env"])
+                    key = (_minute(sp["start"]), sp["service"], sp["operation"], sp["kind"], sp["env"], int(sp.get("demo") or 0))
                     a = self._agg.get(key)
                     if a is None:
                         a = self._agg[key] = [0, 0, 0.0, 0.0, [0] * NB]
@@ -341,7 +343,7 @@ class TraceStore:
                 rows.append((sp["trace_id"], sp.get("span_id"), sp.get("parent_id"), st.isoformat(), st.timestamp() * 1000, sp["duration_ms"],
                              sp["service"], sp["operation"], sp["kind"], sp["status"], sp["error"], sp["env"], sp["host"], sp["user_ref"],
                              sp["session_id"], sp["link"], sp["confidence"], sp["ref"], sp["message"], sp["severity"],
-                             json.dumps(sp.get("attrs") or {}, ensure_ascii=False, default=str)[:2000]))
+                             json.dumps(sp.get("attrs") or {}, ensure_ascii=False, default=str)[:2000], int(sp.get("demo") or 0)))
         if rows:
             self.db.executemany(f"INSERT INTO spans ({', '.join(self.COLS)}) VALUES ({', '.join('?' * len(self.COLS))})", rows)
             self.kept += len(rows)
@@ -360,7 +362,7 @@ class TraceStore:
         head = json.loads(lines[0])
         with self.lock:
             for minute, svc, op, kind, env, n, err, total, mx, hist in head.get("agg") or []:
-                key = (minute, svc, op, kind, env)
+                key = (minute, svc, op, kind, env, 0)          # OTLP from the Go receiver: real input
                 a = self._agg.get(key)
                 if a is None:
                     a = self._agg[key] = [0, 0, 0.0, 0.0, [0] * NB]
@@ -378,7 +380,14 @@ class TraceStore:
         return self.add_spans(spans) if spans else 0
 
     def add_events(self, events: list[Observation], keep_all: bool = False) -> int:
-        spans = [sp for sp in (span_of(o) for o in events) if sp]
+        from .demo import is_demo
+        spans = []
+        for o in events:
+            sp = span_of(o)
+            if sp:
+                if is_demo(o):
+                    sp["demo"] = 1                           # spans and rollups of simulator lines stay apart from real ones
+                spans.append(sp)
         return self.add_spans(spans, keep_all=keep_all) if spans else 0
 
     def _flush(self, closed_only: bool = True) -> None:
@@ -389,7 +398,10 @@ class TraceStore:
                 del self._agg[k]
         if not out:
             return
-        keys = list(out)
+        groups: dict[tuple, dict] = {}                          # (minute, service, operation, kind, env) -> {demo: values}
+        for k, v in out.items():
+            groups.setdefault(k[:5], {})[k[5] if len(k) > 5 else 0] = v
+        keys = list(groups)
         have: dict[tuple, dict] = {}
         for i in range(0, len(keys), 200):                      # merge with what an earlier flush of the same minute wrote
             chunk = keys[i:i + 200]
@@ -397,14 +409,19 @@ class TraceStore:
             for r in self.db._exec(f"SELECT * FROM svc_minute WHERE {cond}", tuple(x for k in chunk for x in k)):
                 have[(r["minute"], r["service"], r["operation"], r["kind"], r["env"])] = r
         ins, upd = [], []
-        for k, (n, err, sm, mx, hist) in out.items():
-            if k in have:
-                r = have[k]; h0 = json.loads(r["hist"] or "[]") + [0] * NB
-                upd.append((r["n"] + n, r["err"] + err, r["sum_ms"] + sm, max(r["max_ms"], mx), json.dumps([a + b for a, b in zip(h0[:NB], hist)]), *k))
-            else:
-                ins.append((*k, n, err, sm, mx, json.dumps(hist)))
-        self.db.executemany("INSERT INTO svc_minute (minute, service, operation, kind, env, n, err, sum_ms, max_ms, hist) VALUES (?,?,?,?,?,?,?,?,?,?)", ins)
-        self.db.executemany("UPDATE svc_minute SET n=?, err=?, sum_ms=?, max_ms=?, hist=? WHERE minute=? AND service=? AND operation=? AND kind=? AND env=?", upd)
+        for k, g in groups.items():                             # real and demo input never merge into one row: real wins the key
+            demo = 0 if 0 in g else 1
+            n, err, sm, mx, hist = g[demo]
+            r = have.get(k)
+            if r is None:
+                ins.append((*k, n, err, sm, mx, json.dumps(hist), demo))
+            elif int(r.get("demo") or 0) == demo:
+                h0 = json.loads(r["hist"] or "[]") + [0] * NB
+                upd.append((r["n"] + n, r["err"] + err, r["sum_ms"] + sm, max(r["max_ms"], mx), json.dumps([a + b for a, b in zip(h0[:NB], hist)]), demo, *k))
+            elif demo == 0:                                     # a demo row of the same key: replaced by the real counts
+                upd.append((n, err, sm, mx, json.dumps(hist), 0, *k))
+        self.db.executemany("INSERT INTO svc_minute (minute, service, operation, kind, env, n, err, sum_ms, max_ms, hist, demo) VALUES (?,?,?,?,?,?,?,?,?,?,?)", ins)
+        self.db.executemany("UPDATE svc_minute SET n=?, err=?, sum_ms=?, max_ms=?, hist=?, demo=? WHERE minute=? AND service=? AND operation=? AND kind=? AND env=?", upd)
 
     def flush(self) -> None:
         self._flush(closed_only=False)
@@ -432,7 +449,7 @@ class TraceStore:
         for r in rows:
             r["hist"] = (json.loads(r["hist"] or "[]") + [0] * NB)[:NB]
         with self.lock:                                       # the minute still being filled
-            for (mi, sv, op, kd, ev), (n, err, sm, mx, hist) in self._agg.items():
+            for (mi, sv, op, kd, ev, *_d), (n, err, sm, mx, hist) in self._agg.items():
                 if (not since or mi >= since) and (not service or sv == service) and (not env or ev == env):
                     rows.append({"minute": mi, "service": sv, "operation": op, "kind": kd, "env": ev, "n": n, "err": err, "sum_ms": sm, "max_ms": mx, "hist": list(hist)})
         return rows

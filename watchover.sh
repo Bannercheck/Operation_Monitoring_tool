@@ -22,7 +22,7 @@
 #                                   -> ./backups/watchover-YYYYMMDD-HHMM.tgz (WATCHOVER_BACKUP_DIR; oldest beyond N=14 removed)
 #   ./watchover.sh restore FILE     bring a backup back (containers are stopped meanwhile)
 #   ./watchover.sh user ...         account management, e.g.  user list | user add ops@firma.com --admin | user password EMAIL | user unlock EMAIL
-#   ./watchover.sh demo-clean [--dry-run] [--yes]   delete only what the simulator made (counts first; a real host with a demo name stays)
+#   ./watchover.sh demo-clean [--dry-run] [--yes]   delete everything the simulator made, in every store (counts first; real data stays)
 #   ./watchover.sh migrate          copy old SQLite files (knowledge.db / actions.db / playbook.db in ./data or the volume) into PostgreSQL
 #   ./watchover.sh save|load FILE   export the built images to a .tgz (build on a machine with internet), import them on an air-gapped server
 #   ./watchover.sh bundle [FILE]    everything an air-gapped server needs in one .tar: all images, downloaded Ollama models, training weights, source
@@ -409,11 +409,25 @@ verify_running() {
   else say "WARNING: this folder is v$(version) but the dashboard reports '${v:-no answer}'. See ./watchover.sh logs dashboard, then ./watchover.sh update"; fi
 }
 edge_url() { local h p; h=$(env_get WATCHOVER_EDGE_HOST); p=$(env_get WATCHOVER_EDGE_HTTPS_PORT || echo 443); [ "$p" = "443" ] && echo "https://$h" || echo "https://$h:$p"; }
+# Caddy's own CA root -> ./certs/watchover-root.crt (0644, public): for colleagues' browsers, and served by the receiver as
+# /agent/ca.crt, which the Agents panel's https install command pins by its sha256 (no manual CA copying on servers)
+edge_ca_export() {
+  [ "$(env_get WATCHOVER_EDGE)" = "1" ] && [ "$(env_get WATCHOVER_EDGE_TLS)" = "internal" ] || return 0
+  mkdir -p certs; local i
+  for i in 1 2 3 4 5 6 7 8 9 10; do
+    if docker cp watchover-edge:/data/caddy/pki/authorities/local/root.crt certs/watchover-root.crt.tmp 2>/dev/null; then
+      chmod 644 certs/watchover-root.crt.tmp && mv -f certs/watchover-root.crt.tmp certs/watchover-root.crt && return 0
+    fi
+    sleep 2
+  done
+  say "WARNING: the edge CA was not exported yet (./watchover.sh edge cert later): https agent installs need it"; return 1
+}
 up() {   # inside the updater its own container is left alone (its profile is not active, so it is not an orphan either)
   $COMPOSE $(profiles) up -d --remove-orphans
   in_updater && return 0
   if updater_on; then $COMPOSE --profile updater up -d --no-deps updater || say "WARNING: the updater did not start (in-app updates unavailable): ./watchover.sh logs updater"; fi
   mdns_ensure
+  [ -f certs/watchover-root.crt ] || edge_ca_export || true
 }
 
 # systemd (Linux servers): the stack at boot and the nightly backup; cron where there is no systemd (the backup only)
@@ -683,13 +697,16 @@ case "${1:-}" in
         compose_files                                                          # + docker-compose.edge.yml: plain http ports not published while the edge is on
         $COMPOSE $(profiles) up -d --remove-orphans --force-recreate dashboard edge
         say "edge on: $(edge_url)   (http://$(env_get WATCHOVER_EDGE_HOST) redirects; plain :8501 is no longer published)"
-        if [ "$(env_get WATCHOVER_EDGE_TLS)" = "internal" ]; then say "colleagues install the CA root once: ./watchover.sh edge cert  ->  ./certs/watchover-root.crt"; fi ;;
+        if [ "$(env_get WATCHOVER_EDGE_TLS)" = "internal" ]; then
+          edge_ca_export && $COMPOSE $(profiles) up -d --no-deps --force-recreate receiver >/dev/null 2>&1 || true   # the receiver serves it as /agent/ca.crt
+          say "colleagues install the CA root once: ./certs/watchover-root.crt (agents: the Agents panel's https command pins it by itself)"
+        fi ;;
       off)
         $COMPOSE --profile edge stop edge; $COMPOSE --profile edge rm -f edge; env_set WATCHOVER_EDGE 0; mdns_stop
         compose_files
         $COMPOSE $(profiles) up -d --remove-orphans --force-recreate dashboard; say "edge off: http://$(host_ip):$(env_get WATCHOVER_UI_PORT || echo 8501)" ;;
       cert)
-        mkdir -p certs; docker cp watchover-edge:/data/caddy/pki/authorities/local/root.crt certs/watchover-root.crt
+        mkdir -p certs; docker cp watchover-edge:/data/caddy/pki/authorities/local/root.crt certs/watchover-root.crt && chmod 644 certs/watchover-root.crt
         say "CA root: ./certs/watchover-root.crt  — macOS: Keychain Access › System › import, set to Always Trust; Windows: certutil -addstore -f Root watchover-root.crt; Linux agents: --ca watchover-root.crt" ;;
       *) die "usage: ./watchover.sh edge on [name[,name2,ip]] | off | cert     e.g.  edge on watchover.local" ;; esac ;;
   api)     say "the API now runs inside the dashboard container: http://$(host_ip):$(env_get WATCHOVER_UI_PORT || echo 8501)/api/docs" ;;
@@ -740,7 +757,7 @@ case "${1:-}" in
         for k in $keys; do printf '  %-28s %s\n' "$k" "$(env_get "$k")"; done ;;
       *) die "usage: ./watchover.sh profile [cpu8|cpu16|auto]" ;;
     esac ;;
-  demo-clean)   # only simulator-made data goes (its lines, "demo (simulator)" inventory / RUM apps, the demo flow); a real host with a demo name stays
+  demo-clean)   # the same full purge as switching the simulator off (watchover.demo.purge): lines, history, derived rows, LLM memory, demo-trained models; real data stays
     need_docker; shift; dry=0; yes=0
     for a in "$@"; do case "$a" in --dry-run) dry=1 ;; --yes|-y) yes=1 ;; *) die "usage: ./watchover.sh demo-clean [--dry-run] [--yes]" ;; esac; done
     if [ "$dry" = 1 ]; then $COMPOSE exec -T dashboard python -m watchover.demo clean --dry-run; exit 0; fi
@@ -755,6 +772,7 @@ case "${1:-}" in
       if $COMPOSE ps --format '{{.Service}} {{.Health}}' 2>/dev/null | grep -q '^dashboard healthy'; then break; fi; sleep 2
     done
     $COMPOSE exec -T dashboard python -m watchover.demo clean
+    $COMPOSE restart dashboard                     # its memory (caches, learned templates) is rebuilt from the purged stores
     say "demo data removed (audited as 'cli' in the sign-in log)" ;;
   migrate) need_docker; shift; [ -d data ] && docker cp data/. watchover:/data/ 2>/dev/null || true; $COMPOSE exec dashboard python -m watchover.migrate --source /data "$@" ;;
   save)    need_docker; out="${2:-watchover-images-$(version).tgz}"; docker save "watchover:$(version)" "watchover-receiver:$(version)" postgres:16-alpine | gzip > "$out"; say "images saved to $out (copy it with this folder to the air-gapped server, then: ./watchover.sh load $out && ./watchover.sh install)" ;;

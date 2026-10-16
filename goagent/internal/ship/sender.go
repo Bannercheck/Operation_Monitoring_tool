@@ -40,6 +40,8 @@ type Sender struct {
 	Client                   *http.Client
 	Spool                    *Spool
 	Logf                     func(string, ...any)
+	Headers                  func(http.Header) // adds headers to every request (the self-update state, X-Agent-Update)
+	OnAnswer                 func(http.Header) // sees the headers of every 2xx answer (the receiver's update hint)
 
 	mu      sync.Mutex
 	until   time.Time // no direct sends before this (Retry-After or back-off)
@@ -114,8 +116,12 @@ func (s *Sender) post(ctx context.Context, body []byte, name string) (map[string
 	req.Header.Set("X-File-Name", name)
 	req.Header.Set("X-Agent-Version", s.Version)
 	req.Header.Set("User-Agent", "wo-agent/"+s.Version)
+	req.Header.Set("X-Agent-Engine", "wo-agent")
 	if s.Key != "" {
 		req.Header.Set("Authorization", "Bearer "+s.Key)
+	}
+	if s.Headers != nil {
+		s.Headers(req.Header)
 	}
 	resp, err := s.Client.Do(req)
 	if err != nil {
@@ -125,6 +131,9 @@ func (s *Sender) post(ctx context.Context, body []byte, name string) (map[string
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return nil, &httpError{code: resp.StatusCode, retryAfter: retryAfter(resp.Header.Get("Retry-After"))}
+	}
+	if s.OnAnswer != nil {
+		s.OnAnswer(resp.Header)
 	}
 	out := map[string]any{}
 	if len(bytes.TrimSpace(raw)) > 0 {

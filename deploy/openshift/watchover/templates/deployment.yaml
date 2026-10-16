@@ -209,6 +209,10 @@ spec:
               value: {{ .Values.dashboard.goParse | quote }}
             - name: GOMEMLIMIT
               value: {{ .Values.receiver.goMemLimit | quote }}
+            {{- with (default .Values.routes.tls.caCertificate .Values.receiver.agentCA) }}
+            - name: WO_AGENT_CA_PEM               # the ingest Route's CA: /agent/ca.crt, pinned by sha256 in the Agents panel's command
+              value: {{ . | quote }}
+            {{- end }}
             {{- with .Values.receiver.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

@@ -28,8 +28,10 @@
 		Referrer-Policy "strict-origin-when-cross-origin"
 		-Server
 	}
-	# agents, enrolment, the agent installer and the web / mobile sensors go to the Go receiver
-	@receiver path /ingest* /enroll* /agent.py /agent/* /rum /rum.js /mobile
+	# agents, enrolment, the agent installer and its verified bootstrap (/agent/boot.sh, /agent/ca.crt, /agent/manifest.json),
+	# the binaries and the self-update check (/agent/wo-agent-*, /agent/update), the action agent's job channel (/agent/v1/*),
+	# the web / mobile sensors and OTLP/HTTP (/v1/*) go to the Go receiver: agents use https://<NAME>/ingest like :8600
+	@receiver path /ingest* /enroll* /agent.py /agent/* /rum /rum.js /mobile /v1/*
 	handle @receiver {
 		reverse_proxy receiver:8600
 	}

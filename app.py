@@ -581,6 +581,8 @@ def set_simulation(on: bool) -> None:
     h = _sim_holder()
     if on and not demo_enabled():                            # production install (WATCHOVER_DEMO=0): never starts
         return
+    if on and any(a != "simulator" for a in live_store().agents):    # never next to real data (watchover.demo: no mixing)
+        return
     if on and "stop" not in h:
         h["stop"] = start_simulator(live_store(), interval=1.0)
     elif not on and "stop" in h:
