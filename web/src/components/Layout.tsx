@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { ArrowLeft, LogOut, Menu, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { HubTabs, inHub, useNav, type Hub } from "./HubTabs";
@@ -16,6 +16,8 @@ export default function Layout() {
   const { user, logout, can, reload } = useAuth();
   const { t } = useT();
   const { pathname } = useLocation();
+  const mainRef = useRef<HTMLElement>(null);
+  useEffect(() => { mainRef.current?.scrollTo({ top: 0 }); }, [pathname]);   // the content column is the scroller: a new page starts at its top
   const [collapsed, setCollapsed] = useState(() => { try { return localStorage.getItem("wo_side") === "1"; } catch { return false; } });
   const [open, setOpen] = useState(false);
   const [pw, setPw] = useState(!!user?.must_change);
@@ -35,7 +37,7 @@ export default function Layout() {
         <div className="user"><div className="av">{(user?.name || user?.email || "?")[0].toUpperCase()}</div><div className="info"><b>{user?.name || user?.email}</b><span className="small muted">{user?.role === "member" && user.teams?.length ? user.teams.map((m) => m.role_label).join(", ") : user?.role}</span></div>
           <Btn kind="ghost" sm onClick={logout} title={t("signout")}><LogOut size={14} /></Btn></div>
       </aside>
-      <main className="main">
+      <main className="main" ref={mainRef}>
         <div className="topbar">
           <Btn kind="ghost menu-btn" sm onClick={() => setOpen((o) => !o)}><Menu size={18} /></Btn>
           <BackButton />
