@@ -190,3 +190,167 @@ def close(cid: int, body: CloseIn, svc=Depends(act_on), acc=Depends(access), sc=
     _write_guard(svc, acc, c)
     _shadow(svc.act.shadow.implicit, cid, user["email"], "NONE" if body.outcome == "not_needed" else "MANUAL", text[:300])
     return _move(cid, "resolved", svc, acc, sc, user, resolution=text, outcome=body.outcome, needs_human=0)
+
+
+# ---------------------------------------------------------------- runs and steps (WP8, act/engine.py)
+class RunIn(BaseModel):
+    runbook: str = ""
+    version: Optional[int] = None
+    params: Dict[str, Any] = {}
+
+
+class StepDoneIn(BaseModel):
+    result: str = "ok"
+    output: str = ""
+    note: str = ""
+
+
+class TextIn(BaseModel):
+    text: str = ""
+
+
+class ChooseIn(BaseModel):
+    to: str
+
+
+class UnknownIn(BaseModel):
+    choice: str
+
+
+def _engine(fn, *a, **k):
+    from ...act.engine import EngineError
+    try:
+        return fn(*a, **k)
+    except EngineError as e:
+        raise err(e.status, e.code, e.tr, e.en)
+    except KeyError:
+        raise err(404, "act_not_found", "Bulunamadı", "Not found")
+
+
+def _run_case(svc, acc, sc, rid: int) -> dict:
+    run = svc.act.engine.run(rid)
+    c = _case(svc, acc, sc, run["case_id"])
+    _write_guard(svc, acc, c)
+    return run
+
+
+@router.post("/cases/{cid}/runs", status_code=201)
+def run_start(cid: int, body: RunIn, svc=Depends(act_on), acc=Depends(access), sc=Depends(perm_scope("page.actions")), user=Depends(current_user)):
+    """"Başlat": a guided run of the decided (or named) runbook; diagnose / verify steps run through the actuator when they may."""
+    c = _case(svc, acc, sc, cid)
+    _write_guard(svc, acc, c)
+    return _engine(svc.act.engine.start, cid, user["email"], body.runbook or None, body.version, body.params)
+
+
+@router.get("/runs/{rid}")
+def run_get(rid: int, svc=Depends(act_on), acc=Depends(access), sc=Depends(perm_scope("page.actions"))):
+    run = _engine(svc.act.engine.get, rid)
+    _case(svc, acc, sc, run["case_id"])
+    return run
+
+
+@router.post("/runs/{rid}/steps/{sid}/done")
+def step_done(rid: int, sid: int, body: StepDoneIn, svc=Depends(act_on), acc=Depends(access), sc=Depends(perm_scope("page.actions")),
+              user=Depends(current_user)):
+    """"Yaptım" / paste: the claim is stored next to the verified result and never replaces it."""
+    _run_case(svc, acc, sc, rid)
+    return _engine(svc.act.engine.done, rid, sid, user["email"], body.result, body.output, body.note)
+
+
+@router.post("/runs/{rid}/steps/{sid}/deviate")
+def step_deviate(rid: int, sid: int, body: TextIn, svc=Depends(act_on), acc=Depends(access), sc=Depends(perm_scope("page.actions")),
+                 user=Depends(current_user)):
+    _run_case(svc, acc, sc, rid)
+    return _engine(svc.act.engine.deviate, rid, sid, user["email"], body.text)
+
+
+@router.post("/runs/{rid}/steps/{sid}/skip")
+def step_skip(rid: int, sid: int, body: TextIn, svc=Depends(act_on), acc=Depends(access), sc=Depends(perm_scope("page.actions")),
+              user=Depends(current_user)):
+    _run_case(svc, acc, sc, rid)
+    return _engine(svc.act.engine.skip, rid, sid, user["email"], body.text)
+
+
+@router.post("/runs/{rid}/steps/{sid}/choose")
+def step_choose(rid: int, sid: int, body: ChooseIn, svc=Depends(act_on), acc=Depends(access), sc=Depends(perm_scope("page.actions")),
+                user=Depends(current_user)):
+    _run_case(svc, acc, sc, rid)
+    return _engine(svc.act.engine.choose, rid, sid, user["email"], body.to)
+
+
+@router.post("/runs/{rid}/steps/{sid}/takeover")
+def step_takeover(rid: int, sid: int, svc=Depends(act_on), acc=Depends(access), sc=Depends(perm_scope("page.actions")), user=Depends(current_user)):
+    """"Bana bırak"."""
+    _run_case(svc, acc, sc, rid)
+    return _engine(svc.act.engine.takeover, rid, sid, user["email"])
+
+
+@router.post("/runs/{rid}/steps/{sid}/unknown")
+def step_unknown(rid: int, sid: int, body: UnknownIn, svc=Depends(act_on), acc=Depends(access), sc=Depends(perm_scope("page.actions")),
+                 user=Depends(current_user)):
+    """"Başarılı say" (count_ok) · "Tekrar dene" (retry) · "Bana bırak" (takeover)."""
+    _run_case(svc, acc, sc, rid)
+    return _engine(svc.act.engine.resolve_unknown, rid, sid, user["email"], body.choice)
+
+
+@router.post("/runs/{rid}/params")
+def run_params(rid: int, body: Dict[str, Any], svc=Depends(act_on), acc=Depends(access), sc=Depends(perm_scope("page.actions")),
+               user=Depends(current_user)):
+    _run_case(svc, acc, sc, rid)
+    return _engine(svc.act.engine.answer, rid, user["email"], body)
+
+
+@router.post("/runs/{rid}/proceed")
+def run_proceed(rid: int, svc=Depends(act_on), acc=Depends(access), sc=Depends(perm_scope("page.actions")), user=Depends(current_user)):
+    """"Yine de devam" for a precondition that asked."""
+    _run_case(svc, acc, sc, rid)
+    return _engine(svc.act.engine.proceed, rid, user["email"])
+
+
+@router.post("/runs/{rid}/abort")
+def run_abort(rid: int, body: TextIn, svc=Depends(act_on), acc=Depends(access), sc=Depends(perm_scope("page.actions")), user=Depends(current_user)):
+    _run_case(svc, acc, sc, rid)
+    return _engine(svc.act.engine.abort, rid, user["email"], body.text)
+
+
+# ---------------------------------------------------------------- the model selector (WP13)
+@router.post("/cases/{cid}/explain")
+def case_explain(cid: int, svc=Depends(act_on), acc=Depends(access), sc=Depends(perm_scope("page.actions"))):
+    """Lazy model explanation (queued on the act-llm worker; ask again for the text). Never for blind or injection-suspect cases."""
+    c = _case(svc, acc, sc, cid)
+    if svc.act.shadow.hidden(c):
+        raise err(409, "act_blind", "Karar verilmeden açıklama yok", "No explanation before the decision")
+    props = [p for p in svc.act.shadow.proposals(cid, svc.act.shadow.attempt_of(c)) if not str(p["selector"]).startswith("rules")]
+    if props and props[-1].get("explain"):
+        return {"explain": props[-1]["explain"], "queued": False}
+    return {"explain": "", "queued": svc.act.selector.request_explain(cid), "model": svc.act.selector.state()}
+
+
+@router.get("/model")
+def model_state(svc=Depends(act_on), user=Depends(require_install("page.actions"))):
+    return {**svc.act.selector.state(), "queue": len(svc.act.selector.queue), "stats": svc.act.selector.stats}
+
+
+@router.post("/model/probe")
+def model_probe(svc=Depends(act_on), user=Depends(require_install("act.policy"))):
+    """Speed probe of the configured local model (≈ 1 000-token prompt, 32-token answer): timeout clamp and auto-off."""
+    return svc.act.selector.probe()
+
+
+# ---------------------------------------------------------------- demo controls (act_demo only, §17)
+@router.post("/demo/disk", status_code=201)
+def demo_disk(host: str = "web-prod-07", svc=Depends(act_on), user=Depends(require_install("act.case"))):
+    from ...act import demo
+    try:
+        return demo.disk(svc.act, host=host, reviewer=user["email"])
+    except demo.DemoError as e:
+        raise err(409, e.code, e.detail()["tr"], e.detail()["en"])
+
+
+@router.post("/demo/run-guided/{cid}")
+def demo_run_guided(cid: int, svc=Depends(act_on), user=Depends(require_install("act.case"))):
+    from ...act import demo
+    try:
+        return demo.run_guided(svc.act, cid, by=user["email"])
+    except demo.DemoError as e:
+        raise err(409, e.code, e.detail()["tr"], e.detail()["en"])

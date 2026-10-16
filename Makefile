@@ -1,4 +1,4 @@
-.PHONY: install run test demo inspect analyze
+.PHONY: install run test demo inspect analyze wo-agent
 
 install:
 	pip install -e ".[dev]"
@@ -11,6 +11,11 @@ demo:
 
 test:
 	python3 -m pytest -q
+
+wo-agent:       # Go host agent (actuator role) for the in-process receiver: goagent/dist/wo-agent-linux-{amd64,arm64}
+	cd goagent && go vet ./... && go test ./... \
+	  && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o dist/wo-agent-linux-amd64 . \
+	  && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o dist/wo-agent-linux-arm64 .
 
 inspect:        # make inspect DS=path/to/dataset.zip
 	watchover $(DS) --inspect

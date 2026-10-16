@@ -18,12 +18,16 @@ class AgentExecutor:
     def __init__(self, act):
         self.act = act
 
-    def can_run(self, step: Dict[str, Any], host: str) -> Tuple[bool, str]:
+    def can_run(self, step: Dict[str, Any], host: str, mode: str = "") -> Tuple[bool, str]:
         rec = self.act.jobs.actuators.for_host(host)
         if not rec:
             return False, "no_actuator"
         if rec.get("key_status") != "confirmed":
             return False, "key_unconfirmed"
+        if not rec.get("allowlist_ok"):
+            return False, "allowlist_perms"
+        if mode in ("execute", "rollback") and rec.get("insecure_install"):
+            return False, "insecure_install"
         if rec.get("halt"):
             return False, "halt_local"
         if abs(int(rec.get("clock_skew_s") or 0)) > 120:
@@ -31,8 +35,12 @@ class AgentExecutor:
         if not self.act.keys.available():
             return False, "act_signing_unavailable"
         tid = step.get("template_id") or step.get("template")
-        if tid and tid not in {t.get("id") for t in json.loads(rec.get("templates") or "[]") if isinstance(t, dict)}:
+        reported = {t.get("id"): t for t in json.loads(rec.get("templates") or "[]") if isinstance(t, dict)}
+        if tid and tid not in reported:
             return False, "no_template"
+        want = step.get("template_sha256") or ((self.act.catalogue.get(tid) or {}).get("sha256") if tid else "")
+        if tid and want and reported[tid].get("sha256") and reported[tid]["sha256"] != want:
+            return False, "template_differs"                 # the host runs another revision: guided there (§5.1)
         return True, ""
 
     def plan(self, step: Dict[str, Any], params: Dict[str, Any], host: str, mode: str, version_sha: str = "") -> Plan:

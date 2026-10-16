@@ -6,6 +6,7 @@ import { useT } from "../i18n";
 import { Btn, Card, Collapsible, Confirm, Err, Field, Kpi, Table, Tabs, fmtTs } from "../components/ui";
 import { StorageCard } from "../components/StorageCard";
 import { ActModeCard } from "../components/act/ActModeCard";
+import { ActActuatorsCard } from "../components/act/ActActuatorsCard";
 import { useSearchParams } from "react-router-dom";
 import Notify from "./Notify";
 import Readme from "./Readme";
@@ -56,6 +57,7 @@ export default function System() {
     </div>
     {can("sys.maint") && <Maintenance docker={!!upd.data?.docker} />}
     {can("act.policy") && can("page.actions") && <ActModeCard />}
+    {can("act.connect") && can("page.actions") && <ActActuatorsCard />}
     {user?.role === "admin" && user?.all !== false && <DemoClean />}
     {can("sys.auth") && <SignInProviders />}
     {!!rel.data?.length && <Collapsible id="sys-releases" title={t("sys_releases")} defaultOpen={false}><div className="stack small">{rel.data.slice(0, 6).map((r: any) => <div key={r.version}><b>v{r.version}</b> <span className="muted">{r.date} · {r.kind}</span><ul style={{ margin: "2px 0 0", paddingLeft: 18 }}>{(r.lines ?? []).map((n: string, i: number) => <li key={i}>{n}</li>)}</ul></div>)}</div></Collapsible>}

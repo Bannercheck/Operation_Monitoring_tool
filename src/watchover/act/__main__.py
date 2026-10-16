@@ -5,6 +5,9 @@
     audit purge [--days N]    drop audit payloads older than the retention (rows and MACs stay; the chain keeps verifying)
     kill --global --reason R  write <WATCHOVER_HOME>/act.KILL (works with the database down); --resume removes it
     templates lint <dir>      lint every *.tmpl.json pack in a folder (exit 1 on errors)
+    demo disk [--host H]      act_demo only: a /var/log disk case within seconds (simulated disk)
+    demo run-guided <case>    act_demo only: walk the guided run; the simulated disk moves; --wait lets the watch window pass
+    metrics [--week 2026-W42] compute the weekly agreement metrics (κ, FULL, FALSE-ACT, WRONG-ACT, MISS)
 """
 from __future__ import annotations
 
@@ -78,7 +81,41 @@ def main(argv=None) -> int:
     t = sub.add_parser("templates")
     t.add_argument("what", choices=["lint"])
     t.add_argument("path")
+    d = sub.add_parser("demo")
+    d.add_argument("what", choices=["disk", "run-guided"])
+    d.add_argument("case", nargs="?", type=int)
+    d.add_argument("--host", default="web-prod-07")
+    d.add_argument("--pct", type=float, default=93.4)
+    d.add_argument("--wait", action="store_true")
+    m = sub.add_parser("metrics")
+    m.add_argument("--week", default=None)
     args = ap.parse_args(argv)
+    if args.cmd == "demo":
+        from . import ActService, demo
+        from .demo import DemoError
+        db = _db()
+        act = ActService(db=db)
+        try:
+            if args.what == "disk":
+                c = demo.disk(act, host=args.host, pct=args.pct)
+                print(json.dumps({"case": c.get("id"), "title": c.get("title"), "phase": c.get("phase")}, ensure_ascii=False))
+                return 0
+            if not args.case:
+                print("run-guided needs a case id", file=sys.stderr)
+                return 2
+            r = demo.run_guided(act, args.case, wait=args.wait)
+            print(json.dumps({"run": r["id"], "status": r["status"], "label": r.get("label"),
+                              "steps": [(s["step_key"], s["status"]) for s in r["steps"]]}, ensure_ascii=False))
+            return 0
+        except DemoError as e:
+            print(e.detail()["tr"], file=sys.stderr)
+            return 2
+    if args.cmd == "metrics":
+        from . import store
+        from .metrics import weekly
+        db = _db(); store.ensure(db)
+        print(json.dumps(weekly(db, args.week), ensure_ascii=False, default=str))
+        return 0
     if args.cmd == "doctor":
         return doctor()
     if args.cmd == "audit":

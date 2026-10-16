@@ -1,0 +1,92 @@
+{"ok": true, "out": "a", "spec": {"type": "enum", "values": ["a", "b", "7"]}, "value": "a"}
+{"code": "not_in_enum", "ok": false, "spec": {"type": "enum", "values": ["a", "b", "7"]}, "value": "c"}
+{"ok": true, "out": "7", "spec": {"type": "enum", "values": ["a", "b", "7"]}, "value": 7}
+{"code": "type", "ok": false, "spec": {"type": "enum", "values": ["a", "b", "7"]}, "value": true}
+{"code": "not_in_enum", "ok": false, "spec": {"type": "enum", "values": ["a", "b", "7"]}, "value": ""}
+{"code": "type", "ok": false, "spec": {"type": "enum", "values": ["a", "b", "7"]}, "value": null}
+{"code": "type", "ok": false, "spec": {"type": "enum", "values": ["a", "b", "7"]}, "value": ["a"]}
+{"ok": true, "out": "orders", "spec": {"type": "enum", "values_from": "host:/etc/logrotate.d"}, "value": "orders"}
+{"code": "charset", "ok": false, "spec": {"type": "enum", "values_from": "x"}, "value": "-x"}
+{"code": "charset", "ok": false, "spec": {"type": "enum", "values_from": "x"}, "value": "a b"}
+{"code": "lookalike", "ok": false, "spec": {"type": "enum", "values": ["a", "b", "7"]}, "value": "ａ"}
+{"code": "lookalike", "ok": false, "spec": {"type": "enum", "values": ["a", "b", "7"]}, "value": "а"}
+{"code": "control_char", "ok": false, "spec": {"type": "enum", "values": ["a", "b", "7"]}, "value": "a​"}
+{"code": "control_char", "ok": false, "spec": {"type": "enum", "values": ["a", "b", "7"]}, "value": "b\n"}
+{"ok": true, "out": 7, "spec": {"max": 30, "min": 1, "type": "int"}, "value": 7}
+{"ok": true, "out": 7, "spec": {"max": 30, "min": 1, "type": "int"}, "value": "7"}
+{"ok": true, "out": 7, "spec": {"max": 30, "min": 1, "type": "int"}, "value": " 7 "}
+{"code": "bounds", "ok": false, "spec": {"max": 30, "min": 1, "type": "int"}, "value": 0}
+{"code": "bounds", "ok": false, "spec": {"max": 30, "min": 1, "type": "int"}, "value": 31}
+{"code": "type", "ok": false, "spec": {"max": 30, "min": 1, "type": "int"}, "value": "7.5"}
+{"code": "type", "ok": false, "spec": {"max": 30, "min": 1, "type": "int"}, "value": 7.5}
+{"code": "type", "ok": false, "spec": {"max": 30, "min": 1, "type": "int"}, "value": true}
+{"code": "type", "ok": false, "spec": {"max": 30, "min": 1, "type": "int"}, "value": "abc"}
+{"code": "bounds", "ok": false, "spec": {"max": 30, "min": 1, "type": "int"}, "value": "-3"}
+{"code": "type", "ok": false, "spec": {"max": 30, "min": 1, "type": "int"}, "value": "1234567890123"}
+{"ok": true, "out": -5, "spec": {"type": "int"}, "value": -5}
+{"ok": true, "out": 100000000000, "spec": {"min": 0, "type": "int"}, "value": 100000000000}
+{"ok": true, "out": "30m", "spec": {"max": 86400, "min": 60, "type": "duration"}, "value": "30m"}
+{"code": "format", "ok": false, "spec": {"type": "duration"}, "value": "30x"}
+{"code": "bounds", "ok": false, "spec": {"min": 60, "type": "duration"}, "value": "10s"}
+{"ok": true, "out": "500M", "spec": {"max": 1073741824, "type": "size"}, "value": "500M"}
+{"code": "bounds", "ok": false, "spec": {"max": 1073741824, "type": "size"}, "value": "2G"}
+{"code": "format", "ok": false, "spec": {"type": "size"}, "value": "5T"}
+{"ok": true, "out": "/var/log", "spec": {"roots": ["/var/log"], "type": "path"}, "value": "/var/log"}
+{"ok": true, "out": "/var/log/app", "spec": {"roots": ["/var/log"], "type": "path"}, "value": "/var/log/app/"}
+{"ok": true, "out": "/var/log/app", "spec": {"roots": ["/var/log"], "type": "path"}, "value": "/var/log//app"}
+{"ok": true, "out": "/var/log/app", "spec": {"roots": ["/var/log"], "type": "path"}, "value": "/var/log/./app"}
+{"code": "dotdot", "ok": false, "spec": {"roots": ["/var/log"], "type": "path"}, "value": "/var/log/../etc"}
+{"code": "not_absolute", "ok": false, "spec": {"roots": ["/var/log"], "type": "path"}, "value": "var/log"}
+{"code": "leading_dash", "ok": false, "spec": {"roots": ["/var/log"], "type": "path"}, "value": "-rf"}
+{"code": "glob", "ok": false, "spec": {"roots": ["/var/log"], "type": "path"}, "value": "/var/log/*.gz"}
+{"code": "glob", "ok": false, "spec": {"roots": ["/var/log"], "type": "path"}, "value": "/var/log/{a}"}
+{"code": "tilde", "ok": false, "spec": {"roots": ["/var/log"], "type": "path"}, "value": "~root"}
+{"code": "outside_roots", "ok": false, "spec": {"roots": ["/var/log"], "type": "path"}, "value": "/etc"}
+{"code": "outside_roots", "ok": false, "spec": {"roots": ["/var/log"], "type": "path"}, "value": "/var/logs"}
+{"code": "control_char", "ok": false, "spec": {"roots": ["/var/log"], "type": "path"}, "value": "/var/log\nx"}
+{"code": "lookalike", "ok": false, "spec": {"roots": ["/var/log"], "type": "path"}, "value": "/var/log/ﬁle"}
+{"code": "length", "ok": false, "spec": {"roots": ["/var/log"], "type": "path"}, "value": ""}
+{"code": "length", "ok": false, "spec": {"roots": ["/var/log"], "type": "path"}, "value": "/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+{"code": "outside_roots", "ok": false, "spec": {"roots": ["/var/log"], "type": "path"}, "value": "//var/log"}
+{"ok": true, "out": "/var/log", "spec": {"roots": ["/var/log"], "type": "path"}, "value": "///var/log"}
+{"code": "not_absolute", "ok": false, "spec": {"roots": ["/var/log"], "type": "path"}, "value": "/var/log\\app"}
+{"code": "not_absolute", "ok": false, "spec": {"roots": ["/var/log"], "type": "path"}, "value": 7}
+{"ok": true, "out": "/anything/at/all", "spec": {"roots": ["/"], "type": "path"}, "value": "/anything/at/all"}
+{"code": "no_roots", "ok": false, "spec": {"type": "path"}, "value": "/var/log"}
+{"ok": true, "out": "/var/log/Ünïcode/ş", "spec": {"roots": ["/var/log"], "type": "path"}, "value": "/var/log/Ünïcode/ş"}
+{"code": "lookalike", "ok": false, "spec": {"roots": ["/var/log"], "type": "path"}, "value": "/var/log/á"}
+{"ok": true, "out": "orders.service", "spec": {"type": "ident"}, "value": "orders.service"}
+{"code": "leading_dash", "ok": false, "spec": {"type": "ident"}, "value": "-x"}
+{"code": "charset", "ok": false, "spec": {"type": "ident"}, "value": "a b"}
+{"code": "charset", "ok": false, "spec": {"type": "ident"}, "value": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}
+{"ok": true, "out": "orders", "spec": {"pattern": "^ord.*$", "type": "ident"}, "value": "orders"}
+{"code": "pattern", "ok": false, "spec": {"pattern": "^ord.*$", "type": "ident"}, "value": "billing"}
+{"ok": true, "out": "orders.service", "spec": {"pattern": "^(tomcat|orders|billing)[A-Za-z0-9@._-]{0,40}\\.service$", "type": "unit"}, "value": "orders.service"}
+{"ok": true, "out": "orders@2.service", "spec": {"pattern": "^(tomcat|orders|billing)[A-Za-z0-9@._-]{0,40}\\.service$", "type": "unit"}, "value": "orders@2.service"}
+{"code": "pattern", "ok": false, "spec": {"pattern": "^(tomcat|orders|billing)[A-Za-z0-9@._-]{0,40}\\.service$", "type": "unit"}, "value": "sshd.service"}
+{"code": "charset", "ok": false, "spec": {"pattern": "^(tomcat|orders|billing)[A-Za-z0-9@._-]{0,40}\\.service$", "type": "unit"}, "value": "orders"}
+{"code": "leading_dash", "ok": false, "spec": {"type": "unit"}, "value": "-a.service"}
+{"ok": true, "out": "My Pool", "spec": {"type": "iis_pool"}, "value": "My Pool"}
+{"code": "charset", "ok": false, "spec": {"type": "iis_pool"}, "value": "a/b"}
+{"ok": true, "out": "W3SVC", "spec": {"type": "win_service"}, "value": "W3SVC"}
+{"code": "charset", "ok": false, "spec": {"type": "win_service"}, "value": "a b"}
+{"ok": true, "out": "PR1", "spec": {"type": "sap_sid"}, "value": "PR1"}
+{"code": "charset", "ok": false, "spec": {"type": "sap_sid"}, "value": "pr1"}
+{"ok": true, "out": "00", "spec": {"type": "sap_nr"}, "value": "00"}
+{"code": "charset", "ok": false, "spec": {"type": "sap_nr"}, "value": "0"}
+{"ok": true, "out": {"pid": 4121, "start": "12345:abcd1234"}, "spec": {"type": "pid"}, "value": {"pid": 4121, "start": "12345:abcd1234"}}
+{"ok": true, "out": {"pid": 4121, "start": 99}, "spec": {"type": "pid"}, "value": {"pid": 4121, "start": 99}}
+{"code": "bounds", "ok": false, "spec": {"type": "pid"}, "value": {"pid": 1, "start": 5}}
+{"code": "pid_pair", "ok": false, "spec": {"type": "pid"}, "value": 4121}
+{"code": "pid_start", "ok": false, "spec": {"type": "pid"}, "value": {"pid": 10, "start": true}}
+{"code": "pid_start", "ok": false, "spec": {"type": "pid"}, "value": {"pid": 10, "start": "a b"}}
+{"ok": true, "out": {"pid": 4121, "start": "1:2"}, "spec": {"type": "pid"}, "value": {"pid": "4121", "start": "1:2"}}
+{"code": "pid_pair", "ok": false, "spec": {"type": "pid"}, "value": {"pid": 10}}
+{"ok": true, "out": "http://localhost:8080/health", "spec": {"type": "url"}, "value": "http://localhost:8080/health"}
+{"ok": true, "out": "https://web-prod-07/x?a=1", "spec": {"type": "url"}, "value": "https://web-prod-07/x?a=1"}
+{"code": "url_host", "ok": false, "spec": {"type": "url"}, "value": "http://evil.example/"}
+{"code": "format", "ok": false, "spec": {"type": "url"}, "value": "ftp://x"}
+{"ok": true, "out": "http://127.0.0.1", "spec": {"type": "url"}, "value": "http://127.0.0.1"}
+{"code": "unknown_type", "ok": false, "spec": {"type": "str"}, "value": "x"}
+{"code": "unknown_type", "ok": false, "spec": {"type": "string"}, "value": "x"}
+{"code": "unknown_type", "ok": false, "spec": {}, "value": "x"}

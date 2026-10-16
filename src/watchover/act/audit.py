@@ -338,15 +338,26 @@ class Audit:
                     continue
                 if 0 < s <= last and m and (macs.get(s) or "")[3:35] != m and not any(lo <= s <= hi for lo, hi in missing):
                     bad.append((s, "anchor_auth_events"))
-        for r in self.db._exec("SELECT anchor_seq, anchor_mac FROM act_anchor_attest"):
+        from .jobs import attest_ok
+        agents = {int(r["agent_id"]): (r["pubkey"] or "", r["host"] or "") for r in self.db._exec("SELECT agent_id, pubkey, host FROM act_actuators")}
+        anchor_ts = {int(r["seq"]): r["ts"] for r in self.db._exec("SELECT seq, ts FROM act_anchors")}
+        att_ok = att_unverified = 0
+        for r in self.db._exec("SELECT agent_id, anchor_seq, anchor_mac, sig FROM act_anchor_attest"):
             s = int(r["anchor_seq"] or 0)
             if 0 < s <= last and r["anchor_mac"] and macs.get(s) != r["anchor_mac"]:
                 bad.append((s, "anchor_attest"))
+            pub, host = agents.get(int(r["agent_id"]), ("", ""))
+            # the counter-signature (WP11c); an actuator whose key changed since cannot be re-checked: counted, not a break
+            if pub and r["sig"] and s in anchor_ts and attest_ok(pub, {"seq": s, "mac": r["anchor_mac"], "ts": anchor_ts[s], "sig": r["sig"]}, host):
+                att_ok += 1
+            else:
+                att_unverified += 1
         attest = self.db._exec("SELECT COUNT(DISTINCT agent_id) AS n FROM act_anchor_attest")[0]["n"]
         lastrow = rows[-1] if rows else None
         return {"bad": min(bad) if bad else None,
                 "summary": {"n": n, "signed_ok": sig_ok, "last_seq": int(lastrow["seq"]) if lastrow else None,
-                            "last_ts": lastrow["ts"] if lastrow else None, "attesting_agents": int(attest or 0)}}
+                            "last_ts": lastrow["ts"] if lastrow else None, "attesting_agents": int(attest or 0),
+                            "attest_sig_ok": att_ok, "attest_unverified": att_unverified}}
 
     def _done(self, res: dict) -> dict:
         res["checked_at"] = now()

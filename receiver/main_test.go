@@ -4,7 +4,10 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/http/httputil"
@@ -331,5 +334,41 @@ func TestJobChannelOwnErrorText(t *testing.T) {
 	r, m = post(t, ts.URL+"/enroll", "", "{}")
 	if r.StatusCode != 502 || m["error"] == "job channel unavailable" {
 		t.Fatalf("enroll keeps its own text: %d %v", r.StatusCode, m)
+	}
+}
+
+func TestAgentBinaryAndManifest(t *testing.T) {
+	s, ts, stop := setup(t, &authState{Open: true}, nil)
+	defer stop()
+	bin := []byte("\x7fELF fake wo-agent")
+	_ = os.WriteFile(filepath.Join(s.cfg.agentDir, "wo-agent-linux-amd64"), bin, 0o755)
+	_ = os.WriteFile(filepath.Join(s.cfg.agentDir, "agent-install.sh"), []byte("#!/bin/sh\n"), 0o644)
+	r, err := http.Get(ts.URL + "/agent/wo-agent-linux-amd64")
+	if err != nil || r.StatusCode != 200 || r.Header.Get("Content-Type") != "application/octet-stream" {
+		t.Fatalf("binary: %v %v", err, r)
+	}
+	got, _ := io.ReadAll(r.Body)
+	r.Body.Close()
+	if string(got) != string(bin) {
+		t.Fatal("binary content")
+	}
+	if r, _ := http.Get(ts.URL + "/agent/wo-agent-linux-arm64"); r.StatusCode != 404 { // not built into this image
+		t.Fatalf("arm64 %d", r.StatusCode)
+	}
+	r, _ = http.Get(ts.URL + "/agent/manifest.json")
+	var m struct {
+		Files map[string]struct {
+			SHA256 string `json:"sha256"`
+			Size   int    `json:"size"`
+		} `json:"files"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&m)
+	r.Body.Close()
+	h := sha256.Sum256(bin)
+	if m.Files["wo-agent-linux-amd64"].SHA256 != hex.EncodeToString(h[:]) || m.Files["agent-install.sh"].Size != 10 {
+		t.Fatalf("manifest %+v", m)
+	}
+	if _, ok := m.Files["wo-agent-linux-arm64"]; ok {
+		t.Fatal("a missing binary must not be listed")
 	}
 }

@@ -85,6 +85,10 @@ class ActService:
         self.jobs = Jobs(self)                             # WP11a: the pull job channel (/agent/v1/), host locks
         from .shadow import Shadow
         self.shadow = Shadow(self)                         # WP7: matcher, frozen inputs sealed at ready, blind sampling, decisions
+        from .engine import Engine
+        self.engine = Engine(self)                         # WP8: runs, guided / approved steps, verify, rollback, watch, labels
+        from .select import Selector
+        self.selector = Selector(self)                     # WP13: the model selector on frozen inputs (act-llm queue, one worker)
         try:
             from .cases import CaseRouter
             self.cases = CaseRouter(self)
@@ -262,7 +266,7 @@ class ActService:
             return
 
         def loop():
-            last_flow = last_anchor = time.monotonic()
+            last_flow = last_anchor = last_sel = time.monotonic()
             last_verify = 0.0
             mailed = ""
             while not self._stop.is_set():
@@ -279,6 +283,11 @@ class ActService:
                             self.anchors.daily_mail()
                     if self.enabled and self.jobs is not None:
                         self.jobs.sweep()                  # queued → expired, silent leased → unknown
+                    if self.enabled and getattr(self, "engine", None) is not None:
+                        self.engine.tick()                 # job results, verify retries, watch windows, kills of every active run
+                    if self.enabled and time.monotonic() - last_sel >= 30 and getattr(self, "selector", None) is not None:
+                        last_sel = time.monotonic()
+                        self.selector.sweep()              # frozen inputs without a model answer → the act-llm queue
                     if self.enabled and time.monotonic() - last_verify >= 3600:
                         last_verify = time.monotonic()
                         self.audit.verify()                # the chain chip and the `chain` cap follow the last walk
@@ -291,11 +300,22 @@ class ActService:
         self._stop = threading.Event()
         self._thread = threading.Thread(target=loop, name="act-cases", daemon=True)
         self._thread.start()
+        if getattr(self, "selector", None) is not None:
+            self.selector.queue.start()                    # the act-llm worker (one model call at a time)
 
     def stop(self) -> None:
         if getattr(self, "_thread", None) is not None:
             self._stop.set()
             self._thread = None
+        if getattr(self, "selector", None) is not None:
+            self.selector.queue.stop()
+
+    def _model_state(self) -> dict:
+        try:
+            st = self.selector.state()
+            return {"state": "on" if st["on"] else "off", **st, "queue": len(self.selector.queue)}
+        except Exception:  # noqa: BLE001
+            return {"state": "off"}
 
     # ---------------------------------------------------------------- status (header chips; GET /api/act/status)
     def status(self) -> dict:
@@ -312,7 +332,7 @@ class ActService:
         return {"mode": mode, "mode_cap": MODE_CAP.get(mode, 0), "enabled": mode != "off", "custody": keys["custody"],
                 "signing": keys["available"], "keys": keys, "kill": kills, "killed_global": any(k["scope"] == "global" for k in kills),
                 "chain": chain, "caps": {"key_custody": self.keys.cap(), "anchor": 4 if fr["fresh"] else 2, "chain": self.audit.chain_cap()},
-                "breaker": {"open": False}, "model": {"state": "off"}, "queue": len(self.queue), "stats": dict(self.stats),
+                "breaker": {"open": False}, "model": self._model_state(), "queue": len(self.queue), "stats": dict(self.stats),
                 "residual_risk_accepted": bool(self.policy.get("act_residual_risk_accepted")), "ts": now()}
 
 

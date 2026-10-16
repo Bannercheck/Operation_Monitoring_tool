@@ -281,8 +281,20 @@ class Services:
 
     def llm_cfg(self, purpose: str = "chat") -> LLMConfig:
         """purpose='chat': the connection the operator configured (LLM page / .env) - never touched by training.
-        purpose='ops': the auto-trained watchover-ops model when it exists, passed the gate and 'use it' is on; else the chat one."""
+        purpose='ops': the auto-trained watchover-ops model when it exists, passed the gate and 'use it' is on; else the chat one.
+        purpose='act': the action agent's selector (docs/design/action-agent.md §8.3): a champion act model registered in
+        act_models (WP14) on the local Ollama, else the chat connection unchanged — act/select.py switches itself off when that
+        connection is not local (act_llm_local_only) or measured too slow. Nothing here ever writes the operator's settings."""
         c = wo_settings.load()
+        if purpose == "act":
+            try:
+                row = self.kb._exec("SELECT tag FROM act_models WHERE status='champion' ORDER BY id DESC LIMIT 1")
+            except Exception:  # noqa: BLE001
+                row = []
+            if row:
+                url = os.environ.get("OLLAMA_URL") or ("http://ollama:11434" if os.environ.get("WATCHOVER_DOCKER") else "http://localhost:11434")
+                return LLMConfig(url, row[0]["tag"], "", provider="ollama")
+            purpose = "chat"
         if purpose == "ops" and c.get("train_use_ops", True) and self.ops_ready():
             url = os.environ.get("OLLAMA_URL") or ("http://ollama:11434" if os.environ.get("WATCHOVER_DOCKER") else "http://localhost:11434")
             return LLMConfig(url, self.OPS_MODEL, "", embed_model=c.get("llm_embed", "") or os.environ.get("LLM_EMBED_MODEL", ""), provider="ollama")

@@ -28,7 +28,7 @@ spec:
     targetPort: http
   {{- include "watchover.routeTls" . }}
   wildcardPolicy: None
-{{- $paths := list (list "ingest" "/ingest") (list "enroll" "/enroll") (list "agent-py" "/agent.py") (list "agent-install" "/agent/install.sh") (list "mobile" "/mobile") (list "rum" "/rum") (list "rum-js" "/rum.js") }}
+{{- $paths := list (list "ingest" "/ingest") (list "enroll" "/enroll") (list "agent-py" "/agent.py") (list "agent-install" "/agent/install.sh") (list "agent-manifest" "/agent/manifest.json") (list "agent-bin" "/agent/wo-agent-") (list "agent-jobs" "/agent/v1/") (list "mobile" "/mobile") (list "rum" "/rum") (list "rum-js" "/rum.js") }}
 {{- if .Values.routes.ingest.host }}
 {{- range $p := $paths }}
 ---

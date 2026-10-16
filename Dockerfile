@@ -32,6 +32,8 @@ COPY app.py agent.py mcp_server.py ./
 COPY assets ./assets
 COPY samples ./samples
 COPY scripts ./scripts
+# vendor command-template packs: the server catalogue (act_templates) loads them at start (docs/design/action-agent.md §5.9)
+COPY agent_actions ./agent_actions
 COPY .streamlit ./.streamlit
 COPY --from=web /web/dist ./web/dist
 RUN chown -R 10001:0 /app && chmod -R g=u /app

@@ -89,13 +89,23 @@ def _parse(s) -> Optional[datetime]:
 
 
 def ed25519_verify(pub: str, sig_b64: str, msg: bytes) -> bool:
-    """Ed25519 with `cryptography` (WP11c adds the pure-Python verifier for hosts without it)."""
+    """Ed25519 with `cryptography`. The managed hosts run the Go actuator (goagent/, crypto/ed25519), so no Python code on a
+    host verifies signatures and the design's pure-Python verifier is not needed (WP11c deviation, recorded in the design)."""
     try:
         from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
         Ed25519PublicKey.from_public_bytes(base64.b64decode(pub.split(":", 1)[1])).verify(base64.b64decode(sig_b64), msg)
         return True
     except Exception:  # noqa: BLE001
         return False
+
+
+def attest_ok(pub: str, att: dict, host: str) -> bool:
+    """The actuator's counter-signature over an anchor: Ed25519(agent key, "wo-attest-v1\n" + canonical({seq, mac, ts, host}))."""
+    try:
+        body = {"seq": int(att.get("seq")), "mac": str(att.get("mac") or ""), "ts": str(att.get("ts") or ""), "host": host}
+    except (TypeError, ValueError):
+        return False
+    return bool(att.get("sig")) and ed25519_verify(pub, str(att["sig"]), b"wo-attest-v1\n" + canonical(body).encode())
 
 
 def token_sha(tok: str) -> str:
@@ -139,7 +149,7 @@ class Actuators:
             if hosts is not None and r["host"] not in hosts:
                 continue
             r = {k: v for k, v in r.items() if k != "token_sha256"}
-            for k in ("templates", "policy"):
+            for k in ("templates", "policy", "extra"):
                 try:
                     r[k] = json.loads(r.get(k) or ("[]" if k == "templates" else "{}"))
                 except ValueError:
@@ -149,12 +159,17 @@ class Actuators:
         return out
 
     def install_line(self, token: str, criticality: str = "normal", base_url: str = "https://<edge>:8600") -> str:
+        """For a host enrolled with its own wo_ token: the same installer adds the (dormant) actuator. Hosts enrolled with the
+        fleet key get both tokens and the pins from the enrolment answer and need no second line."""
         keys = self.act.keys
-        pub = keys.public() if keys.custody() != "none" else {}
-        return (f"sudo ./agent-install.sh --url {base_url} --actions --actions-token {token} "
-                f"--actions-archive <release mirror>/watchover-actuator-0.7.0.tar.gz --actions-sha256 <release sha256> "
-                f"--actions-packs linux-diag --dispatch-pub \"{pub.get('dispatch', '<keyd not ready>')}\" "
-                f"--anchor-pub \"{pub.get('anchor', '<keyd not ready>')}\" --criticality {criticality}")
+        try:
+            pub = keys.public() if keys.custody() != "none" else {}
+        except Exception:  # noqa: BLE001 - keyd unreachable: the actuator pins on first use
+            pub = {}
+        pins = (f" --dispatch-pub \"{pub['dispatch']}\" --anchor-pub \"{pub.get('anchor', '')}\"" if pub.get("dispatch")
+                else "")                                         # no keys yet: pinned on first use (hello answer)
+        return (f"curl -fsSL {base_url}/agent/install.sh | sudo bash -s -- --url {base_url} --actions-only --actions-token {token}"
+                f"{pins} --criticality {criticality}")
 
     def issue(self, agent_id: int, host: str, by: str, criticality: str = "normal", base_url: str = "") -> dict:
         """A new actuator token for the agent record of `host` (the previous one, if any, stops working at once)."""
@@ -241,6 +256,9 @@ class Jobs:
         rec = self.actuators.for_host(host)
         if not rec:
             raise ChannelError(409, f"no actuator for {host}")
+        if mode in ACT_MODES and rec.get("insecure_install"):
+            # installed over plain HTTP without a pinned checksum: read-only work only until it is reinstalled (§9.3.1, A13)
+            raise ChannelError(409, f"{host}: güvensiz kurulum — changes need a reinstall over https or with --agent-sha256")
         k = self.act.kill.killed(team_id=team_id, host=host, template=template_id)
         if k:                                                        # I7: kill checked at dispatch
             raise ChannelError(409, f"stopped ({k['scope']})")
@@ -410,11 +428,27 @@ class Jobs:
                            int(pol.get("cosign_keys") or 0), int(bool(b.get("insecure_install"))), int(bool(b.get("allowlist_ok"))),
                            int(bool(b.get("halt"))), int(ledger.get("n") or 0), str(ledger.get("head") or "")[:128], int(ledger.get("last_seq") or 0),
                            skew, now(), agent_id))
+            extra = {k: b.get(k) for k in ("pins", "sim", "arch", "allowlist_detail", "allowlist_errors", "dispatch_kids") if k in b}
+            self.db._exec("UPDATE act_actuators SET extra=? WHERE agent_id=?", (json.dumps(extra, default=str)[:4000], agent_id))
             att = b.get("anchor_attest") or {}
             if att.get("seq") and att.get("anchor_sig_ok"):
-                self.act.anchors.attest(agent_id, int(att["seq"]), str(att.get("mac") or ""), str(ledger.get("head") or ""), str(env.get("sig") or ""))
+                # the actuator's counter-signature (purpose attest, agent key) over the anchor it verified with anchor.pub (WP11c)
+                if attest_ok(pub, att, rec["host"]):
+                    self.act.anchors.attest(agent_id, int(att["seq"]), str(att.get("mac") or ""), str(ledger.get("head") or ""),
+                                            str(att.get("sig") or ""))
+                else:
+                    self.audit.write("actuator.attest_bad", object_kind="actuator", object_id=agent_id,
+                                     payload={"host": rec["host"], "anchor_seq": att.get("seq")})
         self.actuators.invalidate()
-        res = {"key_status": status, "fingerprint": fp, "poll_s": POLL_S, "halt": bool(self._server_halt(rec)), "clock_skew_s": skew}
+        res = {"key_status": status, "fingerprint": fp, "poll_s": POLL_S, "halt": bool(self._server_halt(rec)), "clock_skew_s": skew,
+               "agent_id": agent_id, "dormant": not self.act.enabled}
+        if self.act.enabled:                                         # first-use pins for a dormant install (wo-agent pins only when none)
+            try:
+                pubs = self.act.keys.public() if self.act.keys.custody() != "none" else {}
+            except Exception:  # noqa: BLE001 - keyd unreachable: the next hello carries them
+                pubs = {}
+            if pubs.get("dispatch"):
+                res["keys"] = {"dispatch": pubs.get("dispatch", ""), "anchor": pubs.get("anchor", "")}
         if abs(skew) > SKEW_S:
             res["clock_error"] = "clock skew above 120 s: no job until the host clock is fixed"
         a = self.act.anchors.latest()
@@ -469,6 +503,8 @@ class Jobs:
     def poll(self, rec: dict, after: int = 0) -> Tuple[int, Dict[str, str], Optional[dict]]:
         aid = int(rec["agent_id"])
         self.last_poll[aid] = time.monotonic()
+        if not self.act.enabled:                                            # act_mode off: the actuator stays dormant
+            return 204, {"X-Poll-After": "300"}, None
         with self._lock:
             n = self.pending.get(aid, 0)
             cancel = sorted(self.cancels.pop(aid, set()))

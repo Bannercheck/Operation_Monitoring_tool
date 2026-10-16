@@ -389,9 +389,15 @@ class Shadow:
                 self.db._exec("UPDATE actions SET runbook_key=?, updated_at=? WHERE id=?", (rb_key, ts, cid))
         case = dict(self.db._exec("SELECT * FROM actions WHERE id=?", (cid,))[0])
         v = self.view(case)
+        plan = None
+        if rb_key and getattr(self.act, "engine", None) is not None and not implicit:
+            try:
+                plan = self.act.engine.plan(cid, rb_key, version, params)     # WP8: a read-only preview; "Başlat" creates the run
+            except Exception:  # noqa: BLE001 - an unpublished runbook has no plan yet
+                plan = None
         res = {"decision": {"choice": choice, "attempt": attempt, "blind": blind, "peeked": peeked, "agree_rules": ag_rules,
                             "agree_model": ag_model, "reason_code": reason_code},
-               "proposals": {"rules": v.get("rules"), "model": v.get("model_proposal")}, "plan": None}
+               "proposals": {"rules": v.get("rules"), "model": v.get("model_proposal")}, "plan": plan}
         if blind and ag_rules in ("full", "choice"):
             res["reveal"] = {"tr": "Sistem de aynısını seçmişti ✓", "en": "The system had chosen the same ✓", "sealed_at": v.get("sealed_at")}
         elif blind:

@@ -679,6 +679,18 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("/mobile", s.rum)
 	files := map[string]string{"/agent.py": "agent.py", "/agent/install.sh": "agent-install.sh", "/rum.js": "rum.js"}
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Path == "/agent/manifest.json" {
+			s.json(w, http.StatusOK, agentManifest(s.cfg.agentDir))
+			return
+		}
+		if bin, ok := agentBins[r.URL.Path]; ok && r.Method == http.MethodGet {
+			b, err := os.ReadFile(filepath.Join(s.cfg.agentDir, bin))
+			if err == nil {
+				w.Header().Set("Content-Type", "application/octet-stream")
+				_, _ = w.Write(b)
+				return
+			}
+		}
 		if f, ok := files[r.URL.Path]; ok && r.Method == http.MethodGet {
 			b, err := os.ReadFile(filepath.Join(s.cfg.agentDir, f))
 			if err == nil {
@@ -798,4 +810,22 @@ func main() {
 	wcancel()
 	<-wdone
 	<-pdone
+}
+
+// agentBins is the Go host agent (goagent/, wo-agent: the action agent's actuator role) built into this image for Linux.
+var agentBins = map[string]string{"/agent/wo-agent-linux-amd64": "wo-agent-linux-amd64", "/agent/wo-agent-linux-arm64": "wo-agent-linux-arm64"}
+
+// agentManifest lists sha256 and size of what the installer downloads (/agent/manifest.json): integrity of the download over
+// the same channel, not authenticity (an install line can pin --agent-sha256 from the release notes for that).
+func agentManifest(dir string) map[string]any {
+	files := map[string]any{}
+	for _, name := range []string{"agent.py", "agent-install.sh", "wo-agent-linux-amd64", "wo-agent-linux-arm64"} {
+		b, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			continue
+		}
+		h := sha256.Sum256(b)
+		files[name] = map[string]any{"sha256": hex.EncodeToString(h[:]), "size": len(b)}
+	}
+	return map[string]any{"files": files}
 }

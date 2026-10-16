@@ -156,7 +156,7 @@ oc exec -it -n watchover deploy/watchover -c dashboard -- python -m watchover.us
 
 ## 5. Sunucuları bağlamak (ajanlar)
 
-Ajanlar ingest Route'una https ile gönderir. `routes.ingest.host` verildiğinde bu adreste yalnız alıcı yolları açıktır: `/ingest`, `/enroll`, `/agent.py`, `/agent/install.sh`, `/mobile`, `/rum`, `/rum.js` (alıcının `/health` ve `/metrics` uçları küme içinde kalır). Kayıt anahtarı Bağlantılar sayfasındadır (ekip anahtarları Ekip sayfasında); aynı sayfa komutu bu adresle hazır gösterir.
+Ajanlar ingest Route'una https ile gönderir. `routes.ingest.host` verildiğinde bu adreste yalnız alıcı yolları açıktır: `/ingest`, `/enroll`, `/agent.py`, `/agent/install.sh`, `/agent/manifest.json`, `/agent/wo-agent-…` (eylem ajanının ikili dosyaları), `/agent/v1/` (eylem ajanlarının iş kanalı; yalnız `wa_` jetonları), `/mobile`, `/rum`, `/rum.js` (alıcının `/health` ve `/metrics` uçları küme içinde kalır). Kayıt anahtarı Bağlantılar sayfasındadır (ekip anahtarları Ekip sayfasında); aynı sayfa komutu bu adresle hazır gösterir.
 
 ```bash
 # izlenecek her Linux sunucuda:
@@ -164,7 +164,8 @@ curl -fsSL https://watchover-ingest.apps.kume.firma.com/agent/install.sh | sudo 
      --url https://watchover-ingest.apps.kume.firma.com/ingest --enroll-key wk_… --env prod
 ```
 
-- Route şirket iç CA'sıyla imzalıysa ve sunucular bu CA'ya güvenmiyorsa: sunucuya CA'yı kurun ya da ajana `--ca /etc/pki/firma-root.pem` verin (`WATCHOVER_CA`).
+- Route şirket iç CA'sıyla imzalıysa ve sunucular bu CA'ya güvenmiyorsa: sunucuya CA'yı kurun ya da kurulum komutuna `--ca /etc/pki/firma-root.pem` ekleyin (log ajanı `WATCHOVER_CA`, eylem ajanı `WO_CA` olarak saklar).
+- Aynı komut Linux + systemd sunucularda eylem ajanını (`wo-agent`, `watchover-actuator` servisi) **uykuda** kurar: otomasyon kapalıyken yalnız merhaba der, iş almaz. Https Route ile kurulduğu için "güvensiz kurulum" sayılmaz; ayrıntılar `docs/KURULUM_DOCKER.md` bölüm 5'te. Sunucuya iş gitmeden önce bir kişi Sistem › Durum › Eylem ajanları'nda anahtar parmak izini onaylar.
 - Küme içinden doğrudan alıcıya gönderecek bir bileşen (ör. OpenTelemetry collector) için `networkPolicy.ingestNamespaces: [{name: otel}]` ve adres `http://watchover.watchover.svc:8600/ingest`.
 - Web/mobil kullanıcı deneyimi (RUM) betiği de bu adresi kullanır (`https://<ingest host>/rum.js`).
 

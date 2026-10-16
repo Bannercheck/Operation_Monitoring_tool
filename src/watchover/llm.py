@@ -13,6 +13,7 @@ narrative stays.
 from __future__ import annotations
 
 import json
+import re
 import ssl
 import threading
 import time
@@ -156,14 +157,32 @@ def list_models(cfg: LLMConfig) -> list[str]:
 
 
 # ---------------------------------------------------------------- chat
-def _chat_raw(cfg: LLMConfig, messages: list[dict], temperature: float, max_tokens: int) -> tuple[str, dict]:
-    """-> (answer text, token usage as reported by the provider)"""
+def ollama_version(cfg: LLMConfig) -> tuple:
+    """(major, minor, patch) from GET /api/version; () when unknown. Structured outputs (`format` with a JSON schema) need
+    Ollama >= 0.5.0; older servers get `format: "json"` and the caller's validator does the rest."""
+    try:
+        doc = _http(cfg.root + "/api/version", None, _headers(cfg), min(cfg.timeout, 10))
+        return tuple(int(x) for x in re.findall(r"\d+", str(doc.get("version") or ""))[:3])
+    except Exception:  # noqa: BLE001
+        return ()
+
+
+def _chat_raw(cfg: LLMConfig, messages: list[dict], temperature: float, max_tokens: int, fmt=None, seed=None,
+              options: dict | None = None) -> tuple[str, dict]:
+    """-> (answer text, token usage as reported by the provider). `fmt`: a JSON schema (dict) or "json" — Ollama `format`,
+    OpenAI-compatible `response_format`; ignored by providers without it (the caller validates). `seed`: Ollama
+    `options.seed`, OpenAI-compatible `seed`."""
     k = cfg.kind
     system = "\n\n".join(m["content"] for m in messages if m["role"] == "system")
     turns = [m for m in messages if m["role"] != "system"]
     if k == "ollama":
-        doc = _http(cfg.root + "/api/chat", {"model": cfg.model, "messages": messages, "stream": False,
-                                               "options": {"temperature": temperature, "num_predict": max_tokens}}, _headers(cfg), cfg.timeout)
+        opts = {"temperature": temperature, "num_predict": max_tokens, **(options or {})}
+        if seed is not None:
+            opts["seed"] = int(seed)
+        body = {"model": cfg.model, "messages": messages, "stream": False, "options": opts}
+        if fmt is not None:
+            body["format"] = fmt
+        doc = _http(cfg.root + "/api/chat", body, _headers(cfg), cfg.timeout)
         return doc["message"]["content"].strip(), _usage(doc)
     if k == "anthropic":
         doc = _http(cfg.root + "/v1/messages", {"model": cfg.model, "system": system or None, "max_tokens": max_tokens, "temperature": temperature,
@@ -179,17 +198,25 @@ def _chat_raw(cfg: LLMConfig, messages: list[dict], temperature: float, max_toke
     url = _openai_root(cfg) + "/chat/completions"
     if cfg.extra.get("api_version"):
         url += f"?api-version={cfg.extra['api_version']}"
-    doc = _http(url, {"model": cfg.model, "messages": messages, "temperature": temperature, "stream": False, "max_tokens": max_tokens}, _headers(cfg), cfg.timeout)
+    body = {"model": cfg.model, "messages": messages, "temperature": temperature, "stream": False, "max_tokens": max_tokens}
+    if fmt is not None:
+        body["response_format"] = ({"type": "json_schema", "json_schema": {"name": "answer", "schema": fmt, "strict": True}}
+                                   if isinstance(fmt, dict) else {"type": "json_object"})
+    if seed is not None:
+        body["seed"] = int(seed)
+    doc = _http(url, body, _headers(cfg), cfg.timeout)
     return doc["choices"][0]["message"]["content"].strip(), _usage(doc)
 
 
-def chat_messages(cfg: LLMConfig, messages: list[dict], temperature: float = 0.2, max_tokens: int = 900, kind: str = "chat") -> str:
-    """Full conversation through the configured provider; timed and reported to the sink."""
+def chat_messages(cfg: LLMConfig, messages: list[dict], temperature: float = 0.2, max_tokens: int = 900, kind: str = "chat",
+                  fmt=None, seed=None, options: dict | None = None) -> str:
+    """Full conversation through the configured provider; timed and reported to the sink. `fmt` / `seed` / `options` are
+    passed to providers that support them (the action agent's selector: a per-case JSON schema, the case id as seed)."""
     t0 = time.perf_counter()
     rec = {"provider": cfg.kind, "model": cfg.model, "kind": kind, "prompt_chars": sum(len(m.get("content", "")) for m in messages), "answer_chars": 0, "ok": 1, "error": ""}
     usage = None
     try:
-        out, usage = _chat_raw(cfg, messages, temperature, max_tokens)
+        out, usage = _chat_raw(cfg, messages, temperature, max_tokens, fmt=fmt, seed=seed, options=options)
         rec["answer_chars"] = len(out)
         return out
     except Exception as e:  # noqa: BLE001

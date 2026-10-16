@@ -24,7 +24,7 @@ SHAPES = {
     "official-postgres": ["--set", "postgresql.flavor=official,postgresql.image=docker.io/library/postgres:16,backup.enabled=true"],
     "external-db": ["--set", "postgresql.enabled=false,externalDatabase.existingSecret=extdb,llm.enabled=true,llm.lock=false"],
 }
-INGEST_PATHS = {"/ingest", "/enroll", "/agent.py", "/agent/install.sh", "/mobile", "/rum"}
+INGEST_PATHS = {"/ingest", "/enroll", "/agent.py", "/agent/install.sh", "/agent/manifest.json", "/agent/wo-agent-", "/agent/v1/", "/mobile", "/rum"}
 
 
 def render(*args) -> list:

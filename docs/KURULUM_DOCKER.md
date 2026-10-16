@@ -145,7 +145,7 @@ unzip -q watchover.zip && mv hackathon watchover && cd watchover
 Ajanların bağlandığı 8600 portu v1.35'ten itibaren ayrı bir konteynerde, Go ile yazılmış `watchover-receiver` servisindedir. Paketi doğrular, `/data/spool` altına sıralı segment olarak yazar ve milisaniyeler içinde yanıt verir; panel (dashboard) segmentleri arka planda işler. Böylece anomali taraması ya da yoğun ayrıştırma sırasında ajanlar beklemez, zaman aşımına düşmez.
 
 - Kimlik doğrulama aynıdır: ajan token'ları, ortak anahtar ve ilk kurulumdaki açık mod. Panel izinli token'ların özetini (`auth.json`) birkaç saniyede bir alıcıya yayınlar; iptal edilen token en geç birkaç saniye içinde reddedilir.
-- `/enroll`, `/agent.py` ve `/agent/install.sh` de bu servisten sunulur; kayıt isteği panele aktarılır.
+- `/enroll`, `/agent.py`, `/agent/install.sh`, `/agent/manifest.json` ve eylem ajanının ikili dosyaları (`/agent/wo-agent-linux-amd64`, `-arm64`; imaj yapılırken test edilip derlenir) de bu servisten sunulur; kayıt isteği panele, eylem ajanlarının iş kanalı (`/agent/v1/`, yalnız `wa_` jetonları) panelin alıcısına aktarılır.
 - Kuyruk sınırı `.env` içinde `WATCHOVER_SPOOL_MAX_MB` (varsayılan 2048). Aşılırsa alıcı 503 ve Retry-After döner, ajan paketi kendi diskinde saklar.
 - Durum: `curl http://<sunucu>:8600/health`, Prometheus için `/metrics`; log: `./watchover.sh logs receiver`.
 - Yükseltme `./watchover.sh upgrade` ile kendiliğinden olur: panel 8600'ü bırakır, alıcı servisi devralır. Güvenlik duvarı kuralı değişmez.
@@ -320,6 +320,14 @@ Kurulum bittikten sonra izleme üç yoldan başlar; hepsi dashboard'dan yönetil
    curl -fsSL http://<watchover-sunucusu>:8600/agent/install.sh | sudo bash -s -- --url http://<watchover-sunucusu>:8600/ingest --enroll-key wk_… --env prod
    ```
    Windows sunucular için Görev Zamanlayıcı ile aynı ajan (`docs/KURULUM_WINDOWS.md`).
+
+   **Eylem ajanı (aynı komutla, uykuda).** Linux + systemd sunucularda (amd64 / arm64) aynı komut, aksiyon ajanının sunucu tarafını da kurar: tek bir Go ikili dosyası `wo-agent` (`/usr/local/lib/watchover/wo-agent`, servis `watchover-actuator`, ayrı jeton `wa_…`). Otomasyon kapalıyken ajan **uykuda** bekler: beş dakikada bir merhaba der, hiçbir iş almaz, hiçbir şey çalıştırmaz. Kayıt anahtarıyla kurulumda log jetonu (`wo_…`) ve eylem jetonu (`wa_…`) birlikte verilir; panelin imza anahtarları varsa (`dispatch.pub` / `anchor.pub`) kurulumda, yoksa ilk bağlantıda sabitlenir.
+   - İkili dosya alıcıdan indirilir ve `/agent/manifest.json`'daki sha256 ile doğrulanır. Düz HTTP ile ve `--agent-sha256 <sürüm notlarındaki değer>` verilmeden kurulan sunucu **"güvensiz kurulum"** olarak işaretlenir: orada yalnız teşhis çalışır, değişiklik adımı gönderilmez (https ya da `--agent-sha256` ile yeniden kurun).
+   - Sunucunun izin listesi `/etc/watchover/actions.d` (root, yalnız okunur) ikili dosyanın içindeki paketlerden yazılır; `local.json` varsayılanı `max_risk: R0` (yalnız teşhis). Değişikliğe izin vermek sunucu yöneticisinin kararıdır: `--actions-max-risk R1` ya da `local.json`. `--criticality high|critical` her zaman R0'dır. Sunucuda `touch /etc/watchover/actions.halt` her şeyi yerelde durdurur.
+   - Komutlar kabuk olmadan, şablonun `run_as` hesabıyla (yoksa ayrı kullanıcı `wo-act`) çalışır; ajan her işi yerel defterine (`/var/lib/watchover/actions/ledger.jsonl`) yazar.
+   - İlk bağlantıda ajan anahtar parmak izini günlüğe yazar (`sudo /usr/local/lib/watchover/wo-agent act fingerprint`). Bir kişi **Sistem › Durum › Eylem ajanları**'nda aynı parmak izini yapıştırıp onaylayana kadar o sunucuya iş gönderilmez.
+   - Kurum içi CA ile imzalı bir https adresi için `--ca /etc/pki/firma-root.pem` (iki ajana da geçer). `--uninstall` ajanı, eylem ajanını, izin listesini, durum dizinini ve `wo-act` kullanıcısını kaldırır.
+   - macOS, Windows ve systemd'siz sunucularda eylem ajanı kurulmaz (kurulum bunu açıkça yazar); log gönderimi aynen çalışır.
 2. **Kaynaklar (pull):** Elasticsearch / OpenSearch, Grafana Loki, Splunk, Graylog ve HTTP/JSON uçlarından belirli aralıklarla çekim; Bağlantı ayarları › Kaynaklar sekmesinden adres, kimlik ve sorgu girilir, sırlar veritabanında şifreli tutulur.
 3. **Dosya yükleme:** Datasets sayfasından ZIP / log / CSV / SAP arşivleri (çoklu dosya, arka planda, ilerleme yüzdesiyle).
 
@@ -532,7 +540,7 @@ Sunucuda yalnız Docker Engine + Compose v2 kurulu olmalı (dağıtımın paket 
 curl -fsSL http://<watchover>:8600/agent/install.sh | sudo bash -s -- --url http://<watchover>:8600/ingest --enroll-key <Bağlantılar › Ajanlar> --env prod
 ```
 
-İzlenen sunucuda `python3` kurulu olmalı (yoksa kurulum betiği paket deposundan kurmayı dener; çevrimdışı sunucuda önceden kurun). Ajan, Watchover erişilemezken paketleri yerel diskte biriktirir ve bağlantı dönünce boşaltır. Güvenlik duvarında açılması gereken tek kural: izlenen sunuculardan Watchover'a **TCP 8600** (edge ile **443**), arayüz için istemcilerden **443/8501**. Elasticsearch, Grafana, Splunk gibi kaynaklardan **çekme** ise Watchover'dan o sistemlere doğru ilgili portlarda izin ister.
+İzlenen sunucuda `python3` kurulu olmalı (yoksa kurulum betiği paket deposundan kurmayı dener; çevrimdışı sunucuda önceden kurun). Eylem ajanı (`wo-agent`, bölüm 5) da aynı alıcıdan iner; ek bir paket ya da internet gerekmez. Ajan, Watchover erişilemezken paketleri yerel diskte biriktirir ve bağlantı dönünce boşaltır. Güvenlik duvarında açılması gereken tek kural: izlenen sunuculardan Watchover'a **TCP 8600** (edge ile **443**), arayüz için istemcilerden **443/8501**. Elasticsearch, Grafana, Splunk gibi kaynaklardan **çekme** ise Watchover'dan o sistemlere doğru ilgili portlarda izin ister.
 
 **Öğrenme ve güncellemeler internetsiz sunucuda.** Çalışma zamanında hiçbir özellik internete bağlı değildir:
 

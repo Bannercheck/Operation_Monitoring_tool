@@ -1,0 +1,339 @@
+{
+ "format": 1,
+ "pack": "watchover-linux-diag",
+ "pack_version": 1,
+ "templates": [
+  {
+   "id": "linux.disk.usage",
+   "rev": 1,
+   "os": "linux",
+   "kind": "diag",
+   "risk": "R0",
+   "cost": "light",
+   "builtin": "disk_usage",
+   "params": {
+    "path": {
+     "type": "path",
+     "roots": [
+      "/"
+     ],
+     "must_exist": true
+    }
+   },
+   "timeout_s": 20,
+   "max_output_kb": 16,
+   "output": {
+    "parser": "kv"
+   },
+   "human_cmd": "df -P {path}",
+   "title_tr": "Disk kullanımını ölç",
+   "title_en": "Measure disk usage",
+   "expect_tr": "Kullanım yüzdesi, boş alan ve bağlama noktası",
+   "expect_en": "Use percentage, free space and mount point"
+  },
+  {
+   "id": "linux.dir.top",
+   "rev": 1,
+   "os": "linux",
+   "kind": "diag",
+   "risk": "R0",
+   "cost": "light",
+   "builtin": "dir_top",
+   "params": {
+    "path": {
+     "type": "path",
+     "roots": [
+      "/"
+     ],
+     "must_exist": true,
+     "dir": true
+    },
+    "depth": {
+     "type": "int",
+     "min": 1,
+     "max": 3,
+     "default": 1
+    },
+    "n": {
+     "type": "int",
+     "min": 1,
+     "max": 50,
+     "default": 10
+    }
+   },
+   "timeout_s": 60,
+   "max_output_kb": 32,
+   "output": {
+    "parser": "du_top"
+   },
+   "human_cmd": "du -x -d {depth} {path} | sort -rn | head -n {n}",
+   "title_tr": "En büyük dizinler",
+   "title_en": "Largest directories"
+  },
+  {
+   "id": "linux.files.largest",
+   "rev": 1,
+   "os": "linux",
+   "kind": "diag",
+   "risk": "R0",
+   "cost": "light",
+   "builtin": "files_largest",
+   "params": {
+    "path": {
+     "type": "path",
+     "roots": [
+      "/"
+     ],
+     "must_exist": true,
+     "dir": true
+    },
+    "n": {
+     "type": "int",
+     "min": 1,
+     "max": 50,
+     "default": 10
+    }
+   },
+   "timeout_s": 60,
+   "max_output_kb": 32,
+   "output": {
+    "parser": "files_largest"
+   },
+   "human_cmd": "find {path} -xdev -type f -printf '%s %p\\n' | sort -rn | head -n {n}",
+   "title_tr": "En büyük dosyalar",
+   "title_en": "Largest files"
+  },
+  {
+   "id": "linux.fs.lsof_deleted",
+   "rev": 1,
+   "os": "linux",
+   "kind": "diag",
+   "risk": "R0",
+   "cost": "light",
+   "script": {
+    "path": "/usr/lib/watchover/actions/lsof_deleted.sh",
+    "sha256": "b6fb99b9bb80957c6048b8dd0ae750cf8ebd889f07a418e957306f30eb336249",
+    "args": [
+     "{path}"
+    ]
+   },
+   "params": {
+    "path": {
+     "type": "path",
+     "roots": [
+      "/"
+     ],
+     "must_exist": true
+    }
+   },
+   "timeout_s": 30,
+   "max_output_kb": 32,
+   "output": {
+    "parser": "lsof_deleted"
+   },
+   "title_tr": "Silinmiş ama açık dosyalar",
+   "title_en": "Deleted but open files"
+  },
+  {
+   "id": "linux.service.status",
+   "rev": 1,
+   "os": "linux",
+   "kind": "diag",
+   "risk": "R0",
+   "cost": "light",
+   "argv": [
+    "/usr/bin/systemctl",
+    "show",
+    "-p",
+    "ActiveState,SubState,MainPID,NRestarts",
+    "{unit}"
+   ],
+   "params": {
+    "unit": {
+     "type": "unit"
+    }
+   },
+   "timeout_s": 15,
+   "max_output_kb": 8,
+   "output": {
+    "parser": "systemctl_show"
+   },
+   "title_tr": "Servis durumu",
+   "title_en": "Service status"
+  },
+  {
+   "id": "linux.log.tail",
+   "rev": 1,
+   "os": "linux",
+   "kind": "diag",
+   "risk": "R0",
+   "cost": "light",
+   "builtin": "log_tail",
+   "privacy": "raw",
+   "params": {
+    "path": {
+     "type": "path",
+     "roots": [
+      "/var/log",
+      "/opt",
+      "/srv",
+      "/data",
+      "/tmp",
+      "/var/tmp",
+      "/home"
+     ],
+     "must_exist": true
+    },
+    "n": {
+     "type": "int",
+     "min": 1,
+     "max": 500,
+     "default": 50
+    }
+   },
+   "timeout_s": 15,
+   "max_output_kb": 64,
+   "human_cmd": "tail -n {n} {path}",
+   "title_tr": "Logun son satırları",
+   "title_en": "Log tail"
+  },
+  {
+   "id": "linux.proc.top",
+   "rev": 1,
+   "os": "linux",
+   "kind": "diag",
+   "risk": "R0",
+   "cost": "light",
+   "builtin": "proc_top",
+   "params": {
+    "n": {
+     "type": "int",
+     "min": 1,
+     "max": 50,
+     "default": 10
+    }
+   },
+   "timeout_s": 15,
+   "max_output_kb": 16,
+   "output": {
+    "parser": "proc_top"
+   },
+   "human_cmd": "ps -eo pid,lstart,comm,user,%cpu,rss --sort=-%cpu | head -n {n}",
+   "title_tr": "En çok kaynak kullanan süreçler",
+   "title_en": "Top processes"
+  },
+  {
+   "id": "linux.proc.find",
+   "rev": 1,
+   "os": "linux",
+   "kind": "diag",
+   "risk": "R0",
+   "cost": "light",
+   "builtin": "proc_find",
+   "params": {
+    "pattern": {
+     "type": "enum",
+     "values": [
+      "java",
+      "tomcat",
+      "node",
+      "nginx",
+      "httpd",
+      "postgres",
+      "disp+work"
+     ]
+    }
+   },
+   "timeout_s": 15,
+   "max_output_kb": 16,
+   "output": {
+    "parser": "proc_find"
+   },
+   "human_cmd": "pgrep -a {pattern}",
+   "title_tr": "Süreci bul (pid ve başlangıç zamanı)",
+   "title_en": "Find a process (pid and start time)"
+  },
+  {
+   "id": "linux.java.heap_info",
+   "rev": 1,
+   "os": "linux",
+   "kind": "diag",
+   "risk": "R0",
+   "cost": "light",
+   "argv": [
+    "/usr/bin/jcmd",
+    "{pid}",
+    "GC.heap_info"
+   ],
+   "run_as": "{pid_owner}",
+   "pid_exe": "java",
+   "params": {
+    "pid": {
+     "type": "pid",
+     "pid_exe": "java"
+    }
+   },
+   "timeout_s": 30,
+   "max_output_kb": 16,
+   "output": {
+    "parser": "jcmd_heap"
+   },
+   "title_tr": "Java bellek özeti",
+   "title_en": "Java heap summary"
+  },
+  {
+   "id": "linux.java.thread_dump",
+   "rev": 1,
+   "os": "linux",
+   "kind": "diag",
+   "risk": "R0",
+   "cost": "heavy",
+   "privacy": "raw",
+   "argv": [
+    "/usr/bin/jcmd",
+    "{pid}",
+    "Thread.print"
+   ],
+   "run_as": "{pid_owner}",
+   "pid_exe": "java",
+   "params": {
+    "pid": {
+     "type": "pid",
+     "pid_exe": "java"
+    }
+   },
+   "timeout_s": 60,
+   "max_output_kb": 256,
+   "title_tr": "Java iş parçacığı dökümü",
+   "title_en": "Java thread dump"
+  },
+  {
+   "id": "http.local_get",
+   "rev": 1,
+   "os": "linux",
+   "kind": "diag",
+   "risk": "R0",
+   "cost": "light",
+   "builtin": "http_check",
+   "params": {
+    "url": {
+     "type": "url"
+    },
+    "expect_status": {
+     "type": "int",
+     "min": 100,
+     "max": 599,
+     "default": 200
+    }
+   },
+   "timeout_s": 10,
+   "max_output_kb": 8,
+   "output": {
+    "parser": "http_status"
+   },
+   "human_cmd": "curl -s -o /dev/null -w '%{{http_code}}' {url}",
+   "title_tr": "Sağlık adresini yokla",
+   "title_en": "Probe the health URL"
+  }
+ ]
+}

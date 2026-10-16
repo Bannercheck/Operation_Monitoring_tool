@@ -8,6 +8,7 @@ demo/
 docs/
 prompts/
 tests/
+!tests/fixtures
 node_modules
 .env
 .streamlit/secrets.toml

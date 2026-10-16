@@ -11,6 +11,8 @@
 Standard library only: runs on any Linux / macOS / Windows host with Python 3.9+ (no Prometheus, no Zabbix, no pip). Any log
 format works (JSON / JSONL / CSV / syslog / key=value / text); the receiver runs the same parsers as the dashboard.
 With --spool DIR, batches that cannot be delivered are kept on disk and re-sent when the dashboard is reachable again.
+This collector never executes anything: the action agent's actuator is the separate Go binary `wo-agent act` (goagent/), which
+the same installer (scripts/agent-install.sh) sets up dormant next to it.
 """
 from __future__ import annotations
 

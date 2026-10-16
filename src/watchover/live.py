@@ -886,6 +886,27 @@ RUM_MAX_BODY = 512 * 1024                                       # one sensor bat
 _ROOT = Path(__file__).resolve().parents[2]
 AGENT_FILES = {"/agent.py": _ROOT / "agent.py", "/agent/install.sh": _ROOT / "scripts" / "agent-install.sh", "/rum.js": _ROOT / "sensors" / "web" / "rum.js"}
 RUM_PATHS = ("/rum", "/mobile")
+AGENT_BINS = ("wo-agent-linux-amd64", "wo-agent-linux-arm64")       # the Go host agent (goagent/; the actuator role)
+
+
+def agent_bin_dir() -> Path:
+    import os
+    return Path(os.environ.get("WATCHOVER_AGENT_BIN_DIR") or (_ROOT / "goagent" / "dist"))
+
+
+def agent_manifest() -> dict:
+    """sha256 and size of every file the installer downloads (/agent/manifest.json). It proves integrity of the download,
+    not authenticity: an install line may pin --agent-sha256 from the release notes for that."""
+    import hashlib
+    files = {}
+    for name, p in [("agent.py", AGENT_FILES["/agent.py"]), ("agent-install.sh", AGENT_FILES["/agent/install.sh"])] + \
+            [(b, agent_bin_dir() / b) for b in AGENT_BINS]:
+        try:
+            data = p.read_bytes()
+        except OSError:
+            continue
+        files[name] = {"sha256": hashlib.sha256(data).hexdigest(), "size": len(data)}
+    return {"files": files}
 
 
 def rum_request(rum, key: str, origin: str | None, ua: str, body: bytes) -> tuple[int, dict]:
@@ -992,6 +1013,13 @@ def make_handler(store: LiveStore, api_key: str | None, registry=None, rum=None,
             except ValueError:
                 return self._send(400, {"error": "bad Content-Length"})
             if n > (1 << 20):
+                left = min(n, 4 << 20)                     # drain a bounded amount so the client reads the 413 instead of a reset
+                while left > 0:
+                    chunk = self.rfile.read(min(left, 65536))
+                    if not chunk:
+                        break
+                    left -= len(chunk)
+                self.close_connection = True
                 return self._send(413, {"error": "body too large"})
             body = self.rfile.read(n) if n > 0 else b""
             try:
@@ -1012,6 +1040,14 @@ def make_handler(store: LiveStore, api_key: str | None, registry=None, rum=None,
             if self.path.startswith("/health"):
                 return self._send(200, {"status": "ok", "received": store.received, "buffered": len(store.buf), "agents": len(store.agents)})
             path = self.path.split("?", 1)[0]
+            if path == "/agent/manifest.json":
+                return self._send(200, agent_manifest())
+            if path.startswith("/agent/wo-agent-") and path[7:] in AGENT_BINS and (agent_bin_dir() / path[7:]).exists():
+                data = (agent_bin_dir() / path[7:]).read_bytes()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/octet-stream")
+                self.send_header("Content-Length", str(len(data))); self.end_headers()
+                return self.wfile.write(data)
             if path in AGENT_FILES and AGENT_FILES[path].exists():
                 data = AGENT_FILES[path].read_bytes()
                 self.send_response(200)
@@ -1076,7 +1112,18 @@ def make_handler(store: LiveStore, api_key: str | None, registry=None, rum=None,
                 return self._send(401, {"error": "enrolment key is wrong or disabled"})
             except ValueError as e:
                 return self._send(409, {"error": str(e)})
-            self._send(200, {"token": token, "agent": rec["name"], "env": rec["env"], "site": rec["site"]})
+            out = {"token": token, "agent": rec["name"], "env": rec["env"], "site": rec["site"]}
+            if jobs is not None:                       # the action agent's (dormant) actuator gets its own wa_ token and the pins
+                try:
+                    iss = jobs.actuators.issue(int(rec["id"]), rec["name"], by="enroll")
+                    out["actuator_token"] = iss["token"]
+                    keys = jobs.act.keys
+                    pubs = keys.public() if keys.custody() != "none" else {}
+                    if pubs.get("dispatch"):
+                        out["dispatch_pub"], out["anchor_pub"] = pubs["dispatch"], pubs.get("anchor", "")
+                except Exception:  # noqa: BLE001 - enrolment of the collector never fails because of the action agent
+                    pass
+            self._send(200, out)
 
     return H
 

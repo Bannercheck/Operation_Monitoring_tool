@@ -317,6 +317,13 @@ class CaseRouter:
             raise
         except Exception as e:  # noqa: BLE001 - a matcher bug never loses the case; decide() seals late and says so
             self.act.stats["seal_error"] = str(e)[:200]
+            return
+        sel = getattr(self.act, "selector", None)
+        if sel is not None:                                # WP13: the model answers later on the frozen input (never waited for)
+            try:
+                sel.submit(cid)
+            except Exception:  # noqa: BLE001
+                pass
 
     def _add_trigger(self, cid: int, trig: Trigger) -> None:
         self.db._exec("INSERT INTO act_triggers (case_id, ts, source, key, host, severity, provenance, facts, refs) VALUES (?,?,?,?,?,?,?,?,?)",

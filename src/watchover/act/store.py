@@ -37,7 +37,7 @@ TABLES: Dict[str, str] = {
         caps_sha256 TEXT, templates TEXT DEFAULT '[]', policy TEXT DEFAULT '{{}}', freeze_sha256 TEXT DEFAULT '',
         cosign_keys INTEGER DEFAULT 0, insecure_install INTEGER DEFAULT 0, allowlist_ok INTEGER, halt INTEGER DEFAULT 0,
         ledger_n INTEGER DEFAULT 0, ledger_head TEXT DEFAULT '', last_seq INTEGER DEFAULT 0, clock_skew_s INTEGER DEFAULT 0,
-        last_hello TEXT, last_poll TEXT, next_seq INTEGER DEFAULT 1""",
+        last_hello TEXT, last_poll TEXT, next_seq INTEGER DEFAULT 1, extra TEXT DEFAULT '{{}}'""",
     "act_runbooks": """id {pk}, key TEXT NOT NULL UNIQUE, team_id INTEGER, title TEXT, summary TEXT DEFAULT '', origin TEXT,
         origin_ref TEXT DEFAULT '', playbook_key TEXT DEFAULT '', status TEXT DEFAULT 'active', current_version INTEGER,
         killed INTEGER DEFAULT 0, created_by TEXT, created_at TEXT, updated_at TEXT""",
@@ -55,7 +55,7 @@ TABLES: Dict[str, str] = {
         selector TEXT DEFAULT '', proposal_id INTEGER, params TEXT, param_sources TEXT, status TEXT, outcome TEXT DEFAULT '',
         label TEXT DEFAULT '', run_level INTEGER, mode_reasons TEXT DEFAULT '[]', change_ref TEXT DEFAULT '', veto_until TEXT DEFAULT '',
         audit_sample INTEGER DEFAULT 0, audit_verdict TEXT DEFAULT '', reviewed_by TEXT DEFAULT '', started_at TEXT,
-        ended_at TEXT DEFAULT '', watch_until TEXT DEFAULT '', parent_run INTEGER""",
+        ended_at TEXT DEFAULT '', watch_until TEXT DEFAULT '', parent_run INTEGER, state TEXT DEFAULT '{{}}'""",
     "act_steps": """id {pk}, run_id INTEGER, seq INTEGER, step_key TEXT, type TEXT, step_hash TEXT, template_id TEXT DEFAULT '',
         template_sha256 TEXT DEFAULT '', executor TEXT DEFAULT '', mode INTEGER, binding TEXT DEFAULT '[]', status TEXT,
         params TEXT DEFAULT '{{}}', params_proposed TEXT DEFAULT '{{}}', params_source TEXT DEFAULT '{{}}', job_hash TEXT DEFAULT '',
@@ -64,7 +64,7 @@ TABLES: Dict[str, str] = {
         ended_at TEXT DEFAULT '', exit_code INTEGER, fields TEXT DEFAULT '{{}}', display_tail TEXT DEFAULT '',
         display_until TEXT DEFAULT '', output_sha256 TEXT DEFAULT '', signed INTEGER DEFAULT 0, captures TEXT DEFAULT '{{}}',
         dry_output TEXT DEFAULT '', verify TEXT DEFAULT '{{}}', post_rollback_verify TEXT DEFAULT '{{}}', outcome TEXT DEFAULT '',
-        side_effect TEXT DEFAULT '{{}}', note TEXT DEFAULT ''""",
+        side_effect TEXT DEFAULT '{{}}', note TEXT DEFAULT '', reason TEXT DEFAULT '', wait_until TEXT DEFAULT ''""",
     "act_host_locks": """host TEXT NOT NULL PRIMARY KEY, run_id INTEGER, step_id INTEGER, since TEXT""",
     "act_jobs": """id {pk}, job_id TEXT NOT NULL UNIQUE, step_id INTEGER, agent_id INTEGER, host TEXT, seq INTEGER, mode TEXT,
         executor TEXT, envelope TEXT, envelope_sha256 TEXT, nonce TEXT NOT NULL UNIQUE, not_before TEXT, expires_at TEXT, state TEXT,
@@ -160,7 +160,12 @@ APPEND_ONLY = ("act_audit", "act_audit_payload", "act_anchors")      # triggers 
 SEQ_KEY = {"act_audit": "seq", "act_audit_payload": "seq", "act_anchors": "id"}
 # columns added after a table first shipped: (table, column, definition)
 ADDED: Tuple[Tuple[str, str, str], ...] = (("act_audit_head", "purged_seq", "INTEGER DEFAULT 0"),
-                                          ("act_evidence", "source", "TEXT DEFAULT ''"), ("act_evidence", "reported", "TEXT DEFAULT ''"))
+                                          ("act_evidence", "source", "TEXT DEFAULT ''"), ("act_evidence", "reported", "TEXT DEFAULT ''"),
+                                          # WP8: the run engine's own bookkeeping
+                                          ("act_runs", "state", "TEXT DEFAULT '{}'"), ("act_steps", "reason", "TEXT DEFAULT ''"),
+                                          ("act_steps", "wait_until", "TEXT DEFAULT ''"),
+                                          # WP11c: what the actuator says about itself (pins and their source, simulator, arch)
+                                          ("act_actuators", "extra", "TEXT DEFAULT '{}'"))
 
 _SQLITE_TRIGGERS = (
     "CREATE TRIGGER IF NOT EXISTS act_audit_no_update BEFORE UPDATE ON act_audit BEGIN SELECT RAISE(ABORT, 'act_audit is append-only'); END",
