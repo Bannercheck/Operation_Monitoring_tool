@@ -44,9 +44,11 @@ def test_auto_v1_grants_nothing_that_executes(tmp_path):
 def test_catalogue_and_templates():
     assert rbac.REQUIRES["act.case"] == "page.actions" and rbac.REQUIRES["act.publish"] == "page.auto"
     assert "act.policy" not in rbac.TEAM_PERMS and "act.execute" in rbac.TEAM_PERMS
-    assert "act.execute" in rbac.TEAM_TEMPLATES["operator"]["perms"] and "act.approve" not in rbac.TEAM_TEMPLATES["operator"]["perms"]
-    assert {"act.approve", "act.publish", "act.promote"} <= rbac.TEAM_TEMPLATES["manager"]["perms"]
-    assert rbac.TEAM_TEMPLATES["viewer"]["perms"] & POWER == set()
+    # product owner: no team template grants an act.* key; each is ticked by hand per team role (page.auto is view only)
+    for k in ("manager", "operator", "viewer"):
+        tp = rbac.TEAM_TEMPLATES[k]["perms"]
+        assert "page.auto" in tp and not (tp & (rbac.AUTO_PERMS - {"page.auto"})), k
+    assert rbac.FEATURES["page.auto"][1] == "view"
     assert rbac.normalize({"act.execute"}) >= {"act.execute", "page.actions"}
     secs = {s["id"]: [i["key"] for i in s["items"]] for s in rbac.catalogue()["sections"]}
     assert "page.auto" in secs["respond"] and "act.policy" in secs["respond"]
@@ -101,6 +103,10 @@ def login(c, email, pw=PW):
     return {"Authorization": "Bearer " + r.json()["token"]}
 
 
+HAND = {"manager": {"act.case", "act.execute", "act.approve", "act.runbook", "act.publish", "act.promote", "act.kill", "act.golden", "act.audit"},
+        "operator": {"act.case", "act.execute", "act.runbook", "act.kill"}}
+
+
 def _teams(c):
     admin = login(c, *ADMIN)
     ta = c.post("/api/teams", json={"name": "A", "rules": [{"field": "host", "op": "glob", "value": "a-*"}]}, headers=admin).json()
@@ -109,6 +115,11 @@ def _teams(c):
     for t, email, key in ((ta, "mgra@corp.com", "manager"), (ta, "opa@corp.com", "operator"), (tb, "mgrb@corp.com", "manager"),
                           (tb, "opb@corp.com", "operator")):
         assert c.put(f"/api/teams/{t['id']}/members/{email}", json={"role_id": rid(t, key)}, headers=admin).status_code == 200
+    for t in (ta, tb):                                                     # act.* keys are ticked by hand per team role
+        for r in t["roles"]:
+            if r["key"] in HAND:
+                body = {"label": r["label"], "description": r.get("description", ""), "perms": sorted(set(r["perms"]) | HAND[r["key"]])}
+                assert c.put(f"/api/teams/{t['id']}/roles/{r['id']}", json=body, headers=admin).status_code == 200
         c.svc.users.set_role(c.svc.users.get(email)["id"], "member", c.svc.roles.names())
     c.svc.inventory.upsert({"hostname": "a-app-01", "ip": "10.0.0.1"})
     c.svc.inventory.upsert({"hostname": "b-web-01", "ip": "10.0.0.2"})

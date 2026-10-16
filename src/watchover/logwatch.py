@@ -54,6 +54,14 @@ def owner_scope(svc, email: str):
     return True, svc.scope_of(user)
 
 
+def _item(x: dict) -> dict:
+    """A sample line as action-agent evidence: who sent it (agent_id, host.reported) matters for its provenance (§4.3)."""
+    at = x.get("attrs") or {}
+    return {"kind": "log", "ts": x.get("ts"), "host": x.get("host") if x.get("host") not in (None, "-") else "", "text": x.get("message") or "",
+            "agent_id": at.get("agent_id"), "reported": at.get("host.reported") or "", "attributes": {"agent": x.get("agent") or at.get("agent") or ""},
+            "fields": {"service": x.get("service")} if x.get("service") not in (None, "-") else {}, "ref": {"line_id": str(x.get("id") or "")}}
+
+
 class LogWatch:
     def __init__(self, logs, notifier, owner_fn):
         self.logs, self.n, self.owner_fn = logs, notifier, owner_fn
@@ -171,14 +179,15 @@ class LogWatch:
                         kk = r.cube_key(k)
                         if kp(*kk):
                             hosts[kk[3]] += c
-            samples = []
+            samples, items = [], []
             if n:
                 try:
                     res = self.logs.search(text, start=s.isoformat(), end=e.isoformat(), limit=3, scope=scope)
                     samples = [f"{x['ts'][11:23]} {x['host']} {x['message'][:160]}" for x in res["lines"]]
+                    items = [_item(x) for x in res["lines"]]
                 except Exception:  # noqa: BLE001
                     samples = []
-            return {"n": n, "ready": ready, "mode": "counters", "hosts": hosts.most_common(3), "samples": samples, "start": s, "end": e}
+            return {"n": n, "ready": ready, "mode": "counters", "hosts": hosts.most_common(3), "samples": samples, "items": items, "start": s, "end": e}
         self.refresh()
         st = self.rules.get(rule["id"])
         if st is None:
@@ -188,14 +197,16 @@ class LogWatch:
         for m, hc in st["hosts"].items():
             if m0 <= m < m1:
                 hosts.update(hc)
-        samples = []
+        samples, items = [], []
         for seq in list(st["last"])[::-1]:
             try:
                 ln = self.logs.line(seq, scope)
                 samples.append(f"{ln['ts'][11:23]} {ln['host']} {ln['message'][:160]}")
+                items.append(_item(ln))
             except Exception:  # noqa: BLE001
                 continue
-        return {"n": n, "ready": st["since"] <= m0 * 60, "mode": "stream", "hosts": hosts.most_common(3), "samples": samples, "start": s, "end": e}
+        return {"n": n, "ready": st["since"] <= m0 * 60, "mode": "stream", "hosts": hosts.most_common(3), "samples": samples, "items": items,
+                "start": s, "end": e}
 
     def evaluate(self, rule: dict, notifier) -> list:
         ok, scope = self.owner_fn(rule.get("owner") or "")

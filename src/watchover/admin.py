@@ -171,7 +171,9 @@ def tail_log(path: str, n: int = 80) -> str:
 
 
 # ---------------------------------------------------------------- version history: snapshots before updates / maintenance, rollback
-SNAP_EXCLUDE = {"data", ".git", ".venv", "__pycache__", "node_modules", ".pytest_cache", "demo", "samples"}
+SNAP_EXCLUDE = {"data", ".git", ".venv", "__pycache__", "node_modules", ".pytest_cache", "demo", "samples",
+                "act_keys", "watchover-keys", "watchover-secrets", "secrets"}      # I17: no key material in a snapshot archive
+SNAP_EXCLUDE_SUFFIX = (".db", ".pyc", ".key", ".pem", ".wokx")
 DB_FILES = ("knowledge.db", "actions.db", "playbook.db")
 
 
@@ -207,6 +209,40 @@ def _db_paths() -> list[Path]:
     return out
 
 
+def _carry_append_only(current: Path, restored: Path) -> int:
+    """Copy the append-only act_* rows of the current SQLite file that are newer than the restored file's into it."""
+    import sqlite3
+    if not current.exists():
+        return 0
+    from .act.store import APPEND_ONLY, SEQ_KEY
+    n = 0
+    src = sqlite3.connect(str(current))
+    dst = sqlite3.connect(str(restored))
+    try:
+        have = {r[0] for r in dst.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        cur_have = {r[0] for r in src.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        for t in APPEND_ONLY:
+            if t not in have or t not in cur_have:
+                continue
+            key = SEQ_KEY[t]
+            top = dst.execute(f"SELECT COALESCE(MAX({key}), 0) FROM {t}").fetchone()[0]
+            cols = [r[1] for r in dst.execute(f"PRAGMA table_info({t})")]
+            scols = {r[1] for r in src.execute(f"PRAGMA table_info({t})")}
+            cols = [c for c in cols if c in scols]
+            rows = src.execute(f"SELECT {', '.join(cols)} FROM {t} WHERE {key} > ? ORDER BY {key}", (top,)).fetchall()
+            dst.executemany(f"INSERT OR IGNORE INTO {t} ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})", rows)
+            n += len(rows) if t == "act_audit" else 0
+        if "act_audit_head" in have and "act_audit" in have:
+            last = dst.execute("SELECT seq, mac FROM act_audit ORDER BY seq DESC LIMIT 1").fetchone()
+            if last:
+                dst.execute("UPDATE act_audit_head SET seq=?, mac=? WHERE id=1", last)
+        dst.commit()
+    finally:
+        src.close()
+        dst.close()
+    return n
+
+
 def snapshot(reason: str, code: bool = True, db: bool = True, root: Path | None = None, kb=None) -> dict:
     """Freeze the running version: code.zip (the code tree without data / .git / venv) plus the database, with meta.json.
     On PostgreSQL the database goes into db.json.gz (every table, JSON); on SQLite the files are copied.
@@ -224,7 +260,7 @@ def snapshot(reason: str, code: bool = True, db: bool = True, root: Path | None 
         with zipfile.ZipFile(d / "code.zip", "w", zipfile.ZIP_DEFLATED) as zf:
             for p in sorted(root.rglob("*")):
                 rel = p.relative_to(root)
-                if p.is_dir() or any(part in SNAP_EXCLUDE for part in rel.parts) or rel.name.endswith((".db", ".pyc")) or rel.name in (".env",):
+                if p.is_dir() or any(part in SNAP_EXCLUDE for part in rel.parts) or rel.name.endswith(SNAP_EXCLUDE_SUFFIX) or rel.name in (".env",):
                     continue
                 zf.write(p, f"watchover/{rel.as_posix()}")
                 files += 1
@@ -281,6 +317,9 @@ def rollback(sid: str, code: bool = True, db: bool = True, root: Path | None = N
             target = targets.get(f.name) or (Path.cwd() / f.name)
             tmp = target.with_name(target.name + ".restore")
             shutil.copy2(f, tmp)
+            carried = _carry_append_only(target, tmp)     # the audit chain is append-only: newer rows survive the rollback (C11)
+            if carried:
+                msgs.append(f"{f.name}: {carried} audit rows kept")
             os.replace(tmp, target)                      # a new file: the running connection keeps the old one until the restart
             for side in ("-wal", "-shm"):                # the old file's write-ahead log must never be replayed onto the restored one
                 try:

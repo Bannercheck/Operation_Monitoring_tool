@@ -70,7 +70,16 @@ class SpoolConsumer:
             for a in self.apps_fn():
                 if a.get("status") == "active":
                     apps[a["key"]] = {"name": a["name"], "origins": [o.strip().rstrip("/") for o in (a.get("origins") or "").replace("\n", ",").split(",") if o.strip()]}
-        return {"agents": agents, "key_sha256": _sha(key) if key else "", "open": not key and n_active == 0, "apps": apps}
+        actuators = {}                                       # action agent: sha256(wa_ token) -> actuator; only these reach /agent/v1/
+        if self.registry is not None:
+            try:
+                for r in self.registry.kb._exec("SELECT agent_id, host, token_sha256 FROM act_actuators"):
+                    if r["token_sha256"]:
+                        actuators[r["token_sha256"]] = {"agent_id": int(r["agent_id"]), "host": r["host"] or ""}
+            except Exception:  # noqa: BLE001 - no action agent tables yet
+                pass
+        return {"agents": agents, "key_sha256": _sha(key) if key else "", "open": not key and n_active == 0, "apps": apps,
+                "actuators": actuators}
 
     def export_auth(self, force: bool = False) -> bool:
         st = self.auth_state()

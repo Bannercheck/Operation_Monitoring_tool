@@ -204,7 +204,7 @@ def test_mcp_server_off_by_default_its_own_pod_route_and_kept_key_when_on():
     pg = by[("NetworkPolicy", "watchover-postgresql")]["spec"]["ingress"][0]["from"]
     assert sorted(f["podSelector"]["matchLabels"]["app.kubernetes.io/component"] for f in pg) == ["app", "mcp"]
     assert by[("PersistentVolumeClaim", "watchover-mcp-datasets")]["spec"]["resources"]["requests"]["storage"] == "5Gi"
-    assert [x["name"] for x in by[("Deployment", "watchover")]["spec"]["template"]["spec"]["containers"]] == ["dashboard", "receiver"]
+    assert [x["name"] for x in by[("Deployment", "watchover")]["spec"]["template"]["spec"]["containers"]] == ["dashboard", "keyd", "receiver"]
     dash = {e["name"]: e for e in by[("Deployment", "watchover")]["spec"]["template"]["spec"]["containers"][0]["env"]}
     assert dash["MCP_API_KEY"]["valueFrom"]["secretKeyRef"] == {"name": "watchover-mcp", "key": "mcp-api-key"}       # same key as in Docker's .env
     assert "MCP_API_KEY" not in {e["name"] for e in next(d for d in render() if d["kind"] == "Deployment")["spec"]["template"]["spec"]["containers"][0]["env"]}
@@ -277,3 +277,20 @@ def test_release_bump_moves_the_chart_and_the_rendered_manifest(tmp_path):
     assert 'appVersion: "1.3.0"' in (tmp_path / "deploy" / "openshift" / "watchover" / "Chart.yaml").read_text()
     r = (tmp_path / "deploy" / "openshift" / "rendered" / "watchover.yaml").read_text()
     assert 'version: "1.3.0"' in r and "watchover:1.3.0" in r and "watchover-receiver:1.3.0" in r and "postgresql-16:1.2.3" in r   # other images untouched
+
+
+def test_keyd_sidecar_alone_mounts_the_keys():
+    """WP2 (I17): the keys PVC is mounted only by the keyd container; the dashboard reaches it through a Unix socket and keeps
+    the vault key on a volume of its own, outside /data."""
+    for name, docs in manifests():
+        dep = next(d for d in docs if d["kind"] == "Deployment" and d["metadata"]["name"] == "watchover")
+        cs = {c["name"]: c for c in dep["spec"]["template"]["spec"]["containers"]}
+        vols = {v["name"]: v for v in dep["spec"]["template"]["spec"]["volumes"]}
+        assert vols["keys"]["persistentVolumeClaim"]["claimName"] == "watchover-keys", name
+        mounts = {c: {m["name"] for m in cs[c].get("volumeMounts", [])} for c in cs}
+        assert [c for c, m in mounts.items() if "keys" in m] == ["keyd"], name
+        assert "data" not in mounts["keyd"] and {"keyd-sock", "secrets"} <= mounts["dashboard"], name
+        env = {e["name"]: e.get("value") for e in cs["dashboard"]["env"]}
+        assert env["WATCHOVER_KEYD"] == "unix:/run/keyd/keyd.sock" and env["WATCHOVER_VAULT_DIR"] == "/secrets", name
+        assert "watchover.act.keyd" in cs["keyd"]["command"], name
+

@@ -2,6 +2,12 @@
 
 Numaralandırma: büyük sürüm **v1, v2** (ürün sahibinin kararı), küçük güncelleme **v1.1, v1.2** (her devreye alınan özellik adımı), düzeltme **v1.1.1**. Her sürüm `python -m watchover.release <major|minor|patch> "özet"` ile açılır; Sistem › Güncelleme sayfası bu dosyayı gösterir, anlık görüntüler sürüm numarasını taşır.
 
+## v1.50 · 2026-10-16 · güncelleme
+
+- Aksiyon ajanı 2. aşama (a): anahtar servisi (watchover-keyd) ve anahtarlı denetim zinciri, kanıt kaynağı ve enjeksiyon karantinası, sunucu iş kanalı, runbook eşleştirici ve gölge kip
+- Ekip rol şablonları act.* yetkilerini artık kendiliğinden vermiyor; elle işaretleniyor
+
+
 ## v1.49.2 · 2026-10-16 · düzeltme
 
 - Giriş sayfası kısa pencerede yine kaydırılabiliyor: sayfa kaydırma kilidi yalnız uygulama kabuğu açıkken geçerli

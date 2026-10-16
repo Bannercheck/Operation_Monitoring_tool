@@ -229,13 +229,24 @@ class Database:
         return out
 
     def copy_table(self, table: str, columns: list[str], rows: list, replace: bool = False) -> int:
-        """Insert rows into an existing table; conflicting keys are skipped (or, with replace, the table is emptied first)."""
+        """Insert rows into an existing table; conflicting keys are skipped (or, with replace, the table is emptied first).
+        The action agent's append-only tables (act_audit, act_audit_payload, act_anchors; C11) are never emptied: only rows
+        whose key is above the table's current maximum are added, so a restore can lengthen the chain but never rewrite it."""
+        from .act.store import APPEND_ONLY, SEQ_KEY
         have = set(self.columns(table))
         keep = [i for i, c in enumerate(columns) if c in have]
         if not keep:
             return 0
         cols = [columns[i] for i in keep]
         sql = f"INSERT INTO {table} ({', '.join(q(cols))}) VALUES ({', '.join('?' * len(cols))}) ON CONFLICT DO NOTHING"
+        if table in APPEND_ONLY:
+            key = SEQ_KEY[table]
+            if key in cols:
+                top = self._exec(f"SELECT MAX({key}) AS m FROM {table}")[0]["m"] or 0
+                ki = cols.index(key)
+                rows = [r for r in ([r[i] for i in keep] for r in rows) if r[ki] is not None and int(r[ki]) > int(top)]
+                keep = list(range(len(cols)))
+            replace = False
         if replace:
             self._exec(f"DELETE FROM {table}")
         n = 0
@@ -249,13 +260,21 @@ class Database:
         return n
 
     def restore(self, data: dict) -> dict:
-        """Bring a dump back: tables present in the dump are emptied and refilled, others are left alone."""
+        """Bring a dump back: tables present in the dump are emptied and refilled, others are left alone. The action agent's
+        audit tables are append-only (copy_table) and its head row follows the chain that is actually there."""
         done = {}
+        have = self.tables()
         for t, d in data.items():
-            if t in self.tables():
+            if t in have and t != "act_audit_head":
                 done[t] = self.copy_table(t, d["columns"], d["rows"], replace=True)
+        if "act_audit" in have and "act_audit_head" in have:
+            last = self._exec("SELECT seq, mac FROM act_audit ORDER BY seq DESC LIMIT 1")
+            if last:
+                self._exec("UPDATE act_audit_head SET seq=?, mac=? WHERE id=1", (last[0]["seq"], last[0]["mac"]))
         return done
 
     def reset_sequence(self, table: str) -> None:
         if self.pg and "id" in self.columns(table):
-            self._exec(f"SELECT setval(pg_get_serial_sequence('{table}', 'id'), COALESCE((SELECT MAX(id) FROM {table}), 0) + 1, false)")
+            seq = self._exec(f"SELECT pg_get_serial_sequence('{table}', 'id') AS s")[0]["s"]
+            if seq:                                       # a text id (act_templates) has no sequence
+                self._exec(f"SELECT setval('{seq}', COALESCE((SELECT MAX(id) FROM {table}), 0) + 1, false)")

@@ -242,7 +242,8 @@ class Services:
                 port = int(os.environ.get("WATCHOVER_INTERNAL_PORT", "8601") or 8601)    # enrolment (proxied by Go) and this machine's own agent
             if os.environ.get("WATCHOVER_API_RECEIVER", "1") == "1":      # the API is the product now: it owns the agent receiver
                 try:
-                    self.receiver = start_receiver(self.live, port, c.get("live_key") or None, self.agents, self.rum)
+                    self.receiver = start_receiver(self.live, port, c.get("live_key") or None, self.agents, self.rum,
+                                                   jobs=getattr(self.act, "jobs", None))   # /agent/v1/: the action agent's job channel
                 except OSError:
                     self.receiver = None
             if os.environ.get("WATCHOVER_SELFMON", "1") != "0" and c.get("self_monitor", True) and self.receiver is not None:

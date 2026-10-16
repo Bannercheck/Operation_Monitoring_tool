@@ -66,6 +66,14 @@ def create_app(services=None) -> FastAPI:
     app.include_router(mcp_router.endpoint)
     mcp_router.start(app.state.services)
     from ..demo import DemoDisabled, enabled as demo_enabled
+    from ..act.audit import AuditError
+    from ..act.keys import KeyRefused, SigningUnavailable
+
+    @app.exception_handler(AuditError)                        # action agent: no audit row -> nothing happened (I9); keyd down -> 503
+    @app.exception_handler(SigningUnavailable)
+    @app.exception_handler(KeyRefused)
+    async def _act_keys(_: Request, e: Exception):
+        return JSONResponse({"detail": e.detail()}, status_code=getattr(e, "status", 503))
 
     @app.exception_handler(DemoDisabled)
     async def _demo_off(_: Request, e: DemoDisabled):

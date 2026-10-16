@@ -196,6 +196,8 @@ class Policy:
     def stricter(key: str, base, new) -> bool:
         if key == "act_blind_collect":
             return isinstance(new, (int, float)) and base <= new <= DEFAULTS["act_blind_max"]
+        if key == "act_blind_override":                    # demo only (C47): a team's blind rate pinned to 0 % or 100 %
+            return act_demo() and new in (0, 100)
         if key in TEAM_HIGHER:
             return _cmp_stricter(base, new, True)
         if key in TEAM_LOWER:

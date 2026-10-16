@@ -36,11 +36,15 @@ services:
       WATCHOVER_GO_PARSE: ${WATCHOVER_GO_PARSE:-1}  # 1: the receiver parses allow-listed formats in Go (v=2 records); 0: this container parses everything; shadow: compare only
       WATCHOVER_INTERNAL_PORT: "8601"               # enrolment (proxied by the receiver) and this machine's own agent
       WATCHOVER_CORS: ${WATCHOVER_CORS:-}
+      WATCHOVER_KEYD: ${WATCHOVER_KEYD:-tcp://keyd:8650}   # the action agent's key service (mutual TLS); its keys are never on /data
+      WATCHOVER_KEYD_TLS: /secrets/keyd             # client certificate written by keyd on its first start
+      WATCHOVER_VAULT_DIR: /secrets                 # the vault key moves here from /data once (outside /data backups, R3c)
     depends_on:
       postgres:
         condition: service_healthy
     volumes:
       - watchover-data:/data                        # settings, tokens, databases, live spool, version snapshots, logs
+      - watchover-secrets:/secrets                  # vault key + keyd client certificate; not in /data, not in snapshots
       # OAuth providers (Google / Microsoft / Apple / OIDC) are written by System › Sign-in into /app/.streamlit/secrets.toml;
       # to keep them across image updates add:  - ./secrets.toml:/app/.streamlit/secrets.toml   (create the file first)
     deploy:
@@ -60,6 +64,21 @@ services:
       timeout: 5s
       retries: 3
       start_period: 40s
+
+  keyd:                                           # watchover-keyd: signs jobs and anchors, MACs the audit chain (docs/design/action-agent.md §9.3.1)
+    image: ${WATCHOVER_IMAGE:-watchover}:${WATCHOVER_TAG:-local}
+    container_name: watchover-keyd
+    command: ["python", "-m", "watchover.act.keyd", "serve", "--dir", "/keys/store", "--tcp", "0.0.0.0:8650", "--tls", "/keys/tls", "--client-out", "/secrets/keyd"]
+    restart: unless-stopped                       # no published port: only the dashboard reaches it, with its client certificate
+    volumes:
+      - watchover-keys:/keys                        # its own volume: back it up separately (Otomasyon › Anahtarlar, two holders)
+      - watchover-secrets:/secrets
+    deploy:
+      resources:
+        limits: {cpus: "0.25", memory: 128m}
+    logging:
+      driver: json-file
+      options: { max-size: "5m", max-file: "3" }
 
   receiver:                                       # Go: answers agents in milliseconds whatever the dashboard is doing
     image: ${WATCHOVER_IMAGE:-watchover}-receiver:${WATCHOVER_TAG:-local}
@@ -282,6 +301,8 @@ services:
 
 volumes:
   watchover-data:
+  watchover-keys:                                 # watchover-keyd only (I17)
+  watchover-secrets:                              # vault key and keyd's client certificate
   watchover-pg:
   watchover-edge:
   watchover-ollama:

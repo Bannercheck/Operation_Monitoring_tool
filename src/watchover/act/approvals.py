@@ -12,7 +12,8 @@ from typing import Callable, Dict, Iterable, List, Optional
 
 from .types import now
 
-SUBJECTS = ("step", "run_start", "promotion", "runbook_version", "kill_resume", "freeze_override", "template", "connector", "model", "golden")
+SUBJECTS = ("step", "run_start", "promotion", "runbook_version", "kill_resume", "freeze_override", "template", "connector", "model", "golden",
+            "install_change")
 NOT_A_PERSON = ("system", "mcp", "agent", "model")
 
 

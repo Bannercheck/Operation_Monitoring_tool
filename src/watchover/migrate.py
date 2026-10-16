@@ -50,6 +50,8 @@ def open_schema(target: Database) -> None:
     history.History(kb)
     kb._exec(f"CREATE TABLE IF NOT EXISTS learn_runs (id {kb.pk}, ts TEXT, events INTEGER, incidents INTEGER, lessons INTEGER, note TEXT DEFAULT '')")   # autolearn
     open_store(kb); Playbook(kb)
+    from .act import store as act_store                    # the action agent's tables; its append-only triggers come after the copy (C11)
+    act_store.ensure(kb, triggers=False)
 
 
 def _fresh_users(target: Database) -> bool:
@@ -85,6 +87,12 @@ def migrate(source: str | None = None, target: str | None = None, dry_run: bool 
                     i = cols.index("id"); cols = cols[:i] + cols[i + 1:]; rows = [r[:i] + r[i + 1:] for r in rows]
             report["tables"][t] = db.copy_table(t, cols, rows)   # keys that already exist are skipped: re-running copies nothing twice
         src.close()
+    if not dry_run:
+        from .act import store as act_store
+        last = db._exec("SELECT seq, mac FROM act_audit ORDER BY seq DESC LIMIT 1")
+        if last:                                              # the head follows the copied chain
+            db._exec("UPDATE act_audit_head SET seq=?, mac=? WHERE id=1", (last[0]["seq"], last[0]["mac"]))
+        report["triggers"] = act_store.ensure_triggers(db)    # append-only from here on (after the copy, C11)
     db.close()
     return report
 

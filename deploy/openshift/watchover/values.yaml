@@ -57,7 +57,24 @@ persistence:
     size: 50Gi                         # ölçülen ~7-8 bayt/satır: 100 bin satır/dk ≈ 1,1 GB/gün, 30 gün ≈ 33 GB
     storageClass: ""                   # örn. yavaş / ucuz sınıf; hot ile aynı sınıf da olabilir ama ayrı PVC kalır
     accessMode: ReadWriteOnce
+  keys:                                # watchover-keyd anahtarları: YALNIZ keyd kabı bağlar; /data ve veritabanı yedeklerinde yok
+    size: 1Gi
+    storageClass: ""
+    accessMode: ReadWriteOnce
+  secrets:                             # kasa (vault) anahtarı: /data dışında, yedeklerin dışında
+    size: 1Gi
+    storageClass: ""
+    accessMode: ReadWriteOnce
   keepOnUninstall: true                # helm uninstall PVC'leri silmez (veri kaybını önler)
+
+# ---------------------------------------------------------------- aksiyon ajanı anahtar servisi (watchover-keyd)
+# Ayrı kap, kendi PVC'si; panel yalnız Unix soketinden ister (iş imzası, denetim MAC'i, çapa). Anahtarlar act_mode
+# ilk kez "off" dışına alınınca oluşturulur; şifreli yedeği iki act.policy sahibi alır (Otomasyon › Anahtarlar).
+keyd:
+  enabled: true
+  resources:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {cpu: 250m, memory: 128Mi}
 
 # ---------------------------------------------------------------- saklama (arayüzden değiştirilemez; Helm değeri geçerlidir)
 retention:

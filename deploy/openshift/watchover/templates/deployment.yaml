@@ -113,11 +113,21 @@ spec:
             {{- with .Values.dashboard.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
+            {{- if .Values.keyd.enabled }}
+            - name: WATCHOVER_KEYD                # the action agent's keys live in the keyd container (docs/design/action-agent.md §9.3.1)
+              value: unix:/run/keyd/keyd.sock
+            - name: WATCHOVER_VAULT_DIR         # the vault key, off /data and its backups
+              value: /secrets
+            {{- end }}
           volumeMounts:
             - {name: data, mountPath: /data}
             - {name: logs-hot, mountPath: /logs/hot}
             - {name: logs-cold, mountPath: /logs/cold}
             - {name: tmp, mountPath: /tmp}
+            {{- if .Values.keyd.enabled }}
+            - {name: keyd-sock, mountPath: /run/keyd}
+            - {name: secrets, mountPath: /secrets}
+            {{- end }}
           resources:
             {{- toYaml .Values.dashboard.resources | nindent 12 }}
           securityContext:
@@ -137,6 +147,32 @@ spec:
             periodSeconds: 20
             timeoutSeconds: 5
             failureThreshold: 6
+        {{- if .Values.keyd.enabled }}
+        - name: keyd                              # watchover-keyd: only this container mounts the keys volume (I17)
+          image: {{ include "watchover.image" (dict "root" . "name" .Values.image.dashboard) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["python", "-m", "watchover.act.keyd", "serve", "--dir", "/keys/store", "--unix", "/run/keyd/keyd.sock"]
+          env:
+            - name: HOME
+              value: /tmp
+          volumeMounts:
+            - {name: keys, mountPath: /keys}
+            - {name: keyd-sock, mountPath: /run/keyd}
+          resources:
+            {{- toYaml .Values.keyd.resources | nindent 12 }}
+          securityContext:
+            {{- include "watchover.containerSecurity" . | nindent 12 }}
+          livenessProbe:
+            exec:
+              command: ["python", "-c", "import socket; s = socket.socket(socket.AF_UNIX); s.connect('/run/keyd/keyd.sock')"]
+            periodSeconds: 30
+            timeoutSeconds: 5
+          readinessProbe:
+            exec:
+              command: ["python", "-c", "import socket; s = socket.socket(socket.AF_UNIX); s.connect('/run/keyd/keyd.sock')"]
+            periodSeconds: 30
+            timeoutSeconds: 5
+        {{- end }}
         - name: receiver
           image: {{ include "watchover.image" (dict "root" . "name" .Values.image.receiver) }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
@@ -243,6 +279,14 @@ spec:
           emptyDir: {sizeLimit: 2Gi}
         - name: tmp-receiver
           emptyDir: {sizeLimit: 64Mi}
+        {{- if .Values.keyd.enabled }}
+        - name: keys
+          persistentVolumeClaim: {claimName: {{ $fn }}-keys}
+        - name: secrets
+          persistentVolumeClaim: {claimName: {{ $fn }}-secrets}
+        - name: keyd-sock
+          emptyDir: {medium: Memory, sizeLimit: 1Mi}
+        {{- end }}
         {{- if .Values.trainer.enabled }}
         - name: trainer-hf
           persistentVolumeClaim: {claimName: {{ $fn }}-trainer-hf}

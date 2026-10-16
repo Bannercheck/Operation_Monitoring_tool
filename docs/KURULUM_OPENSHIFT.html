@@ -374,6 +374,7 @@ spec:
   source: {persistentVolumeClaimName: watchover-logs-cold}
 </code></pre>
 <p>Sistem › Anlık görüntü (veritabanı dahil) PostgreSQL'in tamamını JSON olarak <code>/data</code>'ya yazar; büyük kurulumda <code>data</code> diskini doldurur, üretimde yukarıdaki yolları kullanın.</p>
+<p><strong>Anahtarlar (watchover-keyd).</strong> Aksiyon ajanının anahtarları <code>keyd</code> kabının kendi diskinde (<code>watchover-keys</code>) durur; o diski yalnız bu kap bağlar, veritabanı ve <code>data</code> yedeklerine girmez. Kasa anahtarı <code>watchover-secrets</code> diskindedir. <code>keys</code> diskinin VolumeSnapshot'ını ayrı bir sorumlu alır ya da Otomasyon › Anahtarlar'dan iki <code>act.policy</code> sahibi şifreli dışa aktarım yapar. Denetim zinciri yalnız eklenir: eski bir <code>pg_dump</code>'ı <code>--clean</code> ile geri yüklemek zincirde bir boşluk olarak görünür (tasarım gereği, hiçbir kayıt silinmez); boşluğu iki <code>act.policy</code> sahibi onaylayana dek otomatik çalıştırma L2'de kalır. <code>keyd.enabled: false</code> anahtar servisini kapatır (sistem yürütmesi kapalı, yalnız rehberli mod).</p>
 <h2>9. LLM'i kısıtlamak</h2>
 <p>Watchover'ın çekirdeği deterministiktir; LLM yalnız açıklama ve soru-cevap yardımcısıdır ve kapalıyken her şey çalışır. Üç seçenek:</p>
 <table>

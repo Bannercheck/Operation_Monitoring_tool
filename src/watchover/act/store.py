@@ -14,7 +14,7 @@ TABLES: Dict[str, str] = {
     "act_evidence": """id {pk}, case_id INTEGER NOT NULL, eid TEXT NOT NULL, kind TEXT, ts TEXT, host TEXT, agent TEXT,
         provenance TEXT, text TEXT, fields TEXT DEFAULT '{{}}', slot TEXT DEFAULT '', value TEXT DEFAULT '', vtype TEXT DEFAULT '',
         source_eid TEXT DEFAULT '', ref TEXT DEFAULT '{{}}', quarantined INTEGER DEFAULT 0, qreason TEXT DEFAULT '', sha256 TEXT,
-        UNIQUE (case_id, eid)""",
+        source TEXT DEFAULT '', reported TEXT DEFAULT '', UNIQUE (case_id, eid)""",
     "act_frozen_inputs": """id {pk}, case_id INTEGER NOT NULL, attempt INTEGER NOT NULL, input_sha TEXT, prompt TEXT,
         prompt_tokens INTEGER, aliases TEXT, value_labels TEXT, created_at TEXT, audit_seq INTEGER, UNIQUE (case_id, attempt)""",
     "act_proposals": """id {pk}, case_id INTEGER, attempt INTEGER DEFAULT 1, input_sha TEXT, selector TEXT, role TEXT,
@@ -129,8 +129,14 @@ TABLES: Dict[str, str] = {
     "act_audit": """seq INTEGER NOT NULL PRIMARY KEY, ts TEXT, actor TEXT, actor_kind TEXT, event TEXT, object_kind TEXT,
         object_id TEXT, team_id INTEGER, payload_sha256 TEXT, prev_mac TEXT, mac TEXT""",
     "act_audit_payload": """seq INTEGER NOT NULL PRIMARY KEY, payload TEXT""",
-    "act_audit_head": """id INTEGER NOT NULL PRIMARY KEY CHECK (id = 1), seq INTEGER, mac TEXT""",
+    "act_audit_head": """id INTEGER NOT NULL PRIMARY KEY CHECK (id = 1), seq INTEGER, mac TEXT, purged_seq INTEGER DEFAULT 0""",
     "act_anchors": """id {pk}, seq INTEGER, mac TEXT, ts TEXT, sig TEXT, sinks TEXT DEFAULT '{{}}'""",
+    # WP2: acknowledgements arrive after the anchor row exists, and act_anchors is append-only, so each one is a row of its own
+    "act_anchor_acks": """id {pk}, anchor_id INTEGER NOT NULL, sink_id INTEGER NOT NULL, ts TEXT, ok INTEGER, detail TEXT DEFAULT '',
+        UNIQUE (anchor_id, sink_id)""",
+    # WP2: installation changes that need a second act.policy holder (anchor sinks / recipients, chain acknowledgement, key export)
+    "act_changes": """id {pk}, kind TEXT, body TEXT, requested_by TEXT, requested_at TEXT, approval_id INTEGER, status TEXT,
+        applied_at TEXT DEFAULT '', applied_by TEXT DEFAULT ''""",
     "act_anchor_attest": """agent_id INTEGER NOT NULL, anchor_seq INTEGER NOT NULL, anchor_mac TEXT, ledger_head TEXT, sig TEXT,
         ts TEXT, PRIMARY KEY (agent_id, anchor_seq)""",
     "act_anchor_sinks": """id {pk}, kind TEXT, target TEXT, secret TEXT, enabled INTEGER DEFAULT 1, last_ok TEXT DEFAULT '',
@@ -150,11 +156,85 @@ INDEXES: Tuple[Tuple[str, str, str], ...] = (
 
 # tables with a team_id column that ownership.TEAM_TABLES moves on team delete / transfer
 TEAM_OWNED = tuple(t for t, ddl in TABLES.items() if "team_id INTEGER" in ddl and "team_id INTEGER NOT NULL" not in ddl)
-APPEND_ONLY = ("act_audit", "act_audit_payload", "act_anchors")      # triggers and restore handling arrive with WP2 (C11)
+APPEND_ONLY = ("act_audit", "act_audit_payload", "act_anchors")      # triggers below; db.restore / copy_table append only (C11)
+SEQ_KEY = {"act_audit": "seq", "act_audit_payload": "seq", "act_anchors": "id"}
+# columns added after a table first shipped: (table, column, definition)
+ADDED: Tuple[Tuple[str, str, str], ...] = (("act_audit_head", "purged_seq", "INTEGER DEFAULT 0"),
+                                          ("act_evidence", "source", "TEXT DEFAULT ''"), ("act_evidence", "reported", "TEXT DEFAULT ''"))
+
+_SQLITE_TRIGGERS = (
+    "CREATE TRIGGER IF NOT EXISTS act_audit_no_update BEFORE UPDATE ON act_audit BEGIN SELECT RAISE(ABORT, 'act_audit is append-only'); END",
+    "CREATE TRIGGER IF NOT EXISTS act_audit_no_delete BEFORE DELETE ON act_audit BEGIN SELECT RAISE(ABORT, 'act_audit is append-only'); END",
+    "CREATE TRIGGER IF NOT EXISTS act_anchors_no_update BEFORE UPDATE ON act_anchors BEGIN SELECT RAISE(ABORT, 'act_anchors is append-only'); END",
+    "CREATE TRIGGER IF NOT EXISTS act_anchors_no_delete BEFORE DELETE ON act_anchors BEGIN SELECT RAISE(ABORT, 'act_anchors is append-only'); END",
+    "CREATE TRIGGER IF NOT EXISTS act_audit_payload_no_update BEFORE UPDATE ON act_audit_payload BEGIN "
+    "SELECT RAISE(ABORT, 'act_audit_payload is append-only'); END",
+    # payloads are purgeable at retention (§10.7): only rows at or below the purge horizon may go; the chain keeps their sha256
+    "CREATE TRIGGER IF NOT EXISTS act_audit_payload_no_delete BEFORE DELETE ON act_audit_payload "
+    "WHEN OLD.seq > COALESCE((SELECT purged_seq FROM act_audit_head WHERE id=1), 0) BEGIN "
+    "SELECT RAISE(ABORT, 'act_audit_payload is append-only above the purge horizon'); END",
+)
+_PG_FUNCTIONS = (
+    "CREATE OR REPLACE FUNCTION act_append_only() RETURNS trigger AS $f$ BEGIN "
+    "RAISE EXCEPTION '% is append-only', TG_TABLE_NAME; END $f$ LANGUAGE plpgsql",
+    "CREATE OR REPLACE FUNCTION act_payload_guard() RETURNS trigger AS $f$ BEGIN "
+    "IF TG_OP = 'UPDATE' OR OLD.seq > COALESCE((SELECT purged_seq FROM act_audit_head WHERE id=1), 0) THEN "
+    "RAISE EXCEPTION 'act_audit_payload is append-only above the purge horizon'; END IF; RETURN OLD; END $f$ LANGUAGE plpgsql",
+)
+_PG_TRIGGERS = (
+    ("act_audit_append_only", "act_audit", "BEFORE UPDATE OR DELETE", "ROW", "act_append_only"),
+    ("act_audit_no_truncate", "act_audit", "BEFORE TRUNCATE", "STATEMENT", "act_append_only"),
+    ("act_anchors_append_only", "act_anchors", "BEFORE UPDATE OR DELETE", "ROW", "act_append_only"),
+    ("act_anchors_no_truncate", "act_anchors", "BEFORE TRUNCATE", "STATEMENT", "act_append_only"),
+    ("act_audit_payload_guard", "act_audit_payload", "BEFORE UPDATE OR DELETE", "ROW", "act_payload_guard"),
+    ("act_audit_payload_no_truncate", "act_audit_payload", "BEFORE TRUNCATE", "STATEMENT", "act_append_only"),
+)
 
 
-def ensure(db) -> List[str]:
-    """Create every act_* table and index (idempotent; one transaction, so a fresh install pays one commit)."""
+def ensure_triggers(db) -> int:
+    """The append-only triggers on APPEND_ONLY (§10.7, C11). Idempotent; migrate.py calls it after the copy."""
+    if db.pg:
+        have = {r["tgname"] for r in db._exec("SELECT tgname FROM pg_trigger WHERE NOT tgisinternal")}
+        if all(t[0] in have for t in _PG_TRIGGERS):
+            return 0
+        for f in _PG_FUNCTIONS:
+            db._exec(f)
+        n = 0
+        for name, table, when, level, fn in _PG_TRIGGERS:
+            if name not in have:
+                db._exec(f"CREATE TRIGGER {name} {when} ON {table} FOR EACH {level} EXECUTE FUNCTION {fn}()")
+                n += 1
+        return n
+    have = {r["name"] for r in db._exec("SELECT name FROM sqlite_master WHERE type='trigger'")}
+    n = 0
+    for t in _SQLITE_TRIGGERS:
+        if t.split(" ")[5] not in have:
+            db._exec(t)
+            n += 1
+    return n
+
+
+def drop_triggers(db) -> None:
+    """Only for the tamper drill and tests: what an attacker with SQL access would do first."""
+    if db.pg:
+        for name, table, *_ in _PG_TRIGGERS:
+            db._exec(f"DROP TRIGGER IF EXISTS {name} ON {table}")
+    else:
+        for t in _SQLITE_TRIGGERS:
+            db._exec(f"DROP TRIGGER IF EXISTS {t.split(' ')[5]}")
+
+
+def triggers_present(db) -> bool:
+    if db.pg:
+        have = {r["tgname"] for r in db._exec("SELECT tgname FROM pg_trigger WHERE NOT tgisinternal")}
+        return all(t[0] in have for t in _PG_TRIGGERS)
+    have = {r["name"] for r in db._exec("SELECT name FROM sqlite_master WHERE type='trigger'")}
+    return all(t.split(" ")[5] in have for t in _SQLITE_TRIGGERS)
+
+
+def ensure(db, triggers: bool = True) -> List[str]:
+    """Create every act_* table and index (idempotent; one transaction, so a fresh install pays one commit) and, unless a
+    migration is about to copy rows in (`triggers=False`), the append-only triggers."""
     created = []
 
     def run():
@@ -163,10 +243,15 @@ def ensure(db) -> List[str]:
             if name not in have:
                 db._exec(f"CREATE TABLE IF NOT EXISTS {name} ({cols.format(pk=db.pk)})")
                 created.append(name)
+        for table, col, ddl in ADDED:
+            if table in have and col not in db.columns(table):
+                db._exec(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}")
         for ix, table, cols in INDEXES:
             db._exec(f"CREATE INDEX IF NOT EXISTS {ix} ON {table} ({cols})")
         if not db._exec("SELECT id FROM act_audit_head WHERE id=1"):
             db._exec("INSERT INTO act_audit_head (id, seq, mac) VALUES (1, 0, '')")
+        if triggers:
+            ensure_triggers(db)
 
     try:
         if db.in_tx:
@@ -187,6 +272,11 @@ def ensure(db) -> List[str]:
                 pass
         if not db._exec("SELECT id FROM act_audit_head WHERE id=1"):
             db._exec("INSERT INTO act_audit_head (id, seq, mac) VALUES (1, 0, '') ON CONFLICT DO NOTHING")
+        if triggers:
+            try:
+                ensure_triggers(db)
+            except Exception:  # noqa: BLE001 - the other process is creating them
+                pass
     return created
 
 

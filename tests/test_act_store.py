@@ -26,6 +26,8 @@ def db(request, tmp_path, monkeypatch):
         d = Database(PG_URL)
         for t in store.act_tables(d):
             d._exec(f"DROP TABLE IF EXISTS {t}")
+        if "auth_events" in d.tables():                              # anchor rows of an earlier test's chain (WP2)
+            d._exec("DELETE FROM auth_events WHERE event='act_anchor'")
     else:
         d = Database(str(tmp_path / "k.db"))
     open_store(d, str(tmp_path / "none.db"))
@@ -130,6 +132,9 @@ def test_audit_chain_verify_and_pseudonyms(db):
     assert all(r["actor"].startswith("op_") and "ayse" not in r["actor"] for r in rows)
     assert all("Canary-Env-22" not in canonical(r["payload"]) for r in rows)               # payloads are scrubbed
     assert db._exec("SELECT email FROM act_actors")[0]["email"] == "ayse@corp.example"
+    with pytest.raises(Exception):                                  # WP2: the append-only trigger stops the edit
+        db._exec("UPDATE act_audit SET event='forged' WHERE seq=?", (n0 + 3,))
+    store.drop_triggers(db)                                         # what an attacker with SQL access would do first
     db._exec("UPDATE act_audit SET event='forged' WHERE seq=?", (n0 + 3,))
     v = act.audit.verify()
     assert not v["ok"] and v["broken_at"] == n0 + 3 and v["reason"] == "mac"
@@ -176,11 +181,14 @@ def test_key_custody(db, monkeypatch, tmp_path):
     pol.set("act_key_custody", "embedded", by="a@x")
     k2 = KeyClient(pol, key_dir=str(tmp_path / "keys"))
     assert k2.custody() == "embedded" and k2.available() and k2.cap() == 2       # key_custody cap: L2 (I17)
-    sig = k2.sign("job", b'{"a":1}')
+    env = {"job_id": "j1", "agent_id": 7, "host": "h", "seq": 1, "mode": "diag", "nonce": "n1",
+           "not_before": "2026-10-15T10:00:00Z", "expires_at": "2026-10-15T10:05:00Z"}
+    body = canonical(env).encode()
+    sig = k2.sign("job", body)
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
     import base64
     pub = Ed25519PublicKey.from_public_bytes(base64.b64decode(k2.public_key().split(":", 1)[1]))
-    pub.verify(base64.b64decode(sig), b'wo-job-v1\n{"a":1}')
+    pub.verify(base64.b64decode(sig), b"wo-job-v1\n" + body)
     m = k2.mac_audit(1, "", "d")
     assert m.startswith("e1:") and k2.verify_mac(1, "", "d", m) and not k2.verify_mac(1, "", "e", m)
     assert oct(os.stat(tmp_path / "keys" / "dispatch.key").st_mode)[-3:] == "600"

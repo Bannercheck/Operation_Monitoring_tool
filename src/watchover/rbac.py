@@ -104,17 +104,18 @@ BUILTIN["operator"]["perms"].add("act.logalert")             # page.logs: every 
 BUILTIN["viewer"]["perms"].add("page.logs")
 
 # ---------------------------------------------------------------- action agent (docs/design/action-agent.md §10.9; migration auto_v1)
-AUTO_DEF: dict[str, tuple] = {   # key: (TR, EN, team-assignable, requires, team templates)
+AUTO_DEF: dict[str, tuple] = {   # key: (TR, EN, team-assignable, requires, team templates); product owner: no act.* key in any team
+    # template, each one is ticked by hand per team role (page.auto is view only)
     "page.auto": ("Otomasyon: runbook'lar, güven, öğrenme (görüntüleme)", "Automation: runbooks, trust, learning (view)", True, None, ("manager", "operator", "viewer")),
-    "act.case": ("Vaka yürütme: karar, rehberli adım, teşhis, kapatma", "Work cases: decide, guided steps, diagnosis, close", True, "page.actions", ("manager", "operator")),
-    "act.execute": ("Adımı sistemle çalıştırma (Onaylı seviyede \"Çalıştır\")", "Run a step through the system (\"Run\" at Approved)", True, "page.actions", ("manager", "operator")),
-    "act.approve": ("Başkasının adımını onaylama; otomatik çalıştırmaları gözden geçirme", "Approve someone else's step; review automatic runs", True, "page.actions", ("manager",)),
-    "act.runbook": ("Runbook yazma ve taslak düzenleme", "Write runbooks and edit drafts", True, "page.auto", ("manager", "operator")),
-    "act.publish": ("Runbook sürümü yayınlama (yazar olmayan)", "Publish a runbook version (not its author)", True, "page.auto", ("manager",)),
-    "act.promote": ("Seviye yükseltme imzası, elle düşürme, dondurmayı ve durdurmayı kaldırma", "Sign promotions, demote, lift freezes and stops", True, "page.auto", ("manager",)),
-    "act.kill": ("Otomasyonu acil durdurma (ekip, runbook, sunucu)", "Emergency-stop automation (team, runbook, host)", True, "page.auto", ("manager", "operator")),
-    "act.golden": ("Altın küme ve etiket düzeltme", "Golden set and label corrections", True, "page.auto", ("manager",)),
-    "act.audit": ("Otomasyon denetim kaydını görme", "View the automation audit log", True, "page.auto", ("manager",)),
+    "act.case": ("Vaka yürütme: karar, rehberli adım, teşhis, kapatma", "Work cases: decide, guided steps, diagnosis, close", True, "page.actions", ()),
+    "act.execute": ("Adımı sistemle çalıştırma (Onaylı seviyede \"Çalıştır\")", "Run a step through the system (\"Run\" at Approved)", True, "page.actions", ()),
+    "act.approve": ("Başkasının adımını onaylama; otomatik çalıştırmaları gözden geçirme", "Approve someone else's step; review automatic runs", True, "page.actions", ()),
+    "act.runbook": ("Runbook yazma ve taslak düzenleme", "Write runbooks and edit drafts", True, "page.auto", ()),
+    "act.publish": ("Runbook sürümü yayınlama (yazar olmayan)", "Publish a runbook version (not its author)", True, "page.auto", ()),
+    "act.promote": ("Seviye yükseltme imzası, elle düşürme, dondurmayı ve durdurmayı kaldırma", "Sign promotions, demote, lift freezes and stops", True, "page.auto", ()),
+    "act.kill": ("Otomasyonu acil durdurma (ekip, runbook, sunucu)", "Emergency-stop automation (team, runbook, host)", True, "page.auto", ()),
+    "act.golden": ("Altın küme ve etiket düzeltme", "Golden set and label corrections", True, "page.auto", ()),
+    "act.audit": ("Otomasyon denetim kaydını görme", "View the automation audit log", True, "page.auto", ()),
     "act.policy": ("Kurulum geneli otomasyon politikası: mod, tavanlar, bütçeler, bağlayıcılar, şablon kataloğu, model yükseltme, genel durdurmayı kaldırma",
                    "Installation automation policy: mode, caps, budgets, connectors, template catalogue, model promotion, global resume", False, "page.auto", ()),
 }

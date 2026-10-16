@@ -265,6 +265,8 @@ spec:
 
 Sistem › Anlık görüntü (veritabanı dahil) PostgreSQL'in tamamını JSON olarak `/data`'ya yazar; büyük kurulumda `data` diskini doldurur, üretimde yukarıdaki yolları kullanın.
 
+**Anahtarlar (watchover-keyd).** Aksiyon ajanının anahtarları `keyd` kabının kendi diskinde (`watchover-keys`) durur; o diski yalnız bu kap bağlar, veritabanı ve `data` yedeklerine girmez. Kasa anahtarı `watchover-secrets` diskindedir. `keys` diskinin VolumeSnapshot'ını ayrı bir sorumlu alır ya da Otomasyon › Anahtarlar'dan iki `act.policy` sahibi şifreli dışa aktarım yapar. Denetim zinciri yalnız eklenir: eski bir `pg_dump`'ı `--clean` ile geri yüklemek zincirde bir boşluk olarak görünür (tasarım gereği, hiçbir kayıt silinmez); boşluğu iki `act.policy` sahibi onaylayana dek otomatik çalıştırma L2'de kalır. `keyd.enabled: false` anahtar servisini kapatır (sistem yürütmesi kapalı, yalnız rehberli mod).
+
 ## 9. LLM'i kısıtlamak
 
 Watchover'ın çekirdeği deterministiktir; LLM yalnız açıklama ve soru-cevap yardımcısıdır ve kapalıyken her şey çalışır. Üç seçenek:

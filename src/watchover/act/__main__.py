@@ -1,7 +1,8 @@
 """python -m watchover.act <command>
 
     doctor                    tables and row counts, mode, key custody, audit chain
-    audit verify              walk the audit chain; exit 1 when it is broken
+    audit verify              walk the audit chain; exit 1 when it is broken ("Zincir kırık: #n")
+    audit purge [--days N]    drop audit payloads older than the retention (rows and MACs stay; the chain keeps verifying)
     kill --global --reason R  write <WATCHOVER_HOME>/act.KILL (works with the database down); --resume removes it
     templates lint <dir>      lint every *.tmpl.json pack in a folder (exit 1 on errors)
 """
@@ -42,10 +43,22 @@ def doctor(out=sys.stdout) -> int:
     v = audit.verify()
     chain = "ok" if v["ok"] else f"BROKEN at #{v['broken_at']} ({v['reason']})"
     print(f"audit: {v['n']} events · chain: {chain} · mac: {', '.join(v['mac']) or '-'}"
-          f"{' (placeholder until watchover-keyd, WP2)' if v.get('placeholder') else ''}", file=out)
+          f"{' (placeholder: no keys yet)' if v.get('placeholder') else ''}", file=out)
     panic = killmod.panic_file()
     print(f"global stop file: {'PRESENT ' + str(panic) if panic.exists() else 'none'}", file=out)
-    for w in ks["warnings"]:
+    print(f"append-only triggers: {'present' if store.triggers_present(db) else 'MISSING'}", file=out)
+    from .anchors import Anchors
+    fr = Anchors(db, keys, audit, pol).freshness()
+    print(f"external anchor: {'no sink configured' if not fr['configured'] else ('fresh' if fr['fresh'] else 'STALE')}"
+          f"{'' if fr['age_min'] is None else ' (' + str(fr['age_min']) + ' min)'}", file=out)
+    warns = list(ks["warnings"])
+    if ks["custody"] == "embedded":
+        warns += keys.shared_mount()
+    from .. import vault
+    vk = vault.key_path()
+    if vault.secrets_dir() is None or vault.secrets_dir() not in vk.parents:
+        warns.append(f"vault key {vk} is not on a separate secrets mount (WATCHOVER_VAULT_DIR): /data backups can decrypt vault values")
+    for w in warns:
         print(f"warning: {w}", file=out)
     db.close()
     return 0 if v["ok"] else 1
@@ -56,7 +69,8 @@ def main(argv=None) -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("doctor")
     a = sub.add_parser("audit")
-    a.add_argument("what", choices=["verify"])
+    a.add_argument("what", choices=["verify", "purge"])
+    a.add_argument("--days", type=int, default=None)
     k = sub.add_parser("kill")
     k.add_argument("--global", dest="glob", action="store_true", required=True)
     k.add_argument("--reason", default="")
@@ -74,8 +88,15 @@ def main(argv=None) -> int:
         from . import store
         db = _db(); store.ensure(db)
         keys = KeyClient(None); keys.policy = Policy(db)
-        v = Audit(db, keys).verify()
+        au = Audit(db, keys)
+        if args.what == "purge":
+            days = args.days if args.days is not None else int((keys.policy.get("act_retention_d") or {}).get("audit_payload", 400))
+            print(json.dumps(au.purge_payloads(older_than_days=days, by="cli"), ensure_ascii=False))
+            return 0
+        v = au.verify()
         print(json.dumps(v, ensure_ascii=False))
+        if not v["ok"]:
+            print(f"Zincir kırık: #{v['broken_at']} ({v['reason']})", file=sys.stderr)
         return 0 if v["ok"] else 1
     if args.cmd == "kill":
         from . import limits as killmod

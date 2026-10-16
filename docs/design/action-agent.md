@@ -2469,17 +2469,19 @@ one-shot migration `auto_v1` like `_logs_v1`):
 | Key | TR label | Team-assignable | Requires | Team templates |
 |---|---|---|---|---|
 | `page.auto` | Otomasyon: runbook'lar, güven, öğrenme (görüntüleme) | yes | — | manager, operator, viewer |
-| `act.case` | Vaka yürütme: karar, rehberli adım, teşhis, kapatma | yes | `page.actions` | manager, operator |
-| `act.execute` | Adımı sistemle çalıştırma (Onaylı seviyede "Çalıştır") | yes | `page.actions` | manager, operator |
-| `act.approve` | Başkasının adımını onaylama; otomatik çalıştırmaları gözden geçirme | yes | `page.actions` | manager |
-| `act.runbook` | Runbook yazma ve taslak düzenleme | yes | `page.auto` | manager, operator |
-| `act.publish` | Runbook sürümü yayınlama (yazar olmayan) | yes | `page.auto` | manager |
-| `act.promote` | Seviye yükseltme imzası, elle düşürme, dondurmayı ve durdurmayı kaldırma | yes | `page.auto` | manager |
-| `act.kill` | Otomasyonu acil durdurma (ekip, runbook, sunucu) | yes | `page.auto` | manager, operator |
-| `act.golden` | Altın küme ve etiket düzeltme (ekipler arası etkileyen öğe ikinci kişi olarak kurulum `act.policy` onayı ister, §8.6) | yes | `page.auto` | manager |
-| `act.audit` | Otomasyon denetim kaydını görme | yes | `page.auto` | manager |
+| `act.case` | Vaka yürütme: karar, rehberli adım, teşhis, kapatma | yes | `page.actions` | — (by hand) |
+| `act.execute` | Adımı sistemle çalıştırma (Onaylı seviyede "Çalıştır") | yes | `page.actions` | — (by hand) |
+| `act.approve` | Başkasının adımını onaylama; otomatik çalıştırmaları gözden geçirme | yes | `page.actions` | — (by hand) |
+| `act.runbook` | Runbook yazma ve taslak düzenleme | yes | `page.auto` | — (by hand) |
+| `act.publish` | Runbook sürümü yayınlama (yazar olmayan) | yes | `page.auto` | — (by hand) |
+| `act.promote` | Seviye yükseltme imzası, elle düşürme, dondurmayı ve durdurmayı kaldırma | yes | `page.auto` | — (by hand) |
+| `act.kill` | Otomasyonu acil durdurma (ekip, runbook, sunucu) | yes | `page.auto` | — (by hand) |
+| `act.golden` | Altın küme ve etiket düzeltme (ekipler arası etkileyen öğe ikinci kişi olarak kurulum `act.policy` onayı ister, §8.6) | yes | `page.auto` | — (by hand) |
+| `act.audit` | Otomasyon denetim kaydını görme | yes | `page.auto` | — (by hand) |
 | `act.policy` | Kurulum geneli otomasyon politikası: mod, tavanlar, bütçeler, bağlayıcılar, şablon kataloğu, model yükseltme, genel durdurmayı kaldırma | **no** (installation) | `page.auto` | — |
 
+* **Product owner decision (2026-10-16):** no team role template grants any `act.*` key; every one of them is ticked by
+  hand per team role, and the templates carry only the view key `page.auto` (existing stored roles keep what they have).
 * Built-in installation roles: admin = all; operator gets `page.auto`, `act.case`, `act.runbook` (no installation-wide
   execution by default); viewer gets `page.auto`.
 * Migration `auto_v1`: every stored role and team role holding `page.actions` gets `page.auto`; the untouched built-in

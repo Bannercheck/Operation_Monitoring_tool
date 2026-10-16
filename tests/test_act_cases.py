@@ -230,7 +230,7 @@ def test_api_inbox_case_close_and_legacy(c):
     assert [x["id"] for x in ib] == [cid, plain["id"]] and ib[0]["priority_score"] >= ib[1]["priority_score"]   # ties: newest first
     assert ib[0]["kind"] == "case" and ib[1]["kind"] == "action"
     d = c.get(f"/api/act/cases/{cid}", headers=h).json()
-    assert d["subject"]["host"] == "web-prod-07" and d["timeline"][0]["event"] == "case.opened" and d["action_id"] == cid
+    assert d["subject"]["host"] == "web-prod-07" and [e["event"] for e in d["timeline"]][:2] == ["proposal.sealed", "case.opened"] and d["action_id"] == cid
     # the legacy actions API: cases are hidden by default and cannot be closed through PATCH
     assert [a["id"] for a in c.get("/api/actions", headers=h).json()] == [plain["id"]]
     assert cid in [a["id"] for a in c.get("/api/actions?kind=all", headers=h).json()]

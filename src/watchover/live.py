@@ -61,6 +61,7 @@ class LiveStore:
         self.enricher = None                     # optional hook(observation) -> bool: inventory match (IP → hostname, dc, criticality)
         self.host_guard = None                   # optional fn(agent_id, team_id, sender, hosts) -> {host: replacement}: team senders (ingest_guard)
         self.metric_hosts: dict[str, set] = {}   # sender -> hosts it reported metrics for (purge on simulation off)
+        self.metric_agent: dict[str, int] = {}   # host -> agent_id of the last metric batch for it (action agent: trusted metric evidence)
         self.matched = 0                         # events matched to the inventory
         self.started = time.time()
         self.db = None                           # attach_db(): the durable live window (live_batches) behind the ring buffer
@@ -486,6 +487,11 @@ class LiveStore:
             self.metrics.extend(metric_rows)
             if metric_rows:
                 self.metric_hosts.setdefault(agent, set()).update(r[1] for r in metric_rows)
+                for h in {r[1] for r in metric_rows}:
+                    if agent_id is not None:
+                        self.metric_agent[h] = agent_id
+                    else:
+                        self.metric_agent.pop(h, None)        # the newest batch decides: a key-less sender leaves no identity
             self.received += len(obs)
             self.agents[agent] = time.time()
             self._rate.append((time.time(), len(obs)))
@@ -905,9 +911,11 @@ def rum_request(rum, key: str, origin: str | None, ua: str, body: bytes) -> tupl
     return 202, {"ok": True, **res}
 
 
-def make_handler(store: LiveStore, api_key: str | None, registry=None, rum=None):
+def make_handler(store: LiveStore, api_key: str | None, registry=None, rum=None, jobs=None):
     """Auth order: per-agent token from the registry (identity = the registered record) > legacy shared key > open when no key is set.
-    GET /agent.py and /agent/install.sh serve the collector itself, so a server needs nothing but python3 and this port."""
+    GET /agent.py and /agent/install.sh serve the collector itself, so a server needs nothing but python3 and this port.
+    /agent/v1/* is the action agent's job channel (`jobs` = act.jobs.Jobs): only an actuator token (`wa_`, act_actuators) gets in,
+    never a collector token, the shared key or open mode; `wa_` tokens get nowhere else (docs/design/action-agent.md §9.3.2)."""
     class H(BaseHTTPRequestHandler):
         def _token(self) -> str:
             auth = self.headers.get("Authorization", "")
@@ -927,6 +935,8 @@ def make_handler(store: LiveStore, api_key: str | None, registry=None, rum=None)
 
         def _authorized(self) -> bool:
             tok = self._token()
+            if tok.startswith("wa_"):                        # an actuator token is for /agent/v1/ only
+                return False
             if registry is not None and tok:
                 self.agent_rec = registry.verify(tok)
                 if self.agent_rec:
@@ -971,7 +981,34 @@ def make_handler(store: LiveStore, api_key: str | None, registry=None, rum=None)
             self.send_header("Content-Type", "application/json"); self.send_header("Content-Length", str(len(data))); self.end_headers()
             self.wfile.write(data)
 
+        def _job_channel(self, method: str):
+            if jobs is None:
+                return self._send(404, {"error": "no job channel"})
+            rec = jobs.actuators.by_token(self._token())       # the act_actuators map only: no shared key, no open mode
+            if rec is None:
+                return self._send(401, {"error": "actuator token required"})
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                return self._send(400, {"error": "bad Content-Length"})
+            if n > (1 << 20):
+                return self._send(413, {"error": "body too large"})
+            body = self.rfile.read(n) if n > 0 else b""
+            try:
+                code, hdrs, out = jobs.handle(method, self.path, rec, self.headers, body)
+            except Exception as e:  # noqa: BLE001
+                return self._send(500, {"error": f"job channel error: {str(e)[:120]}"})
+            if code == 204:
+                self.send_response(204)
+                for k, v in hdrs.items():
+                    self.send_header(k, v)
+                self.send_header("Content-Length", "0")
+                return self.end_headers()
+            self._send(code, out or {})
+
         def do_GET(self):
+            if self.path.startswith("/agent/v1/"):
+                return self._job_channel("GET")
             if self.path.startswith("/health"):
                 return self._send(200, {"status": "ok", "received": store.received, "buffered": len(store.buf), "agents": len(store.agents)})
             path = self.path.split("?", 1)[0]
@@ -986,7 +1023,11 @@ def make_handler(store: LiveStore, api_key: str | None, registry=None, rum=None)
             self._send(404, {"error": "not found"})
 
         def do_POST(self):
+            if self.path.startswith("/agent/v1/"):
+                return self._job_channel("POST")
             if self.path.startswith("/enroll"):
+                if self._token().startswith("wa_"):
+                    return self._send(401, {"error": "enrolment key is wrong or disabled"})
                 return self._enroll()
             if self.path.split("?", 1)[0] in RUM_PATHS:
                 return self._rum(self.path)
@@ -1040,8 +1081,8 @@ def make_handler(store: LiveStore, api_key: str | None, registry=None, rum=None)
     return H
 
 
-def start_receiver(store: LiveStore, port: int = 8600, api_key: str | None = None, registry=None, rum=None) -> ThreadingHTTPServer:
-    server = ThreadingHTTPServer(("0.0.0.0", port), make_handler(store, api_key, registry, rum))
+def start_receiver(store: LiveStore, port: int = 8600, api_key: str | None = None, registry=None, rum=None, jobs=None) -> ThreadingHTTPServer:
+    server = ThreadingHTTPServer(("0.0.0.0", port), make_handler(store, api_key, registry, rum, jobs))
     server.daemon_threads = True
     threading.Thread(target=server.serve_forever, daemon=True, name=f"live-receiver-{port}").start()
     return server

@@ -226,3 +226,109 @@ func TestRumAndMobileIntake(t *testing.T) {
 		t.Fatalf("spooled %v", recs)
 	}
 }
+
+// ---------------------------------------------------------------- action agent job channel (docs/design/action-agent.md §9.3.2, WP11a)
+func jobSetup(t *testing.T, st *authState, upstream string) (*httptest.Server, func()) {
+	t.Helper()
+	dir := t.TempDir()
+	cfg := config{spool: dir, authFile: filepath.Join(dir, "auth.json"), maxBody: 1 << 20, segBytes: 1 << 20, maxBacklog: 1 << 30, segEvery: 50 * time.Millisecond, agentDir: dir}
+	b, _ := json.Marshal(st)
+	_ = os.WriteFile(cfg.authFile, b, 0o600)
+	sp, err := newSpool(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := &auth{path: cfg.authFile}
+	a.reload()
+	up, _ := url.Parse(upstream)
+	s := &server{cfg: cfg, auth: a, sp: sp, proxy: httputil.NewSingleHostReverseProxy(up), start: time.Now()}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { sp.run(ctx); close(done) }()
+	ts := httptest.NewServer(s.routes())
+	return ts, func() { ts.Close(); cancel(); <-done }
+}
+
+func call(t *testing.T, method, u, tok, body string) (*http.Response, map[string]any) {
+	req, _ := http.NewRequest(method, u, strings.NewReader(body))
+	if tok != "" {
+		req.Header.Set("Authorization", "Bearer "+tok)
+	}
+	r, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	_ = json.NewDecoder(r.Body).Decode(&m)
+	r.Body.Close()
+	return r, m
+}
+
+func TestJobChannelOnlyActuatorTokens(t *testing.T) {
+	var seen []string
+	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen = append(seen, r.Method+" "+r.URL.RequestURI())
+		w.WriteHeader(204)
+	}))
+	defer up.Close()
+	st := &authState{Agents: map[string]agentRec{sha("wo_collector"): {ID: 1, Name: "web-01"}}, KeySHA256: sha("shared"),
+		Actuators: map[string]actRec{sha("wa_actuator"): {AgentID: 1, Host: "web-01"}}}
+	ts, stop := jobSetup(t, st, up.URL)
+	defer stop()
+	for _, tok := range []string{"", "wo_collector", "shared", "wa_unknown"} {
+		r, m := call(t, "GET", ts.URL+"/agent/v1/jobs?after=0", tok, "")
+		if r.StatusCode != 401 || m["error"] != "actuator token required" {
+			t.Fatalf("token %q: %d %v", tok, r.StatusCode, m)
+		}
+	}
+	r, _ := call(t, "GET", ts.URL+"/agent/v1/jobs?after=3", "wa_actuator", "")
+	if r.StatusCode != 204 || len(seen) != 1 || seen[0] != "GET /agent/v1/jobs?after=3" {
+		t.Fatalf("proxied: %d %v", r.StatusCode, seen)
+	}
+	// the actuator token reaches nothing else: not /ingest, not /enroll
+	r, _ = post(t, ts.URL+"/ingest", "wa_actuator", "line\n")
+	if r.StatusCode != 401 {
+		t.Fatalf("wa_ on /ingest: %d", r.StatusCode)
+	}
+	r, _ = post(t, ts.URL+"/enroll", "wa_actuator", "{}")
+	if r.StatusCode != 401 {
+		t.Fatalf("wa_ on /enroll: %d", r.StatusCode)
+	}
+	// body limit
+	r, m := call(t, "POST", ts.URL+"/agent/v1/hello", "wa_actuator", strings.Repeat("x", (1<<20)+10))
+	if r.StatusCode != 413 || m["error"] != "body too large" {
+		t.Fatalf("body limit: %d %v", r.StatusCode, m)
+	}
+}
+
+func TestJobChannelOpenModeIsNotEnough(t *testing.T) {
+	st := &authState{Open: true, Actuators: map[string]actRec{}}
+	ts, stop := jobSetup(t, st, "http://127.0.0.1:1")
+	defer stop()
+	r, _ := call(t, "POST", ts.URL+"/agent/v1/hello", "", "{}")
+	if r.StatusCode != 401 {
+		t.Fatalf("open mode on /agent/v1/: %d", r.StatusCode)
+	}
+	r, _ = post(t, ts.URL+"/ingest", "wa_anything", "line\n") // open mode accepts anyone on /ingest, but never a wa_ token
+	if r.StatusCode != 401 {
+		t.Fatalf("wa_ on /ingest in open mode: %d", r.StatusCode)
+	}
+	r, _ = post(t, ts.URL+"/ingest", "", "line\n")
+	if r.StatusCode != 200 {
+		t.Fatalf("open mode ingest: %d", r.StatusCode)
+	}
+}
+
+func TestJobChannelOwnErrorText(t *testing.T) {
+	st := &authState{Actuators: map[string]actRec{sha("wa_a"): {AgentID: 2, Host: "h"}}}
+	ts, stop := jobSetup(t, st, "http://127.0.0.1:1") // the dashboard is down
+	defer stop()
+	r, m := call(t, "GET", ts.URL+"/agent/v1/jobs", "wa_a", "")
+	if r.StatusCode != 502 || m["error"] != "job channel unavailable" {
+		t.Fatalf("proxy error: %d %v", r.StatusCode, m)
+	}
+	r, m = post(t, ts.URL+"/enroll", "", "{}")
+	if r.StatusCode != 502 || m["error"] == "job channel unavailable" {
+		t.Fatalf("enroll keeps its own text: %d %v", r.StatusCode, m)
+	}
+}

@@ -1,5 +1,9 @@
 {{- $root := . }}
 {{- $vols := list (list "data" .Values.persistence.data) (list "logs-hot" .Values.persistence.logsHot) (list "logs-cold" .Values.persistence.logsCold) }}
+{{- if .Values.keyd.enabled }}
+{{- $vols = append $vols (list "keys" .Values.persistence.keys) }}
+{{- $vols = append $vols (list "secrets" .Values.persistence.secrets) }}
+{{- end }}
 {{- if .Values.trainer.enabled }}
 {{- $vols = append $vols (list "trainer-hf" (dict "size" .Values.trainer.hfStorage.size "storageClass" .Values.trainer.hfStorage.storageClass "accessMode" "ReadWriteOnce")) }}
 {{- $vols = append $vols (list "trainer-models" (dict "size" .Values.trainer.modelsStorage.size "storageClass" .Values.trainer.modelsStorage.storageClass "accessMode" "ReadWriteOnce")) }}

@@ -1,7 +1,7 @@
 """/api/act: inbox, cases, triggers (docs/design/action-agent.md §4, §12.1).
 
 Visibility reuses the legacy actions rule (`routers/actions.py::visible`); writes need act.case on the host (or in the team for
-host-less cases). Decisions, runs and steps arrive with WP7 / WP8; until then a case is worked in guided mode and closed here."""
+host-less cases). Decisions per attempt, peek and the blind rules are WP7's (act/shadow.py); runs and steps arrive with WP8."""
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
@@ -38,6 +38,22 @@ class CloseIn(BaseModel):
     outcome: str = "ok"
     resolution: str = ""
     what_did_you_do: List[Dict[str, Any]] = []
+
+
+class DecideIn(BaseModel):
+    choice: str
+    version: Optional[int] = None
+    params: Dict[str, Any] = {}
+    reason_code: str = ""
+    note: str = ""
+
+
+def _shadow(fn, *a, **k):
+    from ...act.shadow import ShadowError
+    try:
+        return fn(*a, **k)
+    except ShadowError as e:
+        raise err(e.status, e.code, e.tr, e.en)
 
 
 def _case(svc, acc, sc, cid: int) -> dict:
@@ -90,6 +106,11 @@ def create_case(body: CaseIn, svc=Depends(act_on), acc=Depends(access), sc=Depen
 def trigger(body: Dict[str, Any], svc=Depends(act_on), user=Depends(require_install("act.case"))):
     """External trigger (Trigger JSON), installation-wide act.case; routed at once and answered with the case."""
     allowed = {"source", "key", "host", "ts", "env", "service", "severity", "title", "team_id", "family", "facts", "refs", "evidence"}
+    body = dict(body)
+    # evidence posted over the API is what a person or tool says, never a sender identity or a signed result (§4.3, C2)
+    body["evidence"] = [{"kind": "pasted", "text": str(e.get("text") or "")[:4000], "host": str(e.get("host") or ""), "ts": e.get("ts"),
+                         "fields": e.get("fields") if isinstance(e.get("fields"), dict) else {}}
+                        for e in (body.get("evidence") or []) if isinstance(e, dict)][:20]
     try:
         trig = Trigger(**{k: v for k, v in body.items() if k in allowed})
     except (TypeError, ValueError) as e:
@@ -112,13 +133,37 @@ def _move(cid, phase, svc, acc, sc, user, **fields):
     return svc.act.cases.transition(cid, phase, user["email"], **fields)
 
 
+@router.post("/cases/{cid}/decide", status_code=201)
+def decide(cid: int, body: DecideIn, svc=Depends(act_on), acc=Depends(access), sc=Depends(perm_scope("page.actions")), user=Depends(current_user)):
+    """The human choice for this attempt (runbook + params, NONE or ESCALATE, with a reason code when it differs from a visible
+    proposal); reveals blind proposals (§8.4). Planning the run is WP8's: `plan` is null until then."""
+    c = _case(svc, acc, sc, cid)
+    _write_guard(svc, acc, c)
+    return _shadow(svc.act.shadow.decide, cid, user["email"], body.choice, body.version, body.params, body.reason_code, body.note,
+                   c.get("level_hint"))
+
+
+@router.post("/cases/{cid}/peek")
+def peek(cid: int, svc=Depends(act_on), acc=Depends(access), sc=Depends(perm_scope("page.actions")), user=Depends(current_user)):
+    """"Öneriyi şimdi göster": reveal a blind proposal before deciding; the decision is then scored as visible."""
+    c = _case(svc, acc, sc, cid)
+    _write_guard(svc, acc, c)
+    return svc.act.shadow.peek(cid, user["email"])
+
+
 @router.post("/cases/{cid}/dismiss")
 def dismiss(cid: int, body: ReasonIn, svc=Depends(act_on), acc=Depends(access), sc=Depends(perm_scope("page.actions")), user=Depends(current_user)):
+    c = _case(svc, acc, sc, cid)
+    _write_guard(svc, acc, c)
+    _shadow(svc.act.shadow.implicit, cid, user["email"], "NONE", body.reason)             # the attempt's decision (C10)
     return _move(cid, "dismissed", svc, acc, sc, user, resolution=body.reason, outcome="not_needed", needs_human=0)
 
 
 @router.post("/cases/{cid}/escalate")
 def escalate(cid: int, body: ReasonIn, svc=Depends(act_on), acc=Depends(access), sc=Depends(perm_scope("page.actions")), user=Depends(current_user)):
+    c = _case(svc, acc, sc, cid)
+    _write_guard(svc, acc, c)
+    _shadow(svc.act.shadow.implicit, cid, user["email"], "ESCALATE", body.reason)
     return _move(cid, "escalated", svc, acc, sc, user, resolution=body.reason, outcome="escalated")
 
 
@@ -141,4 +186,7 @@ def close(cid: int, body: CloseIn, svc=Depends(act_on), acc=Depends(access), sc=
         raise err(422, "act_param_invalid", "Geçersiz sonuç", "Invalid outcome")
     what = "\n".join(str(x.get("text") or "")[:500] for x in (body.what_did_you_do or [])[:10] if x.get("text"))
     text = "\n".join(t for t in (body.resolution, what) if t)
+    c = _case(svc, acc, sc, cid)
+    _write_guard(svc, acc, c)
+    _shadow(svc.act.shadow.implicit, cid, user["email"], "NONE" if body.outcome == "not_needed" else "MANUAL", text[:300])
     return _move(cid, "resolved", svc, acc, sc, user, resolution=text, outcome=body.outcome, needs_human=0)

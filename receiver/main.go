@@ -11,6 +11,7 @@
 //	GET  /rum.js              the browser sensor
 //	GET  /agent.py, /agent/install.sh                                                             -> the collector itself
 //	GET  /health, /metrics    counters, backlog, auth state (JSON / Prometheus text)
+//	GET/POST /agent/v1/…      action-agent job channel: actuator tokens (wa_, auth.json "actuators") only -> proxied to the dashboard
 //
 // Authentication mirrors the Python receiver: per-agent tokens (sha256 hashes exported by the dashboard to auth.json), the legacy
 // shared key, open mode only while no agent is enrolled. Backpressure: when the unprocessed spool exceeds WO_MAX_BACKLOG_MB the
@@ -103,9 +104,16 @@ type appRec struct {
 	Origins []string `json:"origins"`
 }
 
+// actRec is an action-agent actuator (docs/design/action-agent.md §9.3.2): its wa_ token reaches /agent/v1/ and nothing else.
+type actRec struct {
+	AgentID int64  `json:"agent_id"`
+	Host    string `json:"host"`
+}
+
 type authState struct {
 	Apps      map[string]appRec   `json:"apps"`       // RUM / mobile app key -> app (keys are public; origins bind browser posts)
 	Agents    map[string]agentRec `json:"agents"`     // sha256(token) -> agent
+	Actuators map[string]actRec   `json:"actuators"`  // sha256(wa_ token) -> actuator (job channel only)
 	KeySHA256 string              `json:"key_sha256"` // legacy shared key, "" when none
 	Open      bool                `json:"open"`       // no key and no active agent: accept anyone (first setup only)
 	TS        string              `json:"ts"`
@@ -143,6 +151,9 @@ func (a *auth) reload() {
 	if st.Apps == nil {
 		st.Apps = map[string]appRec{}
 	}
+	if st.Actuators == nil {
+		st.Actuators = map[string]actRec{}
+	}
 	a.mu.Lock()
 	a.st, a.mtime = &st, fi.ModTime()
 	a.mu.Unlock()
@@ -162,8 +173,8 @@ func (a *auth) check(tok string) (*agentRec, string, int) {
 		if ag, ok := st.Agents[sha(tok)]; ok {
 			return &ag, "token", 200
 		}
-		if strings.HasPrefix(tok, "wo_") { // an agent token that is unknown or revoked never falls back to the shared key
-			return nil, "", http.StatusUnauthorized
+		if strings.HasPrefix(tok, "wo_") || strings.HasPrefix(tok, "wa_") { // an agent token that is unknown or revoked never falls
+			return nil, "", http.StatusUnauthorized // back to the shared key; an actuator token is for /agent/v1/ only
 		}
 	}
 	if st.KeySHA256 == "" {
@@ -176,6 +187,23 @@ func (a *auth) check(tok string) (*agentRec, string, int) {
 		return nil, "key", 200
 	}
 	return nil, "", http.StatusUnauthorized
+}
+
+// checkActuator: the "actuators" map only; never open mode, the shared key or a collector token (C1, R4).
+func (a *auth) checkActuator(tok string) (*actRec, int) {
+	a.mu.RLock()
+	st := a.st
+	a.mu.RUnlock()
+	if st == nil {
+		return nil, http.StatusServiceUnavailable
+	}
+	if tok == "" || !strings.HasPrefix(tok, "wa_") {
+		return nil, http.StatusUnauthorized
+	}
+	if ac, ok := st.Actuators[sha(tok)]; ok {
+		return &ac, 200
+	}
+	return nil, http.StatusUnauthorized
 }
 
 // ---------------------------------------------------------------- spool writer (one goroutine owns the file)
@@ -333,13 +361,14 @@ func (s *spool) write(r record) error {
 // ---------------------------------------------------------------- HTTP
 
 type server struct {
-	cfg   config
-	auth  *auth
-	sp    *spool
-	stage *parseStage // nil when WATCHOVER_GO_PARSE is off
-	proxy *httputil.ReverseProxy
-	start time.Time
-	stats struct{ batches, bytes, rejected, busy, unauth, sensor atomic.Int64 }
+	cfg      config
+	auth     *auth
+	sp       *spool
+	stage    *parseStage // nil when WATCHOVER_GO_PARSE is off
+	proxy    *httputil.ReverseProxy
+	jobProxy *httputil.ReverseProxy // /agent/v1/ (built from proxy's upstream when nil)
+	start    time.Time
+	stats    struct{ batches, bytes, rejected, busy, unauth, sensor atomic.Int64 }
 }
 
 func (s *server) json(w http.ResponseWriter, code int, v any) {
@@ -596,7 +625,48 @@ func (s *server) routes() http.Handler {
 		}
 		s.ingest(w, r)
 	})
-	mux.HandleFunc("/enroll", func(w http.ResponseWriter, r *http.Request) { s.proxy.ServeHTTP(w, r) })
+	mux.HandleFunc("/enroll", func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(token(r), "wa_") { // an actuator token never enrols a collector
+			s.stats.unauth.Add(1)
+			s.json(w, http.StatusUnauthorized, map[string]string{"error": "enrolment key is wrong or disabled"})
+			return
+		}
+		s.proxy.ServeHTTP(w, r)
+	})
+	jp := s.jobProxy
+	if jp == nil && s.proxy != nil {
+		jp = &httputil.ReverseProxy{Director: s.proxy.Director, Transport: &http.Transport{ResponseHeaderTimeout: 30 * time.Second}}
+	}
+	jobDown := func(w http.ResponseWriter, r *http.Request, err error) {
+		w.Header().Set("Retry-After", "10")
+		s.json(w, http.StatusBadGateway, map[string]string{"error": "job channel unavailable"})
+	}
+	if jp != nil {
+		jp.ErrorHandler = jobDown
+	}
+	mux.HandleFunc("/agent/v1/", func(w http.ResponseWriter, r *http.Request) {
+		act, code := s.auth.checkActuator(token(r))
+		if code == http.StatusServiceUnavailable {
+			w.Header().Set("Retry-After", "5")
+			s.json(w, code, map[string]string{"error": "receiver starting: retry"})
+			return
+		}
+		if act == nil {
+			s.stats.unauth.Add(1)
+			s.json(w, http.StatusUnauthorized, map[string]string{"error": "actuator token required"})
+			return
+		}
+		if r.ContentLength > 1<<20 {
+			s.json(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "body too large"})
+			return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+		if jp == nil {
+			jobDown(w, r, nil)
+			return
+		}
+		jp.ServeHTTP(w, r) // the dashboard checks the token again and every signature; this route only keeps others out
+	})
 	mux.HandleFunc("/rum", s.rum)
 	mux.HandleFunc("/mobile", s.rum)
 	files := map[string]string{"/agent.py": "agent.py", "/agent/install.sh": "agent-install.sh", "/rum.js": "rum.js"}

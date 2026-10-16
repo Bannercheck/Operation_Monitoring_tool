@@ -16,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from .. import privacy
-from .types import (OPEN_PHASES, PHASE_STATUS, PRIORITY_OF, Trigger, env_tier, now, sha256_hex, stored_ts, team_key)
+from .types import (OPEN_PHASES, PHASE_STATUS, PRIORITY_OF, Trigger, env_tier, now, sha256_hex, team_key)
 
 CLOSED = ("resolved", "auto_resolved", "dismissed")
 LIVE = tuple(p for p in OPEN_PHASES) + ("escalated",)
@@ -143,9 +143,16 @@ class CaseRouter:
             sev = "high" if score >= 5 else "medium" if score >= 3.5 else "low"
         facts = {"kind": a.get("kind", ""), "metric": a.get("metric", ""), "value": a.get("observed"), "limit": a.get("baseline"),
                  "score": score, "anomaly_id": a.get("id")}
-        return Trigger(source=src, key=key, host=str(a.get("host") or ""), env=str(a.get("env") or ""), service=str(a.get("service") or ""),
+        host = str(a.get("host") or "")
+        ev = []
+        if host:                                                   # trusted only through the sender's agent_id on the host's metric batch (§4.3)
+            live = getattr(self.svc, "live", None)
+            aid = (getattr(live, "metric_agent", None) or {}).get(host) if live is not None else None
+            ev.append({"kind": "metric", "host": host, "agent_id": aid, "ts": a.get("first_seen") or None,
+                       "fields": {k: facts[k] for k in ("metric", "value", "limit") if facts.get(k) not in (None, "")}})
+        return Trigger(source=src, key=key, host=host, env=str(a.get("env") or ""), service=str(a.get("service") or ""),
                        severity=sev, title=str(a.get("title") or key)[:200], facts={k: v for k, v in facts.items() if v not in (None, "")},
-                       refs=[{"type": "anomaly", "id": a.get("id")}], ts=a.get("first_seen") or None)
+                       refs=[{"type": "anomaly", "id": a.get("id")}], ts=a.get("first_seen") or None, evidence=ev)
 
     def triggers_from_query(self, rule: Dict[str, Any], c: Dict[str, Any]) -> List[Trigger]:
         """Log-query alert (rule with open_case): one case per host for one or two hosts; LogWatch.count keeps only the top 3
@@ -157,9 +164,12 @@ class CaseRouter:
         base = dict(source="query", severity=str(rule.get("severity") or "high"), team_id=rule.get("team_id"), facts=facts,
                     refs=[{"type": "notify_rule", "id": rule.get("id")}])
         name = str(rule.get("name") or f"#{rule.get('id')}")
+        items = list(c.get("items") or [])[:5]                     # sample lines as evidence: the case is keyed to the real sender
         if len(hosts) >= 3 or not hosts:
-            return [Trigger(key=f"query:{rule.get('id')}:*", host="", title=f"{name}: {c.get('n')} satır ({', '.join(hosts)}…)"[:200], **base)]
-        return [Trigger(key=f"query:{rule.get('id')}:{h}", host=h, title=f"{name}: {h}"[:200], **base) for h in hosts]
+            return [Trigger(key=f"query:{rule.get('id')}:*", host="", title=f"{name}: {c.get('n')} satır ({', '.join(hosts)}…)"[:200],
+                            evidence=items, **base)]
+        return [Trigger(key=f"query:{rule.get('id')}:{h}", host=h, title=f"{name}: {h}"[:200],
+                        evidence=[i for i in items if (i.get("host") or "") == h], **base) for h in hosts]
 
     def triggers_from_analysis(self, a) -> List[Trigger]:
         out = []
@@ -178,7 +188,9 @@ class CaseRouter:
                                facts={"root_template": privacy.scrub_strict(tpl)[:300], "signals": list(inc.signal_ids)[:10],
                                       "recovery": (inc.recovery or {}).get("kind", ""), "incident_id": inc.id,
                                       "alternatives": [x.get("signal") for x in (inc.root_cause_alternatives or [])][:3]},
-                               refs=[{"type": "incident", "id": inc.id}]))
+                               refs=[{"type": "incident", "id": inc.id}],
+                               evidence=[{"kind": "incident", "host": where, "text": getattr(root, "template", "") or inc.title,
+                                          "fields": {"service": (inc.affected_services or [""])[0]}}]))
         return out
 
     def triggers_from_bizflow(self, stuck: List[Dict[str, Any]]) -> List[Trigger]:
@@ -190,7 +202,9 @@ class CaseRouter:
                                title=f"İş akışı takıldı: {s.get('flow', '')} › {s.get('step_name', s['step'])} · {s.get('stuck', 0)} kayıt"[:200],
                                facts={"flow_id": s["flow_id"], "step": s["step"], "stuck": s.get("stuck", 0), "oldest_s": s.get("oldest_s"),
                                       "hosts": hosts[:5], "samples": list(s.get("samples") or [])[:3]},
-                               refs=[{"type": "biz_flow", "id": s["flow_id"]}]))
+                               refs=[{"type": "biz_flow", "id": s["flow_id"]}],
+                               evidence=[{"kind": "bizflow", "host": hosts[0] if len(hosts) == 1 else "",
+                                          "fields": {"flow_id": s["flow_id"], "step": s["step"], "stuck": s.get("stuck", 0)}}]))
         return out
 
     # ---------------------------------------------------------------- routing
@@ -286,10 +300,23 @@ class CaseRouter:
              env, env_tier(env, tuple(self.act.policy.get("act_prod_envs") or ())) if env else "", pool, pool, trig.service or "",
              trig.severity, "ready", 1, ts, ts, 1, prev_id, trig.provenance or ""))
         self._add_trigger(cid, trig)
+        if trig.host:
+            self.act.evidence.add_host_facts(cid, trig.host, inv, env)
         self.act.audit.write("case.opened", object_kind="case", object_id=cid, team_id=team,
                              payload={"key": trig.key, "source": trig.source, "family": fam, "severity": trig.severity, "phase": "ready",
                                       "prev_id": prev_id, "diagnosis": "none"})
+        self._seal(cid)
         return cid
+
+    def _seal(self, cid: int) -> None:
+        """WP7 (C26): the frozen input is sealed in the transaction that makes the case ready, before any inbox shows it."""
+        from .audit import AuditError
+        try:
+            self.act.shadow.seal(cid)
+        except AuditError:
+            raise
+        except Exception as e:  # noqa: BLE001 - a matcher bug never loses the case; decide() seals late and says so
+            self.act.stats["seal_error"] = str(e)[:200]
 
     def _add_trigger(self, cid: int, trig: Trigger) -> None:
         self.db._exec("INSERT INTO act_triggers (case_id, ts, source, key, host, severity, provenance, facts, refs) VALUES (?,?,?,?,?,?,?,?,?)",
@@ -297,22 +324,21 @@ class CaseRouter:
                        json.dumps(privacy.scrub_fields(trig.facts or {}), ensure_ascii=False, default=str),
                        json.dumps(trig.refs or [], ensure_ascii=False, default=str)))
         for ev in trig.evidence or []:
-            self._add_evidence(cid, ev)
+            self._add_evidence(cid, ev, None)
 
-    def _add_evidence(self, cid: int, ev: Dict[str, Any]) -> None:
-        """Scrubbed (scrub_strict / scrub_fields), 400 characters, hashed; keep the first 5 and the newest 20 (§4.2, §4.3)."""
-        text = privacy.scrub_strict(str(ev.get("text") or ""))[:400]
-        n = self.db._exec("SELECT COUNT(*) AS n FROM act_evidence WHERE case_id=?", (cid,))[0]["n"]
-        eid = f"E{int(self.db._exec('SELECT COALESCE(MAX(id), 0) AS m FROM act_evidence')[0]['m']) + 1}"
-        self.db._exec("INSERT INTO act_evidence (case_id, eid, kind, ts, host, agent, provenance, text, fields, ref, sha256) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                      (cid, eid, str(ev.get("kind") or "log"), stored_ts(ev.get("ts") or None), str(ev.get("host") or ""), str(ev.get("agent_id") or ""),
-                       str(ev.get("provenance") or ""), text, json.dumps(privacy.scrub_fields(ev.get("fields") or {}), ensure_ascii=False, default=str),
-                       json.dumps(ev.get("ref") or {}, ensure_ascii=False, default=str), sha256_hex(text)))
-        if n + 1 > EVIDENCE_FIRST + EVIDENCE_NEWEST:
-            ids = [r["id"] for r in self.db._exec("SELECT id FROM act_evidence WHERE case_id=? ORDER BY id", (cid,))]
-            drop = ids[EVIDENCE_FIRST:len(ids) - EVIDENCE_NEWEST]
-            if drop:
-                self.db._exec("DELETE FROM act_evidence WHERE id IN (%s)" % ",".join(str(int(i)) for i in drop))
+    def _add_evidence(self, cid: int, ev: Dict[str, Any], target: Optional[str] = None) -> None:
+        """Through act/evidence.py (WP6b: provenance by agent_id, host.reported → claimed, slots, quarantine V2, scrub_strict,
+        privacy: raw excluded); keep the first 5 and the newest 20 items with their slots (§4.2, §4.3)."""
+        if target is None:
+            row = self.db._exec("SELECT host FROM actions WHERE id=?", (cid,))
+            target = (row[0]["host"] or "") if row else ""
+        self.act.evidence.add(cid, ev, target)
+        rows = self.db._exec("SELECT id, eid FROM act_evidence WHERE case_id=? AND kind<>'slot' ORDER BY id", (cid,))
+        if len(rows) > EVIDENCE_FIRST + EVIDENCE_NEWEST:
+            drop = rows[EVIDENCE_FIRST:len(rows) - EVIDENCE_NEWEST]
+            self.db._exec("DELETE FROM act_evidence WHERE id IN (%s)" % ",".join(str(int(r["id"])) for r in drop))
+            self.db._exec("DELETE FROM act_evidence WHERE case_id=? AND kind='slot' AND source_eid IN (%s)" % ",".join("?" * len(drop)),
+                          (cid,) + tuple(r["eid"] for r in drop))
 
     def _absorb(self, case: dict, trig: Trigger, prio: str, notify: bool = True) -> None:
         best = min(case.get("priority") or "P4", prio)                  # priority may rise, never fall
@@ -340,6 +366,7 @@ class CaseRouter:
                            case.get("host_class") or "", case.get("host") or "", relapse, cid, "relapse", 0, 0.5, case.get("level_hint")))
         self.act.audit.write("case.reopened", object_kind="case", object_id=cid, team_id=case.get("team_id"),
                              payload={"key": trig.key, "reopened": int(case.get("reopened") or 0) + 1, "relapse_run": relapse})
+        self._seal(cid)                                                   # a new attempt: its own frozen input and decision (C10)
         self._loop_guard(cid, trig, case.get("host") or "", case.get("team_id"))
         return {"case_id": cid, "action": "reopened", "relapse_run": relapse}
 
@@ -413,10 +440,15 @@ class CaseRouter:
         sets.update({k: v for k, v in fields.items() if k in allowed})
         if "resolution" in sets:
             sets["resolution"] = privacy.scrub_strict(str(sets["resolution"]))[:2000]
+        again = phase == "ready" and case.get("phase") in CLOSED + ("escalated", "suppressed")
+        if again:
+            sets["reopened"] = int(case.get("reopened") or 0) + 1         # a reopened case is a new attempt (C10)
         with self.db.tx():
             self.db._exec(f"UPDATE actions SET {', '.join(f'{k}=?' for k in sets)} WHERE id=?", (*sets.values(), cid))
             self.act.audit.write(f"case.{phase}", object_kind="case", object_id=cid, actor=by, actor_kind="user", team_id=case.get("team_id"),
                                  payload={"from": case.get("phase"), "to": phase, **{k: v for k, v in sets.items() if k not in ("updated_at",)}})
+            if again:
+                self._seal(cid)
         return self.get(cid)
 
     def assign(self, cid: int, owner: str, by: str) -> dict:
@@ -441,13 +473,23 @@ class CaseRouter:
                     t[k] = json.loads(t[k] or "null")
                 except ValueError:
                     pass
-        c["evidence"] = self.db._exec("SELECT eid, kind, ts, host, provenance, text, fields, slot, value, quarantined, qreason FROM act_evidence "
-                                      "WHERE case_id=? ORDER BY id", (cid,))
-        for e in c["evidence"]:
-            try:
-                e["fields"] = json.loads(e["fields"] or "{}")
-            except ValueError:
-                pass
+        c["evidence"] = self.act.evidence.items(cid)
+        c["slots"] = self.act.evidence.slots(cid)
+        c["evidence_cap"] = self.act.evidence.cap(cid)
+        sh = self.act.shadow
+        hidden = sh.hidden(c)
+        if hidden:                                                        # C51: attribution-free pre-diagnosis while blind
+            for e in c["evidence"]:
+                e["ref"] = {k: v for k, v in (e.get("ref") or {}).items() if k not in ("run_id", "step_id", "step_key", "job_id")}
+                e["attribution"] = None
+            c["runbook_key"] = ""
+        c["proposal"] = sh.view(c)
+        c["candidates"] = sh.candidates_view(c)
+        c["similar"] = sh.similar(c)
+        c["attempt"] = sh.attempt_of(c)
+        d = sh.decision(cid, c["attempt"])
+        c["decision"] = {k: d[k] for k in ("choice", "attempt", "blind", "peeked", "agree_rules", "agree_model", "reason_code", "decided_at")} \
+            if d else None
         c["children"] = self.db._exec("SELECT id, title, host, phase, severity FROM actions WHERE parent_id=? ORDER BY id", (cid,))
         c["runs"] = self.db._exec("SELECT id, status, outcome, started_at, ended_at FROM act_runs WHERE case_id=? ORDER BY id", (cid,))
         c["timeline"] = [{"seq": e["seq"], "ts": e["ts"], "event": e["event"], "actor": e["actor"], "payload": e["payload"]}
@@ -484,6 +526,8 @@ class CaseRouter:
                                            "hits", "first_seen", "last_seen", "runbook_key", "level_hint", "next_step", "owner", "case_key",
                                            "source", "created_at", "updated_at", "reopened", "storm")}
             item["kind"] = item["kind"] or "action"
+            if r.get("blind") and item["kind"] == "case" and self.act.shadow.hidden(r):
+                item.update({"runbook_key": None, "next_step": "", "level_hint": None})     # a blind row names no runbook (C51)
             if item["kind"] == "action":
                 item["severity"] = P_SEV.get(r.get("priority") or "", "medium")
                 item["first_seen"] = r.get("created_at")
@@ -499,5 +543,6 @@ class CaseRouter:
 
     def manual(self, title: str, host: str, severity: str, team_id: Optional[int], ref: Optional[dict], by: str) -> Dict[str, Any]:
         trig = Trigger(source="manual", key=f"manual:{uuid.uuid4()}", host=host or "", severity=severity or "medium", title=title,
-                       team_id=team_id, refs=[ref] if ref else [], facts={"by": self.act.audit.actor(by, "user")})
+                       team_id=team_id, refs=[ref] if ref else [], facts={"by": self.act.audit.actor(by, "user")},
+                       evidence=[{"kind": "note", "host": host or "", "text": title}])
         return self.route(trig)
