@@ -5,6 +5,7 @@ import base64
 import hashlib
 import json
 import secrets
+import threading
 import time
 import urllib.parse
 
@@ -60,25 +61,58 @@ def _send_otp(users, u: dict) -> tuple[bool, str]:
         return False, f"{type(e).__name__}: {str(e)[:120]}"
 
 
+_FAILS: dict = {}                     # client address -> times of its failed sign-ins (all accounts together)
+_FAILS_LOCK = threading.Lock()
+IP_FAILS, IP_WINDOW_S = 20, 15 * 60  # per address: beyond the per-account lockout, which alone lets anyone lock any account
+
+
+def _ip_blocked(ip: str, failed: bool = False) -> bool:
+    now = time.time()
+    with _FAILS_LOCK:
+        q = [t for t in _FAILS.get(ip, ()) if now - t < IP_WINDOW_S]
+        if failed:
+            q.append(now)
+        if q:
+            _FAILS[ip] = q[-IP_FAILS * 2:]
+        else:
+            _FAILS.pop(ip, None)
+        if len(_FAILS) > 10000:                                      # bounded memory under a spray from many addresses
+            for k in list(_FAILS)[:5000]:
+                _FAILS.pop(k, None)
+        return len(q) >= IP_FAILS
+
+
+def mfa_active(u: dict) -> bool:
+    """E-mail MFA applies when it is on and SMTP is configured; administrators too when mfa_admins is on."""
+    cfg = wo_settings.load()
+    smtp = bool(notify_channels().get("email", {}).get("host"))
+    return bool(cfg.get("mfa_email", True)) and smtp and (u.get("role") != "admin" or bool(cfg.get("mfa_admins", False)))
+
+
 @router.post("/login")
-def login(body: LoginIn, svc=Depends(services)):
-    """Returns {token} or, when a second factor is needed, {mfa_required, challenge}; the code goes to the account's e-mail."""
+def login(body: LoginIn, request: Request, svc=Depends(services)):
+    """Returns {token} or, when a second factor is needed, {mfa_required, challenge}; the code goes to the account's e-mail.
+    Failures answer alike (401) whether the account exists or not; a locked account or a throttled address gets 429 without
+    saying until when. With MFA on, a code that cannot be sent refuses the sign-in (fails closed)."""
     us = svc.users
-    until = us.locked_until(body.email)
-    if until:
-        raise HTTPException(423, f"account locked until {until.isoformat(timespec='seconds')}")
-    u = us.login(body.email, body.password)
+    ip = request.client.host if request.client else "-"
+    if _ip_blocked(ip):
+        raise HTTPException(429, "too many failed sign-ins, try again later")
+    u, why = us.login_check(body.email, body.password)
     if not u:
-        ex = us.get(body.email.strip().lower())
-        if ex and ex.get("status") == "pending" and ex.get("provider") == "local":
+        if why == "locked":
+            raise HTTPException(429, "too many failed sign-ins, try again later")
+        if why == "pending":                                         # told only to whoever knows the pending account's password
             raise HTTPException(403, "pending_approval")
+        _ip_blocked(ip, failed=True)
         raise HTTPException(401, "wrong e-mail or password")
-    mfa_on = bool(wo_settings.load().get("mfa_email", True)) and u.get("role") != "admin"
-    if mfa_on:
-        ok, why = _send_otp(us, u)
-        if ok:
-            return {"mfa_required": True, "challenge": mfa_token(u), "minutes": wo_auth.OTP_MINUTES}
-    return {"token": access_token(u), "user": u, "mfa": "skipped" if mfa_on else "off"}
+    if mfa_active(u):
+        ok, err = _send_otp(us, u)
+        if not ok:
+            us._event(u["email"], "mfa", False, f"code not sent, sign-in refused: {err}"[:200])
+            raise HTTPException(503, "the sign-in code could not be sent; try again or ask an administrator")
+        return {"mfa_required": True, "challenge": mfa_token(u), "minutes": wo_auth.OTP_MINUTES}
+    return {"token": access_token(u), "user": u, "mfa": "off"}
 
 
 @router.post("/mfa")
@@ -108,8 +142,8 @@ def change_password(body: PasswordIn, user: dict = Depends(current_user), svc=De
     why = wo_auth.password_policy(body.new)
     if why:
         raise HTTPException(400, why)
-    svc.users.change_password(int(user["id"]), body.new)
-    return {"ok": True}
+    svc.users.change_password(int(user["id"]), body.new)          # ends the account's other sessions
+    return {"ok": True, "token": access_token(svc.users.get(user["email"]))}
 
 
 @router.get("/options")
@@ -117,7 +151,7 @@ def options():
     """What the sign-in page offers: local self-registration (needs SMTP for the verification code) and the providers."""
     cfg = wo_settings.load()
     smtp = bool(notify_channels().get("email", {}).get("host"))
-    return {"register": bool(cfg.get("auth_self_register", True)), "verify": smtp, "mfa": bool(cfg.get("mfa_email", True))}
+    return {"register": bool(cfg.get("auth_self_register", True)), "verify": smtp, "mfa": bool(cfg.get("mfa_email", True)) and smtp}
 
 
 @router.post("/register", status_code=202)
@@ -135,9 +169,10 @@ def register(body: RegisterIn, svc=Depends(services)):
     elif ex:
         raise HTTPException(409, "an account with this e-mail already exists")
     else:
-        u = us.register(body.email, body.password, body.name, cfg.get("auth_domains", ""), status="pending" if smtp else "active", role="viewer")
-    if not smtp:
-        return {"created": True, "token": access_token(u), "user": {k: u[k] for k in ("id", "email", "name", "role")}}
+        u = us.register(body.email, body.password, body.name, cfg.get("auth_domains", ""), status="pending", role="viewer")
+    if not smtp:                                                     # nobody verified the address: an administrator approves it first
+        us._event(u["email"], "register", True, "waiting for an administrator's approval (no SMTP)")
+        return {"pending": True, "approval": True}
     ok, why = _send_otp(us, u)
     if not ok:
         raise HTTPException(502, why)
@@ -159,8 +194,11 @@ def verify_registration(body: VerifyIn, svc=Depends(services)):
 
 
 @router.post("/logout")
-def logout(user: dict = Depends(current_user)):
-    """Tokens are stateless: the client drops it. Remembered sessions of the account are revoked."""
+def logout(user: dict = Depends(current_user), svc=Depends(services)):
+    """Signs the account out everywhere: every access token issued until now stops working, remembered sessions are revoked."""
+    svc.users.end_sessions(int(user["id"]))
+    svc.users.remember_revoke_all(int(user["id"]))
+    svc.users._event(user["email"], "logout", True)
     return {"ok": True}
 
 

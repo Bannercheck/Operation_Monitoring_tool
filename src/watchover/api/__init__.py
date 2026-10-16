@@ -45,10 +45,10 @@ def create_app(services=None) -> FastAPI:
         resp.headers.setdefault("X-Frame-Options", "DENY")
         resp.headers.setdefault("Referrer-Policy", "no-referrer")
         resp.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
-        if not request.url.path.startswith("/api/"):         # the SPA: allow its own inline styles/scripts, block plugins/embedding
-            resp.headers.setdefault("Content-Security-Policy",
-                                    "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
-                                    "script-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'")
+        if not request.url.path.startswith("/api/"):         # the SPA: only its own scripts (the build has no inline script), inline styles
+            resp.headers.setdefault("Content-Security-Policy",       # (React style props), no plugins / embedding / form posts elsewhere
+                                    "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; "
+                                    "script-src 'self'; connect-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'")
         return resp
     for r in (auth, datasets, live, actions, anomalies, playbook, agents, sources, inventory, knowledge, notify, users, system, map_, assist, llm, itsm, grok, memory, scan, apm, rum, teams, bizflow, thresholds):
         app.include_router(r.router, prefix="/api")

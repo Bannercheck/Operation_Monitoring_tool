@@ -9,7 +9,7 @@ import { NotifyBell } from "./NotifyBell";
 import { TokenMeter } from "./TokenMeter";
 import { ChatWidget } from "./ChatWidget";
 import { Wordmark } from "./Logo";
-import { get, post } from "../api";
+import { get, post, setToken } from "../api";
 import { useQuery } from "@tanstack/react-query";
 
 export default function Layout() {
@@ -79,7 +79,7 @@ function ScopeBadge() {
 function ChangePassword({ onDone }: { onDone: () => void }) {
   const { t } = useT();
   const [cur, setCur] = useState(""); const [nw, setNw] = useState(""); const [err, setErr] = useState<any>(null);
-  const submit = async (e: React.FormEvent) => { e.preventDefault(); setErr(null); try { await post("/auth/password", { current: cur, new: nw }); onDone(); } catch (x) { setErr(x); } };
+  const submit = async (e: React.FormEvent) => { e.preventDefault(); setErr(null); try { const r: any = await post("/auth/password", { current: cur, new: nw }); if (r?.token) setToken(r.token); onDone(); } catch (x) { setErr(x); } };   // a new password ends the old sessions: keep the new token
   return (
     <Modal title={t("pw_change_title")} onClose={() => {}}>
       <form className="stack" onSubmit={submit}><p className="muted">{t("pw_change_lead")}</p>

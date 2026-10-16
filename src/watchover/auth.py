@@ -42,15 +42,34 @@ _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 GOOGLE_METADATA = "https://accounts.google.com/.well-known/openid-configuration"
 
 
+COMMON_PASSWORDS = {"watchover12", "password12", "1234567890", "qwerty1234", "qwertyuiop1", "1q2w3e4r5t", "abcdef1234", "abc1234567",
+                    "asdfghjkl1", "zaq12wsx34", "parola1234", "sifre12345", "admin12345", "welcome123", "letmein123"}
+COMMON_WORDS = ("password", "parola", "sifre", "şifre", "admin", "watchover", "welcome", "qwerty", "test", "changeme", "default")   # + digits only
+
+
 def password_policy(password: str) -> str:
     """'' when acceptable, otherwise the reason (used for both registration and password change)."""
     if len(password) < MIN_PASSWORD:
         return f"password must be at least {MIN_PASSWORD} characters"
     if not re.search(r"[A-Za-zÇĞİÖŞÜçğıöşü]", password) or not re.search(r"\d", password):
         return "password must contain letters and digits"
-    if password.lower() in ("watchover12", "password12", "1234567890", "qwerty1234"):
+    low = password.lower()
+    if low in COMMON_PASSWORDS or any(low.startswith(w) and low[len(w):].isdigit() for w in COMMON_WORDS):
+        return "password is too common"
+    if len(set(low)) < 4:                                    # aaaaaaaa11, 1111111111a
         return "password is too common"
     return ""
+
+
+_DUMMY: list = []
+
+
+def _dummy_hash() -> str:
+    """A fixed hash for sign-ins of unknown / disabled accounts: checking against it costs exactly one scrypt, like a real account
+    (hashing a fresh one there would cost two and make unknown e-mails measurably slower)."""
+    if not _DUMMY:
+        _DUMMY.append(_hash(secrets.token_hex(16)))
+    return _DUMMY[0]
 
 
 def _hash(password: str, salt: bytes | None = None, n: int = SCRYPT["n"], r: int = SCRYPT["r"], p: int = SCRYPT["p"]) -> str:
@@ -82,6 +101,10 @@ class Users:
             role TEXT DEFAULT 'operator', status TEXT DEFAULT 'active', provider TEXT DEFAULT 'local', created_at TEXT, last_login TEXT DEFAULT '')""")
         try:
             kb._exec("ALTER TABLE users ADD COLUMN must_change INTEGER DEFAULT 0")     # forced password change at first sign-in
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            kb._exec("ALTER TABLE users ADD COLUMN sessions_after BIGINT DEFAULT 0")   # tokens issued before this (epoch ms) are void
         except Exception:  # noqa: BLE001
             pass
         kb._exec(f"CREATE TABLE IF NOT EXISTS otp_codes (id {pk}, user_id INTEGER NOT NULL UNIQUE, code_hash TEXT NOT NULL, created_at TEXT, expires_at TEXT, attempts INTEGER DEFAULT 0)")
@@ -171,24 +194,33 @@ class Users:
 
     def login(self, email: str, password: str) -> dict | None:
         """Local sign-in; None on any failure (wrong secret, unknown, disabled, locked). Reasons are in auth_events."""
+        return self.login_check(email, password)[0]
+
+    def login_check(self, email: str, password: str) -> tuple:
+        """(user or None, reason: ok | bad | pending | locked). Every path costs exactly one scrypt, so the time does not tell
+        whether an account exists; "pending" is told only to whoever knows that pending account's password."""
         email = email.strip().lower()
         if self.locked_until(email):
             self._event(email, "login", False, "locked")
-            return None
+            return None, "locked"
         u = self.get(email)
+        if u and u["status"] == "pending" and u["provider"] == "local" and u.get("pw_hash"):
+            ok, _r = _verify(password, u["pw_hash"])
+            self._event(email, "login", False, "pending approval" if ok else "bad password")
+            return None, "pending" if ok else "bad"
         if not u or u["status"] != "active" or u["provider"] != "local":
-            _verify(password, _hash("timing-equaliser"))          # same cost whether or not the account exists
+            _verify(password, _dummy_hash())                      # one scrypt, as for a real account
             self._event(email, "login", False, "unknown or disabled")
-            return None
+            return None, "bad"
         ok, rehash = _verify(password, u["pw_hash"])
         if not ok:
             self._event(email, "login", False, "bad password")
-            return None
+            return None, "bad"
         if rehash:
             self.kb._exec("UPDATE users SET pw_hash=? WHERE id=?", (_hash(password), u["id"]))
         self.kb._exec("UPDATE users SET last_login=? WHERE id=?", (datetime.now(UTC).isoformat(timespec="seconds"), u["id"]))
         self._event(email, "login", True)
-        return {k: u[k] for k in ("id", "email", "name", "role", "provider")} | {"must_change": bool(u.get("must_change"))}
+        return ({k: u[k] for k in ("id", "email", "name", "role", "provider")} | {"must_change": bool(u.get("must_change"))}, "ok")
 
     def sso_login(self, email: str, name: str = "", allowed_domains: str = "", auto_create: bool = True, provider: str = "oidc") -> dict | None:
         """An identity the provider vouched for: create on first sight (if allowed), refuse disabled accounts."""
@@ -224,6 +256,17 @@ class Users:
         if status == "disabled" and self._is_last_admin(uid):
             raise ValueError("the last admin cannot be disabled")
         self.kb._exec("UPDATE users SET status=? WHERE id=?", ("disabled" if status == "disabled" else "active", uid))
+        if status == "disabled":
+            self.end_sessions(uid)
+
+    def end_sessions(self, uid: int) -> None:
+        """Every access token of the account issued before now stops working (sign-out, password change, disabling)."""
+        import time as _t
+        self.kb._exec("UPDATE users SET sessions_after=? WHERE id=?", (int(_t.time() * 1000), uid))   # milliseconds
+
+    def sessions_after(self, uid: int) -> int:
+        rows = self.kb._exec("SELECT sessions_after FROM users WHERE id=?", (uid,))
+        return int((rows[0]["sessions_after"] if rows else 0) or 0)
 
     # ---- e-mail MFA: a 6-digit one-time code, 5 minutes, 5 attempts, only its hash stored; administrators are exempt by policy
     def otp_issue(self, uid: int) -> str:
@@ -290,6 +333,7 @@ class Users:
             raise ValueError(why)
         self.kb._exec("UPDATE users SET pw_hash=?, must_change=0 WHERE id=?", (_hash(password), uid))
         self.remember_revoke_all(uid)                                      # a new password ends every remembered session
+        self.end_sessions(uid)                                             # and every signed-in browser (the caller gets a new token)
         rows = self.kb._exec("SELECT email FROM users WHERE id=?", (uid,))
         self._event(rows[0]["email"] if rows else str(uid), "password_change", True)
 

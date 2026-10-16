@@ -639,7 +639,7 @@ Aynı komutlar; güvenlik duvarında yalnızca 443 (ve yönlendirme / sağlık k
 
 Kendi nginx / HAProxy / Traefik'iniz zaten varsa `edge` yerine `docker/nginx/watchover.conf.template`'teki yolları oraya taşıyın: arayüz + API `watchover:8501`, ajan yolları (`/ingest`, `/enroll`, `/agent.py`, `/agent/`, `/rum`, `/rum.js`, `/mobile`, `/v1/`) `receiver:8600`.
 
-**Güvenlik notu.** Giriş 5 hatalı denemede geçici kilitlenir (`./watchover.sh user unlock EMAIL` açar), yönetici olmayan hesaplara e-posta ile ikinci faktör sorulur (Sistem › Ayarlar), parolalar scrypt ile, sırlar şifreli tutulur. Yönetici parolasını ilk girişte değiştirin ve `.env`'yi paylaşmayın.
+**Güvenlik notu.** Bir hesap 15 dakikada 5 hatalı denemede geçici kilitlenir (`./watchover.sh user unlock EMAIL` açar); bir adres de tüm hesaplar için 15 dakikada 20 hatalı denemeden sonra yavaşlatılır. Hatalı girişlerin cevabı hesap var olsun olmasın aynıdır. E-posta ile ikinci faktör SMTP tanımlıyken yönetici olmayan hesaplara sorulur (Sistem › Ayarlar; yöneticiler için ayrı seçenek); kod gönderilemezse giriş reddedilir. Çıkış yapmak hesabın tüm oturumlarını kapatır; parola değişince ve hesap devre dışı kalınca da eski oturumlar biter. SMTP yokken kendi kendine kayıt olan hesap yönetici onaylayana kadar açılmaz. Parolalar scrypt ile, sırlar şifreli tutulur. Yönetici parolasını ilk girişte değiştirin ve `.env`'yi paylaşmayın.
 
 ## 8b. Parser kapsaması: hangi loglar anlaşılır
 

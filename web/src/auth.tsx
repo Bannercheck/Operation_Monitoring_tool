@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { api, getToken, setToken, setUnauthorizedHandler } from "./api";
+import { api, getToken, post, setToken, setUnauthorizedHandler } from "./api";
 
 /** One team membership: the team, the user's team role there and what it grants (only on that team's hosts). */
 export type TeamMembership = { id: number; name: string; role_id: number | null; role_label: string; role_key: string; permissions: string[]; hosts: number; manage: boolean };
@@ -39,7 +39,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(r.token); await reload();
   }, [reload]);
   const acceptToken = useCallback(async (t: string) => { setToken(t); await reload(); }, [reload]);
-  const logout = useCallback(() => { setToken(null); setUser(null); }, []);
+  const logout = useCallback(() => { post("/auth/logout").catch(() => undefined).finally(() => { setToken(null); setUser(null); }); }, []);   // the server ends the session too
   const can = useCallback((perm: string) => !!user && (user.role === "admin" || user.permissions.includes(perm)), [user]);
   /** May the user use `perm` in this team: installation-wide users wherever they hold it, members through their installation role or that team's role. */
   const canIn = useCallback((teamId: number, perm: string) => {

@@ -16,8 +16,9 @@ def lift(e: Exception) -> HTTPException:
     return HTTPException(getattr(e, "status", 400), e.detail())
 
 
-def act_on(svc=Depends(services)):
-    """Dependency: 409 act_disabled while act_mode = off (every /api/act route except GET status and PUT policy)."""
+def act_on(svc=Depends(services), _user: dict = Depends(current_user)):
+    """Dependency: 409 act_disabled while act_mode = off (every /api/act route except GET status and PUT policy). The caller is
+    authenticated first: without a valid token the answer is 401, not whether automation is on."""
     if not svc.act.enabled:
         raise err(409, "act_disabled", "Otomasyon kapalı (act_mode = off). Sistem › Otomasyon'dan açılabilir.",
                   "Automation is off (act_mode = off). Turn it on under System › Automation.")

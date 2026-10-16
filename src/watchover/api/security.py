@@ -44,8 +44,9 @@ def secret() -> bytes:
 
 
 def issue(claims: dict, minutes: float) -> str:
-    now = int(time.time())
-    body = {**claims, "iat": now, "exp": now + int(minutes * 60)}
+    t = time.time()
+    now = int(t)
+    body = {**claims, "iat": now, "iatms": int(t * 1000), "exp": now + int(minutes * 60)}   # iatms: a sign-out ends the tokens before it
     head = _b64(json.dumps({"alg": "HS256", "typ": "JWT"}, separators=(",", ":")).encode())
     payload = _b64(json.dumps(body, separators=(",", ":")).encode())
     sig = _b64(hmac.new(secret(), f"{head}.{payload}".encode(), hashlib.sha256).digest())
@@ -87,8 +88,10 @@ def current_user(request: Request) -> dict:
         raise HTTPException(401, "not an access token")
     svc = request.app.state.services
     u = svc.users.get(claims["email"])
-    if not u or u.get("status") != "active":
-        raise HTTPException(401, "account disabled or removed")
+    if not u or u.get("status") != "active" or int(u["id"]) != int(claims.get("sub") or 0):
+        raise HTTPException(401, "account disabled or removed")      # (a re-created account with the same e-mail is another account)
+    if int(claims.get("iatms") or int(claims.get("iat") or 0) * 1000) < int(u.get("sessions_after") or 0):
+        raise HTTPException(401, "session ended")                     # signed out, password changed or account disabled since
     if u.get("must_change"):                                  # a never-changed initial account can only change its own password
         path = request.url.path.rstrip("/")
         if path not in ("/api/auth/password", "/api/auth/me", "/api/auth/logout"):

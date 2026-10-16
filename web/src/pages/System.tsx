@@ -97,6 +97,7 @@ function SignInProviders() {
     </div>
     <label className="check"><input type="checkbox" checked={!!f.auth_self_register} onChange={set("auth_self_register")} /> {t("sso_self_register")}</label>
     <label className="check"><input type="checkbox" checked={!!f.mfa_email} onChange={set("mfa_email")} /> {t("sso_mfa")}</label>
+    <label className="check"><input type="checkbox" checked={!!f.mfa_admins} onChange={set("mfa_admins")} disabled={!f.mfa_email} /> {t("sso_mfa_admins")}</label>
     {saved && <div className="ok">{t("saved")}</div>}<Err e={save.error} />
   </Collapsible>;
 }

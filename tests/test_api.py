@@ -104,7 +104,7 @@ def test_users_roles_and_permissions(client):
     u = client.post("/api/users", json={"email": "viewer@example.com", "password": "Sifre-123456", "name": "View", "role": "viewer"}, headers=h)
     assert u.status_code == 201 and u.json()["role"] == "viewer"
     v = client.post("/api/auth/login", json={"email": "viewer@example.com", "password": "Sifre-123456"}).json()
-    assert "token" in v and v["mfa"] == "skipped"                       # no SMTP configured: the second factor cannot be sent
+    assert "token" in v and v["mfa"] == "off"                           # no SMTP configured: e-mail MFA is not in force (said so)
     hv = {"Authorization": f"Bearer {v['token']}"}
     assert client.get("/api/anomalies", headers=hv).status_code == 200
     assert client.post("/api/anomalies/scan", headers=hv).status_code == 403
@@ -118,9 +118,10 @@ def test_users_roles_and_permissions(client):
     hv = token(client, {"email": "viewer@example.com", "password": "Sifre-123456"})
     assert client.post("/api/anomalies/scan", headers=hv).status_code == 200
     assert client.post(f"/api/users/{uid}/password", json={"password": "short"}, headers=h).status_code == 400
-    assert client.post("/api/auth/password", json={"current": "Sifre-123456", "new": "Yeni-Sifre-789"}, headers=hv).json()["ok"]
+    pc = client.post("/api/auth/password", json={"current": "Sifre-123456", "new": "Yeni-Sifre-789"}, headers=hv).json()
+    assert pc["ok"] and client.get("/api/auth/me", headers=hv).status_code == 401           # the new password ends the old session
     assert client.post("/api/auth/login", json={"email": "viewer@example.com", "password": "Sifre-123456"}).status_code == 401
-    assert client.delete(f"/api/users/{uid}", headers=hv).status_code == 403
+    assert client.delete(f"/api/users/{uid}", headers={"Authorization": "Bearer " + pc["token"]}).status_code == 403
     assert client.get("/api/users/events?email=viewer@example.com", headers=h).json()
 
 
@@ -278,12 +279,16 @@ def test_phase3_map_assist_llm_itsm_search_settings(client, monkeypatch):
     r = client.post("/api/auth/register", json={"email": "new.user@example.com", "password": "Sifre-123456", "name": "New"})
     assert r.status_code == 502                                        # SMTP host set but unreachable: the code cannot be sent
     client.put("/api/system/channels", json={"smtp_host": ""}, headers=h)
-    assert client.get("/api/auth/options").json() == {"register": True, "verify": False, "mfa": True}      # no SMTP: no verification, viewer at once
+    assert client.get("/api/auth/options").json() == {"register": True, "verify": False, "mfa": False}     # no SMTP: no verification, no MFA in force
     r = client.post("/api/auth/register", json={"email": "new2@example.com", "password": "Sifre-123456"})
-    assert r.status_code == 202 and r.json()["created"] is True and r.json()["user"]["role"] == "viewer"
-    me = client.get("/api/auth/me", headers={"Authorization": "Bearer " + r.json()["token"]}).json()
+    assert r.status_code == 202 and r.json() == {"pending": True, "approval": True}                       # an administrator approves it first
+    assert client.post("/api/auth/login", json={"email": "new2@example.com", "password": "Sifre-123456"}).status_code == 403
+    uid = client.app.state.services.users.get("new2@example.com")["id"]
+    assert client.patch(f"/api/users/{uid}", json={"status": "active"}, headers=h).status_code == 200
+    lg = client.post("/api/auth/login", json={"email": "new2@example.com", "password": "Sifre-123456"})
+    assert lg.status_code == 200
+    me = client.get("/api/auth/me", headers={"Authorization": "Bearer " + lg.json()["token"]}).json()
     assert me["email"] == "new2@example.com" and me["role"] == "viewer"
-    assert client.post("/api/auth/login", json={"email": "new2@example.com", "password": "Sifre-123456"}).status_code == 200
     assert client.post("/api/auth/register", json={"email": "new2@example.com", "password": "Sifre-123456"}).status_code == 409
     client.put("/api/system/auth", json={"auth_self_register": False}, headers=h)
     assert client.get("/api/auth/options").json()["register"] is False and client.post("/api/auth/register", json={"email": "new3@example.com", "password": "Sifre-123456"}).status_code == 403
