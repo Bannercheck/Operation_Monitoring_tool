@@ -2,18 +2,21 @@
 # same uid as the dashboard so both share the spool in the data volume (/data/spool). OpenShift: any UID with GID 0 works too
 # (/data belongs to group 0 with the owner's rights), the only write is the spool, the root file system may be read-only.
 FROM docker.io/library/golang:1.24-alpine AS build
+# Unit tests run in `make test` (developers, CI), not on the server being installed: a test sensitive to the host's kernel must
+# never stop an installation (a RHEL 9.8 VM did, v1.57.6). WATCHOVER_BUILD_TESTS=1 (build arg) runs them in the build too.
+ARG WATCHOVER_BUILD_TESTS=0
 WORKDIR /src
 COPY receiver/ ./
 # the parse package's parity tests read the corpus inputs next to their goldens (../../samples/corpus from /src/parse)
 COPY samples/corpus/ /samples/corpus/
-RUN go test ./... && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/wo-receiver .
+RUN if [ "$WATCHOVER_BUILD_TESTS" = 1 ]; then go test ./...; fi && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/wo-receiver .
 # the Go host agent (wo-agent: log shipping `wo-agent ship`, the default role, and the action agent's actuator `wo-agent act`):
 # tested against the shared parity fixtures and the vendor packs (../../../tests/fixtures and ../../../agent_actions from
 # /build/goagent/internal/act), then built static for amd64 and arm64. Linux servers install only this binary (no python3).
 COPY goagent/ /build/goagent/
 COPY tests/fixtures/ /build/tests/fixtures/
 COPY agent_actions/ /build/agent_actions/
-RUN cd /build/goagent && go vet ./... && go test ./... \
+RUN cd /build/goagent && if [ "$WATCHOVER_BUILD_TESTS" = 1 ]; then go vet ./... && go test ./...; fi \
     && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /out/wo-agent-linux-amd64 . \
     && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o /out/wo-agent-linux-arm64 .
 

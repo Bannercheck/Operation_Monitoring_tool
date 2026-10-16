@@ -107,7 +107,11 @@ func TestCompressManifestFirstAndRollback(t *testing.T) {
 func TestCompressCtimeFallbackRestoresOnlyTheJobsFiles(t *testing.T) {
 	r := compressRig(t)
 	logs := filepath.Join(r.sim, "var", "log", "app")
-	time.Sleep(20 * time.Millisecond) // ctime of the pre-existing .gz is before the job's start
+	time.Sleep(1500 * time.Millisecond) // ctime of the pre-existing .gz is well before the job's start (more than ctimeSlack)
+	// a ctime that reads earlier than the job's start: RHEL 9's kernel stamps it from its coarse clock (a tick behind the precise
+	// one the start comes from), a file system with 1 s timestamps truncates it. A start half a second "late" is that case
+	// (the image build failed on a RHEL 9.8 VM with files:0)
+	r.a.Cfg.Now = func() time.Time { return time.Now().Add(500 * time.Millisecond) }
 	r.run(t, r.f.job(r.tmpl("linux.logs.compress_old"), "execute", map[string]any{"path": "/var/log", "days": 7}, nil))
 	if r.f.result("J-test-0001")["status"] != "done" {
 		t.Fatal("compress failed")

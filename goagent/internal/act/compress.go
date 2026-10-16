@@ -18,7 +18,7 @@ import (
 // is full, reserve.bin is deleted to make room; if the manifest still cannot be written durably the act is refused
 // (manifest_failed, nothing changed). Each finished file is appended to the manifest's journal. The rollback restores the
 // files of one manifest, or — when the manifest is missing — the *.gz files under the template root whose ctime is at or after
-// the job's start and whose original name does not exist (ctime cannot be set back, so that set is exactly what the job made).
+// the job's start (less ctimeSlack) and whose original name does not exist (ctime cannot be set back, so that set is exactly what the job made).
 
 const reserveSize = 4 << 20
 
@@ -272,6 +272,11 @@ func gunzipFile(orig string, mf manifestFile) (int64, error) {
 	return n, nil
 }
 
+// ctimeSlack: a ctime can read a little earlier than the moment the file changed. RHEL 9's kernel (no multigrain timestamps)
+// stamps it from its coarse clock, up to a timer tick behind the precise clock the job's start comes from; a file system with
+// 1 s timestamps truncates it. Without it, files made in the job's first tick were missed (seen on a RHEL 9.8 VM: files:0).
+const ctimeSlack = time.Second
+
 func biDecompress(c *BuiltinCall) (BuiltinOut, error) {
 	a := c.A
 	listID := str(c.Vals["list_id"])
@@ -295,7 +300,7 @@ func biDecompress(c *BuiltinCall) (BuiltinOut, error) {
 				st := fi.Sys().(*syscall.Stat_t)
 				ctime := time.Unix(int64(st.Ctim.Sec), int64(st.Ctim.Nsec))
 				orig := strings.TrimSuffix(p, ".gz")
-				if ctime.Before(started) {
+				if ctime.Before(started.Add(-ctimeSlack)) {
 					return
 				}
 				if _, err := os.Lstat(orig); err == nil {

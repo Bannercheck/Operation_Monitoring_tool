@@ -9,8 +9,10 @@ run:            # streamlit dashboard on :8501 (upload from the sidebar, or clic
 demo:
 	python3 samples/make_demo.py && streamlit run app.py
 
-test:
+test:           # the Python suite, then the Go receiver and host agent (the image build no longer runs them)
 	python3 -m pytest -q
+	@if command -v go >/dev/null 2>&1; then cd receiver && go test ./... && cd ../goagent && go vet ./... && go test ./...; \
+	  else echo "go not installed: Go tests skipped (receiver/, goagent/)"; fi
 
 wo-agent:       # Go host agent (actuator role) for the in-process receiver: goagent/dist/wo-agent-linux-{amd64,arm64}
 	cd goagent && go vet ./... && go test ./... \
