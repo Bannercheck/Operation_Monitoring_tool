@@ -812,7 +812,7 @@ func main() {
 	<-pdone
 }
 
-// agentBins is the Go host agent (goagent/, wo-agent: the action agent's actuator role) built into this image for Linux.
+// agentBins is the Go host agent (goagent/, wo-agent: log shipping and the action agent's actuator) built into this image for Linux.
 var agentBins = map[string]string{"/agent/wo-agent-linux-amd64": "wo-agent-linux-amd64", "/agent/wo-agent-linux-arm64": "wo-agent-linux-arm64"}
 
 // agentManifest lists sha256 and size of what the installer downloads (/agent/manifest.json): integrity of the download over

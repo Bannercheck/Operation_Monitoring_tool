@@ -7,8 +7,9 @@ COPY receiver/ ./
 # the parse package's parity tests read the corpus inputs next to their goldens (../../samples/corpus from /src/parse)
 COPY samples/corpus/ /samples/corpus/
 RUN go test ./... && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/wo-receiver .
-# the Go host agent (wo-agent, the action agent's actuator role): tested against the shared parity fixtures and the vendor packs
-# (../../../tests/fixtures and ../../../agent_actions from /build/goagent/internal/act), then built static for amd64 and arm64
+# the Go host agent (wo-agent: log shipping `wo-agent ship`, the default role, and the action agent's actuator `wo-agent act`):
+# tested against the shared parity fixtures and the vendor packs (../../../tests/fixtures and ../../../agent_actions from
+# /build/goagent/internal/act), then built static for amd64 and arm64. Linux servers install only this binary (no python3).
 COPY goagent/ /build/goagent/
 COPY tests/fixtures/ /build/tests/fixtures/
 COPY agent_actions/ /build/agent_actions/

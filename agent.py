@@ -13,6 +13,9 @@ format works (JSON / JSONL / CSV / syslog / key=value / text); the receiver runs
 With --spool DIR, batches that cannot be delivered are kept on disk and re-sent when the dashboard is reachable again.
 This collector never executes anything: the action agent's actuator is the separate Go binary `wo-agent act` (goagent/), which
 the same installer (scripts/agent-install.sh) sets up dormant next to it.
+On Linux amd64 / arm64 the installer ships logs with `wo-agent ship` instead (goagent/internal/ship: this collector in Go, same
+flags, WATCHOVER_* settings, wire format and spool, plus file positions across restarts); agent.py stays the collector for
+macOS, Windows, other CPUs and installs made with --python-agent.
 """
 from __future__ import annotations
 

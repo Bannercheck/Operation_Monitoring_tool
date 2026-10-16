@@ -113,14 +113,14 @@ def test_agent_installer_end_to_end(tmp_path):
     port = srv.server_address[1]
     try:
         r = subprocess.run(["bash", str(Path(__file__).resolve().parents[1] / "scripts" / "agent-install.sh"), "--url", f"http://127.0.0.1:{port}/ingest", "--token", tok,
-                            "--logs", "/var/log/nope.log", "--dir", str(tmp_path / "agent"), "--no-service"], capture_output=True, text=True, timeout=120)
+                            "--logs", "/var/log/nope.log", "--dir", str(tmp_path / "agent"), "--no-service", "--python-agent"], capture_output=True, text=True, timeout=120)
         assert r.returncode == 0, r.stdout + r.stderr
         assert (tmp_path / "agent" / "agent.py").exists() and (tmp_path / "agent" / "spool").is_dir()
         env = (tmp_path / "agent" / "agent.env").read_text()
         assert f"WATCHOVER_TOKEN='{tok}'" in env and "WATCHOVER_METRICS=1" in env and oct((tmp_path / "agent" / "agent.env").stat().st_mode)[-3:] == "600"
         assert reg.get(rec["id"])["events"] >= 1 and store.snapshot()[-1].attributes["agent"] == "app-03"        # the self-test hello arrived
         r2 = subprocess.run(["bash", str(Path(__file__).resolve().parents[1] / "scripts" / "agent-install.sh"), "--url", f"http://127.0.0.1:{port}/ingest", "--token", "wo_wrong",
-                             "--dir", str(tmp_path / "agent2"), "--no-service"], capture_output=True, text=True, timeout=120)
+                             "--dir", str(tmp_path / "agent2"), "--no-service", "--python-agent"], capture_output=True, text=True, timeout=120)
         assert r2.returncode != 0 and "token" in (r2.stdout + r2.stderr).lower()
         r3 = subprocess.run(["bash", str(Path(__file__).resolve().parents[1] / "scripts" / "agent-install.sh"), "--dir", str(tmp_path / "agent"), "--uninstall"], capture_output=True, text=True, timeout=60)
         assert r3.returncode == 0 and not (tmp_path / "agent").exists()
@@ -228,7 +228,7 @@ def test_self_enrolment(tmp_path):
         assert _post(port, b'{"msg":"hi"}\n', key) == 401                     # the fleet key itself never ingests
         if shutil.which("bash"):                                             # installer path: --enroll-key issues and stores the token
             r = subprocess.run(["bash", str(ROOT / "scripts" / "agent-install.sh"), "--url", f"http://127.0.0.1:{port}/ingest", "--enroll-key", key,
-                                "--name", "app-09", "--env", "staging", "--dir", str(tmp_path / "a9"), "--no-service"], capture_output=True, text=True, timeout=120)
+                                "--name", "app-09", "--env", "staging", "--dir", str(tmp_path / "a9"), "--no-service", "--python-agent"], capture_output=True, text=True, timeout=120)
             assert r.returncode == 0, r.stdout + r.stderr
             assert "WATCHOVER_TOKEN='wo_" in (tmp_path / "a9" / "agent.env").read_text() and reg.verify(None) is None
             assert [a["name"] for a in reg.list() if a["name"] == "app-09"]

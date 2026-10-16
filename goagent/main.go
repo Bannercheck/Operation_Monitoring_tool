@@ -1,7 +1,10 @@
-// wo-agent is the Watchover host agent: one static binary (standard library only) for the roles a managed server runs.
-// Today it carries the action agent's actuator (`wo-agent act`, docs/design/action-agent.md §9.3); log and metric shipping
-// stays in agent.py until it moves into this binary as a second role.
+// wo-agent is the Watchover host agent: one static binary (standard library only) for the roles a managed server runs:
+// log, metric and flow shipping (`wo-agent ship`, the default role: agent.py's collector for Linux, same flags and
+// WATCHOVER_* settings) and the action agent's actuator (`wo-agent act`, docs/design/action-agent.md §9.3).
 //
+//	wo-agent [ship] [--url U --token T --auto --metrics --flows --tail GLOB …]   follow logs, ship metrics / flows
+//	wo-agent ship --test | --file F | --discover | --seed-positions             agent.py's one-shot modes, plus the hand-over
+//	wo-agent enroll --url BASE --enroll-key wk_… [--name N --env E --site S --tags T]   fleet-key self-enrolment (installer)
 //	wo-agent act [--url U --host H --once --sim DIR …]   pull signed jobs, run allowlisted templates, report signed results
 //	wo-agent act install --packs linux-diag,linux-act …   write the root-owned allowlist, local policy, pins, token, state
 //	wo-agent act writes                                     union of the installed templates' writes (systemd ReadWritePaths)
@@ -22,6 +25,7 @@ import (
 	_ "time/tzdata" // local.json hours and freeze ranges name time zones; hosts may lack /usr/share/zoneinfo
 
 	"watchover/goagent/internal/act"
+	"watchover/goagent/internal/ship"
 )
 
 func env(k, def string) string {
@@ -32,22 +36,56 @@ func env(k, def string) string {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: wo-agent act [run flags] | act install | act writes | act fingerprint | act check | version")
+	fmt.Fprintln(os.Stderr, "usage: wo-agent [ship] [flags] | enroll | act [run flags] | act install | act writes | act fingerprint | act check | version")
 	os.Exit(2)
 }
 
 func main() {
-	if len(os.Args) < 2 {
-		usage()
+	if len(os.Args) < 2 || strings.HasPrefix(os.Args[1], "-") && os.Args[1] != "-h" && os.Args[1] != "--help" {
+		os.Exit(ship.Main(os.Args[1:])) // the default role: agent.py's command line
 	}
 	switch os.Args[1] {
 	case "version":
-		fmt.Println("wo-agent " + act.Version)
+		fmt.Println("wo-agent ship " + ship.Version + " · act " + act.Version)
+	case "ship":
+		os.Exit(ship.Main(os.Args[2:]))
+	case "enroll":
+		os.Exit(enrollMain(os.Args[2:]))
 	case "act":
 		os.Exit(actMain(os.Args[2:]))
 	default:
 		usage()
 	}
+}
+
+// enrollMain prints the collector token, the actuator token and the dashboard's two public keys, one per line (empty when
+// not issued): the installer reads them like it read the python3 snippet's answer before.
+func enrollMain(args []string) int {
+	fs := flag.NewFlagSet("enroll", flag.ExitOnError)
+	url := fs.String("url", "", "dashboard receiver base URL (…:8600, without /ingest)")
+	key := fs.String("enroll-key", env("WATCHOVER_ENROLL_KEY", ""), "fleet enrolment key (wk_…)")
+	name := fs.String("name", "", "this host's name")
+	envTag := fs.String("env", "", "environment")
+	site := fs.String("site", "", "site")
+	tags := fs.String("tags", "", "comma separated tags")
+	ca := fs.String("ca", env("WATCHOVER_CA", ""), "CA bundle for an https receiver")
+	_ = fs.Parse(args)
+	if *name == "" {
+		*name, _ = os.Hostname()
+	}
+	if *url == "" || *key == "" {
+		fmt.Fprintln(os.Stderr, "wo-agent enroll: --url and --enroll-key are required")
+		return 2
+	}
+	out, err := ship.Enroll(strings.TrimSuffix(strings.TrimRight(*url, "/"), "/ingest"), *key, *name, *envTag, *site, *tags, *ca)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	for _, l := range out {
+		fmt.Println(l)
+	}
+	return 0
 }
 
 type common struct {
