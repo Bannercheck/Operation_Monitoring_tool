@@ -105,6 +105,61 @@ def test_edge_on_off(stage):
     assert r.returncode == 1 and "usage" in r.stderr
 
 
+def _ossl(*a, **k):
+    return subprocess.run(["openssl", *[str(x) for x in a]], capture_output=True, text=True, check=k.get("check", True))
+
+
+@pytest.mark.skipif(not shutil.which("openssl"), reason="openssl not installed")
+def test_edge_public_company_certificate_and_check(stage, tmp_path):
+    """edge public NAME LB: the LB's name first on the certificate, the public URL for links, the LB trusted, the network team's
+    list. edge csr / company: a request for the company CA, then what it issued (DER + a .p7b that holds the leaf again) installed:
+    leaf found by its key, chain kept for agents, the own CA's marker gone; another name or another key is refused. edge check."""
+    d, _ = stage
+    run(stage, "install")
+    name = "watchover.sirket.test"
+    r = run(stage, "edge", "public", name, "10.20.0.10/32")
+    assert r.returncode == 0, r.stdout + r.stderr
+    env = (d / ".env").read_text()
+    assert f"WATCHOVER_PUBLIC_URL=https://{name}" in env and "WATCHOVER_EDGE_TRUSTED=10.20.0.10/32" in env and f"WATCHOVER_EDGE_HOST={name}" in env
+    assert "VIP:443/tcp" in r.stdout and "GET /healthz" in r.stdout and f"edge csr {name}" in r.stdout
+    assert f"DNS:{name}" in _ossl("x509", "-in", d / "certs" / "watchover.crt", "-noout", "-text").stdout
+    assert run(stage, "edge", "public", "bad;name").returncode != 0 and run(stage, "edge", "public", name, "10.0.0.1;x").returncode != 0
+    r = run(stage, "edge", "csr")
+    key = d / "certs" / ".company" / "watchover.key"
+    assert r.returncode == 0 and (d / "certs" / "watchover.csr").is_file() and oct(key.stat().st_mode)[-3:] == "600", r.stdout + r.stderr
+    req = _ossl("req", "-in", d / "certs" / "watchover.csr", "-noout", "-text").stdout
+    assert f"DNS:{name}" in req and "localhost" not in req
+    ca = tmp_path / "ca"; ca.mkdir()
+    _ossl("req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", ca / "ca.key", "-out", ca / "ca.crt", "-days", "30", "-subj", "/CN=Sirket Root CA",
+          "-addext", "basicConstraints=critical,CA:true", "-addext", "keyUsage=critical,keyCertSign,cRLSign")
+
+    def issue(csr, dns, out):
+        (ca / "ext.cnf").write_text(f"subjectAltName=DNS:{dns}\nextendedKeyUsage=serverAuth\n")
+        _ossl("x509", "-req", "-in", csr, "-CA", ca / "ca.crt", "-CAkey", ca / "ca.key", "-CAcreateserial", "-days", "30", "-extfile", ca / "ext.cnf", "-out", out)
+    issue(d / "certs" / "watchover.csr", name, ca / "issued.pem")
+    _ossl("x509", "-in", ca / "issued.pem", "-outform", "der", "-out", ca / "issued.cer")
+    _ossl("crl2pkcs7", "-nocrl", "-certfile", ca / "ca.crt", "-certfile", ca / "issued.pem", "-out", ca / "chain.p7b")
+    r = run(stage, "edge", "company", ca / "issued.cer", ca / "chain.p7b")
+    assert r.returncode == 0 and "company certificate installed" in r.stdout, r.stdout + r.stderr
+    assert "WATCHOVER_EDGE_TLS=company" in (d / ".env").read_text() and not (d / "certs" / ".ca" / "issued").exists()
+    crt = d / "certs" / "watchover.crt"
+    assert crt.read_text().count("BEGIN CERTIFICATE") == 2 and name in _ossl("x509", "-in", crt, "-noout", "-subject").stdout
+    assert _ossl("verify", "-CAfile", ca / "ca.crt", crt).returncode == 0
+    assert _ossl("pkey", "-in", d / "certs" / "watchover.key", "-pubout").stdout == _ossl("x509", "-in", crt, "-noout", "-pubkey").stdout
+    assert "Sirket Root CA" in _ossl("x509", "-in", d / "certs" / "watchover-ca.crt", "-noout", "-subject").stdout   # agents pin it
+    assert "company certificate" in subprocess.run(["sh", str(d / "scripts" / "edge-cert.sh"), str(d / "certs"), name], capture_output=True, text=True).stdout
+    before = crt.read_text()
+    issue(d / "certs" / "watchover.csr", "other.sirket.test", ca / "other.pem")                  # another name: refused, nothing changed
+    r = run(stage, "edge", "company", ca / "other.pem", ca / "ca.crt")
+    assert r.returncode != 0 and f"does not name {name}" in r.stderr and crt.read_text() == before
+    _ossl("req", "-new", "-newkey", "rsa:2048", "-nodes", "-keyout", ca / "x.key", "-subj", f"/CN={name}", "-out", ca / "x.csr")
+    issue(ca / "x.csr", name, ca / "x.pem")                                                       # another key: refused
+    r = run(stage, "edge", "company", ca / "x.pem")
+    assert r.returncode != 0 and "belongs to the key" in r.stderr and crt.read_text() == before
+    r = run(stage, "edge", "check")                                                               # no DNS record, nothing on :443 here
+    assert r.returncode == 1 and f"names {name}" in r.stdout and "does not resolve" in r.stdout and "trusted load balancers: 10.20.0.10/32" in r.stdout
+
+
 def test_llm_on_off(stage):
     d, _ = stage
     run(stage, "install")

@@ -102,9 +102,9 @@ def _receiver_base(request: Request) -> str:
     if ingest:
         return ingest
     c = wo_settings.load()
-    host = (c.get("public_host") or "").rstrip("/")
+    host = wo_settings.public_url()
     if host:
-        return host if host.startswith("http") else f"https://{host}"
+        return host
     return f"http://{request.url.hostname}:{c.get('live_port', 8600) or 8600}"
 
 

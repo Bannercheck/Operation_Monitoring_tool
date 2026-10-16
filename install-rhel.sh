@@ -626,6 +626,8 @@ if [ "$EDGE" = 1 ]; then
 printf ' LB arkasında   Sağlık kontrolü: GET /healthz → 200 (HTTPS %s ya da HTTP %s). LB X-Forwarded-For / X-Forwarded-Proto iletsin ya da TCP geçişi\n' "$HTTPS_PORT" "$HTTP_PORT"
 printf '                (TLS passthrough) kullansın; LB adresini güvenilir yapın: sudo watchover edge lb <LB IP / CIDR> (loglarda gerçek istemci adresi)\n'
 printf '                Sertifikadaki adlar: %s (LB adı farklıysa: sudo %s/install-rhel.sh --host <LB adı>)\n' "${HOSTS_CSV//,/, }" "$DEST"
+printf ' Şirket ağı     Tek adres (VPN + LB): sudo watchover edge public <ad.sirket.com.tr> <LB SNAT IP> → ağ ekibine talep listesi; şirket\n'
+printf '                sertifikası: sudo watchover edge csr → PKI → sudo watchover edge company <sertifika> [zincir]; kontrol: sudo watchover edge check\n'
 printf ' Masaüstüsüz    Dizüstündeki tarayıcıdan LB VIP / sunucu adresiyle açın ya da SSH tüneli: ssh -L 8443:localhost:%s kullanici@%s → https://localhost:8443/\n' "$HTTPS_PORT" "${IPS[0]:-$EH}"
 fi
 printf ' Ajanlar        Arayüzde Ajanlar paneli › kurulum komutu (Linux amd64 / arm64; https adreste CA otomatik doğrulanır)\n'

@@ -93,6 +93,13 @@ def save(values: dict) -> dict:
     return cfg
 
 
+def public_url() -> str:
+    """The address colleagues open (https://watchover.company.com): System › Dış adres, else WATCHOVER_PUBLIC_URL (set by
+    ./watchover.sh edge public NAME for the name on the load balancer); empty when neither is set."""
+    u = (str(load().get("public_host") or "") or os.environ.get("WATCHOVER_PUBLIC_URL", "")).strip().rstrip("/")
+    return u if not u or u.startswith(("http://", "https://")) else "https://" + u
+
+
 def setup_done() -> bool:
     return bool(os.environ.get("WATCHOVER_SKIP_SETUP")) or bool(load().get("setup_done"))
 

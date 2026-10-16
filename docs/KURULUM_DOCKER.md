@@ -641,6 +641,51 @@ Kendi nginx / HAProxy / Traefik'iniz zaten varsa `edge` yerine `docker/nginx/wat
 
 **Güvenlik notu.** Bir hesap 15 dakikada 5 hatalı denemede geçici kilitlenir (`./watchover.sh user unlock EMAIL` açar); bir adres de tüm hesaplar için 15 dakikada 20 hatalı denemeden sonra yavaşlatılır. Hatalı girişlerin cevabı hesap var olsun olmasın aynıdır. E-posta ile ikinci faktör SMTP tanımlıyken yönetici olmayan hesaplara sorulur (Sistem › Ayarlar; yöneticiler için ayrı seçenek); kod gönderilemezse giriş reddedilir. Çıkış yapmak hesabın tüm oturumlarını kapatır; parola değişince ve hesap devre dışı kalınca da eski oturumlar biter. SMTP yokken kendi kendine kayıt olan hesap yönetici onaylayana kadar açılmaz. Parolalar scrypt ile, sırlar şifreli tutulur. Yönetici parolasını ilk girişte değiştirin ve `.env`'yi paylaşmayın.
 
+### 8.3 Şirket ağından tek adres (VPN + yük dengeleyici)
+
+Amaç: VPN'e bağlanan ve güvenlik duvarı izni olan herkes aynı linki açar, örneğin `https://watchover.sirket.com.tr`. Kimin ulaşacağına kurumsal güvenlik duvarı ve VPN karar verir; içeri girişi Watchover hesabı (ya da SSO) belirler. Ad yük dengeleyicinin (LB) sanal IP'sinde (VIP) durur, sunucu arkada kalır.
+
+**1. Sunucuda tek komut.** LB'nin sunucuya bağlanırken kullandığı adres(ler)i (SNAT / self IP) ağ ekibinden alın; bilinmiyorsa sonra `edge lb` ile eklenir.
+
+```bash
+sudo watchover edge public watchover.sirket.com.tr 10.20.0.10/32
+```
+
+Ad sertifikanın ilk adı olur (sunucu adı ve IP de kalır), SSO geri dönüş adresleri ve web / mobil sensör (RUM) kodu bu adı kullanır (`WATCHOVER_PUBLIC_URL`; Sistem › Dış adres doluysa o geçerlidir; Ajanlar panelindeki kurulum komutu panelin açıldığı adresi kullanır, paneli bu adla açın), LB güvenilir yapılır ve ağ ekibine iletilecek liste bu sunucunun değerleriyle yazdırılır.
+
+**2. Ağ ekibinden bir kez istenecekler.**
+
+| Konu | Ayar |
+|---|---|
+| DNS | `watchover.sirket.com.tr` → LB VIP (A kaydı) |
+| LB dinleyici | VIP:443/TCP → havuz üyesi `<sunucu IP>:443`. TLS ya **geçirilir** (passthrough) ya da LB'de sonlandırılıp sunucuya **yeniden şifreli** gider (`X-Forwarded-For` ve `X-Forwarded-Proto: https` eklenir). Sunucunun 80'ine düz http gönderilmez: o port yalnız https'e yönlendirir |
+| Sağlık kontrolü | HTTPS `GET /healthz` → 200, `<sunucu IP>:443` (ya da HTTP `GET /healthz`, `:80`); aralık 10-30 sn, zaman aşımı 5 sn |
+| Zaman aşımı / boyut | Boşta zaman aşımı en az 300 sn (canlı log izleme, uzun raporlar); istek gövdesi en az 512 MB (log yüklemeleri). Oturum yapışkanlığı gerekmez |
+| Güvenlik duvarı | VPN kullanıcı alt ağları → VIP:443; LB'nin self / SNAT adresleri → `<sunucu IP>`:443 ve :80 |
+| Ajanlar | İzlenen sunucular → VIP:443 (`https://watchover.sirket.com.tr/ingest`) ya da doğrudan `<sunucu IP>`:8600 |
+
+**3. Sertifika: herkesin tarayıcısında uyarısız.** Kurulumun kendi CA'sı yalnız kök sertifikasını yükleyen makinelerde güvenilir olur; "VPN'deki herkes" için şirket CA'sından sertifika alın. Şirket bilgisayarları o köke zaten güvenir.
+
+```bash
+sudo watchover edge csr                                   # /opt/watchover/certs/watchover.csr (adlar: LB adı + sunucu adı / IP)
+# .csr dosyasını PKI ekibine gönderin (Microsoft AD CS: "Web Server" şablonu); anahtar sunucuda kalır (certs/.company, 0600)
+sudo watchover edge company /tmp/watchover.cer /tmp/zincir.p7b   # PEM ya da DER .cer; zincir PEM, DER ya da .p7b
+```
+
+`edge company` sertifikayı yalnız son `edge csr` anahtarına aitse ve dış adı içeriyorsa kurar; zinciri sunucu sertifikasının arkasına ekler ve ajanların sabitlemesi için `certs/watchover-ca.crt` olarak saklar. Başka bir ada ya da anahtara kesilmiş sertifika reddedilir, kurulu olan değişmez. LB TLS'i şirket sertifikasıyla kendisi sonlandırıyorsa kullanıcılar LB'nin sertifikasını görür; o durumda LB'den sunucuya giden bağlantı için LB'ye `certs/watchover-root.crt` güvenilir kök olarak yüklenir (ya da aynı şirket sertifikası sunucuya da kurulur).
+
+**4. Kontrol.**
+
+```bash
+sudo watchover edge check     # sertifika adı içeriyor mu, bu sunucu yanıt veriyor mu, DNS kaydı var mı, LB üzerinden açılıyor mu
+```
+
+Bazı LB'ler havuz üyesinin kendi VIP'ine çıkmasına izin vermez; son madde sunucudan "uyarı" verirse VPN'deki bir dizüstünden `https://watchover.sirket.com.tr` açarak deneyin.
+
+**Gerçek istemci adresi.** TLS'i sonlandırıp yeniden şifreleyen LB `X-Forwarded-For` ekler: giriş kayıtlarında ve loglarda kullanıcının adresi görünür (önerilen). TCP geçişinde (SNAT ile) herkes LB'nin adresinden gelir: Watchover güvenilir LB adresini "adres başına hatalı giriş" yavaşlatmasına sokmaz (yoksa birkaç hatalı parola bütün şirketi 15 dakika dışarıda bırakırdı); hesap başına kilit sürer, kayıtlarda LB adresi görünür.
+
+**Sanal makinede deneme.** Parallels / VMware "Shared / NAT" ağında VM yalnız kendi Mac'inizden görünür. Aynı ağdaki başka makinelerden açmak için ağ ayarını "Bridged" yapın (VM ağdan IP alır), sonra `sudo watchover edge on` (yeni IP sertifikaya eklenir) ve `https://<VM IP>`.
+
 ## 8b. Parser kapsaması: hangi loglar anlaşılır
 
 Sistem › **Parser kapsaması** kartı, 43 log ailesinden birer örnek dosyayı gerçek parser'dan geçirip zaman / seviye / sunucu / servis çıkarım oranını ve gürültü hunisini (ham olay → sinyal → incident, azaltma katsayısı) gösterir. Desteklenen aileler: syslog (RFC 3164 / 5424), CEF / LEEF (ArcSight, QRadar, Palo Alto, Fortinet, Cisco ASA), Apache / nginx / ALB erişim ve hata logları, IIS W3C, Windows Event XML, journald, Docker json-file, Kubernetes CRI, OpenTelemetry, ECS / GELF / logfmt / JSON / CSV, veritabanları (PostgreSQL, MySQL, SQL Server, Oracle alert, MongoDB, Redis), Kafka, HAProxy, Postfix, uygulama logları (Java, Python, .NET Serilog, Go), AWS CloudTrail, Alertmanager ve ERP: SAP (dev trace, HANA, NetWeaver, tp, SM21), Oracle E-Business Suite (concurrent manager, FND), Microsoft Dynamics AX / 365 / NAV-Business Central. Zaman damgasız satırlar (stack trace, ORA- blokları) üstteki olaya katlanır; kayıt servis taşımıyorsa log ailesi servis adı olur. Komut satırından: `python -m watchover.coverage` (Docker'da `./watchover.sh shell` içinden).

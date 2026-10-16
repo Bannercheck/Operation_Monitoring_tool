@@ -1,3 +1,3 @@
 """Watchover: universal SRE ingestion and correlation engine (deterministic core, optional LLM enrichment)."""
 
-__version__ = "1.57.6"
+__version__ = "1.58.0"

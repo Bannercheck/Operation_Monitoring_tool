@@ -21,6 +21,9 @@
 #   ./watchover.sh edge on NAME     nginx in front: https://NAME for the company network (TLS from this install's own CA, or ./certs/watchover.crt+key);
 #                                   NAME may be a DNS name, an IP or a Bonjour name like watchover.local (announced by the Mac itself)
 #   ./watchover.sh edge off|cert    stop it | export the CA root certificate colleagues install once (./certs/watchover-root.crt)
+#   ./watchover.sh edge public NAME [LB CIDR...]   one address for the company network: NAME on the load balancer (VPN + firewall
+#                                   decide who reaches it); prints what the network team sets up. edge csr [NAME] / edge company ISSUED
+#                                   [CHAIN]: a certificate from the company CA (no root to install on anyone's machine); edge check [NAME]
 #   ./watchover.sh doctor [--check] the address does not open? checks containers, the edge, the name (Bonjour) and repairs what it can
 #   ./watchover.sh backup [--keep N] [--no-logs]  PostgreSQL dump + data volume (--no-logs: without /data/logs) + .env
 #                                   -> ./backups/watchover-YYYYMMDD-HHMM.tgz (WATCHOVER_BACKUP_DIR; oldest beyond N=14 removed)
@@ -583,6 +586,58 @@ edge_cert() {
   $ENGINE exec watchover-edge nginx -s reload >/dev/null 2>&1 || true
   return 2                                          # changed: the receiver re-reads the CA it serves at its next (re)start
 }
+# One address for the whole company network (./watchover.sh edge public NAME): the name lives on the load balancer, VPN and the
+# corporate firewall decide who reaches it. What the network team sets up once, with this server's values:
+lb_request() {
+  local name="$1" ip p hp; ip=$(host_ip); p=$(env_get WATCHOVER_EDGE_HTTPS_PORT); p=${p:-443}; hp=$(env_get WATCHOVER_EDGE_HTTP_PORT); hp=${hp:-80}
+  cat <<REQ
+  For the network team, once (details: docs/KURULUM_DOCKER.md, "Şirket ağından tek adres"):
+    DNS       $name  ->  the load balancer's virtual IP (VIP)
+    LB        VIP:443/tcp  ->  pool member $ip:$p
+              TLS passthrough, or TLS offload re-encrypting to $ip:$p with X-Forwarded-For and X-Forwarded-Proto: https
+              (never plain http to $ip:$hp: that port only redirects to https)
+              health monitor: HTTPS GET /healthz on $ip:$p (or HTTP GET /healthz on $ip:$hp), expect 200
+              idle timeout 300 s or more (live log tail, long reports); no session persistence needed
+    Firewall  VPN user subnets -> VIP:443;  the LB's self / SNAT addresses -> $ip:$p and $ip:$hp
+              agents on monitored servers -> VIP:443 (https://$name) or $ip:8600 directly
+    Then      ./watchover.sh edge lb <the LB's SNAT addresses>   (if not given yet: real client addresses in logs)
+              ./watchover.sh edge check                          (DNS, certificate, this server, through the LB)
+REQ
+}
+pem_certs() {   # every certificate in FILE as PEM: PEM, DER (.cer) or PKCS#7 (.p7b, PEM or DER), as the company CA hands them out
+  if grep -q 'BEGIN CERTIFICATE' "$1" 2>/dev/null; then sed -n '/-----BEGIN CERTIFICATE-----/,/-----END CERTIFICATE-----/p' "$1"
+  elif grep -q 'BEGIN PKCS7' "$1" 2>/dev/null; then openssl pkcs7 -in "$1" -print_certs 2>/dev/null | sed -n '/-----BEGIN CERTIFICATE-----/,/-----END CERTIFICATE-----/p'
+  elif openssl x509 -inform der -in "$1" 2>/dev/null; then :
+  else openssl pkcs7 -inform der -in "$1" -print_certs 2>/dev/null | sed -n '/-----BEGIN CERTIFICATE-----/,/-----END CERTIFICATE-----/p'; fi
+}
+public_name() { local n; n=$(env_get WATCHOVER_PUBLIC_URL | sed -E 's#^https?://##; s#[:/].*$##'); echo "${n:-$(env_get WATCHOVER_EDGE_HOST)}"; }
+names_cert() { openssl x509 -in "$1" -noout -checkhost "$2" 2>/dev/null | grep -q 'does match'; }
+edge_company() {   # the certificate the company CA issued for 'edge csr': the leaf is the one with our key, the rest is its chain
+  local crt="$1" chain="$2" key=certs/.company/watchover.key tmp kp n leaf="" f name
+  [ -f "$key" ] || die "no key from './watchover.sh edge csr NAME' in ./certs/.company: the certificate must be issued for that request"
+  command -v openssl >/dev/null 2>&1 || die "openssl is required (RHEL: dnf install openssl)"
+  tmp=$(mktemp -d); { pem_certs "$crt"; [ -z "$chain" ] || pem_certs "$chain"; } > "$tmp/all.pem"
+  awk -v d="$tmp" '/-----BEGIN CERTIFICATE-----/{n++} n{print > (d "/c" sprintf("%03d", n) ".pem")}' "$tmp/all.pem"
+  ls "$tmp"/c*.pem >/dev/null 2>&1 || { rm -rf "$tmp"; die "no certificate in $crt${chain:+ / $chain}"; }
+  kp=$(openssl pkey -in "$key" -pubout 2>/dev/null | openssl sha256 | awk '{print $NF}')
+  : > "$tmp/chain.pem"; : > "$tmp/seen"
+  for f in "$tmp"/c*.pem; do
+    n=$(openssl x509 -in "$f" -noout -fingerprint -sha256 2>/dev/null | cut -d= -f2); grep -qxF "$n" "$tmp/seen" && continue; echo "$n" >> "$tmp/seen"
+    if [ -z "$leaf" ] && [ "$(openssl x509 -in "$f" -noout -pubkey 2>/dev/null | openssl sha256 | awk '{print $NF}')" = "$kp" ]; then leaf="$f"; else cat "$f" >> "$tmp/chain.pem"; fi
+  done
+  [ -n "$leaf" ] || { rm -rf "$tmp"; die "none of these certificates belongs to the key of the last 'edge csr' (issued for another request?)"; }
+  openssl x509 -in "$leaf" -noout -checkend 0 >/dev/null 2>&1 || { rm -rf "$tmp"; die "the certificate has expired: $(openssl x509 -in "$leaf" -noout -enddate)"; }
+  name=$(public_name)
+  if [ -n "$name" ] && ! names_cert "$leaf" "$name"; then rm -rf "$tmp"; die "the certificate does not name $name (the address colleagues open); ask for it in the request: ./watchover.sh edge csr $name"; fi
+  mkdir -p certs; cat "$leaf" "$tmp/chain.pem" > certs/watchover.crt.new && chmod 644 certs/watchover.crt.new
+  ( umask 077; cp "$key" certs/watchover.key.new ) && chmod 600 certs/watchover.key.new
+  mv -f certs/watchover.key.new certs/watchover.key; mv -f certs/watchover.crt.new certs/watchover.crt
+  if [ -s "$tmp/chain.pem" ]; then cp "$tmp/chain.pem" certs/watchover-ca.crt; chmod 644 certs/watchover-ca.crt     # agents pin it (/agent/ca.crt)
+  else say "WARNING: no CA chain given: a browser missing the company's intermediate CA warns; add it: ./watchover.sh edge company $crt <chain>"; fi
+  rm -f certs/.ca/issued; rm -rf "$tmp"
+  env_set WATCHOVER_EDGE_TLS company
+  say "company certificate installed: $(openssl x509 -in certs/watchover.crt -noout -subject | sed 's/^subject= *//'), $(openssl x509 -in certs/watchover.crt -noout -enddate | sed 's/notAfter=/valid until /')"
+}
 up() {   # inside the updater its own container is left alone (its profile is not active, so it is not an orphan either)
   $COMPOSE $(profiles) up -d --remove-orphans
   in_updater && return 0
@@ -872,9 +927,72 @@ case "${1:-}" in
         if [ "$1" = off ]; then env_set WATCHOVER_EDGE_TRUSTED ""; else
           for c in "$@"; do case "$c" in *[!0-9a-fA-F.:/]*|"") die "not an address / CIDR: $c" ;; esac; done
           env_set WATCHOVER_EDGE_TRUSTED "$*"; fi
-        $COMPOSE $(profiles) up -d --no-deps --force-recreate edge
+        $COMPOSE $(profiles) up -d --no-deps --force-recreate edge dashboard      # the dashboard too: it never throttles sign-ins by an LB's address
         say "trusted load balancers: ${*}   (health check for the load balancer: GET https://<this server>/healthz, or http://…/healthz on port $(env_get WATCHOVER_EDGE_HTTP_PORT || echo 80))" ;;
-      *) die "usage: ./watchover.sh edge on [name[,name2,ip]] | off | cert | lb CIDR...     e.g.  edge on watchover.local" ;; esac ;;
+      public)   # the one address everyone on the company network opens (VPN + firewall decide who reaches the load balancer)
+        name="${3:-}"
+        [ -n "$name" ] || die "usage: ./watchover.sh edge public NAME [LB address/CIDR ...]   e.g. edge public watchover.sirket.com.tr 10.20.0.10/32"
+        case "$name" in *[!A-Za-z0-9.-]*|.*|*.|*..*|-*) die "not a host name: $name" ;; esac
+        shift 3
+        for c in "$@"; do case "$c" in *[!0-9a-fA-F.:/]*|"") die "not an address / CIDR: $c" ;; esac; done
+        hosts="$name"; for h in $(env_get WATCHOVER_EDGE_HOSTS | tr ',' ' '); do [ "$h" = "$name" ] || hosts="$hosts,$h"; done
+        env_set WATCHOVER_PUBLIC_URL "https://$name"            # sign-in callbacks and the web / mobile sensor snippet use it
+        [ $# -eq 0 ] || env_set WATCHOVER_EDGE_TRUSTED "$*"
+        bash "$PWD/$(basename "$0")" edge on "$hosts" || exit 1
+        if [ "$(env_get WATCHOVER_EDGE_TLS)" = company ]; then
+          names_cert certs/watchover.crt "$name" || say "WARNING: the company certificate in ./certs does not name $name: ./watchover.sh edge csr $name, then edge company <issued certificate> [chain]"
+        else
+          say "the certificate is from this install's own CA: a browser trusts it only after ./certs/watchover-root.crt is installed on it."
+          say "for every colleague without that step, a company certificate: ./watchover.sh edge csr $name -> the PKI team -> ./watchover.sh edge company <issued> [chain]"
+        fi
+        lb_request "$name" ;;
+      csr)   # a key and a certificate request for the company CA (AD CS / PKI team): company machines already trust what it issues
+        name="${3:-$(public_name)}"; [ -n "$name" ] || die "usage: ./watchover.sh edge csr NAME"
+        case "$name" in *[!A-Za-z0-9.-]*|.*|*.|*..*|-*) die "not a host name: $name" ;; esac
+        command -v openssl >/dev/null 2>&1 || die "openssl is required (RHEL: dnf install openssl)"
+        san="DNS.1 = $name"; i=1; j=0; list="$name"
+        for h in $(env_get WATCHOVER_EDGE_HOSTS | tr ',' ' '); do
+          case "$h" in "$name"|localhost|127.*|::1) continue ;; esac
+          list="$list, $h"
+          if printf '%s' "$h" | grep -Eq '^[0-9]+(\.[0-9]+){3}$|:'; then j=$((j + 1)); san="$san
+IP.$j = $h"; else i=$((i + 1)); san="$san
+DNS.$i = $h"; fi
+        done
+        mkdir -p certs/.company; chmod 700 certs/.company; cnf=$(mktemp)
+        printf '[req]\ndistinguished_name = dn\nprompt = no\nreq_extensions = ext\n[dn]\nO = Watchover\nCN = %s\n[ext]\nkeyUsage = critical, digitalSignature, keyEncipherment\nextendedKeyUsage = serverAuth\nsubjectAltName = @alt\n[alt]\n%s\n' "$name" "$san" > "$cnf"
+        if ! ( umask 077; openssl req -new -newkey rsa:3072 -nodes -sha256 -keyout certs/.company/watchover.key -config "$cnf" -out certs/watchover.csr ) >/dev/null 2>&1; then
+          rm -f "$cnf"; die "the request could not be made (openssl)"; fi
+        rm -f "$cnf"; chmod 600 certs/.company/watchover.key; chmod 644 certs/watchover.csr
+        say "certificate request: ./certs/watchover.csr   (names: $list)"
+        say "its key stays on this server: ./certs/.company/watchover.key (0600; never send it)"
+        say "send the .csr to the PKI team (Microsoft AD CS: the 'Web Server' template); then: ./watchover.sh edge company <issued .cer/.crt> [CA chain .p7b/.cer]" ;;
+      company)   # install what the company CA issued for 'edge csr' (PEM or DER, the chain as PEM, DER or PKCS#7)
+        [ -f "${3:-}" ] || die "usage: ./watchover.sh edge company ISSUED.cer [CHAIN.p7b|CA.cer]   (after ./watchover.sh edge csr NAME)"
+        [ -z "${4:-}" ] || [ -f "$4" ] || die "no such file: $4"
+        edge_company "$3" "${4:-}"
+        if [ "$(env_get WATCHOVER_EDGE)" = 1 ]; then $COMPOSE $(profiles) up -d --no-deps --force-recreate edge receiver; say "edge restarted with it: $(edge_url)"; fi ;;
+      check)   # is https://NAME ready for colleagues: in DNS, on the certificate, answering here and through the load balancer
+        name="${3:-$(public_name)}"; [ -n "$name" ] || die "usage: ./watchover.sh edge check [NAME]"
+        p=$(env_get WATCHOVER_EDGE_HTTPS_PORT); p=${p:-443}; fails=0
+        okl() { printf '  \033[32m✓\033[0m %s\n' "$*"; }; badl() { printf '  \033[31m✗\033[0m %s\n' "$*"; fails=$((fails + 1)); }; notel() { printf '  \033[33m!\033[0m %s\n' "$*"; }
+        say "edge check: https://$name"
+        if [ ! -f certs/watchover.crt ]; then badl "no certificate in ./certs (./watchover.sh edge public $name)"
+        elif names_cert certs/watchover.crt "$name"; then okl "certificate ($(env_get WATCHOVER_EDGE_TLS)) names $name, $(openssl x509 -in certs/watchover.crt -noout -enddate | sed 's/notAfter=/valid until /')"
+        else badl "the certificate does not name $name: ./watchover.sh edge public $name (own CA) or edge csr $name (company CA)"; fi
+        code=$(curl -sk --noproxy '*' -o /dev/null -w '%{http_code}' --max-time 8 --resolve "$name:$p:127.0.0.1" "https://$name:$p/healthz" 2>/dev/null || true); code=${code:-000}
+        [ "$code" = 200 ] && okl "this server answers https://$name:$p/healthz" || badl "this server: https://$name:$p/healthz -> HTTP $code (./watchover.sh doctor)"
+        addr=$({ getent hosts "$name" 2>/dev/null || true; } | awk '{print $1; exit}')
+        if [ -z "$addr" ]; then badl "DNS: $name does not resolve (yet): an A record pointing to the load balancer's VIP"
+        else
+          okl "DNS: $name -> $addr"
+          code=$(curl -sk --noproxy '*' -o /dev/null -w '%{http_code}' --max-time 8 "https://$name/healthz" 2>/dev/null || true); code=${code:-000}
+          [ "$code" = 200 ] && okl "through $addr (the load balancer): https://$name/healthz answers" \
+            || notel "through $addr: HTTP $code. Some load balancers do not let a pool member reach its own VIP: try https://$name from a VPN laptop"
+        fi
+        [ -n "$(env_get WATCHOVER_EDGE_TRUSTED)" ] && okl "trusted load balancers: $(env_get WATCHOVER_EDGE_TRUSTED)" \
+          || notel "no load balancer trusted yet: ./watchover.sh edge lb <its SNAT addresses> (real client addresses in logs)"
+        [ "$fails" = 0 ] && say "ready: colleagues on the company network open https://$name" || { say "$fails problem(s) above"; exit 1; } ;;
+      *) die "usage: ./watchover.sh edge on [name[,name2,ip]] | off | cert | lb CIDR... | public NAME [LB CIDR...] | csr [NAME] | company ISSUED [CHAIN] | check [NAME]     e.g.  edge on watchover.local" ;; esac ;;
   api)     say "the API now runs inside the dashboard container: http://$(host_ip):$(env_get WATCHOVER_UI_PORT || echo 8501)/api/docs" ;;
   backup)   # --no-logs: without the raw logs under /data/logs (the nightly timer's choice: they are large); on disks of their own they are never in it
     need_docker; keep="${WATCHOVER_BACKUP_KEEP:-$(env_get WATCHOVER_BACKUP_KEEP)}"; keep="${keep:-14}"; logs=1; out=""

@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import ipaddress
 import json
+import os
 import secrets
 import threading
 import time
@@ -66,7 +68,29 @@ _FAILS_LOCK = threading.Lock()
 IP_FAILS, IP_WINDOW_S = 20, 15 * 60  # per address: beyond the per-account lockout, which alone lets anyone lock any account
 
 
+def _lb_without_client(ip: str) -> bool:
+    """The address is one of the trusted load balancers (WATCHOVER_EDGE_TRUSTED): the LB passed the connection through (TLS
+    passthrough, SNAT) without telling who the client was, so every colleague arrives from it. Throttling that address would lock
+    the whole company out after a few wrong passwords; the per-account lockout still applies."""
+    nets = os.environ.get("WATCHOVER_EDGE_TRUSTED", "").split()
+    if not nets or ip in ("", "-"):
+        return False
+    try:
+        a = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    for n in nets:
+        try:
+            if a in ipaddress.ip_network(n, strict=False):
+                return True
+        except ValueError:
+            continue
+    return False
+
+
 def _ip_blocked(ip: str, failed: bool = False) -> bool:
+    if _lb_without_client(ip):
+        return False
     now = time.time()
     with _FAILS_LOCK:
         q = [t for t in _FAILS.get(ip, ()) if now - t < IP_WINDOW_S]
@@ -235,7 +259,7 @@ def _discover(issuer: str) -> dict:
 
 
 def _base(request: Request) -> str:
-    return (wo_settings.load().get("public_host") or "").rstrip("/") or str(request.base_url).rstrip("/")
+    return wo_settings.public_url() or str(request.base_url).rstrip("/")
 
 
 def _redirect_uri(request: Request, name: str) -> str:

@@ -888,6 +888,59 @@ curl -s http://&lt;sunucu&gt;:8000/api/anomalies -H &quot;Authorization: Bearer 
 </ul>
 <p>Kendi nginx / HAProxy / Traefik'iniz zaten varsa <code>edge</code> yerine <code>docker/nginx/watchover.conf.template</code>'teki yolları oraya taşıyın: arayüz + API <code>watchover:8501</code>, ajan yolları (<code>/ingest</code>, <code>/enroll</code>, <code>/agent.py</code>, <code>/agent/</code>, <code>/rum</code>, <code>/rum.js</code>, <code>/mobile</code>, <code>/v1/</code>) <code>receiver:8600</code>.</p>
 <p><strong>Güvenlik notu.</strong> Bir hesap 15 dakikada 5 hatalı denemede geçici kilitlenir (<code>./watchover.sh user unlock EMAIL</code> açar); bir adres de tüm hesaplar için 15 dakikada 20 hatalı denemeden sonra yavaşlatılır. Hatalı girişlerin cevabı hesap var olsun olmasın aynıdır. E-posta ile ikinci faktör SMTP tanımlıyken yönetici olmayan hesaplara sorulur (Sistem › Ayarlar; yöneticiler için ayrı seçenek); kod gönderilemezse giriş reddedilir. Çıkış yapmak hesabın tüm oturumlarını kapatır; parola değişince ve hesap devre dışı kalınca da eski oturumlar biter. SMTP yokken kendi kendine kayıt olan hesap yönetici onaylayana kadar açılmaz. Parolalar scrypt ile, sırlar şifreli tutulur. Yönetici parolasını ilk girişte değiştirin ve <code>.env</code>'yi paylaşmayın.</p>
+<h3>8.3 Şirket ağından tek adres (VPN + yük dengeleyici)</h3>
+<p>Amaç: VPN'e bağlanan ve güvenlik duvarı izni olan herkes aynı linki açar, örneğin <code>https://watchover.sirket.com.tr</code>. Kimin ulaşacağına kurumsal güvenlik duvarı ve VPN karar verir; içeri girişi Watchover hesabı (ya da SSO) belirler. Ad yük dengeleyicinin (LB) sanal IP'sinde (VIP) durur, sunucu arkada kalır.</p>
+<p><strong>1. Sunucuda tek komut.</strong> LB'nin sunucuya bağlanırken kullandığı adres(ler)i (SNAT / self IP) ağ ekibinden alın; bilinmiyorsa sonra <code>edge lb</code> ile eklenir.</p>
+<pre><code class="language-bash">sudo watchover edge public watchover.sirket.com.tr 10.20.0.10/32
+</code></pre>
+<p>Ad sertifikanın ilk adı olur (sunucu adı ve IP de kalır), SSO geri dönüş adresleri ve web / mobil sensör (RUM) kodu bu adı kullanır (<code>WATCHOVER_PUBLIC_URL</code>; Sistem › Dış adres doluysa o geçerlidir; Ajanlar panelindeki kurulum komutu panelin açıldığı adresi kullanır, paneli bu adla açın), LB güvenilir yapılır ve ağ ekibine iletilecek liste bu sunucunun değerleriyle yazdırılır.</p>
+<p><strong>2. Ağ ekibinden bir kez istenecekler.</strong></p>
+<table>
+<thead>
+<tr>
+<th>Konu</th>
+<th>Ayar</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>DNS</td>
+<td><code>watchover.sirket.com.tr</code> → LB VIP (A kaydı)</td>
+</tr>
+<tr>
+<td>LB dinleyici</td>
+<td>VIP:443/TCP → havuz üyesi <code>&lt;sunucu IP&gt;:443</code>. TLS ya <strong>geçirilir</strong> (passthrough) ya da LB'de sonlandırılıp sunucuya <strong>yeniden şifreli</strong> gider (<code>X-Forwarded-For</code> ve <code>X-Forwarded-Proto: https</code> eklenir). Sunucunun 80'ine düz http gönderilmez: o port yalnız https'e yönlendirir</td>
+</tr>
+<tr>
+<td>Sağlık kontrolü</td>
+<td>HTTPS <code>GET /healthz</code> → 200, <code>&lt;sunucu IP&gt;:443</code> (ya da HTTP <code>GET /healthz</code>, <code>:80</code>); aralık 10-30 sn, zaman aşımı 5 sn</td>
+</tr>
+<tr>
+<td>Zaman aşımı / boyut</td>
+<td>Boşta zaman aşımı en az 300 sn (canlı log izleme, uzun raporlar); istek gövdesi en az 512 MB (log yüklemeleri). Oturum yapışkanlığı gerekmez</td>
+</tr>
+<tr>
+<td>Güvenlik duvarı</td>
+<td>VPN kullanıcı alt ağları → VIP:443; LB'nin self / SNAT adresleri → <code>&lt;sunucu IP&gt;</code>:443 ve :80</td>
+</tr>
+<tr>
+<td>Ajanlar</td>
+<td>İzlenen sunucular → VIP:443 (<code>https://watchover.sirket.com.tr/ingest</code>) ya da doğrudan <code>&lt;sunucu IP&gt;</code>:8600</td>
+</tr>
+</tbody>
+</table>
+<p><strong>3. Sertifika: herkesin tarayıcısında uyarısız.</strong> Kurulumun kendi CA'sı yalnız kök sertifikasını yükleyen makinelerde güvenilir olur; "VPN'deki herkes" için şirket CA'sından sertifika alın. Şirket bilgisayarları o köke zaten güvenir.</p>
+<pre><code class="language-bash">sudo watchover edge csr                                   # /opt/watchover/certs/watchover.csr (adlar: LB adı + sunucu adı / IP)
+# .csr dosyasını PKI ekibine gönderin (Microsoft AD CS: &quot;Web Server&quot; şablonu); anahtar sunucuda kalır (certs/.company, 0600)
+sudo watchover edge company /tmp/watchover.cer /tmp/zincir.p7b   # PEM ya da DER .cer; zincir PEM, DER ya da .p7b
+</code></pre>
+<p><code>edge company</code> sertifikayı yalnız son <code>edge csr</code> anahtarına aitse ve dış adı içeriyorsa kurar; zinciri sunucu sertifikasının arkasına ekler ve ajanların sabitlemesi için <code>certs/watchover-ca.crt</code> olarak saklar. Başka bir ada ya da anahtara kesilmiş sertifika reddedilir, kurulu olan değişmez. LB TLS'i şirket sertifikasıyla kendisi sonlandırıyorsa kullanıcılar LB'nin sertifikasını görür; o durumda LB'den sunucuya giden bağlantı için LB'ye <code>certs/watchover-root.crt</code> güvenilir kök olarak yüklenir (ya da aynı şirket sertifikası sunucuya da kurulur).</p>
+<p><strong>4. Kontrol.</strong></p>
+<pre><code class="language-bash">sudo watchover edge check     # sertifika adı içeriyor mu, bu sunucu yanıt veriyor mu, DNS kaydı var mı, LB üzerinden açılıyor mu
+</code></pre>
+<p>Bazı LB'ler havuz üyesinin kendi VIP'ine çıkmasına izin vermez; son madde sunucudan "uyarı" verirse VPN'deki bir dizüstünden <code>https://watchover.sirket.com.tr</code> açarak deneyin.</p>
+<p><strong>Gerçek istemci adresi.</strong> TLS'i sonlandırıp yeniden şifreleyen LB <code>X-Forwarded-For</code> ekler: giriş kayıtlarında ve loglarda kullanıcının adresi görünür (önerilen). TCP geçişinde (SNAT ile) herkes LB'nin adresinden gelir: Watchover güvenilir LB adresini "adres başına hatalı giriş" yavaşlatmasına sokmaz (yoksa birkaç hatalı parola bütün şirketi 15 dakika dışarıda bırakırdı); hesap başına kilit sürer, kayıtlarda LB adresi görünür.</p>
+<p><strong>Sanal makinede deneme.</strong> Parallels / VMware "Shared / NAT" ağında VM yalnız kendi Mac'inizden görünür. Aynı ağdaki başka makinelerden açmak için ağ ayarını "Bridged" yapın (VM ağdan IP alır), sonra <code>sudo watchover edge on</code> (yeni IP sertifikaya eklenir) ve <code>https://&lt;VM IP&gt;</code>.</p>
 <h2>8b. Parser kapsaması: hangi loglar anlaşılır</h2>
 <p>Sistem › <strong>Parser kapsaması</strong> kartı, 43 log ailesinden birer örnek dosyayı gerçek parser'dan geçirip zaman / seviye / sunucu / servis çıkarım oranını ve gürültü hunisini (ham olay → sinyal → incident, azaltma katsayısı) gösterir. Desteklenen aileler: syslog (RFC 3164 / 5424), CEF / LEEF (ArcSight, QRadar, Palo Alto, Fortinet, Cisco ASA), Apache / nginx / ALB erişim ve hata logları, IIS W3C, Windows Event XML, journald, Docker json-file, Kubernetes CRI, OpenTelemetry, ECS / GELF / logfmt / JSON / CSV, veritabanları (PostgreSQL, MySQL, SQL Server, Oracle alert, MongoDB, Redis), Kafka, HAProxy, Postfix, uygulama logları (Java, Python, .NET Serilog, Go), AWS CloudTrail, Alertmanager ve ERP: SAP (dev trace, HANA, NetWeaver, tp, SM21), Oracle E-Business Suite (concurrent manager, FND), Microsoft Dynamics AX / 365 / NAV-Business Central. Zaman damgasız satırlar (stack trace, ORA- blokları) üstteki olaya katlanır; kayıt servis taşımıyorsa log ailesi servis adı olur. Komut satırından: <code>python -m watchover.coverage</code> (Docker'da <code>./watchover.sh shell</code> içinden).</p>
 <p><strong>Anlık bildirim:</strong> üst çubuktaki 🔔 zil açık anomalileri 15 saniyede bir çeker; kritik CPU / bellek / disk / GPU (eşikler Sistem › Ayarlar, varsayılan 85 / 90 / 90 / 95 %) sunucu adıyla birlikte aynı listeye düşer; panelde "Tarayıcı bildirimi aç" deyip izin verince yeni anomaliler işletim sistemi bildirimi olarak da gelir (Watchover sekmesi arkada olsa bile). E-posta / SMS kuralları Sistem › Bildirimler sekmesinde.</p>
