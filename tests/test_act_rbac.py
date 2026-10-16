@@ -7,7 +7,7 @@ from watchover import rbac
 from watchover.access import Access, Membership
 from watchover.db import Database
 
-ADMIN = ("admin@watchover.local", "Watchover!Admin2026")
+ADMIN = ("admin@watchover.local", "Test-Yonetici-Parola-42")
 PW = "Str0ng!Passw0rd"
 POWER = {"act.execute", "act.approve", "act.publish", "act.promote", "act.policy", "act.golden", "act.audit", "act.kill"}
 

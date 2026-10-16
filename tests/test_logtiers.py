@@ -331,7 +331,7 @@ def test_storage_endpoint_and_files_mode(tmp_path, monkeypatch):
         svc.live.ingest("app.jsonl", payload(datetime.now(UTC) - timedelta(minutes=5), "ea-app-01", 4, step_s=1), agent="ea-app-01")
         assert "live_batches" not in svc.kb.tables()                                 # raw lines never touch the main database
         assert (tmp_path / "home" / "logs" / "hot").is_dir() and list((tmp_path / "home" / "logs" / "hot").glob("logs-*.db"))
-        tok = c.post("/api/auth/login", json={"email": "admin@watchover.local", "password": "Watchover!Admin2026"}).json()["token"]
+        tok = c.post("/api/auth/login", json={"email": "admin@watchover.local", "password": "Test-Yonetici-Parola-42"}).json()["token"]
         r = c.get("/api/system/storage", headers={"Authorization": f"Bearer {tok}"})
         assert r.status_code == 200, r.text
         d = r.json()

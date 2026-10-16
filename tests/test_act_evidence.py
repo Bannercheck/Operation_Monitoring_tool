@@ -6,7 +6,7 @@ import pytest
 from watchover.act.evidence import diag_slots, log_slots, quarantine
 from watchover.act.types import Trigger
 
-ADMIN = ("admin@watchover.local", "Watchover!Admin2026")
+ADMIN = ("admin@watchover.local", "Test-Yonetici-Parola-42")
 
 
 @pytest.fixture

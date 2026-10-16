@@ -37,6 +37,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="watchover user", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("list")
+    sub.add_parser("initial-password", help="the built-in administrator's first password, while it has not been changed")
     a = sub.add_parser("add"); a.add_argument("email"); a.add_argument("--name", default=""); a.add_argument("--admin", action="store_true"); a.add_argument("--password")
     for name in ("promote", "unlock", "enable", "disable", "delete"):
         sub.add_parser(name).add_argument("email")
@@ -50,6 +51,17 @@ def main(argv: list[str] | None = None) -> int:
         for r in rows:
             lock = us.locked_until(r["email"])
             print(f"{r['email']:<40} {r['role']:<9} {r['status']:<9} {r['provider']:<9} {r['name'] or '-':<24} last {r['last_login'][:16] or '-'}" + (f"  LOCKED until {lock.strftime('%H:%M')} UTC" if lock else ""))
+        return 0
+    if args.cmd == "initial-password":
+        from .auth import INITIAL_EMAIL, initial_password
+        u = us.get(INITIAL_EMAIL)
+        if not u or not u.get("must_change"):
+            print(f"{INITIAL_EMAIL}: the initial password was already changed (forgotten? ./watchover.sh user password {INITIAL_EMAIL})")
+            return 0
+        pw = initial_password(create=False)
+        if not pw:
+            print("no initial password kept here: restart the dashboard once, then ask again", file=sys.stderr); return 1
+        print(f"user:     {INITIAL_EMAIL}\npassword: {pw}\n(shown until the first sign-in, where a new password is required)")
         return 0
     email = args.email.strip().lower()
     if args.cmd == "add":

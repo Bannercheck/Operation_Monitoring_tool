@@ -90,7 +90,7 @@ def test_range_api_and_scope(tmp_path, monkeypatch):
         _feed(svc.live, now - timedelta(minutes=2), f"prd-web-0{i % 3 + 1}" if i < 3 else f"prd-db-0{i % 3 + 1}")
     with TestClient(a) as c:
         login = lambda e, p: {"Authorization": "Bearer " + c.post("/api/auth/login", json={"email": e, "password": p}).json()["token"]}   # noqa: E731
-        admin = login("admin@watchover.local", "Watchover!Admin2026")
+        admin = login("admin@watchover.local", "Test-Yonetici-Parola-42")
         s = c.get("/api/live/range/summary?last=15", headers=admin).json()
         assert s["live"] and s["total"] == 300 and s["series"] and s["step_min"] == 1
         assert c.get("/api/live/range/summary?last=15&pool=prd-db", headers=admin).json()["total"] == 150
@@ -136,7 +136,7 @@ def test_detail_services_and_fixed_range_report(tmp_path, monkeypatch):
         _feed(svc.live, now - timedelta(hours=3), f"prd-web-0{i % 2 + 1}")
     svc.history.flush()
     with TestClient(a) as c:
-        hd = {"Authorization": "Bearer " + c.post("/api/auth/login", json={"email": "admin@watchover.local", "password": "Watchover!Admin2026"}).json()["token"]}
+        hd = {"Authorization": "Bearer " + c.post("/api/auth/login", json={"email": "admin@watchover.local", "password": "Test-Yonetici-Parola-42"}).json()["token"]}
         from urllib.parse import quote
         s_, e_ = quote((now - timedelta(hours=3, minutes=5)).isoformat()), quote((now - timedelta(hours=2, minutes=55)).isoformat())
         d = c.get(f"/api/live/range/detail?start={s_}&end={e_}", headers=hd).json()

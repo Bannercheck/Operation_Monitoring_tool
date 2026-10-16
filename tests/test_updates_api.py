@@ -11,7 +11,7 @@ import pytest
 from watchover import __version__, updates as U
 from test_updater import make_tree, zip_tree          # noqa: E402 (tests/ is on sys.path in pytest's default import mode)
 
-ADMIN = ("admin@watchover.local", "Watchover!Admin2026")
+ADMIN = ("admin@watchover.local", "Test-Yonetici-Parola-42")
 PW = "Str0ng!Passw0rd"
 
 

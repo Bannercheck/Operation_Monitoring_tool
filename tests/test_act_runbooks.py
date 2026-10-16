@@ -11,7 +11,7 @@ from watchover.act.runbooks import RunbookError, errors, lint, step_hashes
 from watchover.actions import open_store
 from watchover.db import Database
 
-ADMIN = ("admin@watchover.local", "Watchover!Admin2026")
+ADMIN = ("admin@watchover.local", "Test-Yonetici-Parola-42")
 PW = "Str0ng!Passw0rd"
 
 

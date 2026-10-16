@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 UTC = timezone.utc
-ADMIN = ("admin@watchover.local", "Watchover!Admin2026")
+ADMIN = ("admin@watchover.local", "Test-Yonetici-Parola-42")
 PW = "Str0ng!Passw0rd"
 
 

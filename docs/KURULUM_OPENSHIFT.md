@@ -140,7 +140,7 @@ oc apply -n watchover -f /tmp/watchover.yaml
 ## 4. İlk giriş
 
 1. Arayüz adresini açın: `https://watchover.apps.kume.firma.com` (ya da `oc get route watchover -n watchover`).
-2. Yerleşik yönetici `admin@watchover.local`'dır; başlangıç parolası kurulum ekibine ayrıca iletilir ve **ilk girişte yeni parola istenir**. Parolayı hiç paylaşmadan doğrudan terminalden belirlemek de mümkündür (yeni parolayı iki kez sorar, ilk parolayı geçersiz kılar):
+2. Yerleşik yönetici `admin@watchover.local`'dır. Başlangıç parolası her kurulumda rastgele üretilir (kodda yoktur); görmek için `oc exec -n watchover deploy/watchover -c dashboard -- python -m watchover.useradmin initial-password`. **İlk girişte yeni parola istenir**, sonra başlangıç parolası silinir. Parolayı hiç paylaşmadan doğrudan terminalden belirlemek de mümkündür (yeni parolayı iki kez sorar, ilk parolayı geçersiz kılar):
 
 ```bash
 oc exec -it -n watchover deploy/watchover -c dashboard -- python -m watchover.useradmin password admin@watchover.local

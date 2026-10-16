@@ -505,7 +505,7 @@ def _login(c, email, pw):
 
 def test_api_two_holders_for_sinks_and_ack(c, tmp_path, monkeypatch):
     c.svc.act.set_mode("guided", by="admin@watchover.local")
-    a = _login(c, "admin@watchover.local", "Watchover!Admin2026")
+    a = _login(c, "admin@watchover.local", "Test-Yonetici-Parola-42")
     b = _login(c, "sec@corp.com", "Str0ng!Passw0rd")
     worm = tmp_path / "worm"
     worm.mkdir()

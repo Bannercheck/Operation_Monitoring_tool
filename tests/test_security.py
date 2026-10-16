@@ -8,7 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 ROOT = Path(__file__).resolve().parents[1]
-ADMIN = {"email": "admin@watchover.local", "password": "Watchover!Admin2026"}
+ADMIN = {"email": "admin@watchover.local", "password": "Test-Yonetici-Parola-42"}
 
 
 @pytest.fixture()

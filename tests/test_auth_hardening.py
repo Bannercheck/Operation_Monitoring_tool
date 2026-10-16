@@ -127,3 +127,48 @@ def test_self_registration_without_smtp_waits_for_an_administrator(c):
 @pytest.mark.parametrize("pw", ["aaaaaaaa11", "Password2026", "parola2026", "1111111111a", "Admin123456"])
 def test_common_passwords_refused(pw):
     assert wo_auth.password_policy(pw)
+
+
+def test_no_initial_password_in_the_code_each_install_gets_its_own(tmp_path, monkeypatch):
+    """v1.57.2: the code holds no administrator password. A fresh installation makes a random one (only its scrypt hash in the
+    database, the plaintext 0600 in <home>/initial-admin-password until the first change); an untouched administrator of an older
+    build (its fixed password) is re-keyed to it; changing the password removes the file."""
+    import os
+    import stat
+    from watchover import auth, useradmin
+    from watchover.db import Database
+    src = (auth.__file__ and open(auth.__file__, encoding="utf-8").read())
+    assert 'INITIAL_PASSWORD = os.environ.get("WATCHOVER_INITIAL_PASSWORD", "")' in src
+    monkeypatch.setattr(auth, "INITIAL_PASSWORD", "")
+    monkeypatch.setenv("WATCHOVER_HOME", str(tmp_path / "home"))
+    us = auth.Users(Database(str(tmp_path / "k.db")))
+    assert us.bootstrap()
+    f = tmp_path / "home" / auth.INITIAL_FILE
+    pw = f.read_text().strip()
+    assert len(pw) == 20 and not auth.password_policy(pw) and stat.S_IMODE(os.stat(f).st_mode) == 0o600
+    u = us.get(auth.INITIAL_EMAIL)
+    assert pw not in u["pw_hash"] and auth._verify(pw, u["pw_hash"])[0] and u["must_change"]
+    assert not us.bootstrap()                                                       # stable across restarts
+    us.kb._exec("UPDATE users SET pw_hash=? WHERE id=?", (auth._hash("Eski-Sabit-Parola-1"), u["id"]))   # an older build's fixed one
+    assert us.bootstrap() and not auth._verify("Eski-Sabit-Parola-1", us.get(auth.INITIAL_EMAIL)["pw_hash"])[0]
+    pw2 = f.read_text().strip()
+    assert auth._verify(pw2, us.get(auth.INITIAL_EMAIL)["pw_hash"])[0]
+    other = auth.Users(Database(str(tmp_path / "k2.db")))                          # another installation, another password
+    other.bootstrap()
+    us.change_password(u["id"], "Yeni-Yonetici-Parola-7")
+    assert not f.exists() and not us.get(auth.INITIAL_EMAIL)["must_change"]
+    assert not us.bootstrap()                                                       # a changed password is never touched
+    monkeypatch.setattr(useradmin, "_users", lambda: us)
+    assert useradmin.main(["initial-password"]) == 0
+
+
+def test_two_installations_get_different_passwords(tmp_path, monkeypatch):
+    from watchover import auth
+    from watchover.db import Database
+    monkeypatch.setattr(auth, "INITIAL_PASSWORD", "")
+    seen = set()
+    for i in range(2):
+        monkeypatch.setenv("WATCHOVER_HOME", str(tmp_path / f"h{i}"))
+        auth.Users(Database(str(tmp_path / f"k{i}.db"))).bootstrap()
+        seen.add((tmp_path / f"h{i}" / auth.INITIAL_FILE).read_text().strip())
+    assert len(seen) == 2

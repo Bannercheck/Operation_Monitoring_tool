@@ -592,7 +592,7 @@ printf '\033[1m═════════════════════�
 printf ' Açılacak adres %s\n' "${URLS[0]}"; for u in "${URLS[@]:1}"; do printf '                %s\n' "$u"; done
 printf ' Sertifika      %s\n' "$CA_LINE"
 [ "$EDGE" != 1 ] || printf '                Şirket sertifikası: %s/certs/watchover.crt + watchover.key koyun, sonra: sudo watchover edge on (ya da bu betiği yeniden çalıştırın)\n' "$DEST"
-printf ' İlk giriş      Yerleşik yönetici hesabı (kullanıcı adı aşağıdaki listede, ilk parola teslim notunda); ilk girişte yeni parola zorunludur.\n'
+printf ' İlk giriş      sudo watchover admin-password  (kuruluma özel rastgele ilk parola; ilk girişte yeni parola zorunludur)\n'
 printf '                Parolayı şimdi konsoldan belirlemek: sudo watchover user password <e-posta> · kişisel yönetici: sudo watchover user add ad.soyad@firma.com --admin\n'
 if [ "$EDGE" = 1 ]; then
 printf ' LB arkasında   Sağlık kontrolü: GET /healthz → 200 (HTTPS %s ya da HTTP %s). LB X-Forwarded-For / X-Forwarded-Proto iletsin ya da TCP geçişi\n' "$HTTPS_PORT" "$HTTP_PORT"

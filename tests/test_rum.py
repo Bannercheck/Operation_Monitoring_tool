@@ -143,7 +143,7 @@ def test_rum_api_and_audited_lookup(tmp_path, monkeypatch):
     appx = create_app(); svc = appx.state.services
     svc.kb._exec("UPDATE users SET must_change=0")
     with TestClient(appx) as c:
-        h = {"Authorization": "Bearer " + c.post("/api/auth/login", json={"email": "admin@watchover.local", "password": "Watchover!Admin2026"}).json()["token"]}
+        h = {"Authorization": "Bearer " + c.post("/api/auth/login", json={"email": "admin@watchover.local", "password": "Test-Yonetici-Parola-42"}).json()["token"]}
         a = c.post("/api/rum/apps", json={"name": "ik-mobil", "platform": "android"}, headers=h)
         assert a.status_code == 201 and a.json()["key"].startswith("pk_")
         assert c.get("/api/rum/apps", headers=h).json()["receiver"].endswith(":8600")

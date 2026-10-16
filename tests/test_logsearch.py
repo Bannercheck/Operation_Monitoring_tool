@@ -655,7 +655,7 @@ def feed(svc, minutes_ago=2):
 def test_endpoints_and_team_scope_everywhere(app):
     c, svc = app, app.svc
     feed(svc)
-    admin = login(c, "admin@watchover.local", "Watchover!Admin2026")
+    admin = login(c, "admin@watchover.local", "Test-Yonetici-Parola-42")
     r = c.post("/api/teams", json={"name": "EA", "rules": [{"field": "host", "op": "glob", "value": "ea-*"}], "members": ["ea@corp.com"]}, headers=admin)
     assert r.status_code in (200, 201), r.text
     ea, view = login(c, "ea@corp.com"), login(c, "view@corp.com")
@@ -710,7 +710,7 @@ def test_endpoints_and_team_scope_everywhere(app):
 
 def test_saved_searches_per_user(app):
     c = app
-    ea, hr, admin = login(c, "ea@corp.com"), login(c, "hr@corp.com"), login(c, "admin@watchover.local", "Watchover!Admin2026")
+    ea, hr, admin = login(c, "ea@corp.com"), login(c, "hr@corp.com"), login(c, "admin@watchover.local", "Test-Yonetici-Parola-42")
     a = c.post("/api/logs/saved", json={"name": "NAV SQL hataları", "query": 'service:nav* "sql server"', "range": "last=60", "columns": ["time", "level", "message"]}, headers=ea)
     assert a.status_code == 200
     sid = a.json()["id"]
@@ -732,7 +732,7 @@ def test_saved_searches_per_user(app):
 def test_alerts_from_a_query_fire_through_dispatch(app):
     c, svc = app, app.svc
     feed(svc, minutes_ago=2)
-    admin = login(c, "admin@watchover.local", "Watchover!Admin2026")
+    admin = login(c, "admin@watchover.local", "Test-Yonetici-Parola-42")
     c.post("/api/teams", json={"name": "EA", "rules": [{"field": "host", "op": "glob", "value": "ea-*"}], "members": ["ea@corp.com"]}, headers=admin)
     ea = login(c, "ea@corp.com")
     bad = c.post("/api/logs/alerts", json={"name": "x", "query": "level:error", "window_min": 90}, headers=ea)

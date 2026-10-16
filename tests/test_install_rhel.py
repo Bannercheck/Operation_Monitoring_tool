@@ -183,7 +183,7 @@ def test_fresh_install_then_rerun_is_idempotent(rhel):
               "Açılışta başlama: açık", "Uygulama içi güncelleme: açık", "arka planda kuruluyor: qwen2.5:3b-instruct bge-m3", "production checklist",
               "/var/log/watchover/install-", "PostgreSQL: yalnız 127.0.0.1:5433"):
         assert s in out, s
-    assert "Watchover!Admin2026" not in out and "Watchover!Admin2026" not in (r / "var/log/watchover").joinpath(next(p.name for p in (r / "var/log/watchover").glob("install-*.log"))).read_text()
+    assert "Test-Yonetici-Parola-42" not in out and "Test-Yonetici-Parola-42" not in (r / "var/log/watchover").joinpath(next(p.name for p in (r / "var/log/watchover").glob("install-*.log"))).read_text()
     # re-run: a repair, nothing installed again, secrets and firewall unchanged
     Path(env["FAKE_LOG"]).write_text("")
     res = run(rhel)

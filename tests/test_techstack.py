@@ -393,7 +393,7 @@ def test_manual_override_and_team_scope(app):
     for h, ip, app_ in (("ea-app-01", "10.10.0.5", "EA portal"), ("hr-app-01", "10.30.0.5", "HR Bordro (IIS 10)"), ("fin-01", "10.40.0.9", "Finance")):
         svc.inventory.upsert({"hostname": h, "ip": ip, "application": app_, "env": "prod"})
     svc.live.ingest("flows.jsonl", jl([flow("ea-app-01", "out", "java", "10.30.0.5:443", "java,spring-boot"), flow("hr-app-01", "out", "w3wp", "10.40.0.9:1433")]), "agent")
-    admin = login(c, "admin@watchover.local", "Watchover!Admin2026")
+    admin = login(c, "admin@watchover.local", "Test-Yonetici-Parola-42")
     for name, glob, member in (("EA", "ea-*", "ea@corp.com"), ("HR", "hr-*", "hr@corp.com")):
         r = c.post("/api/teams", json={"name": name, "rules": [{"field": "host", "op": "glob", "value": glob}], "members": [member]}, headers=admin)
         assert r.status_code in (200, 201), r.text
@@ -578,7 +578,7 @@ def test_team_reader_gets_404_and_admin_sees_installation_row(app):
         svc.inventory.upsert({"hostname": h, "ip": ip, "env": "prod"})
     svc.live.ingest("flows.jsonl", jl([flow("ea-app-01", "out", "java", "10.30.0.5:443", "java,spring-boot"),
                                        flow("hr-app-01", "in", "w3wp", "443", "aspnet,dotnet,iis")]), "agent")
-    admin = login(c, "admin@watchover.local", "Watchover!Admin2026")
+    admin = login(c, "admin@watchover.local", "Test-Yonetici-Parola-42")
     ids = {}
     for name, glob, member in (("EA", "ea-*", "ea@corp.com"), ("HR", "hr-*", "hr@corp.com")):
         r = c.post("/api/teams", json={"name": name, "rules": [{"field": "host", "op": "glob", "value": glob}], "members": [member]}, headers=admin)

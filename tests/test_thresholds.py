@@ -138,7 +138,7 @@ def test_thresholds_api_and_team_scope(tmp_path, monkeypatch):
     _metrics(svc.live, {"prd-db-01": 92, "prd-web-01": 70})
     with TestClient(a) as c:
         login = lambda e, p: {"Authorization": "Bearer " + c.post("/api/auth/login", json={"email": e, "password": p}).json()["token"]}   # noqa: E731
-        admin = login("admin@watchover.local", "Watchover!Admin2026")
+        admin = login("admin@watchover.local", "Test-Yonetici-Parola-42")
         r = c.post("/api/thresholds", json={"scope": "pool", "scope_value": "prd-db", "metric": "cpu", "warn": 80, "crit": 95, "for_min": 0, "channels": "email,webhook", "targets": "noc"}, headers=admin)
         assert r.status_code == 201, r.text
         assert c.post("/api/thresholds", json={"scope": "host", "metric": "cpu", "warn": 1}, headers=admin).status_code == 400

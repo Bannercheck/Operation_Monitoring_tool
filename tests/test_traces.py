@@ -146,7 +146,7 @@ def test_apm_api_live_and_dataset(tmp_path, monkeypatch):
     app = create_app(); svc = app.state.services
     svc.kb._exec("UPDATE users SET must_change=0")
     with TestClient(app) as c:
-        h = {"Authorization": "Bearer " + c.post("/api/auth/login", json={"email": "admin@watchover.local", "password": "Watchover!Admin2026"}).json()["token"]}
+        h = {"Authorization": "Bearer " + c.post("/api/auth/login", json={"email": "admin@watchover.local", "password": "Test-Yonetici-Parola-42"}).json()["token"]}
         from watchover.live import simulate_batch
         rng = random.Random(3)
         for _ in range(6):

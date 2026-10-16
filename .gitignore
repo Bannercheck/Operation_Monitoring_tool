@@ -49,3 +49,7 @@ data/.api.key
 .releases/
 .updater/
 .release-rev
+
+# the built-in administrator's first password (random per installation; never in git)
+initial-admin-password
+initial-admin-password.tmp

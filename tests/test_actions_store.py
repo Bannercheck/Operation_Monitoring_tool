@@ -12,7 +12,7 @@ from watchover.actions import MARKER, ActionStore, moved_in, open_store
 from watchover.db import Database
 
 ROOT = Path(__file__).resolve().parents[1]
-ADMIN = {"email": "admin@watchover.local", "password": "Watchover!Admin2026"}
+ADMIN = {"email": "admin@watchover.local", "password": "Test-Yonetici-Parola-42"}
 
 
 def _legacy(path: Path) -> list[int]:

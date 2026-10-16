@@ -281,7 +281,7 @@ def test_range_api_team_scope_and_privacy(tmp_path, monkeypatch):
                        _rec(now, "prd-db-02", "query 300 ms", sid="KC-SESS-991")])
     with TestClient(a) as c:
         login = lambda e, p: {"Authorization": "Bearer " + c.post("/api/auth/login", json={"email": e, "password": p}).json()["token"]}   # noqa: E731
-        admin = login("admin@watchover.local", "Watchover!Admin2026")
+        admin = login("admin@watchover.local", "Test-Yonetici-Parola-42")
         x = c.get("/api/live/range/sessions?last=15", headers=admin).json()
         assert x["source"] == "live" and x["total"] == 4 and len(x["sessions"]) == 4 and isinstance(x["rum"], dict)
         assert c.get("/api/live/range/sessions?last=15&pool=prd-db", headers=admin).json()["rum"] is None

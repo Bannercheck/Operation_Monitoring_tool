@@ -450,7 +450,7 @@ def test_api_runs_and_steps(c):
     act = c.svc.act
     varlog(act)
     cid = case(c)
-    h = {"Authorization": "Bearer " + c.post("/api/auth/login", json={"email": "admin@watchover.local", "password": "Watchover!Admin2026"}).json()["token"]}
+    h = {"Authorization": "Bearer " + c.post("/api/auth/login", json={"email": "admin@watchover.local", "password": "Test-Yonetici-Parola-42"}).json()["token"]}
     r = c.post(f"/api/act/cases/{cid}/decide", json={"choice": "varlog-team", "params": {"path": "/var/log", "days": 7}, "reason_code": "wrong_param"}, headers=h)
     assert r.status_code == 201, r.text
     plan = r.json()["plan"]

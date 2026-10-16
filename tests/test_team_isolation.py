@@ -14,7 +14,7 @@ import pytest
 UTC = timezone.utc
 ROOT = Path(__file__).resolve().parents[1]
 GO = shutil.which("go") or ("/usr/local/go/bin/go" if Path("/usr/local/go/bin/go").exists() else None)
-ADMIN = ("admin@watchover.local", "Watchover!Admin2026")
+ADMIN = ("admin@watchover.local", "Test-Yonetici-Parola-42")
 PW = "Str0ng!Passw0rd"
 
 

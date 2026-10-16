@@ -11,7 +11,7 @@ from watchover.act.shadow import agreement, sized_rate
 from watchover.act.types import Trigger, canonical, sha256_hex
 from watchover.db import Database
 
-ADMIN = ("admin@watchover.local", "Watchover!Admin2026")
+ADMIN = ("admin@watchover.local", "Test-Yonetici-Parola-42")
 NOSPACE = "ERROR billing-api write failed: No space left on device (/var/log/app/billing.log)"
 
 

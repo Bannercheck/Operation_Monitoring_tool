@@ -9,7 +9,7 @@ from watchover.act.cases import family_of, inbox_score, resource_hint
 from watchover.act.types import Trigger
 
 ROOT = Path(__file__).resolve().parents[1]
-ADMIN = ("admin@watchover.local", "Watchover!Admin2026")
+ADMIN = ("admin@watchover.local", "Test-Yonetici-Parola-42")
 PW = "Str0ng!Passw0rd"
 
 

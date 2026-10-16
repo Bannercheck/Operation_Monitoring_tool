@@ -72,7 +72,7 @@ def test_disk_playbook_entry_imports_and_publishes(tmp_path, monkeypatch):
                                                                         "- Uygulama ekibine saklama süresini sorun", "x"))
     svc.act.set_mode("guided", by="admin@watchover.local")
     c = TestClient(app)
-    h = {"Authorization": "Bearer " + c.post("/api/auth/login", json={"email": "admin@watchover.local", "password": "Watchover!Admin2026"}).json()["token"]}
+    h = {"Authorization": "Bearer " + c.post("/api/auth/login", json={"email": "admin@watchover.local", "password": "Test-Yonetici-Parola-42"}).json()["token"]}
     r = c.post("/api/act/runbooks/draft-from", json={"playbook_key": tpl, "key": "pb-disk-full"}, headers=h)
     assert r.status_code == 201, r.text
     body = r.json()

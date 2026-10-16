@@ -358,7 +358,7 @@ def test_storage_http_permissions_config_jobs_and_download(tmp_path, monkeypatch
     days = svc.log_cold.days()
     assert len(days) == 2
     with TestClient(a) as c:
-        adm = {"Authorization": "Bearer " + c.post("/api/auth/login", json={"email": "admin@watchover.local", "password": "Watchover!Admin2026"}).json()["token"]}
+        adm = {"Authorization": "Bearer " + c.post("/api/auth/login", json={"email": "admin@watchover.local", "password": "Test-Yonetici-Parola-42"}).json()["token"]}
         vw = {"Authorization": "Bearer " + c.post("/api/auth/login", json={"email": "viewer@firma.com", "password": "Str0ng!Passw0rd"}).json()["token"]}
         assert c.put("/api/system/storage/config", json={"cold_days": 30}, headers=vw).status_code == 403
         assert c.post("/api/system/storage/jobs", json={"kind": "verify"}, headers=vw).status_code == 403
@@ -368,7 +368,7 @@ def test_storage_http_permissions_config_jobs_and_download(tmp_path, monkeypatch
         assert d["cold_retention_days"] == 365 and d["estimate"]["basis"] in ("cold", "hot")
         r = c.put("/api/system/storage/config", json={"cold_days": 400}, headers=adm)
         assert r.status_code == 428 and r.json()["detail"]["code"] == "act_stepup_required"            # a fresh step-up first
-        assert c.post("/api/auth/stepup/verify", json={"password": "Watchover!Admin2026"}, headers=adm).status_code == 200
+        assert c.post("/api/auth/stepup/verify", json={"password": "Test-Yonetici-Parola-42"}, headers=adm).status_code == 200
         r = c.put("/api/system/storage/config", json={"cold_path": "/etc/watchover"}, headers=adm)
         assert r.status_code == 422 and r.json()["detail"]["code"] == "stg_path_system_dir"
         r = c.put("/api/system/storage/config", json={"hot_path": "/srv/wo", "cold_path": "/srv/wo/arsiv"}, headers=adm)

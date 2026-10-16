@@ -5,7 +5,7 @@ import pytest
 
 from watchover.act.stepup import StepUpError, check_oidc, id_token_claims
 
-ADMIN = ("admin@watchover.local", "Watchover!Admin2026")
+ADMIN = ("admin@watchover.local", "Test-Yonetici-Parola-42")
 PW = "Str0ng!Passw0rd"
 
 

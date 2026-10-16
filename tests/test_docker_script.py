@@ -691,3 +691,11 @@ def test_rhel_prepare_podman_check_mode():
     assert "8765/tcp" in out and "engine: podman" in out and "dnf -y remove podman" not in out and "docker-ce docker-ce-cli" not in out
     r = subprocess.run(["bash", str(ROOT / "scripts" / "rhel-prepare.sh"), "--check", "--engine", "lxc"], capture_output=True, text=True, timeout=60)
     assert r.returncode == 1 and "--engine must be docker or podman" in r.stderr
+
+
+def test_admin_password_reads_it_inside_the_container(stage):
+    d, _ = stage
+    r = run(stage, "admin-password")
+    assert r.returncode == 0, r.stderr
+    assert "compose exec -T dashboard python -m watchover.useradmin initial-password" in (d / "calls.log").read_text()
+    assert "admin-password" in run(stage, "help").stdout

@@ -17,7 +17,7 @@ from watchover.act.jobs import HostLocked, ed25519_verify
 from watchover.act.keyd import KeyStore
 from watchover.act.types import Trigger, canonical
 
-ADMIN = ("admin@watchover.local", "Watchover!Admin2026")
+ADMIN = ("admin@watchover.local", "Test-Yonetici-Parola-42")
 
 
 @pytest.fixture

@@ -26,6 +26,7 @@
 #                                   -> ./backups/watchover-YYYYMMDD-HHMM.tgz (WATCHOVER_BACKUP_DIR; oldest beyond N=14 removed)
 #   ./watchover.sh restore FILE     bring a backup back (containers are stopped meanwhile)
 #   ./watchover.sh user ...         account management, e.g.  user list | user add ops@firma.com --admin | user password EMAIL | user unlock EMAIL
+#   ./watchover.sh admin-password   the built-in administrator's first password (random per installation, until the first sign-in)
 #   ./watchover.sh demo-clean [--dry-run] [--yes]   delete everything the retired simulator left, in every store (counts first; real data stays)
 #   ./watchover.sh reset-data [--dry-run] [--yes]   full reset: every analysis store (anomalies, actions / cases, alerts, learned baselines, LLM memory,
 #                                                   fine-tunes, history, traces, topology) emptied; accounts, settings, agents, audit logs, real log lines stay
@@ -897,6 +898,8 @@ case "${1:-}" in
     if [ -f "$tmp/certs.tgz" ] && [ ! -f certs/.ca/watchover-ca.key ]; then tar xzf "$tmp/certs.tgz"; say "edge CA and certificates restored to ./certs"; fi
     rm -rf "$tmp"; up; say "restored from $2"; $COMPOSE ps ;;
   user)    need_docker; shift; $COMPOSE exec dashboard python -m watchover.useradmin "$@" ;;
+  admin-password)   # the built-in administrator's first password (random per installation; only until it is changed at the first sign-in)
+    need_docker; $COMPOSE exec -T dashboard python -m watchover.useradmin initial-password ;;
   profile)   # fixed caps for a known machine (WATCHOVER_SIZING=manual keeps them); the LLM gets a share, never every CPU, so a question
              # never slows the dashboard. An LLM connection you configured (LLM page / .env) is never changed.
     keys="WATCHOVER_SIZING WATCHOVER_CPUS WATCHOVER_MEMORY WATCHOVER_RECEIVER_CPUS WATCHOVER_RECEIVER_MEMORY WATCHOVER_PARSE_WORKERS WATCHOVER_SPOOL_MAX_MB WATCHOVER_PG_CPUS WATCHOVER_PG_MEMORY WATCHOVER_PG_SHARED_BUFFERS WATCHOVER_PG_CACHE WATCHOVER_LLM_CPUS WATCHOVER_LLM_THREADS WATCHOVER_LLM_MEMORY WATCHOVER_LLM_PARALLEL WATCHOVER_LLM_KEEPALIVE WATCHOVER_LLM_MODELS WATCHOVER_TRAIN_CPUS WATCHOVER_TRAIN_THREADS WATCHOVER_TRAIN_MEMORY"

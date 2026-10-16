@@ -54,7 +54,7 @@ def feed(svc):
 def test_team_scoping_everywhere(app):
     c, svc = app, app.svc
     feed(svc)
-    admin = login(c, "admin@watchover.local", "Watchover!Admin2026")
+    admin = login(c, "admin@watchover.local", "Test-Yonetici-Parola-42")
     bad = c.post("/api/teams", json={"name": "x", "rules": [{"field": "nope", "op": "glob", "value": "a"}]}, headers=admin)
     assert bad.status_code in (400, 422, 500) and "field" in bad.text
     pv = c.post("/api/teams/preview", json={"name": "EA", "rules": [{"field": "host", "op": "glob", "value": "ea-*"}]}, headers=admin).json()

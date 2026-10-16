@@ -30,7 +30,7 @@ def app(tmp_path, monkeypatch):
         yield c
 
 
-def login(c, email="admin@watchover.local", pw="Watchover!Admin2026"):
+def login(c, email="admin@watchover.local", pw="Test-Yonetici-Parola-42"):
     r = c.post("/api/auth/login", json={"email": email, "password": pw})
     assert r.status_code == 200, r.text
     return {"Authorization": "Bearer " + r.json()["token"]}

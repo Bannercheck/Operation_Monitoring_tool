@@ -352,7 +352,7 @@ unzip -q watchover.zip &amp;&amp; mv hackathon watchover &amp;&amp; cd watchover
     First sign-in: admin@watchover.local ...
 </code></pre>
 <p><strong>Arayüze erişim:</strong> tarayıcıda <code>http://&lt;sunucu-ip&gt;:8501</code>. Güvenlik duvarı varsa <code>sudo ufw allow 8501,8600/tcp</code>. Şirket ağında TLS için bölüm 8.</p>
-<p><strong>İlk giriş:</strong> yerleşik yönetici <code>admin@watchover.local</code>, başlangıç parolası ayrıca iletilir; ilk girişte yeni parola istenir. Ekip hesapları Users sayfasından ya da terminalden:</p>
+<p><strong>İlk giriş:</strong> yerleşik yönetici <code>admin@watchover.local</code>. Başlangıç parolası her kurulumda rastgele üretilir ve kodda ya da belgelerde yer almaz; kurulumu yapan kişi <code>./watchover.sh admin-password</code> (RHEL'de <code>sudo watchover admin-password</code>) ile görür. İlk girişte yeni parola istenir; o andan sonra başlangıç parolası silinir ve komut artık göstermez. Ekip hesapları Users sayfasından ya da terminalden:</p>
 <pre><code class="language-bash">./watchover.sh user add ops@sirket.com --admin
 ./watchover.sh user list
 </code></pre>

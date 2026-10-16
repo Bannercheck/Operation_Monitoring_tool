@@ -66,7 +66,7 @@ def test_live_api_pools_groups_and_scope(tmp_path, monkeypatch):
     _feed(svc.live)
     with TestClient(a) as c:
         login = lambda e, p: {"Authorization": "Bearer " + c.post("/api/auth/login", json={"email": e, "password": p}).json()["token"]}   # noqa: E731
-        admin = login("admin@watchover.local", "Watchover!Admin2026")
+        admin = login("admin@watchover.local", "Test-Yonetici-Parola-42")
         p = c.get("/api/live/pools?window=15", headers=admin).json()
         assert p["hosts"] == 13 and {x["pool"] for x in p["pools"]} == {"prd-web", "prd-db"}
         assert c.get("/api/live/stats?window=15&pool=prd-db", headers=admin).json()["errors"] == 50

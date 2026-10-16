@@ -25,7 +25,12 @@ SCRYPT = {"n": 2 ** 15, "r": 8, "p": 2}
 LOCK_FAILURES, LOCK_MINUTES = 5, 15
 REMEMBER_DAYS, REMEMBER_COOKIE = 30, "wo_remember"
 OTP_MINUTES, OTP_ATTEMPTS = 5, 5
-INITIAL_EMAIL, INITIAL_PASSWORD = "admin@watchover.local", "Watchover!Admin2026"     # built-in administrator; must be changed at first sign-in
+INITIAL_EMAIL = "admin@watchover.local"           # built-in administrator; its password must be changed at first sign-in
+# No password is written in the code: each installation gets a random one at its first start (only its scrypt hash is stored)
+# and the plaintext waits, readable by the operator only, in <WATCHOVER_HOME>/initial-admin-password until it is changed
+# (./watchover.sh admin-password shows it). WATCHOVER_INITIAL_PASSWORD sets it instead (unattended installs, the test suite).
+INITIAL_PASSWORD = os.environ.get("WATCHOVER_INITIAL_PASSWORD", "")
+INITIAL_FILE = "initial-admin-password"
 APPLE_METADATA = "https://appleid.apple.com/.well-known/openid-configuration"
 MS_METADATA = "https://login.microsoftonline.com/{tenant}/v2.0/.well-known/openid-configuration"
 
@@ -59,6 +64,52 @@ def password_policy(password: str) -> str:
     if len(set(low)) < 4:                                    # aaaaaaaa11, 1111111111a
         return "password is too common"
     return ""
+
+
+def settings_home():
+    from . import settings as _s
+    return _s.home()
+
+
+def _random_password() -> str:
+    """20 characters from an unambiguous alphabet, at least one letter and one digit (passes password_policy)."""
+    alpha = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    while True:
+        pw = "".join(secrets.choice(alpha) for _ in range(20))
+        if not password_policy(pw):
+            return pw
+
+
+def initial_password(create: bool = False, renew: bool = False) -> str:
+    """This installation's initial administrator password: WATCHOVER_INITIAL_PASSWORD when set, else the one kept (0600) in
+    <WATCHOVER_HOME>/initial-admin-password; with create, a new random one is written there when none is kept (or renew)."""
+    if INITIAL_PASSWORD:
+        return INITIAL_PASSWORD
+    p = settings_home() / INITIAL_FILE
+    if not renew:
+        try:
+            pw = p.read_text(encoding="utf-8").strip()
+            if pw:
+                return pw
+        except OSError:
+            pass
+    if not create:
+        return ""
+    pw = _random_password()
+    if renew:
+        tmp = p.with_name(p.name + ".tmp")
+        fd = os.open(str(tmp), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(pw + "\n")
+        os.replace(tmp, p)
+        return pw
+    try:                                                     # first writer wins: processes sharing /data agree on one password
+        fd = os.open(str(p), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        return initial_password(create=False) or initial_password(create=True, renew=True)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(pw + "\n")
+    return pw
 
 
 _DUMMY: list = []
@@ -114,25 +165,35 @@ class Users:
 
     # ---- queries
     def bootstrap(self) -> bool:
-        """The built-in administrator always exists: created when missing (also next to accounts registered by older builds),
-        re-keyed to the fixed initial password while it still carries must_change (never signed in), re-enabled if disabled
-        in that state. A changed password is never touched. Returns True when something was written."""
+        """The built-in administrator always exists: created when missing (also next to accounts registered by older builds) with
+        this installation's own initial password (initial_password()), re-keyed to it while it still carries must_change (never
+        signed in: an older build's fixed password is replaced here), re-enabled if disabled in that state. A changed password
+        is never touched. Returns True when something was written."""
         u = self.get(INITIAL_EMAIL)
         if not u:
+            pw = initial_password(create=True)
             self.kb._exec("INSERT INTO users (email, name, pw_hash, role, status, provider, created_at, must_change) VALUES (?,?,?,?,?,?,?,1)",
-                          (INITIAL_EMAIL, "Administrator", _hash(INITIAL_PASSWORD), "admin", "active", "local", datetime.now(UTC).isoformat(timespec="seconds")))
+                          (INITIAL_EMAIL, "Administrator", _hash(pw), "admin", "active", "local", datetime.now(UTC).isoformat(timespec="seconds")))
             self._event(INITIAL_EMAIL, "bootstrap", True, "built-in administrator created")
             return True
         if u.get("must_change"):
             changed = False
-            if not _verify(INITIAL_PASSWORD, u["pw_hash"])[0]:
-                self.kb._exec("UPDATE users SET pw_hash=? WHERE id=?", (_hash(INITIAL_PASSWORD), u["id"])); changed = True
+            pw = initial_password(create=False)
+            if not pw or not _verify(pw, u["pw_hash"])[0]:
+                pw = initial_password(create=True, renew=not INITIAL_PASSWORD)
+                self.kb._exec("UPDATE users SET pw_hash=? WHERE id=?", (_hash(pw), u["id"])); changed = True
             if u["status"] != "active" or u["role"] != "admin":
                 self.kb._exec("UPDATE users SET status='active', role='admin' WHERE id=?", (u["id"],)); changed = True
             if changed:
                 self._event(INITIAL_EMAIL, "bootstrap", True, "initial password re-keyed")
             return changed
         return False
+
+    def forget_initial_password(self) -> None:
+        try:
+            (settings_home() / INITIAL_FILE).unlink()
+        except OSError:
+            pass
 
     def initial_password_active(self) -> bool:
         """True while the built-in administrator still carries the initial password (shown as a hint on the sign-in page)."""
@@ -335,6 +396,8 @@ class Users:
         self.remember_revoke_all(uid)                                      # a new password ends every remembered session
         self.end_sessions(uid)                                             # and every signed-in browser (the caller gets a new token)
         rows = self.kb._exec("SELECT email FROM users WHERE id=?", (uid,))
+        if rows and rows[0]["email"] == INITIAL_EMAIL:
+            self.forget_initial_password()                                 # the initial password is no longer anybody's
         self._event(rows[0]["email"] if rows else str(uid), "password_change", True)
 
     def delete(self, uid: int) -> None:

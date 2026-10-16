@@ -81,7 +81,7 @@ def test_flows_api(tmp_path, monkeypatch):
     a = create_app(); svc = a.state.services
     svc.kb._exec("UPDATE users SET must_change=0")
     with TestClient(a) as c:
-        h = {"Authorization": "Bearer " + c.post("/api/auth/login", json={"email": "admin@watchover.local", "password": "Watchover!Admin2026"}).json()["token"]}
+        h = {"Authorization": "Bearer " + c.post("/api/auth/login", json={"email": "admin@watchover.local", "password": "Test-Yonetici-Parola-42"}).json()["token"]}
         f = c.post("/api/flows", json={"name": "Sipariş", "key_regex": r"sipariş\s+(\d{7})", "steps": STEPS}, headers=h)
         assert f.status_code == 201, f.text
         fid = f.json()["id"]
