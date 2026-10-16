@@ -201,3 +201,22 @@ func TestManifestPrefersSignedCopiesBootAndCA(t *testing.T) {
 		t.Fatal("stale CA export kept")
 	}
 }
+
+// Two writes inside one timestamp tick (coarse mtimes: Docker Desktop's VM, overlay file systems) must still be seen.
+func TestReleasesReloadSameMtime(t *testing.T) {
+	dir := t.TempDir()
+	r := newReleases(dir, dir, "")
+	rel := &signedDoc{Body: "Ym9keQ==", Sig: "c2ln", Key: "ed25519:x", Version: "0.9.0"}
+	p := filepath.Join(dir, "agent-update.json")
+	writeExport(t, dir, updExport{Release: rel, Enabled: true, Pct: 100})
+	fi, _ := os.Stat(p)
+	if d := r.load(); d == nil || d.Pct != 100 {
+		t.Fatalf("first load: %+v", d)
+	}
+	writeExport(t, dir, updExport{Release: rel, Enabled: true, Pct: 3})
+	_ = os.Chtimes(p, fi.ModTime(), fi.ModTime()) // same mtime as before
+	r.checked = time.Time{}
+	if d := r.load(); d == nil || d.Pct != 3 {
+		t.Fatalf("a rewrite with the same mtime was missed: %+v", d)
+	}
+}

@@ -14,6 +14,7 @@ package main
 // image's own copies (a rebuilt receiver image can then never disagree with the signed manifest).
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
@@ -48,6 +49,7 @@ type updExport struct {
 type fileSum struct {
 	size  int64
 	mtime time.Time
+	fi    os.FileInfo // the file the sum was taken of: a replacement (rename, new inode) is never mistaken for it
 	sha   string
 }
 
@@ -56,7 +58,8 @@ type releases struct {
 	caPaths         []string
 	caPEM           []byte // WO_AGENT_CA_PEM (OpenShift: the ingest Route's CA from the chart values)
 	mu              sync.Mutex
-	checked, mtime  time.Time
+	checked         time.Time
+	raw             []byte // the bytes doc was parsed from
 	doc             *updExport
 	sums            map[string]fileSum
 	caSHA           string
@@ -75,7 +78,9 @@ func newReleases(spool, agentDir, ca string) *releases {
 	return r
 }
 
-// load re-reads agent-update.json when it changed (looked at most every 2 s).
+// load re-reads agent-update.json (looked at most every 2 s) and re-parses it when its bytes changed. The file is small;
+// comparing content instead of the modification time also catches two writes inside one timestamp tick (coarse mtimes on
+// overlay / virtiofs file systems, e.g. Docker Desktop), which an mtime check would miss until the next write.
 func (r *releases) load() *updExport {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -84,20 +89,21 @@ func (r *releases) load() *updExport {
 	}
 	r.checked = time.Now()
 	p := filepath.Join(r.spool, "agent-update.json")
-	fi, err := os.Stat(p)
+	b, err := os.ReadFile(p)
 	if err != nil {
-		r.doc, r.mtime = nil, time.Time{}
-		return nil
-	}
-	if fi.ModTime().Equal(r.mtime) && r.doc != nil {
+		if os.IsNotExist(err) {
+			r.doc, r.raw = nil, nil
+		}
 		return r.doc
 	}
-	b, err := os.ReadFile(p)
+	if r.doc != nil && bytes.Equal(b, r.raw) {
+		return r.doc
+	}
 	var d updExport
-	if err != nil || json.Unmarshal(b, &d) != nil {
+	if json.Unmarshal(b, &d) != nil {
 		return r.doc // a torn read: keep the previous one
 	}
-	r.doc, r.mtime = &d, fi.ModTime()
+	r.doc, r.raw = &d, b
 	return r.doc
 }
 
@@ -114,7 +120,8 @@ func fileExists(p string) bool {
 	return err == nil && fi.Mode().IsRegular()
 }
 
-// sum is sha256 / size of a served file, cached by size and mtime (the manifest is asked for by every installer and update).
+// sum is sha256 / size of a served file, cached by file identity, size and mtime (the manifest is asked for by every installer
+// and update). The identity check covers a replacement with the same size inside one coarse timestamp tick.
 func (r *releases) sum(name string) (string, int64, bool) {
 	p := r.path(name)
 	fi, err := os.Stat(p)
@@ -124,7 +131,7 @@ func (r *releases) sum(name string) (string, int64, bool) {
 	r.mu.Lock()
 	c, ok := r.sums[p]
 	r.mu.Unlock()
-	if ok && c.size == fi.Size() && c.mtime.Equal(fi.ModTime()) {
+	if ok && c.fi != nil && os.SameFile(c.fi, fi) && c.size == fi.Size() && c.mtime.Equal(fi.ModTime()) {
 		return c.sha, c.size, true
 	}
 	b, err := os.ReadFile(p)
@@ -132,7 +139,7 @@ func (r *releases) sum(name string) (string, int64, bool) {
 		return "", 0, false
 	}
 	h := sha256.Sum256(b)
-	c = fileSum{size: int64(len(b)), mtime: fi.ModTime(), sha: hex.EncodeToString(h[:])}
+	c = fileSum{size: int64(len(b)), mtime: fi.ModTime(), fi: fi, sha: hex.EncodeToString(h[:])}
 	r.mu.Lock()
 	r.sums[p] = c
 	r.mu.Unlock()

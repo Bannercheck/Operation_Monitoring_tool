@@ -2,6 +2,11 @@
 
 Numaralandırma: büyük sürüm **v1, v2** (ürün sahibinin kararı), küçük güncelleme **v1.1, v1.2** (her devreye alınan özellik adımı), düzeltme **v1.1.1**. Her sürüm `python -m watchover.release <major|minor|patch> "özet"` ile açılır; Sistem › Güncelleme sayfası bu dosyayı gösterir, anlık görüntüler sürüm numarasını taşır.
 
+## v1.56.1 · 2026-10-16 · düzeltme
+
+- Mac'te yükseltme derlemesi: ajan güncelleme politikası içerik karşılaştırmasıyla yeniden okunuyor
+
+
 ## v1.56 · 2026-10-16 · güncelleme
 
 - Demo ve gerçek veri kesin ayrı: simülasyon kapatılınca LLM hafızası dahil iz kalmaz, gerçek veri varken simülasyon açılmaz, öğrenme demo veriyi kullanmaz
