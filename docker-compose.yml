@@ -6,6 +6,8 @@
 #   edge:     ./watchover.sh edge on <host>                  (Caddy: https://<host> for the company network, TLS from its own CA or ./certs)
 #   external PostgreSQL: DATABASE_URL in .env and  docker compose up -d --no-deps dashboard
 #   raw logs on disks of their own: WATCHOVER_LOG_HOT_PATH / WATCHOVER_LOG_COLD_PATH in .env (docker-compose.loghot.yml / .logcold.yml)
+#   updater:  ./watchover.sh updater on|off                (on by default: in-app updates and rollbacks, Sistem › Güncelleme; the
+#             'updater' service is the only one with the engine socket; the dashboard only shares the watchover-updates spool with it)
 #   Podman (RHEL): the same file through podman.socket (WATCHOVER_ENGINE=podman); bind mounts carry :z for SELinux
 #   plain compose works too:  docker compose build && docker compose up -d
 name: watchover
@@ -45,6 +47,7 @@ services:
     volumes:
       - watchover-data:/data                        # settings, tokens, databases, live spool, version snapshots, logs
       - watchover-secrets:/secrets                  # vault key + keyd client certificate; not in /data, not in snapshots
+      - watchover-updates:/updates                  # in-app updates: packages and requests in, the updater's state out (never the engine socket)
       # OAuth providers (Google / Microsoft / Apple / OIDC) are written by System › Sign-in into /app/.streamlit/secrets.toml;
       # to keep them across image updates add:  - ./secrets.toml:/app/.streamlit/secrets.toml   (create the file first)
     deploy:
@@ -270,6 +273,49 @@ services:
       driver: json-file
       options: { max-size: "20m", max-file: "3" }
 
+  updater:                                        # in-app updates (Sistem › Güncelleme): the ONLY container with the engine socket
+    profiles: [updater]                           # started by watchover.sh when WATCHOVER_UPDATER=1 (the default); ./watchover.sh updater off
+    image: ${WATCHOVER_IMAGE:-watchover}-updater:${WATCHOVER_UPDATER_TAG:-1}   # tools only; the logic runs from the install folder
+    build:
+      context: .
+      dockerfile: Dockerfile.updater
+    container_name: watchover-updater
+    command: ["sh", "-c", "exec python3 \"$$WATCHOVER_INSTALL_DIR/src/watchover/updater.py\" daemon"]
+    restart: unless-stopped
+    network_mode: none                            # no network, no port: the engine through its socket, the dashboard through the spool volume
+    working_dir: ${WATCHOVER_INSTALL_DIR:-/install}
+    environment:
+      TZ: ${TZ:-Europe/Istanbul}
+      WATCHOVER_INSTALL_DIR: ${WATCHOVER_INSTALL_DIR:-/install}
+      WATCHOVER_IN_UPDATER: "1"                     # watchover.sh: never recreate this container, host-only checks skipped
+      WATCHOVER_UPDATES_DIR: /updates
+      WATCHOVER_ENGINE: ${WATCHOVER_ENGINE:-docker}
+      WATCHOVER_PODMAN_SOCK: ${WATCHOVER_ENGINE_SOCK:-/var/run/docker.sock}
+      DOCKER_HOST: unix://${WATCHOVER_ENGINE_SOCK:-/var/run/docker.sock}
+      CONTAINER_HOST: unix://${WATCHOVER_ENGINE_SOCK:-/var/run/docker.sock}   # podman client in remote mode (Podman installs)
+      PYTHONDONTWRITEBYTECODE: "1"
+    volumes:
+      - type: bind                                # Docker (/var/run/docker.sock; Docker Desktop maps it to its VM) or rootful Podman's socket:
+        source: ${WATCHOVER_ENGINE_SOCK:-/var/run/docker.sock}   # whoever holds it is root on this host (docs/KURULUM_DOCKER.md, 3b)
+        target: ${WATCHOVER_ENGINE_SOCK:-/var/run/docker.sock}
+      - type: bind                                # the install folder at the same absolute path: compose resolves ./certs, ./datasets as on the host
+        source: ${WATCHOVER_INSTALL_DIR:-.}
+        target: ${WATCHOVER_INSTALL_DIR:-/install}
+      - watchover-updates:/updates
+    security_opt: ["label=disable"]               # SELinux (RHEL): reaching the engine socket needs it; nothing gets relabelled
+    deploy:
+      resources:
+        limits: {cpus: "1", memory: 512m}
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+    healthcheck:
+      test: ["CMD-SHELL", "find /updates/updater.json -mmin -1 | grep -q ."]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
+
   postgres:
     image: postgres:16-alpine
     container_name: watchover-postgres
@@ -303,6 +349,7 @@ volumes:
   watchover-data:
   watchover-keys:                                 # watchover-keyd only (I17)
   watchover-secrets:                              # vault key and keyd's client certificate
+  watchover-updates:                              # in-app update spool shared by the dashboard and the updater (packages, requests, state)
   watchover-pg:
   watchover-edge:
   watchover-ollama:

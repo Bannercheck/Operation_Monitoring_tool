@@ -445,9 +445,90 @@ access_log /var/log/nginx/access.log watchover;
 <td><code>./watchover.sh shell</code></td>
 <td>Dashboard konteynerinde kabuk</td>
 </tr>
+<tr>
+<td><code>./watchover.sh updater on\|off\|status</code></td>
+<td>Uygulama içi güncelleyici (bölüm 3b): varsayılan açık; <code>off</code> motor soketini hiçbir konteynerde bırakmaz</td>
+</tr>
+<tr>
+<td><code>./watchover.sh build</code> / <code>health [SÜRÜM] [SN]</code></td>
+<td>Yalnız bu ağacın imajlarını derler (hiçbir şeyi yeniden başlatmaz) / panel <code>/api/health</code> ile o sürümü verene kadar bekler</td>
+</tr>
 </tbody>
 </table>
 <p>Bütün bunlar düz <code>docker compose</code> komutlarıdır; alışkın olanlar <code>docker compose ps</code>, <code>docker compose logs -f dashboard</code> ile aynı işleri yapabilir (Podman'da <code>sudo DOCKER_HOST=unix:///run/podman/podman.sock docker compose ps</code> ya da <code>sudo podman ps</code>).</p>
+<h2>3b. Uygulama içinden güncelleme ve geri dönüş (güncelleyici)</h2>
+<p>Sistem › <strong>Güncelleme ve sürümler</strong> kartından yeni sürüm zip'i (ya da çevrimdışı paket) yüklenir, uygulanır; bir şey ters giderse önceki sürüme ya da listeden seçilen bir sürüme dönülür. Sunucuda komut gerekmez.</p>
+<p><strong>İlk kez açmak.</strong> Bu özelliği getiren sürüme bir kez her zamanki yoldan geçin; başka adım yok:</p>
+<pre><code class="language-bash">cd ~/watchover-docker
+./watchover.sh upgrade        # git ile kurulduysa
+# ya da: yeni zip'i klasörün üstüne açın, sonra
+./watchover.sh update
+</code></pre>
+<p><code>update</code> / <code>upgrade</code> / <code>install</code> güncelleyici imajını bir kez derler (<code>watchover-updater:1</code>: Docker CLI + Compose, bash, Python) ve <code>updater</code> konteynerini başlatır; <code>.env</code>'e <code>WATCHOVER_UPDATER=1</code>, <code>WATCHOVER_INSTALL_DIR</code> (bu klasör) ve <code>WATCHOVER_ENGINE_SOCK</code> yazılır. Kapatmak: <code>./watchover.sh updater off</code>; yeniden açmak: <code>./watchover.sh updater on</code>; durum: <code>./watchover.sh updater status</code>.</p>
+<p><strong>Mimari.</strong> Yetkili iş paneli taşıyan konteynerde değil, ayrı <code>updater</code> konteynerinde yapılır:</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Panel (<code>dashboard</code>)</th>
+<th>Güncelleyici (<code>updater</code>)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Motor soketi (<code>/var/run/docker.sock</code>, Podman'da <code>/run/podman/podman.sock</code>)</td>
+<td><strong>asla</strong></td>
+<td>yalnızca bu konteyner</td>
+</tr>
+<tr>
+<td>Kurulum klasörü (<code>~/watchover-docker</code>)</td>
+<td>yok</td>
+<td>aynı mutlak yolda bağlı (compose göreli yolları sunucudaki gibi çözer)</td>
+</tr>
+<tr>
+<td>Ağ / port</td>
+<td>8501</td>
+<td><strong>ağ yok</strong> (<code>network_mode: none</code>), port yok</td>
+</tr>
+<tr>
+<td>Paylaşılan</td>
+<td><code>watchover-updates</code> birimi (<code>/updates</code>): paket ve istek yazar, durumu okur</td>
+<td>aynı birim: isteği okur, adım adım durumu yazar</td>
+</tr>
+</tbody>
+</table>
+<p>Panel yalnızca paketi denetler, birime koyar ve "uygula / geri dön" isteği yazar; güncelleyici isteği <strong>kendisi yeniden denetler</strong> (boyut, yol, sembolik bağ, imza) ve bütün motor işlerini <code>./watchover.sh</code> ile yapar (<code>backup</code>, <code>build</code>, <code>unbundle</code>, <code>start</code>, <code>health</code>, <code>restore</code>): elle yaptığınız güncellemenin aynısıdır. Güncelleme mantığı imajda değil klasördedir; her yeni sürüm kendi güncelleme mantığını getirir.</p>
+<p><strong>Paketler.</strong>
+- Kaynak zip: <code>git archive --format=zip --prefix=&lt;klasör&gt;/ HEAD</code> ile yapılan dosya; tek bir üst klasör (adı önemsiz, ör. <code>hackathon/</code>). Sürüm <code>src/watchover/__init__.py</code>'den okunur.
+- Çevrimdışı paket: <code>./watchover.sh bundle</code> çıktısı <code>.tar</code> (imajlar dahil; derleme yerine imajlar yüklenir, kurulum <code>WATCHOVER_OFFLINE=1</code> olur).
+- Reddedilenler: boyut sınırını aşan (<code>WATCHOVER_UPDATE_MAX_MB</code>, varsayılan 8192), mutlak yol / <code>..</code> (zip-slip), sembolik bağ, aygıt dosyası, aynı adlı iki dosya, olağan dışı sıkıştırma oranı, eksik zorunlu dosya (<code>watchover.sh</code>, <code>docker-compose.yml</code>, <code>Dockerfile</code>, <code>pyproject.toml</code>, <code>src/watchover/__init__.py</code>), sürüm bilgileri birbirini tutmayan ve <strong>uygulama içi güncelleyiciyi içermeyen</strong> (bu özellikten önceki bir sürümün) paketi — böyle bir sürüm arayüzden geri alınamazdı; onu elle kurun.
+- Ekranda <code>çalışan → yeni</code> sürüm, sürüm notları (CHANGELOG), SHA-256 ve imza durumu görünür. Sürüm düşürme serbesttir, belirgin bir uyarıyla.</p>
+<p><strong>İmza (önerilir).</strong> Anahtar tanımlıysa imzasız ya da yanlış imzalı paket reddedilir:</p>
+<pre><code class="language-bash"># sürümü hazırlayan makinede (özel anahtar sunucuya gitmez)
+python -m watchover.release keygen                     # watchover-release.key + watchover-release.pub, .env satırını yazdırır
+python -m watchover.release package --key watchover-release.key   # watchover-&lt;sürüm&gt;.zip + .zip.sig
+python -m watchover.release sign watchover-bundle-1.54.0.tar --key watchover-release.key   # paket için
+# sunucuda .env:
+WATCHOVER_UPDATE_PUBKEY=&lt;base64 açık anahtar&gt;          # ya da klasöre update-pubkey.pem
+</code></pre>
+<p>Yüklerken zip ile <code>.sig</code> dosyasını birlikte bırakın. İmza Ed25519'dur ve paketin SHA-256 özetini kapsar.</p>
+<p><strong>Güncelleme akışı</strong> (ekranda adım adım, panel yeniden başlarken sayfa bağlantıyı bekleyip kaldığı yerden devam eder):</p>
+<ol>
+<li>Alındı → 2. Denetlendi → 3. <strong>Yedek</strong> (<code>backup --no-logs</code>: PostgreSQL dökümü + veri birimi, ham loglar hariç; çalışan sürümün klasörüne <code>pre-update.tgz</code> olarak) → 4. <strong>Derleme</strong> (yeni sürümün ağacından <code>watchover:&lt;sürüm&gt;</code> imajları; çevrimdışı pakette imaj yükleme). Bu adıma kadar çalışan sürüme dokunulmaz → 5. <strong>Geçiş</strong> (klasör yeni sürüm olur; <code>.env</code>, <code>backups/</code>, <code>datasets/</code>, <code>certs/</code>, <code>data/</code> hiç değişmez; önceki sürümün ağacı ve imajları saklanır) → 6. <strong>Başlatma</strong> (<code>./watchover.sh start</code>) → 7. <strong>Sağlık denetimi</strong> (yeni sürüm <code>/api/health</code> ile kendi sürüm numarasını varsayılan 240 sn içinde vermeli) → Bitti.</li>
+</ol>
+<p>Geçişten sonraki bir adım başarısız olursa ve "otomatik geri dön" açıksa (varsayılan) önceki sürümün kodu ve imajları geri gelir, yeniden başlatılır ve sağlığı denetlenir; ekranda "başarısız, önceki sürüme dönüldü" ve nedeni yazar. Aynı anda tek güncelleme çalışır; o sırada sunucuda <code>./watchover.sh update / upgrade / restore / unbundle</code> da beklemeye zorlanır (<code>.updater/busy</code>).</p>
+<p><strong>Sürümler ve geri dönüş.</strong> Son N sürüm (varsayılan 5, kartın ayarlarından ya da <code>WATCHOVER_UPDATE_KEEP</code>) kaynak ağacı ve imajlarıyla <code>.releases/&lt;sürüm&gt;/</code> altında saklanır; çalışan ve bir önceki sürüm hiç silinmez, daha eskileri imajlarıyla birlikte temizlenir. Listede kurulum tarihi, kaynağı (zip / çevrimdışı paket / elle), CHANGELOG notları, imajların varlığı ve o sürümden çıkarken alınan yedek görünür. <strong>Bu sürüme dön</strong>:
+- kod ve imajlar seçilen sürüme geçer; imajlar duruyorsa yeniden derleme yapılmaz,
+- önce şu anki durumun yedeği alınır (o sürüme sonradan veriyle dönülebilsin diye),
+- varsayılan olarak <strong>veriler korunur</strong>,
+- isteğe bağlı <strong>"veritabanını da o güncellemeden önceki yedeğe döndür"</strong>: o sürümden çıkılırken alınan yedek geri yüklenir (<code>./watchover.sh restore</code>). O andan sonra yazılan her şey (olaylar, incident'lar, aksiyonlar, ayarlar, kullanıcılar) kalıcı olarak silinir; ham log dosyaları yerinde kalır.</p>
+<p><strong>Veritabanı varsayımı.</strong> Şema değişiklikleri yalnızca eklemedir: tablolar <code>CREATE TABLE IF NOT EXISTS</code>, yeni sütunlar <code>ALTER TABLE … ADD COLUMN</code> (varsayılanlı ya da boş geçilebilir) ile gelir; bu yüzden eski sürüm bugünkü veritabanıyla çalışır, yeni sütunları görmez. Tek istisna v1.48'deki <code>live_batches</code> tablosunun, satırları sıcak log katmanına taşındıktan sonra silinmesidir; uygulama içinden dönülebilecek en eski sürüm (güncelleyiciyi getiren sürüm) bundan yenidir. Test takımı (<code>tests/test_updater.py::test_schema_changes_are_additive</code>) yeni bir yıkıcı ifade (<code>DROP TABLE/COLUMN</code>, <code>RENAME</code>, <code>ALTER COLUMN</code>) eklenirse kırmızıya döner. Yine de yeni sürümün yazdığı yeni değerleri (ör. yeni bir durum adı) eski sürüm tanımayabilir; böyle bir durumda veritabanlı geri dönüşü kullanın.</p>
+<p><strong>Güvenlik ve bedeli.</strong>
+- Motor soketine erişen, sunucuda <strong>root</strong> yetkisine eşdeğerdir. Bu yetki yalnızca <code>updater</code> konteynerindedir; ağı yoktur, port açmaz, panel ona yalnızca birim üzerinden istek bırakabilir. Yine de <code>sys.update</code> yetkisi ve yeniden kimlik doğrulaması olan bir kullanıcı (ya da panelin kendisini ele geçiren biri) güncelleyiciye paket uygulatabilir; paket içindeki <code>docker-compose.yml</code> sunucuda istediğini çalıştırabilir. Bu nedenle üretimde <strong>imza anahtarı tanımlayın</strong>: o zaman yalnızca sizin imzaladığınız paketler kurulur. İstemiyorsanız <code>./watchover.sh updater off</code>.
+- Yükleme, uygulama ve geri dönüş <code>sys.update</code> yetkisi <strong>ve</strong> taze bir adım doğrulaması ister (e-posta kodu, SSO yeniden girişi ya da parola; yöneticiler dahil). Her yükleme, ret, istek ve sonuç güvenlik kaydına (<code>sys.update</code> olayı) yazılır. Ayrıntılı kayıtta parola / anahtar değerleri maskelenir; yerleşik yönetici bilgileri hiçbir yerde gösterilmez.
+- SELinux (RHEL): güncelleyici <code>label=disable</code> ile çalışır (soket erişimi için); hiçbir dosyanın etiketi değişmez.
+- Podman: güncelleyici imajı <code>podman</code> istemcisiyle derlenir ve aynı sokete uzaktan bağlanır; <code>sudo ./watchover.sh update</code> bir kez yeterlidir.</p>
+<p><strong>Nerede ne var?</strong> <code>.releases/index.json</code> (çalışan / önceki), <code>.releases/&lt;sürüm&gt;/tree/</code> (kaynak), <code>.releases/&lt;sürüm&gt;/pre-update.tgz</code> (o sürümden çıkarken alınan yedek), <code>docker logs watchover-updater</code>, ayrıntılı iş kaydı kartta "Ayrıntılı kayıt". Elle yapılan bir <code>./watchover.sh update</code> da listeye "sunucuda elle" olarak eklenir. Klasör bir git kopyasıysa uygulama içi güncelleme dosyaları git'in dışında değiştirir; ikisini karıştırmayın (git'e dönecekseniz önce <code>git status</code>, gerekirse <code>git checkout -- .</code> ve sonra <code>./watchover.sh upgrade</code>).</p>
 <h2>4. Yapılandırma (.env)</h2>
 <p><code>install</code> gerekli her şeyi yazar; değiştirmek isteyenler için:</p>
 <table>

@@ -56,6 +56,11 @@ def apply_zip(data: bytes, dest: Path | None = None) -> tuple[bool, str]:
         zf = zipfile.ZipFile(io.BytesIO(data))
     except zipfile.BadZipFile:
         return False, "not a zip file"
+    import stat
+    from .updates import _zip_mode, safe_rel
+    for info in zf.infolist():                                    # zip-slip, absolute paths and symlinks refuse the whole archive
+        if safe_rel(info.filename) is None or stat.S_ISLNK(_zip_mode(info)):
+            return False, f"unsafe entry in the archive: {info.filename[:80]}"
     names = zf.namelist()
     app = next((n for n in names if n.endswith("app.py") and n.count("/") <= 1), None)
     if not app or not any(n.endswith("src/watchover/analysis.py") for n in names):

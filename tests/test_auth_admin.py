@@ -73,7 +73,12 @@ def test_apply_zip_and_version(tmp_path):
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as z:
         z.writestr("hackathon/app.py", "new"); z.writestr("hackathon/src/watchover/analysis.py", "x"); z.writestr("hackathon/data/config.json", "{\"hacked\":1}")
-        z.writestr("hackathon/.env", "SECRET=evil"); z.writestr("hackathon/../escape.txt", "no")
+        z.writestr("hackathon/.env", "SECRET=evil")
+    evil = io.BytesIO(buf.getvalue())
+    with zipfile.ZipFile(evil, "a") as z:
+        z.writestr("hackathon/../escape.txt", "no")
+    ok, msg = admin.apply_zip(evil.getvalue(), dest)                     # zip-slip refuses the whole archive (nothing written)
+    assert not ok and "unsafe entry" in msg and (dest / "app.py").read_text() == "old"
     ok, msg = admin.apply_zip(buf.getvalue(), dest)
     assert ok and "2 files" in msg and (dest / "app.py").read_text() == "new" and (dest / "src" / "watchover" / "analysis.py").exists()
     assert (dest / "data" / "config.json").read_text() == "{}" and (dest / ".env").read_text() == "SECRET=1" and not (tmp_path / "escape.txt").exists()

@@ -5,11 +5,21 @@
     python -m watchover.release major "V2: PostgreSQL"             v1.1 -> v2.0   (a big release, decided by the product owner)
     python -m watchover.release show                                current version and the latest notes
 
+Packages for the in-app update (System › Güncelleme; updates.py checks them):
+    python -m watchover.release keygen [--out DIR]                  Ed25519 pair: watchover-release.key (keep it off the servers) + .pub
+    python -m watchover.release package [--out FILE] [--key KEY]    git archive zip of HEAD (watchover-<version>/), signed with --key
+    python -m watchover.release sign FILE --key KEY                 FILE.sig next to a zip or a bundle (./watchover.sh bundle)
+    python -m watchover.release verify FILE [--pub KEY]             check FILE.sig (default key: WATCHOVER_UPDATE_PUBKEY)
+The servers get the public key: WATCHOVER_UPDATE_PUBKEY=<base64> in .env (or update-pubkey.pem in the install folder); from then on
+unsigned or badly signed packages are refused.
+
 The version lives in src/watchover/__init__.py and pyproject.toml; every bump prepends an entry to CHANGELOG.md (date, version,
 summary lines). --commit makes the commit and the git tag (v1.1), --push sends them. The System page shows the notes."""
 from __future__ import annotations
 
 import argparse
+import base64
+import os
 import re
 import subprocess
 import sys
@@ -92,13 +102,80 @@ def entries(path: Path | None = None) -> list[dict]:
     return out
 
 
+def keygen(out_dir: Path) -> dict:
+    """A new signing pair in out_dir; an existing private key is never overwritten."""
+    from . import updates
+    out_dir.mkdir(parents=True, exist_ok=True)
+    key, pub = out_dir / "watchover-release.key", out_dir / "watchover-release.pub"
+    if key.exists():
+        raise FileExistsError(f"{key} exists; move it away first")
+    priv_pem, pub_pem = updates.keygen()
+    fd = os.open(str(key), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "wb") as f:
+        f.write(priv_pem)
+    pub.write_bytes(pub_pem)
+    raw = updates.load_pubkey(pub_pem.decode())
+    return {"key": str(key), "pub": str(pub), "pubkey": base64.b64encode(raw).decode(), "fingerprint": updates.fingerprint(raw)}
+
+
+def sign_package(pkg: Path, key: Path) -> Path:
+    from . import updates
+    out = pkg.with_name(pkg.name + ".sig")
+    out.write_text(updates.sign_file(pkg, key.read_bytes()) + "\n", encoding="utf-8")
+    return out
+
+
+def verify_package(pkg: Path, pub: str = "", sig: Path | None = None) -> bool:
+    from . import updates
+    raw = updates.load_pubkey(pub or os.environ.get("WATCHOVER_UPDATE_PUBKEY", ""))
+    if raw is None:
+        raise ValueError("no public key: --pub or WATCHOVER_UPDATE_PUBKEY")
+    sig = sig or pkg.with_name(pkg.name + ".sig")
+    digest = updates._sha256(pkg)
+    return updates.verify(raw, updates.sig_message(digest), sig.read_text(encoding="utf-8") if sig.exists() else "")
+
+
+def package(out: Path | None = None, key: Path | None = None, root: Path | None = None) -> Path:
+    """The source zip owners receive (git archive of HEAD under watchover-<version>/), signed when a key is given."""
+    root = root or ROOT
+    name = f"watchover-{current(root)}"
+    out = out or root / f"{name}.zip"
+    subprocess.run(["git", "-C", str(root), "archive", "--format=zip", f"--prefix={name}/", "-o", str(out), "HEAD"], check=True)
+    if key:
+        sign_package(out, key)
+    return out
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="watchover release", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("kind", choices=KINDS + ("show",))
-    ap.add_argument("summary", nargs="?", default="")
+    ap.add_argument("kind", choices=KINDS + ("show", "keygen", "package", "sign", "verify"))
+    ap.add_argument("summary", nargs="?", default="", help="the summary of a bump, or the package file of sign / verify")
+    ap.add_argument("--key", help="private key (sign, package)")
+    ap.add_argument("--pub", default="", help="public key for verify: base64, PEM or a file (default WATCHOVER_UPDATE_PUBKEY)")
+    ap.add_argument("--out", help="keygen: folder (default .); package: zip file")
     ap.add_argument("--commit", action="store_true", help="git commit the bump and tag it vX.Y[.Z]")
     ap.add_argument("--push", action="store_true", help="push the commit and the tag (implies --commit)")
     a = ap.parse_args(argv)
+    if a.kind == "keygen":
+        r = keygen(Path(a.out or "."))
+        print(f"private key: {r['key']} (keep it on the build machine, never on a server)\npublic key:  {r['pub']}\n"
+              f"on every server, in .env:\n  WATCHOVER_UPDATE_PUBKEY={r['pubkey']}\nfingerprint: {r['fingerprint']}")
+        return 0
+    if a.kind == "package":
+        out = package(Path(a.out) if a.out else None, Path(a.key) if a.key else None)
+        print(f"{out}" + (f"  +  {out.name}.sig" if a.key else "  (unsigned: --key KEY signs it)"))
+        return 0
+    if a.kind in ("sign", "verify"):
+        if not a.summary or not Path(a.summary).is_file():
+            print("a package file is required", file=sys.stderr); return 2
+        if a.kind == "sign":
+            if not a.key:
+                print("--key is required", file=sys.stderr); return 2
+            print(sign_package(Path(a.summary), Path(a.key)))
+            return 0
+        ok = verify_package(Path(a.summary), a.pub)
+        print("signature ok" if ok else "signature BAD or missing")
+        return 0 if ok else 1
     if a.kind == "show":
         e = entries()
         print(f"Watchover {display(current())}" + (f"  ·  {e[0]['date']}  ·  " + "; ".join(e[0]["lines"][:4]) if e else ""))

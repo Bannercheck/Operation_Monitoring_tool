@@ -365,6 +365,7 @@ helm history watchover -n watchover
 helm rollback watchover &lt;REVIZYON&gt; -n watchover
 </code></pre>
 <p>Veritabanı göçleri ileriye dönüktür; geri almadan önce yedek alın (bölüm 8). Chart'ı da güncellediyseniz <code>deploy/openshift</code> klasörünü yeni sürümden alın.</p>
+<p><strong>Arayüzden güncelleme yok (bilinçli).</strong> Docker / Podman kurulumundaki uygulama içi güncelleyici (KURULUM_DOCKER.md, bölüm 3b) OpenShift'te kullanılmaz: orada sürümü Helm revizyonları ve kayıt defterindeki imajlar belirler. Sistem › Güncelleme ve sürümler kartı OpenShift'i tanır (pod içinde <code>KUBERNETES_SERVICE_HOST</code>) ve paket yükleme yerine yukarıdaki <code>helm upgrade</code> / <code>helm history</code> / <code>helm rollback</code> komutlarını gösterir. Pod'a deployment'ı değiştirme yetkisi verilmez: verilseydi panel ele geçirildiğinde namespace içinde istenen imaj çalıştırılabilir ve Helm'in bildiği revizyonla kümedeki durum birbirinden kopardı. Chart'ta motor soketi ya da <code>hostPath</code> yoktur (test: <code>tests/test_updater.py</code>). Şema göçleri yalnızca ekleme yaptığından <code>helm rollback</code> verileri korur; veritabanını da geri almak için bölüm 8'deki yedekten geri yükleyin.</p>
 <h2>8. Yedekleme</h2>
 <p><strong>Veritabanı.</strong> <code>backup.enabled: true</code> her gece <code>pg_dump</code> (özel biçim, sıkıştırılmış) alan bir CronJob ve ona ait 20 Gi'lik bir disk açar; <code>backup.keepDays</code> (14) günden eskiler silinir:</p>
 <pre><code class="language-yaml">backup:

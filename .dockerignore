@@ -17,3 +17,5 @@ datasets/
 watchover-images-*.tgz
 web/node_modules
 web/dist
+.releases/
+.updater/

@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, del, get, post, put } from "../api";
+import { del, get, post, put } from "../api";
 import { useAuth } from "../auth";
 import { useT } from "../i18n";
 import { Btn, Card, Collapsible, Confirm, Err, Field, Kpi, Table, Tabs, fmtTs } from "../components/ui";
 import { StorageCard } from "../components/StorageCard";
 import { ActModeCard } from "../components/act/ActModeCard";
 import { ActActuatorsCard } from "../components/act/ActActuatorsCard";
+import { UpdateCenter, useStepUp } from "../components/sys/Updates";
 import { useSearchParams } from "react-router-dom";
 import Notify from "./Notify";
 import Readme from "./Readme";
@@ -20,13 +21,21 @@ export default function System() {
   const snap = useMutation({ mutationFn: () => post("/system/snapshots", { reason: "manual", code: true, db: true }), onSuccess: inv });
   const rmSnap = useMutation({ mutationFn: (id: string) => del(`/system/snapshots/${id}`), onSuccess: inv });
   const vacuum = useMutation({ mutationFn: () => post("/system/vacuum"), onSuccess: inv });
-  const rollback = useMutation({ mutationFn: (id: string) => post(`/system/snapshots/${id}/rollback`), onSuccess: inv });
+  const su = useStepUp();                                   // snapshot rollback and git update need a fresh step-up, like the update card
+  const rollback = useMutation({ mutationFn: async (id: string) => { await su.ensure(); return post(`/system/snapshots/${id}/rollback`); }, onSuccess: inv });
   const restart = useMutation({ mutationFn: () => post("/system/restart") });
-  const upd = useQuery({ queryKey: ["sys-update"], queryFn: () => get("/system/update") });
+  const upd = useQuery({ queryKey: ["sys-update"], queryFn: () => get("/system/update"), enabled: can("sys.update") });
   const s = st.data; const v = s?.version ?? {}; const db = s?.database ?? {};
-  const [sp, setSp] = useSearchParams(); const tab = (sp.get("tab") as "status" | "notify" | "readme") || "status";
+  const [sp, setSp] = useSearchParams(); const tab = (sp.get("tab") as "status" | "update" | "notify" | "readme") || "status";
   const setTab = (k: string) => setSp(k === "status" ? {} : { tab: k });
-  const tabs = [{ k: "status", label: t("sys_tab_status") }, ...(can("sys.notify") ? [{ k: "notify", label: `🔔 ${t("sys_tab_notify")}` }] : []), ...(can("page.readme") ? [{ k: "readme", label: `📖 ${t("sys_tab_readme")}` }] : [])];
+  const tabs = [{ k: "status", label: t("sys_tab_status") }, ...(can("sys.update") ? [{ k: "update", label: `⬆ ${t("sys_update")}` }] : []), ...(can("sys.notify") ? [{ k: "notify", label: `🔔 ${t("sys_tab_notify")}` }] : []), ...(can("page.readme") ? [{ k: "readme", label: `📖 ${t("sys_tab_readme")}` }] : [])];
+  if (tab === "update") return <div className="stack"><div className="row between"><h2>🛠 {t("sys_title")}</h2><span className="chip">Watchover v{v.version} · {v.git}</span></div><Tabs value={tab} onChange={setTab} tabs={tabs as any} />
+    {can("sys.update") && <UpdateCenter />}
+    {su.form}
+    {can("sys.update") && <Collapsible id="sys-snapshots" title={t("sys_snapshots")} right={<><Confirm kind="" onConfirm={() => restart.mutate()}>{t("sys_restart")}</Confirm><Btn sm kind="primary" onClick={() => snap.mutate()} disabled={snap.isPending}>📸 {t("sys_snap_new")}</Btn></>}>
+      <Table cols={[{ k: "id", label: "ID", render: (r) => <b className="mono">{r.id}</b> }, { k: "version", label: t("sys_version"), render: (r) => `v${r.version} · ${r.git}` }, { k: "ts", label: t("time"), render: (r) => fmtTs(r.ts) }, { k: "reason", label: t("note") }, { k: "size", label: "MB", num: true, render: (r) => (r.size / 1e6).toFixed(1) }, { k: "dbs", label: t("sys_db"), render: (r) => (r.dbs ?? []).join(", ") },
+        { k: "x", label: "", render: (r) => <div className="row"><Confirm kind="" onConfirm={() => rollback.mutate(r.id)}>↩ {t("sys_rollback")}</Confirm><Confirm onConfirm={() => rmSnap.mutate(r.id)}>{t("delete")}</Confirm></div> }]} rows={snaps.data ?? []} /><Err e={snap.error || rollback.error} />{(rollback.isSuccess || restart.isSuccess) && <div className="ok">{t("sys_restarting")}</div>}</Collapsible>}
+  </div>;
   if (tab === "notify") return <div className="stack"><div className="row between"><h2>🛠 {t("sys_title")}</h2></div><Tabs value={tab} onChange={setTab} tabs={tabs as any} /><Notify /></div>;
   if (tab === "readme") return <div className="stack"><div className="row between"><h2>🛠 {t("sys_title")}</h2></div><Tabs value={tab} onChange={setTab} tabs={tabs as any} /><Readme /></div>;
   return <div className="stack">
@@ -48,14 +57,8 @@ export default function System() {
       <DbTables tables={db.tables ?? {}} />
     </div>
     <ParserCoverage />
-    <Collapsible id="sys-snapshots" title={t("sys_snapshots")} right={<Btn sm kind="primary" onClick={() => snap.mutate()} disabled={snap.isPending}>📸 {t("sys_snap_new")}</Btn>}>
-      <Table cols={[{ k: "id", label: "ID", render: (r) => <b className="mono">{r.id}</b> }, { k: "version", label: t("sys_version"), render: (r) => `v${r.version} · ${r.git}` }, { k: "ts", label: t("time"), render: (r) => fmtTs(r.ts) }, { k: "reason", label: t("note") }, { k: "size", label: "MB", num: true, render: (r) => (r.size / 1e6).toFixed(1) }, { k: "dbs", label: t("sys_db"), render: (r) => (r.dbs ?? []).join(", ") },
-        { k: "x", label: "", render: (r) => <div className="row"><Confirm kind="" onConfirm={() => rollback.mutate(r.id)}>↩ {t("sys_rollback")}</Confirm><Confirm onConfirm={() => rmSnap.mutate(r.id)}>{t("delete")}</Confirm></div> }]} rows={snaps.data ?? []} /><Err e={snap.error || rollback.error} />{rollback.isSuccess && <div className="ok">{t("sys_restarting")}</div>}</Collapsible>
-    <div className="grid k2 top">
-      <Collapsible id="sys-update" title={`⬆ ${t("sys_update")}`} right={<Confirm kind="" onConfirm={() => restart.mutate()}>{t("sys_restart")}</Confirm>}><p className="muted small" style={{ marginTop: 0 }}>{upd.data?.docker ? t("sys_update_docker") : ""}</p><pre className="code">{(upd.data?.commands ?? []).join("\n")}</pre>{restart.isSuccess && <div className="ok">{t("sys_restarting")}</div>}</Collapsible>
-      {can("sys.maint") && <Settings />}
-    </div>
-    {can("sys.maint") && <Maintenance docker={!!upd.data?.docker} />}
+    {can("sys.maint") && <Settings />}
+    {can("sys.maint") && <Maintenance docker={!!upd.data?.docker} ensure={su.ensure} />}
     {can("act.policy") && can("page.actions") && <ActModeCard />}
     {can("act.connect") && can("page.actions") && <ActActuatorsCard />}
     {user?.role === "admin" && user?.all !== false && <DemoClean />}
@@ -141,14 +144,13 @@ function DemoClean() {
   </Collapsible>;
 }
 
-function Maintenance({ docker }: { docker: boolean }) {
+function Maintenance({ docker, ensure }: { docker: boolean; ensure: () => Promise<void> }) {
   const { t } = useT(); const qc = useQueryClient(); const [msg, setMsg] = useState<any>(null);
   const run = async (fn: () => Promise<any>) => { try { setMsg({ ok: true, text: JSON.stringify(await fn()) }); qc.invalidateQueries(); } catch (e: any) { setMsg({ ok: false, text: e.message }); } };
-  const deploy = async (files: FileList | null) => { if (!files?.length) return; const fd = new FormData(); fd.append("file", files[0]); await run(() => api("/system/deploy", { method: "POST", form: fd })); };
-  return <Collapsible id="sys-maint" defaultOpen={false} title={`🧰 ${t("sys_maint")}`}><div className="row">
+  return <Collapsible id="sys-maint" defaultOpen={false} title={`🧰 ${t("sys_maint")}`}><div className="row" style={{ flexWrap: "wrap" }}>
     <Confirm kind="" onConfirm={() => run(() => post("/live/clear"))}>📡 {t("sys_clear_live")}</Confirm>
     <Confirm kind="" onConfirm={() => run(() => post("/system/snapshots/prune?keep=10"))}>🗂 {t("sys_prune")}</Confirm>
-    {!docker && <><label className="btn">📦 {t("sys_zip_deploy")}<input type="file" accept=".zip" style={{ display: "none" }} onChange={(e) => deploy(e.target.files)} /></label><Confirm kind="" onConfirm={() => run(() => post("/system/git-update"))}>⬇ {t("sys_git_update")}</Confirm></>}
+    {!docker && <Confirm kind="" onConfirm={() => run(async () => { await ensure(); return post("/system/git-update"); })}>⬇ {t("sys_git_update")}</Confirm>}
     {msg && <span className={msg.ok ? "ok" : "err"}>{msg.text.slice(0, 200)}</span>}</div></Collapsible>;
 }
 /** Table list of the database: filter box, "only non-empty" switch, collapsed to the first rows until expanded. */

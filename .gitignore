@@ -45,3 +45,7 @@ certs/
 # secrets (never commit)
 data/.api.key
 .streamlit/secrets.toml
+# in-app updates (watchover.sh updater): kept releases, work space, commit of a zip release
+.releases/
+.updater/
+.release-rev

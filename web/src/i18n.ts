@@ -1,6 +1,7 @@
 // UI strings, Turkish first. `t(key)` falls back to the key so a missing entry is visible, never a crash.
 import { createContext, useContext } from "react";
 import { APP_STRINGS } from "./i18n_apps";
+import { UPD_STRINGS } from "./i18n_updates";
 
 export type Lang = "tr" | "en";
 const S: Record<string, [string, string]> = {
@@ -682,6 +683,7 @@ const S: Record<string, [string, string]> = {
   gk_prof_keys: ["Sütunlar", "Columns"], gk_prof_roles: ["Roller", "Roles"], gk_prof_hits: ["kullanım", "uses"], gk_prof_source_user: ["kullanıcı", "user"], gk_prof_source_auto: ["otomatik", "auto"], gk_prof_none: ["Henüz öğrenilmiş eşleme yok; bir CSV / JSON yükleyin.", "No learned mapping yet; upload a CSV / JSON."],
 };
 Object.assign(S, APP_STRINGS);                       // the applications pages (i18n_apps.ts)
+Object.assign(S, UPD_STRINGS);                       // the in-app update card (i18n_updates.ts)
 
 export function tr(lang: Lang, key: string, kw: Record<string, any> = {}): string {
   const e = S[key];

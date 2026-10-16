@@ -30,9 +30,14 @@
 #   ./watchover.sh llm prepare      cache the training base weights (done by 'bundle' automatically) so the trainer never needs internet
 #   ./watchover.sh profile [NAME]   sizing: auto (default: measured from this machine on every start), cpu8 / cpu16 (fixed numbers); no NAME shows it
 #   ./watchover.sh shell            a shell inside the dashboard container
+#   ./watchover.sh updater on|off|status   in-app updates (Sistem › Güncelleme): upload a zip / bundle, apply, roll back. A separate
+#                                   'updater' container is the only one with the engine socket (= root on this host); on by default
+#   ./watchover.sh build            only the images of this tree's version (the updater builds a new release with it before switching)
+#   ./watchover.sh health [VER] [S] wait up to S seconds (180) until the dashboard answers /api/health with VER (default: this tree)
 set -euo pipefail
 cd "$(dirname "$0")"
-ENV_FILE=.env
+ENV_FILE="${WATCHOVER_ENV_FILE:-.env}"      # the updater builds a release tree with the install folder's .env
+UPDATER_TAG=1                               # watchover-updater:1 carries tools only (its logic runs from this folder): bump when Dockerfile.updater changes
 COMPOSE="docker compose"
 CMD="${1:-}"
 
@@ -86,7 +91,8 @@ need_docker() {
 }
 rand() { if command -v openssl >/dev/null 2>&1; then openssl rand -hex "$1"; else head -c "$1" /dev/urandom | od -An -tx1 | tr -d ' \n'; fi; }
 version() { sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml | head -1; }
-git_rev() { (git rev-parse --short HEAD 2>/dev/null) || echo "-"; }
+# this tree's commit: git when the folder is a checkout of its own, else .release-rev (written from the zip comment by the updater)
+git_rev() { local r=""; [ "$(git rev-parse --show-toplevel 2>/dev/null)" = "$(pwd -P)" ] && r=$(git rev-parse --short HEAD 2>/dev/null); [ -n "$r" ] || { [ -f .release-rev ] && r=$(tr -dc '0-9a-f' < .release-rev | cut -c1-12); }; echo "${r:--}"; }
 env_get() { sed -n "s/^$1=//p" "$ENV_FILE" 2>/dev/null | head -1 | sed 's/[[:space:]]*#.*$//; s/[[:space:]]*$//'; }   # inline comments and trailing blanks dropped
 # .env is rewritten in place (same file): owner and mode stay when a command runs with sudo (systemd units, Podman)
 env_set() { local t; if grep -q "^$1=" "$ENV_FILE" 2>/dev/null; then t=$(sed "s|^$1=.*|$1=$2|" "$ENV_FILE") && printf '%s\n' "$t" > "$ENV_FILE"; else printf '%s=%s\n' "$1" "$2" >> "$ENV_FILE"; fi; }
@@ -144,6 +150,9 @@ write_env() {
   [ -n "$(env_get POSTGRES_PASSWORD)" ] && [ "$(env_get POSTGRES_PASSWORD)" != "change-me" ] || { env_set POSTGRES_PASSWORD "$(rand 24)"; say "POSTGRES_PASSWORD generated"; }
   [ -n "$(env_get MCP_API_KEY)" ] || { sed -i.bak 's/^#MCP_API_KEY=.*$//' "$ENV_FILE" 2>/dev/null; rm -f "$ENV_FILE.bak"; env_set MCP_API_KEY "$(rand 24)"; say "MCP_API_KEY generated"; }
   env_set WATCHOVER_ENGINE "$ENGINE"
+  [ -n "$(env_get WATCHOVER_UPDATER)" ] || env_set WATCHOVER_UPDATER 1      # in-app updates on by default; ./watchover.sh updater off
+  in_updater || env_set WATCHOVER_INSTALL_DIR "$(pwd -P)"                  # the updater mounts this folder at the same path
+  [ -n "$(env_get WATCHOVER_ENGINE_SOCK)" ] || env_set WATCHOVER_ENGINE_SOCK "$(engine_sock)"
   size_env
   compose_files
   chmod 600 "$ENV_FILE"
@@ -159,6 +168,7 @@ fs_of() { df -P "$1" 2>/dev/null | awk 'NR==2 {print $6}'; }
 lower() { echo "$1" | tr 'A-Z' 'a-z'; }
 check_log_dir() {   # HOT|COLD PATH: exists (created when root), writable for UID 10001 / GID 0, on a disk of its own
   local k="$1" p="$2" fix u g m ok=0
+  in_updater && return 0                                 # host paths are not visible in the updater container; checked when they were set
   case "$p" in /*) ;; *) die "WATCHOVER_LOG_${k}_PATH must be an absolute host directory such as /srv/watchover/$(lower "$k") (got '$p')" ;; esac
   fix="sudo chown -R $LOG_UID:0 $p && sudo chmod 2770 $p"
   if [ ! -d "$p" ]; then
@@ -192,26 +202,51 @@ have_image() { docker image inspect "$1" >/dev/null 2>&1; }
 build() {
   if offline; then   # air-gapped: the images came in with ./watchover.sh unbundle, never build or pull here
     have_image "watchover:$(version)" && have_image "watchover-receiver:$(version)" || die "offline install and image watchover:$(version) or watchover-receiver:$(version) is missing: unbundle the bundle of this version first (./watchover.sh unbundle watchover-bundle-$(version).tar)"
-    say "offline install: using the loaded image watchover:$(version) (no build)"; return 0
+    say "offline install: using the loaded image watchover:$(version) (no build)"
+    if updater_on && ! have_image "watchover-updater:$UPDATER_TAG"; then env_set WATCHOVER_UPDATER 0; say "offline install: the bundle has no watchover-updater image, in-app updates stay off (bundle a newer version)"; fi
+    return 0
   fi
   say "building image watchover:$(version) from this source tree (first time: a few minutes, needs internet for PyPI)"
   build_img dashboard --build-arg GIT_REV="$(git_rev)" --build-arg VERSION="$(version)"
   say "building the receiver (Go, a few seconds)"; build_img receiver
   [ "$(env_get WATCHOVER_LLM)" = "1" ] && build_img trainer || true
+  if updater_on && ! have_image "watchover-updater:$UPDATER_TAG"; then
+    say "building the updater image (once: Docker CLI + Compose, bash, Python)"
+    build_img updater || { env_set WATCHOVER_UPDATER 0; say "WARNING: the updater image could not be built; in-app updates stay off (./watchover.sh updater on to retry)"; }
+  fi
+  return 0
 }
 # one image: Docker through compose; Podman with podman build (Docker image format keeps HEALTHCHECK) under the name Docker gives
 # 'watchover:<tag>', which is the name compose asks the Podman socket for
 build_img() {
-  local svc="$1" f=Dockerfile n=watchover; shift
+  local svc="$1" f=Dockerfile n=watchover tag; tag="$(version)"; shift
   if [ "$ENGINE" = podman ]; then
-    case "$svc" in receiver) f=Dockerfile.receiver; n=watchover-receiver ;; trainer) f=Dockerfile.trainer; n=watchover-trainer ;; esac
-    podman build --format docker -f "$f" -t "docker.io/library/$n:$(version)" "$@" .
+    case "$svc" in receiver) f=Dockerfile.receiver; n=watchover-receiver ;; trainer) f=Dockerfile.trainer; n=watchover-trainer ;;
+      updater) f=Dockerfile.updater; n=watchover-updater; tag=$UPDATER_TAG; set -- "$@" --build-arg PODMAN=1 ;; esac
+    podman build --format docker -f "$f" -t "docker.io/library/$n:$tag" "$@" .
   elif [ "$svc" = trainer ]; then $COMPOSE --profile llm build "$@" trainer
+  elif [ "$svc" = updater ]; then $COMPOSE --profile updater build "$@" updater
   else $COMPOSE build "$@" "$svc"; fi
 }
 # compose volume name (project prefix) for a volume declared in docker-compose.yml
 vol_name() { $COMPOSE config --format json 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin)['volumes']['$1']['name'])" 2>/dev/null || echo "watchover_$1"; }
 
+# the in-app updater (docker-compose.yml service 'updater', profile 'updater'): the only container with the engine socket
+in_updater() { [ "${WATCHOVER_IN_UPDATER:-}" = 1 ]; }
+updater_on() { [ "$(env_get WATCHOVER_UPDATER)" = "1" ]; }
+uprof() { updater_on && echo "--profile updater" || true; }
+engine_sock() {   # what the updater mounts: the Podman socket, rootless Docker's, else /var/run/docker.sock (Docker Desktop maps it to its VM)
+  local s
+  if [ "$ENGINE" = podman ]; then echo "$PODMAN_SOCK"; return; fi
+  s="${DOCKER_HOST:-}"; [ -n "$s" ] || s=$(command docker context inspect --format '{{.Endpoints.docker.Host}}' 2>/dev/null || true)
+  case "$(uname -s) $s" in "Linux unix:///run/user/"*) echo "${s#unix://}" ;; *) echo /var/run/docker.sock ;; esac
+}
+busy_guard() {   # an in-app update owns the stack meanwhile (marker written by the updater, ignored after 3 hours)
+  in_updater && return 0
+  [ -f .updater/busy ] || return 0
+  [ -n "$(find .updater/busy -mmin -180 2>/dev/null)" ] || return 0
+  die "an in-app update is running ($(head -c 160 .updater/busy 2>/dev/null)); wait for it (Sistem › Güncelleme) or, if it is stuck, remove .updater/busy"
+}
 profiles() { local p=""; [ "$(env_get WATCHOVER_MCP)" = "1" ] && p="$p --profile mcp"; [ "$(env_get WATCHOVER_LEGACY)" = "1" ] && p="$p --profile legacy"; [ "$(env_get WATCHOVER_EDGE)" = "1" ] && p="$p --profile edge"; [ "$(env_get WATCHOVER_LLM)" = "1" ] && p="$p --profile llm"; echo "$p"; }
 # a *.local name on macOS: announce it on the LAN with Bonjour (dns-sd proxy record) so colleagues' Macs, iPhones and Windows 10+ resolve it.
 # With launchd available the record is a LaunchAgent (KeepAlive: survives logout, reboot and 'update'); otherwise a nohup process
@@ -374,7 +409,12 @@ verify_running() {
   else say "WARNING: this folder is v$(version) but the dashboard reports '${v:-no answer}'. See ./watchover.sh logs dashboard, then ./watchover.sh update"; fi
 }
 edge_url() { local h p; h=$(env_get WATCHOVER_EDGE_HOST); p=$(env_get WATCHOVER_EDGE_HTTPS_PORT || echo 443); [ "$p" = "443" ] && echo "https://$h" || echo "https://$h:$p"; }
-up() { $COMPOSE $(profiles) up -d --remove-orphans; mdns_ensure; }
+up() {   # inside the updater its own container is left alone (its profile is not active, so it is not an orphan either)
+  $COMPOSE $(profiles) up -d --remove-orphans
+  in_updater && return 0
+  if updater_on; then $COMPOSE --profile updater up -d --no-deps updater || say "WARNING: the updater did not start (in-app updates unavailable): ./watchover.sh logs updater"; fi
+  mdns_ensure
+}
 
 # systemd (Linux servers): the stack at boot and the nightly backup; cron where there is no systemd (the backup only)
 SYSTEMD_DIR="${WATCHOVER_SYSTEMD_DIR:-/etc/systemd/system}"
@@ -419,6 +459,7 @@ checklist() {
   ck "" "disk caps: Sistem › Ayarlar  hot_max_gb ~ $hot, cold_max_gb ~ $cold  (0 = none; Sistem › Depolama warns at 85%)"
   ck "$([ -n "$(env_get WATCHOVER_LOG_HOT_PATH)$(env_get WATCHOVER_LOG_COLD_PATH)" ] && echo 1)" "raw logs on disks of their own: WATCHOVER_LOG_HOT_PATH / WATCHOVER_LOG_COLD_PATH in .env (./watchover.sh storage)"
   ck "$([ "$(env_get WATCHOVER_EDGE)" = 1 ] && echo 1)" "TLS: ./watchover.sh edge on watchover.firma.com (company certificate: ./certs/watchover.crt + .key); then only 443 (+ 8600 for http agents) open"
+  ck "$(updater_on || echo 1)" "in-app updates: $(updater_on && echo "on (the updater container holds the engine socket = root on this host; signing key: WATCHOVER_UPDATE_PUBKEY)" || echo off)  -> ./watchover.sh updater off|on"
   ck "" "firewall: 8501 / 8600 / 443 (and 8765 with MCP, 4317 / 4318 with OTLP) for the right networks only: sudo bash scripts/rhel-prepare.sh prints and opens them"
 }
 
@@ -500,11 +541,11 @@ case "${1:-}" in
       "") echo "start on boot: $(autostart_state)" ;;
       *) die "usage: ./watchover.sh autostart on|off" ;; esac ;;
   update)
-    need_docker; before=$(running_version); write_env; build; up; docker image prune -f >/dev/null
+    busy_guard; need_docker; before=$(running_version); write_env; build; up; docker image prune -f >/dev/null
     say "updated ${before:+from v$before }to v$(version); data volumes untouched"; $COMPOSE ps; verify_running ;;
   upgrade)   # fetch the new version into this folder, then update. Local edits to tracked files (the reason a plain 'git pull' refuses) are
              # stashed and re-applied; a folder with its own commits is left for a manual merge.
-    need_docker
+    busy_guard; need_docker
     command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1 || die "not a git checkout: copy the new source tree (or ./watchover.sh unbundle) over this folder and run ./watchover.sh update"
     offline && die "offline install: ./watchover.sh unbundle <new bundle>, then ./watchover.sh update"
     branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)"; [ -n "$branch" ] && [ "$branch" != "HEAD" ] || branch=main
@@ -523,10 +564,34 @@ case "${1:-}" in
     exec bash "$0" update ;;
   start)   need_docker; write_env; up; $COMPOSE ps ;;
   doctor)  need_docker; doctor "${2:-}" ;;
-  stop)    need_docker; $COMPOSE $(profiles) stop ;;
+  stop)    need_docker; $COMPOSE $(profiles) $(uprof) stop ;;
   restart) need_docker; $COMPOSE $(profiles) restart "${2:-}" ;;
-  status)  need_docker; $COMPOSE $(profiles) ps; docker stats --no-stream $($COMPOSE $(profiles) ps -q) 2>/dev/null || true ;;
-  logs)    need_docker; $COMPOSE $(profiles) logs -f --tail 200 "${2:-dashboard}" ;;
+  status)  need_docker; $COMPOSE $(profiles) $(uprof) ps; docker stats --no-stream $($COMPOSE $(profiles) $(uprof) ps -q) 2>/dev/null || true ;;
+  logs)    need_docker; $COMPOSE $(profiles) $(uprof) logs -f --tail 200 "${2:-dashboard}" ;;
+  build)   # the images of this tree's version, nothing started; the updater runs it in a new release's tree (WATCHOVER_ENV_FILE = the install's .env)
+    need_docker; export WATCHOVER_IMAGE=watchover WATCHOVER_TAG="$(version)"; build; say "images of v$(version) ready (nothing restarted)" ;;
+  images)  # exit 0 when the dashboard and receiver images of VERSION (default: this tree) are there
+    need_docker; v="${2:-$(version)}"; have_image "watchover:$v" && have_image "watchover-receiver:$v" ;;
+  images-rm)   # the images of a release the updater no longer keeps; the engine refuses an image a container still uses
+    need_docker; [ -n "${2:-}" ] && [ "$2" != "$(version)" ] || die "usage: ./watchover.sh images-rm VERSION   (never the version of this folder)"
+    for i in watchover watchover-receiver watchover-trainer; do docker image rm "$i:$2" >/dev/null 2>&1 && say "removed $i:$2" || true; done ;;
+  health)  # after a start: wait until the dashboard answers /api/health with VERSION; exit 1 after SECONDS
+    need_docker; want="${2:-$(version)}"; secs="${3:-180}"; v=""; end=$(( $(date +%s) + secs ))
+    while :; do v=$(running_version); [ "$v" = "$want" ] && { say "dashboard answers: v$v"; exit 0; }; [ "$(date +%s)" -ge "$end" ] && break; sleep "${WATCHOVER_HEALTH_POLL:-3}"; done
+    say "the dashboard reports '${v:-no answer}', expected v$want"; exit 1 ;;
+  updater)   # in-app updates: the updater container is the only one with the engine socket; off = no socket in any container
+    need_docker; case "${2:-}" in
+      on)  env_set WATCHOVER_UPDATER 1; write_env
+           have_image "watchover-updater:$UPDATER_TAG" || { offline && die "offline install: the updater image comes with a bundle made by a release that has the updater"; say "building the updater image"; build_img updater; }
+           $COMPOSE --profile updater up -d --no-deps updater
+           say "in-app updates on: Sistem › Güncelleme (upload a zip or a bundle). The updater holds the engine socket (= root on this host); a signing key makes it accept only signed packages: WATCHOVER_UPDATE_PUBKEY in .env" ;;
+      off) $COMPOSE --profile updater stop updater >/dev/null 2>&1 || true; $COMPOSE --profile updater rm -f updater >/dev/null 2>&1 || true; env_set WATCHOVER_UPDATER 0
+           say "in-app updates off: no container holds the engine socket now (kept releases stay in .releases/; ./watchover.sh updater on brings it back)" ;;
+      status|"")
+           echo "in-app updater: $(updater_on && echo on || echo off)   engine socket: $(env_get WATCHOVER_ENGINE_SOCK)"
+           updater_on && { $COMPOSE --profile updater ps updater 2>/dev/null || true; }
+           if [ -f .releases/index.json ]; then sed -n -e 's/^ *"current": *"\([^"]*\)".*/  current: \1/p' -e 's/^ *"previous": *"\([^"]*\)".*/  previous: \1/p' .releases/index.json | head -2; ls -1 .releases | grep -v -e '^index.json$' -e '^\.' | sed 's/^/  kept: /' || true; fi ;;
+      *) die "usage: ./watchover.sh updater on|off|status" ;; esac ;;
   mcp)
     need_docker; case "${2:-}" in
       on)  env_set WATCHOVER_MCP 1; up; say "MCP server on: http://$(host_ip):$(env_get WATCHOVER_MCP_PORT || echo 8765)/mcp  key: $(env_get MCP_API_KEY)" ;;
@@ -629,17 +694,17 @@ case "${1:-}" in
       *) die "usage: ./watchover.sh edge on [name[,name2,ip]] | off | cert     e.g.  edge on watchover.local" ;; esac ;;
   api)     say "the API now runs inside the dashboard container: http://$(host_ip):$(env_get WATCHOVER_UI_PORT || echo 8501)/api/docs" ;;
   backup)   # --no-logs: without the raw logs under /data/logs (the nightly timer's choice: they are large); on disks of their own they are never in it
-    need_docker; keep="${WATCHOVER_BACKUP_KEEP:-$(env_get WATCHOVER_BACKUP_KEEP)}"; keep="${keep:-14}"; logs=1
-    shift; while [ $# -gt 0 ]; do case "$1" in --keep) keep="${2:-14}"; shift ;; --no-logs) logs=0 ;; *) die "usage: ./watchover.sh backup [--keep N] [--no-logs]" ;; esac; shift; done
-    bdir=$(backup_dir); mkdir -p "$bdir"; stamp=$(date +%Y%m%d-%H%M); out="$bdir/watchover-$stamp.tgz"; tmp=$(mktemp -d)
+    need_docker; keep="${WATCHOVER_BACKUP_KEEP:-$(env_get WATCHOVER_BACKUP_KEEP)}"; keep="${keep:-14}"; logs=1; out=""
+    shift; while [ $# -gt 0 ]; do case "$1" in --keep) keep="${2:-14}"; shift ;; --no-logs) logs=0 ;; --out) out="${2:-}"; [ -n "$out" ] || die "--out needs a file"; shift ;; *) die "usage: ./watchover.sh backup [--keep N] [--no-logs] [--out FILE]" ;; esac; shift; done
+    bdir=$(backup_dir); stamp=$(date +%Y%m%d-%H%M); fixed="$out"; [ -n "$out" ] || out="$bdir/watchover-$stamp.tgz"; mkdir -p "$(dirname "$out")"; tmp=$(mktemp -d)
     $COMPOSE exec -T postgres pg_dump -U "$(env_get POSTGRES_USER || echo watchover)" "$(env_get POSTGRES_DB || echo watchover)" | gzip > "$tmp/db.sql.gz"
     excl=""; [ "$logs" = 0 ] && excl="--exclude=./logs"
     docker run --rm -v "$(vol_name watchover-data)":/data -v "$tmp":/out:z "$ALPINE" tar czf /out/data.tgz $excl -C /data .
     printf 'version=%s\nengine=%s\nlogs=%s\n' "$(version)" "$ENGINE" "$logs" > "$tmp/MANIFEST"
     cp "$ENV_FILE" "$tmp/env"; tar czf "$out" -C "$tmp" .; rm -rf "$tmp"; chmod 600 "$out"; say "backup written: $out ($(du -h "$out" | cut -f1))"
-    ls -1t "$bdir"/watchover-*.tgz 2>/dev/null | tail -n +"$((keep + 1))" | while read -r old; do rm -f "$old"; say "old backup removed: $old"; done ;;
+    [ -n "$fixed" ] || ls -1t "$bdir"/watchover-*.tgz 2>/dev/null | tail -n +"$((keep + 1))" | while read -r old; do rm -f "$old"; say "old backup removed: $old"; done ;;   # --out (the updater's pre-update backup) prunes nothing
   restore)   # a backup made with --no-logs leaves the raw logs in place
-    need_docker; [ -f "${2:-}" ] || die "usage: ./watchover.sh restore backups/watchover-….tgz"; tmp=$(mktemp -d); tar xzf "$2" -C "$tmp"
+    busy_guard; need_docker; [ -f "${2:-}" ] || die "usage: ./watchover.sh restore backups/watchover-….tgz"; write_env; tmp=$(mktemp -d); tar xzf "$2" -C "$tmp"
     wipe='rm -rf /data/*'; grep -q '^logs=0' "$tmp/MANIFEST" 2>/dev/null && wipe='find /data -mindepth 1 -maxdepth 1 ! -name logs -exec rm -rf {} +'
     $COMPOSE $(profiles) stop dashboard mcp legacy 2>/dev/null || $COMPOSE stop dashboard
     $COMPOSE up -d postgres; sleep 5
@@ -700,7 +765,7 @@ case "${1:-}" in
     tmp=$(mktemp -d); mkdir -p "$tmp/volumes" "$tmp/source"
     have_image "watchover-receiver:$(version)" || die "image watchover-receiver:$(version) is not built yet: ./watchover.sh update first"
     imgs="watchover:$(version) watchover-receiver:$(version) postgres:16-alpine"
-    for i in "watchover-trainer:$(version)" caddy:2-alpine ollama/ollama:latest alpine:latest; do have_image "$i" && imgs="$imgs $i" || true; done
+    for i in "watchover-trainer:$(version)" "watchover-updater:$UPDATER_TAG" caddy:2-alpine ollama/ollama:latest alpine:latest; do have_image "$i" && imgs="$imgs $i" || true; done
     have_image alpine:latest || docker pull alpine:latest >/dev/null 2>&1 || true; have_image alpine:latest && case " $imgs " in *" alpine:latest "*) ;; *) imgs="$imgs alpine:latest" ;; esac
     if have_image "watchover-trainer:$(version)" && ! offline; then
       say "trainer image present: caching the training base weights so auto-learning works on the air-gapped server"
@@ -713,12 +778,12 @@ case "${1:-}" in
       docker run --rm -v "$n":/v:ro -v "$tmp/volumes":/out:z "$ALPINE" tar cf "/out/$v.tar" -C /v . || say "could not export $v (skipped)"
     done
     say "adding the source tree"
-    if git rev-parse HEAD >/dev/null 2>&1; then git archive --format=tar HEAD | tar xf - -C "$tmp/source"; else tar cf - --exclude=./.git --exclude=./data --exclude=./backups --exclude=./certs --exclude=./.env --exclude='./*.tar' --exclude='./*.tgz' --exclude=./web/node_modules . | tar xf - -C "$tmp/source"; fi
+    if git rev-parse HEAD >/dev/null 2>&1; then git archive --format=tar HEAD | tar xf - -C "$tmp/source"; else tar cf - --exclude=./.git --exclude=./.releases --exclude=./.updater --exclude=./data --exclude=./backups --exclude=./certs --exclude=./.env --exclude='./*.tar' --exclude='./*.tgz' --exclude=./web/node_modules . | tar xf - -C "$tmp/source"; fi
     printf 'version=%s\nimages=%s\nvolumes=%s\n' "$(version)" "$imgs" "$(ls "$tmp/volumes" 2>/dev/null | tr '\n' ' ')" > "$tmp/MANIFEST"
     tar cf "$out" -C "$tmp" MANIFEST images.tar.gz volumes source; rm -rf "$tmp"
     say "bundle written: $out ($(du -h "$out" | cut -f1)). On the air-gapped server:  tar xf $(basename "$out") --strip-components=1 source  &&  ./watchover.sh unbundle $(basename "$out")  &&  ./watchover.sh install" ;;
   unbundle)  # on the air-gapped server: images, model volumes, offline marker
-    need_docker; [ -f "${2:-}" ] || die "usage: ./watchover.sh unbundle watchover-bundle-X.Y.tar"
+    busy_guard; need_docker; [ -f "${2:-}" ] || die "usage: ./watchover.sh unbundle watchover-bundle-X.Y.tar"
     tmp=$(mktemp -d); tar xf "$2" -C "$tmp" MANIFEST images.tar.gz volumes 2>/dev/null || tar xf "$2" -C "$tmp"
     [ -f "$tmp/MANIFEST" ] && say "bundle $(sed -n 's/^version=//p' "$tmp/MANIFEST")" || true
     say "loading images"; gunzip -c "$tmp/images.tar.gz" | docker load

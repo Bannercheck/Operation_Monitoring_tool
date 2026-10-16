@@ -2,6 +2,12 @@
 
 Numaralandırma: büyük sürüm **v1, v2** (ürün sahibinin kararı), küçük güncelleme **v1.1, v1.2** (her devreye alınan özellik adımı), düzeltme **v1.1.1**. Her sürüm `python -m watchover.release <major|minor|patch> "özet"` ile açılır; Sistem › Güncelleme sayfası bu dosyayı gösterir, anlık görüntüler sürüm numarasını taşır.
 
+## v1.55 · 2026-10-16 · güncelleme
+
+- Uygulama içi güncelleme ve geri dönüş: Sistem › Güncelleme sekmesinde zip / çevrimdışı paket yükleme, adım adım güncelleme, otomatik geri dönüş, son 5 sürümden seçili sürüme dönüş
+- Ayrıcalıklı işler yalnız updater konteynerinde; yeniden kimlik doğrulama, isteğe bağlı imza zorunluluğu
+
+
 ## v1.54 · 2026-10-16 · güncelleme
 
 - Log ajanı Go'da: izlenen Linux sunucularda python3 gerekmez, tek curl ile wo-agent (log + uykudaki aksiyon ajanı)

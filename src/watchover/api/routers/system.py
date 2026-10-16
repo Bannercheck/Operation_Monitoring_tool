@@ -1,19 +1,25 @@
 from __future__ import annotations
 
 import os
+import re
+import shutil
+import time
 
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
 from fastapi import Request
 
+from ... import __version__
 from ... import admin as wo_admin
 from ... import release as wo_release
 from ... import settings as wo_settings
+from ... import updates as wo_updates
 from ..security import require, require_install, services
+from .act_common import err, stepup
 
 SETTING_KEYS = ("self_monitor", "learn_min", "alerts_on", "live_port", "live_key", "public_host", "lang", "workspace", "demo_on_start", "thr_cpu", "thr_memory", "thr_disk", "thr_gpu",
                 "live_retention_h", "live_window_max_events", "live_ring", "live_spool_mb", "history_retention_days", "cold_retention_days", "cold_max_gb", "hot_max_gb",
@@ -170,8 +176,10 @@ def update_info(user=Depends(require("sys.update"))):
 
 @router.post("/snapshots/{sid}/rollback")
 def rollback(sid: str, code: bool = True, db: bool = True, user=Depends(require("sys.update")), svc=Depends(services)):
-    """Bring a snapshot back and restart (Docker's restart policy or the launcher brings the process up again)."""
+    """Bring a snapshot back and restart (Docker's restart policy or the launcher brings the process up again). Needs a fresh step-up."""
+    stepup(svc, user)
     ok, msg = wo_admin.rollback(sid, code, db, kb=svc.kb)
+    _audit(svc, user, f"snapshot rollback {sid} (code={code}, db={db}): {msg}", ok)
     if not ok:
         raise ValueError(msg)
     out = wo_admin.deploy_finish("rollback")
@@ -193,8 +201,10 @@ async def deploy(file: UploadFile = File(...), user=Depends(require("sys.update"
     """Classic installs: unpack a release zip over the code folder (a snapshot is taken first), then restart. Docker updates the image instead."""
     if wo_admin.in_docker():
         raise ValueError("in Docker the update is the image: ./watchover.sh update")
+    stepup(svc, user)
     wo_admin.snapshot("before zip deploy", kb=svc.kb); wo_admin.prune_versions(12)
     ok, msg = wo_admin.apply_zip(await file.read())
+    _audit(svc, user, f"zip deploy {file.filename or ''}: {msg}", ok)
     if not ok:
         raise ValueError(msg)
     out = wo_admin.deploy_finish("zip")
@@ -205,8 +215,10 @@ async def deploy(file: UploadFile = File(...), user=Depends(require("sys.update"
 def git_update(branch: str = "", user=Depends(require("sys.update")), svc=Depends(services)):
     if wo_admin.in_docker():
         raise ValueError("in Docker the update is the image: ./watchover.sh update")
+    stepup(svc, user)
     wo_admin.snapshot("before git update", kb=svc.kb); wo_admin.prune_versions(12)
     ok, msg = wo_admin.git_update(branch=branch)
+    _audit(svc, user, f"git update {branch}: {msg[:120]}", ok)
     if not ok:
         raise ValueError(msg)
     out = wo_admin.deploy_finish("git")
@@ -217,3 +229,314 @@ def git_update(branch: str = "", user=Depends(require("sys.update")), svc=Depend
 def readme(user=Depends(require("page.readme"))):
     p = Path(__file__).resolve().parents[4] / "README.md"
     return p.read_text(encoding="utf-8") if p.exists() else ""
+
+
+# ---------------------------------------------------------------- in-app updates (updates.py checks packages, updater.py executes)
+# Docker / Podman: the dashboard never touches the engine. It stores the package in the spool volume shared with the 'updater'
+# container (the only one with the engine socket), writes a request and shows the state the updater writes back. Classic installs
+# unpack a checked zip in place (snapshot first, then restart). OpenShift: Helm decides (the page shows the commands).
+OPENSHIFT_COMMANDS = ["helm upgrade watchover deploy/openshift/watchover -n watchover --reuse-values --set image.tag=<sürüm>",
+                      "helm history watchover -n watchover", "helm rollback watchover <REVİZYON> -n watchover"]
+MANUAL_COMMANDS = ["./watchover.sh updater on", "./watchover.sh update", "./watchover.sh backup", "./watchover.sh restore backups/<dosya>.tgz"]
+CLASSIC_REQUIRED = wo_updates.CLASSIC_FILES + ("src/watchover/__init__.py",)
+
+
+class UpdApplyIn(BaseModel):
+    auto_rollback: bool = True
+
+
+class UpdRollbackIn(BaseModel):
+    version: str
+    restore_db: bool = False
+    auto_rollback: bool = True
+
+
+class UpdConfigIn(BaseModel):
+    keep: int = 5
+    health_s: int = 240
+    auto_rollback: bool = True
+
+
+def _audit(svc, user: dict, detail: str, ok: bool = True) -> None:
+    """Every update, rollback, upload and refusal goes into the security log (auth_events, event 'sys.update')."""
+    try:
+        svc.users._event(user.get("email", "") if isinstance(user, dict) else str(user), "sys.update", bool(ok), detail[:200])
+    except Exception:  # noqa: BLE001 - the audit never blocks the action
+        pass
+
+
+def _spool() -> Path:
+    sp = wo_updates.spool_dir()
+    for d in ("inbox", "requests", "dash"):
+        try:
+            (sp / d).mkdir(parents=True, exist_ok=True)
+        except OSError:
+            pass
+    return sp
+
+
+def _pkg_error(e: wo_updates.PackageError, status: int = 422) -> HTTPException:
+    return err(status, f"upd_{e.code}", e.detail or e.code, e.detail or e.code)      # the page translates the code
+
+
+def _pubkey():
+    try:
+        return wo_updates.configured_pubkey(None if wo_admin.in_docker() else wo_admin.repo_root())
+    except ValueError as e:
+        raise err(500, "upd_pubkey_invalid", "İmza anahtarı okunamadı (WATCHOVER_UPDATE_PUBKEY)", f"The signing key is unreadable: {e}")
+
+
+def _updater(sp: Path) -> dict:
+    u = wo_updates.read_json(sp / "updater.json", {}) or {}
+    try:
+        age = time.time() - float(u.get("ts") or 0)
+    except (TypeError, ValueError):
+        age = 1e9
+    u["online"] = bool(u) and age < 30
+    u["age_s"] = int(age) if u else None
+    return u
+
+
+def _pending(sp: Path) -> list:
+    out = []
+    for p in sorted((sp / "requests").glob("*.json")):
+        r = wo_updates.read_json(p, {}) or {}
+        out.append({k: r.get(k) for k in ("id", "kind", "version", "user", "at", "restore_db")})
+    return out
+
+
+def _packages(sp: Path) -> list:
+    out = []
+    for d in sorted((sp / "inbox").iterdir() if (sp / "inbox").is_dir() else [], reverse=True):
+        m = wo_updates.read_json(d / "meta.json", None)
+        if isinstance(m, dict):
+            out.append({k: v for k, v in m.items() if k != "sig"})
+    return out
+
+
+def _prune_inbox(sp: Path, keep: int = 3) -> None:
+    """Uploaded packages not applied: the newest few stay for a day; one waiting in a request is never removed."""
+    waiting = {r.get("id") for r in _pending(sp)}
+    dirs = sorted((d for d in (sp / "inbox").iterdir() if d.is_dir() and d.name not in waiting), key=lambda d: d.stat().st_mtime, reverse=True)
+    for i, d in enumerate(dirs):
+        if i >= keep or time.time() - d.stat().st_mtime > 86400:
+            shutil.rmtree(d, ignore_errors=True)
+
+
+def _audit_finished(svc, sp: Path) -> None:
+    """The updater has no database: the dashboard records each finished job once (dash/audited.json)."""
+    st = wo_updates.read_json(sp / "state.json", None)
+    if not isinstance(st, dict) or st.get("status") in (None, "running") or not st.get("id"):
+        return
+    marks = wo_updates.read_json(sp / "dash" / "audited.json", []) or []
+    if st["id"] in marks:
+        return
+    e = st.get("error") or {}
+    _audit(svc, st.get("user") or "updater", f"{st.get('kind')} {st.get('from')} -> {st.get('to')}: {st.get('status')}"
+           + (f" ({e.get('code')}: {e.get('detail', '')[:80]})" if e else ""), st.get("status") == "done")
+    try:
+        wo_updates.write_json(sp / "dash" / "audited.json", (marks + [st["id"]])[-50:])
+    except OSError:
+        pass
+
+
+def _idle(sp: Path) -> None:
+    st = wo_updates.read_json(sp / "state.json", None)
+    if (isinstance(st, dict) and st.get("status") == "running") or _pending(sp):
+        raise err(409, "upd_busy", "Bir güncelleme zaten sürüyor; bitmesini bekleyin", "An update is already running; wait for it to finish")
+
+
+def _check_id(pid: str) -> None:
+    if not wo_updates.ID_RE.match(pid or ""):
+        raise HTTPException(404, "not found")
+
+
+@router.get("/updates")
+def updates_overview(user=Depends(require("sys.update")), svc=Depends(services)):
+    """Everything the update card shows: the mode, the running version, uploaded packages, kept releases and the last job."""
+    m = wo_updates.mode()
+    out = {"mode": m, "current": __version__, "display": wo_updates.display(__version__), "max_mb": wo_updates.max_upload_bytes() // 1048576,
+           "packages": [], "releases": [], "state": None, "pending": [], "updater": None, "config": {}, "commands": []}
+    try:
+        key = _pubkey()
+        out["signing"] = {"required": bool(key), "fingerprint": wo_updates.fingerprint(key) if key else ""}
+    except HTTPException:
+        out["signing"] = {"required": True, "fingerprint": "", "error": "pubkey_invalid"}
+    if m == "openshift":
+        out["commands"] = OPENSHIFT_COMMANDS
+        return out
+    if m == "manual":
+        out["commands"] = MANUAL_COMMANDS
+        return out
+    sp = _spool()
+    out["packages"] = _packages(sp)
+    if m == "updater":
+        u = _updater(sp)
+        rel = wo_updates.read_json(sp / "releases.json", {}) or {}
+        out.update(updater=u, releases=rel.get("releases", []), state=wo_updates.read_json(sp / "state.json", None), pending=_pending(sp),
+                   config=wo_updates.read_json(sp / "dash" / "config.json", {}) or {"keep": u.get("keep", 5), "health_s": u.get("health_s", 240), "auto_rollback": True})
+        if (u.get("signing") or {}).get("required") and not out["signing"]["required"]:
+            out["signing"] = dict(u["signing"], checked_by="updater")
+        if not u.get("online"):
+            out["commands"] = ["./watchover.sh updater on", "./watchover.sh logs updater"]
+        _audit_finished(svc, sp)
+    else:
+        out["commands"] = ["scripts/watchover-launcher.sh update"]
+    return out
+
+
+@router.post("/updates/stepup")
+def updates_stepup(user=Depends(require("sys.update")), svc=Depends(services)):
+    """428 act_stepup_required until the account has verified itself again (the page asks before a large upload)."""
+    return {"ok": True, **stepup(svc, user)}
+
+
+@router.post("/updates/upload", status_code=201)
+async def updates_upload(request: Request, name: str = "", user=Depends(require("sys.update")), svc=Depends(services)):
+    """The package as the raw request body (streamed to the spool, size-capped), its .sig in X-Watchover-Signature; checked at once."""
+    stepup(svc, user)
+    m = wo_updates.mode()
+    if m not in ("updater", "inprocess"):
+        raise err(409, "upd_unavailable", "Bu kurulumda uygulama içinden güncellenmez", "This installation is not updated from the interface")
+    sp = _spool()
+    pid = wo_updates.new_id()
+    d = sp / "inbox" / pid
+    d.mkdir(parents=True)
+    limit, n = wo_updates.max_upload_bytes(), 0
+    part = d / "upload.part"
+    with open(part, "wb") as f:
+        async for chunk in request.stream():
+            n += len(chunk)
+            if n > limit:
+                break
+            f.write(chunk)
+    name = re.sub(r"[^\w.@+-]", "_", os.path.basename(name or "package"))[:120]
+    if n > limit:
+        shutil.rmtree(d, ignore_errors=True)
+        _audit(svc, user, f"update upload refused {name}: larger than {limit // 1048576} MB", False)
+        raise err(413, "upd_too_large", f"Paket {limit // 1048576} MB sınırını aşıyor", f"The package exceeds {limit // 1048576} MB")
+    sig = (request.headers.get("x-watchover-signature") or "").strip()[:512]
+    try:
+        kind = wo_updates.kind_of(part)
+        final = d / ("package.zip" if kind == "zip" else "package.tar")
+        os.replace(part, final)
+        info = wo_updates.inspect(final, sig=sig, pubkey=_pubkey(), current=__version__, require_updater=(m == "updater"),
+                                  require=wo_updates.REQUIRED if m == "updater" else CLASSIC_REQUIRED)
+    except wo_updates.PackageError as e:
+        shutil.rmtree(d, ignore_errors=True)
+        _audit(svc, user, f"update upload refused {name}: {e.code} {e.detail[:80]}", False)
+        raise _pkg_error(e)
+    except HTTPException:
+        shutil.rmtree(d, ignore_errors=True)
+        raise
+    meta = {"id": pid, "name": name, "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "user": user.get("email", ""), "sig": sig, **info}
+    wo_updates.write_json(d / "meta.json", meta, mode=0o640)
+    _audit(svc, user, f"update uploaded {name}: v{info['version']} ({info['kind']}, sha256 {info['sha256'][:12]}, signature {info['signature']['status']})")
+    _prune_inbox(sp)
+    return {k: v for k, v in meta.items() if k != "sig"}
+
+
+@router.delete("/updates/packages/{pid}")
+def updates_discard(pid: str, user=Depends(require("sys.update")), svc=Depends(services)):
+    _check_id(pid)
+    sp = _spool()
+    if any(r.get("id") == pid for r in _pending(sp)):
+        raise err(409, "upd_busy", "Bu paket uygulanmak üzere sırada", "This package is queued for the update")
+    shutil.rmtree(sp / "inbox" / pid, ignore_errors=True)
+    _audit(svc, user, f"update package discarded {pid}")
+    return {"ok": True}
+
+
+@router.post("/updates/packages/{pid}/apply")
+def updates_apply(pid: str, body: UpdApplyIn, user=Depends(require("sys.update")), svc=Depends(services)):
+    """Docker / Podman: a request for the updater (backup, build, switch, start, health check, auto-rollback). Classic: unpack and restart."""
+    stepup(svc, user)
+    _check_id(pid)
+    sp = _spool()
+    d = sp / "inbox" / pid
+    meta = wo_updates.read_json(d / "meta.json", None)
+    if not isinstance(meta, dict):
+        raise HTTPException(404, "not found")
+    m = wo_updates.mode()
+    if m == "updater":
+        _idle(sp)
+        if not _updater(sp).get("online"):
+            raise err(409, "upd_offline", "Güncelleyici çalışmıyor: sunucuda ./watchover.sh updater on", "The updater is not running: ./watchover.sh updater on on the server")
+        req = {"id": pid, "kind": "apply", "user": user.get("email", ""), "auto_rollback": body.auto_rollback, "sig": meta.get("sig", ""),
+               "name": meta.get("name", ""), "version": meta.get("version", ""), "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+        wo_updates.write_json(sp / "requests" / f"{pid}.json", req, mode=0o640)
+        _audit(svc, user, f"update requested v{__version__} -> v{meta.get('version')} ({meta.get('kind')}, auto-rollback {'on' if body.auto_rollback else 'off'})")
+        return {"ok": True, "queued": pid}
+    if m == "inprocess":
+        pkg = d / "package.zip"
+        if not pkg.is_file():
+            raise HTTPException(404, "not found")
+        wo_admin.snapshot(f"before update to v{meta.get('version')}", kb=svc.kb)
+        wo_admin.prune_versions(12)
+        ok, msg = wo_admin.apply_zip(pkg.read_bytes())
+        _audit(svc, user, f"update v{__version__} -> v{meta.get('version')} (in place): {msg}", ok)
+        if not ok:
+            raise ValueError(msg)
+        shutil.rmtree(d, ignore_errors=True)
+        out = wo_admin.deploy_finish("zip")
+        return {"ok": True, "message": msg, "restart": out.get("restart"), "inprocess": True}
+    raise err(409, "upd_unavailable", "Bu kurulumda uygulama içinden güncellenmez", "This installation is not updated from the interface")
+
+
+@router.post("/updates/rollback")
+def updates_rollback(body: UpdRollbackIn, user=Depends(require("sys.update")), svc=Depends(services)):
+    """Back to a kept release: its images are reused (built only when missing); restore_db also brings back the backup taken when that
+    release was left, so everything written since is lost. Default: the data stays (schema changes are additive)."""
+    stepup(svc, user)
+    if wo_updates.mode() != "updater":
+        raise err(409, "upd_unavailable", "Sürüm geçmişi bu kurulumda güncelleyiciyle yönetilmiyor", "Releases are not managed by the updater here")
+    if not wo_updates.VERSION_RE.match(body.version or ""):
+        raise err(422, "upd_bad_version", "Geçersiz sürüm", "Invalid version")
+    sp = _spool()
+    rel = {r.get("version"): r for r in (wo_updates.read_json(sp / "releases.json", {}) or {}).get("releases", [])}
+    r = rel.get(body.version)
+    if r is None:
+        raise err(404, "upd_unknown_release", "Bu sürüm saklanmıyor", "This release is not kept")
+    if r.get("current") or body.version == __version__:
+        raise err(409, "upd_same_version", "Bu sürüm zaten çalışıyor", "This release is already running")
+    if body.restore_db and not r.get("backup"):
+        raise err(409, "upd_no_backup", "Bu sürümden çıkılırken alınmış yedek yok", "No backup was taken when this release was left")
+    _idle(sp)
+    if not _updater(sp).get("online"):
+        raise err(409, "upd_offline", "Güncelleyici çalışmıyor: sunucuda ./watchover.sh updater on", "The updater is not running: ./watchover.sh updater on on the server")
+    rid = wo_updates.new_id()
+    wo_updates.write_json(sp / "requests" / f"{rid}.json", {"id": rid, "kind": "rollback", "version": body.version, "restore_db": body.restore_db,
+                                                           "auto_rollback": body.auto_rollback, "user": user.get("email", ""),
+                                                           "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}, mode=0o640)
+    _audit(svc, user, f"rollback requested v{__version__} -> v{body.version}" + (" WITH database restore" if body.restore_db else " (data kept)"))
+    return {"ok": True, "queued": rid}
+
+
+@router.get("/updates/state")
+def updates_state(user=Depends(require("sys.update")), svc=Depends(services)):
+    """What the page polls during a job (it keeps polling while the dashboard restarts)."""
+    if wo_updates.mode() != "updater":
+        return {"state": None, "updater": None, "pending": [], "version": __version__}
+    sp = _spool()
+    _audit_finished(svc, sp)
+    u = _updater(sp)
+    return {"state": wo_updates.read_json(sp / "state.json", None), "pending": _pending(sp), "version": __version__,
+            "updater": {k: u.get(k) for k in ("online", "busy", "heartbeat", "age_s", "error")}}
+
+
+@router.get("/updates/log/{jid}", response_class=PlainTextResponse)
+def updates_log(jid: str, n: int = 200, user=Depends(require("sys.update"))):
+    _check_id(jid)
+    p = _spool() / "jobs" / f"{jid}.log"
+    if p.is_symlink():
+        raise HTTPException(404, "not found")
+    return "\n".join(wo_updates.redact(ln) for ln in wo_admin.tail_log(str(p), max(10, min(n, 2000))).splitlines())
+
+
+@router.put("/updates/config")
+def updates_config(body: UpdConfigIn, user=Depends(require("sys.update")), svc=Depends(services)):
+    """Releases kept (2..50; the current and the previous one always stay), the health wait (30..1800 s), the auto-rollback default."""
+    cfg = {"keep": max(2, min(50, body.keep)), "health_s": max(30, min(1800, body.health_s)), "auto_rollback": body.auto_rollback}
+    wo_updates.write_json(_spool() / "dash" / "config.json", cfg)
+    _audit(svc, user, f"update settings: keep {cfg['keep']}, health {cfg['health_s']} s, auto-rollback {cfg['auto_rollback']}")
+    return cfg
