@@ -1140,7 +1140,7 @@ def make_handler(store: LiveStore, api_key: str | None, registry=None, rum=None,
             if rec is None and str(self.headers.get("X-Agent", "")).strip().lower() == SIM_AGENT:   # declared synthetic (agent.py --simulate): demo input
                 from .demo import enabled as demo_enabled
                 if not demo_enabled():
-                    return self._send(403, {"error": "simulator data is refused on this installation (WATCHOVER_DEMO=0)"})
+                    return self._send(403, {"error": "simulator data is refused: the simulator is retired"})
                 agent = SIM_AGENT
             name = Path(self.headers.get("X-File-Name", "agent.log")).name[:200] or "agent.log"
             try:

@@ -1,13 +1,15 @@
 # Applied automatically while the edge is on (COMPOSE_FILE in .env, set by ./watchover.sh edge on): the dashboard's plain
-# http port is not published at all, Caddy reaches it over the compose network; the receiver service keeps 8600 published for
+# http port is not published at all, nginx reaches it over the compose network; the receiver service keeps 8600 published for
 # agents that still post over http, and serves the edge's CA to the installer. Requires Docker Compose 2.24.4+ (the !override tag).
 services:
   dashboard:
     ports: !reset []
-  receiver:                                       # agents over https (Caddy routes their paths here); 8600 stays published for http
+    environment:
+      WATCHOVER_FORWARDED_ALLOW: "*"               # only the edge reaches the dashboard now: its X-Forwarded-For / -Proto are believed
+  receiver:                                       # agents over https (nginx routes their paths here); 8600 stays published for http
     environment:
       WO_AGENT_CA: /certs/watchover-ca.crt        # a company CA placed in ./certs (optional): served as /agent/ca.crt
-      WO_AGENT_CA_INTERNAL: /certs/watchover-root.crt   # Caddy's own CA (exported by ./watchover.sh edge on), only with WATCHOVER_EDGE_TLS=internal
+      WO_AGENT_CA_INTERNAL: /certs/watchover-root.crt   # this install's edge CA (scripts/edge-cert.sh), only with WATCHOVER_EDGE_TLS=internal
       WATCHOVER_EDGE_TLS: ${WATCHOVER_EDGE_TLS:-internal}
     volumes:
       - ./certs:/certs:ro,z                       # the installer pins /agent/ca.crt by the sha256 the Agents panel shows

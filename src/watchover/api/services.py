@@ -50,7 +50,7 @@ class Services:
         """Simulator extra: web and mobile HR sessions through the RUM path, their backend logs through the live path."""
         from ..live import simulate_rum
         from .. import demo as wo_demo
-        if not wo_demo.enabled():                                # production (WATCHOVER_DEMO=0): nothing is ever seeded
+        if not wo_demo.enabled():                                # the simulator is retired: nothing is ever seeded
             return
         if not getattr(self, "_sim_inventory", False):          # name the simulated peers once (only when they are not in the inventory yet)
             self._sim_inventory = True
@@ -190,6 +190,7 @@ class Services:
             self._log_migrate = False
             self.live.attach_db(self.kb)                      # 100+ hosts: the ring is seconds of data, the database holds the window
         self.log_tiers = logtiers.LogTiers(self.log_hot, self.log_cold, wo_settings.load)
+        self.log_tiers.on_tick = lambda: self.apply_capacity_settings()   # ./watchover.sh storage set --hot-hours: within the hour
         logtiers.register_purger(self.log_tiers)              # demo clean-up reaches the hot day files and the archive (demo.PURGERS)
         self.apply_capacity_settings(cfg0)
         self.agents = AgentRegistry(self.kb)
@@ -225,6 +226,12 @@ class Services:
         self.techstack.attach_teams(self.teams)
         self.anomalies.templates = self.templates
         self.alerts = wo_notify.AlertEngine(self.notifier, self.live, self.agents, self.sources); self.alerts.anomalies = self.anomalies
+        if self.log_cold is not None:                        # raw-log disks: archive at 80 / 90 %, archiving paused, integrity (logaudit.py)
+            self.alerts.storage_fn = self.log_tiers.alerts
+            self.alerts.storage_targets_fn = lambda: [u["email"] for u in self.users.list()
+                                                      if u.get("role") == "admin" and u.get("status") == "active" and "@" in (u.get("email") or "")]
+        from .. import logaudit                              # background audit jobs: verify, exports for auditors, long-range searches
+        self.audit_jobs = logaudit.Jobs(os.environ.get("WATCHOVER_EXPORT_DIR") or (wo_settings.home() / "exports"))
         from ..logsearch import LogSearch                    # log explorer (docs/design/logs.md): search, tail, detail, alerts from a query
         from ..logwatch import LogWatch, owner_scope
         self.logs = LogSearch(self.live, self.ranges, self.history, self.traces, self.kb, self.users, wo_settings.load)
@@ -257,8 +264,10 @@ class Services:
         llm_set_sink(self.kb.log_call)                       # every LLM call lands in the quality log
         self.refresh_llm()
         if bg:
+            self._reset_requested()                          # ./watchover.sh reset-data: before any thread can flush memory back
             self.history.start(); self.anomalies.start(); self.alerts.start(); self.thresholds.start(); self.poller.start(); self.memory.learner.start()
             self.act.start()                                 # act-cases thread: idle while act_mode = off
+            threading.Thread(target=self.purge_leftovers, name="demo-leftovers", daemon=True).start()   # the retired simulator's rows
             self.log_tiers.start(self.kb if self._log_migrate else None)   # copy the old table once, then the hourly archive job
             c = wo_settings.load()
             port = int(os.environ.get("LIVE_PORT", c.get("live_port", 8600)) or 8600)
@@ -372,6 +381,53 @@ class Services:
         return self._live_an[1]
 
     # ---- the simulator (demo.py): never next to real data; "off" purges everything it made
+    def purge_leftovers(self) -> dict | None:
+        """The simulator is retired: what an older version's simulator stored goes at the first start after the upgrade (demo.purge:
+        explicit markers, real data stays). Audited; nothing to do (the usual case) costs one probe per marked table."""
+        from .. import demo as wo_demo
+        if wo_demo.enabled():
+            return None
+        try:
+            if not wo_demo.present(self):
+                return None
+            out = wo_demo.purge(self)
+        except Exception:  # noqa: BLE001 - ./watchover.sh demo-clean / reset-data remain
+            return None
+        try:
+            self.users._event("system", "demo-clean", True, f"simulator retired, its data removed at start: {out['total']} "
+                                                            f"({json.dumps(out['categories'], sort_keys=True)})")
+        except Exception:  # noqa: BLE001
+            pass
+        return out
+
+    def _reset_requested(self) -> None:
+        from .. import demo as wo_demo
+        req = wo_settings.home() / wo_demo.RESET_REQUEST
+        if not req.is_file():
+            return
+        try:
+            by = str(json.loads(req.read_text(encoding="utf-8") or "{}").get("by") or "cli")
+        except (OSError, ValueError):
+            by = "cli"
+        try:
+            out = self.reset_all(by=by)
+        except Exception as e:  # noqa: BLE001 - the request stays: the next start tries again
+            (wo_settings.home() / wo_demo.RESET_RESULT).write_text(json.dumps({"error": str(e)[:500]}), encoding="utf-8")
+            return
+        req.unlink(missing_ok=True)
+        (wo_settings.home() / wo_demo.RESET_RESULT).write_text(json.dumps(out, ensure_ascii=False, default=str), encoding="utf-8")
+
+    def reset_all(self, by: str = "", dry_run: bool = False) -> dict:
+        """The full reset (demo.reset_all): every analysis store emptied, configuration / accounts / audit logs / real log lines kept. Audited."""
+        from .. import demo as wo_demo
+        out = wo_demo.reset_all(self, dry_run=dry_run)
+        if not dry_run:
+            try:
+                self.users._event(by or "system", "data-reset", True, f"full reset: {out['total']} ({json.dumps(out['categories'], sort_keys=True)})")
+            except Exception:  # noqa: BLE001 - the audit log never blocks the reset
+                pass
+        return out
+
     def _restore_demo_hosts(self) -> None:
         from .. import demo as wo_demo
         try:
@@ -422,13 +478,13 @@ class Services:
             pass
 
     def simulate(self, on: bool, confirm: bool = False, by: str = "") -> dict:
-        """on: refused on a production install (DemoDisabled, 403) and next to real data (RealDataPresent, 409).
+        """on: refused (the simulator is retired: DemoDisabled, 403; the test suite's fixtures: refused next to real data, RealDataPresent, 409).
         off: stops the simulator and purges every demo-derived item (demo.purge); with demo data present the caller must confirm
         after the counts (ConfirmRequired, 409, carries demo.preview)."""
         from .. import demo as wo_demo
         if on:
-            if not wo_demo.enabled():                        # production install: the API answers 403
-                raise wo_demo.DemoDisabled("the simulator is disabled on this installation (WATCHOVER_DEMO=0)")
+            if not wo_demo.enabled():                        # retired: the API answers 403
+                raise wo_demo.DemoDisabled("the simulator is retired: Watchover takes real data only")
             if self.sim_stop is None:
                 real = wo_demo.real_sources(self)
                 if real:

@@ -31,6 +31,6 @@ Kendi yönetici hesabınız:
   oc exec -n {{ .Release.Namespace }} deploy/{{ include "watchover.fullname" . }} -c dashboard -- python -m watchover.useradmin add ops@firma.com --admin
 
 Pod'lar:  oc get pods -n {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }}
-Mod:      {{ if .Values.demo }}DEMO (simülatör açılabilir){{ else }}üretim (WATCHOVER_DEMO=0: simülatör ve demo verisi yok){{ end }}
+Mod:      üretim (simülatör kaldırıldı: yalnız gerçek veri)
 LLM:      {{ if .Values.llm.enabled }}küme içi Ollama, model {{ .Values.llm.model }}{{ if not .Values.llm.ollama.allowEgress }} (dışa çıkış kapalı){{ end }}{{ else }}kapalı{{ if .Values.llm.lock }} (kilitli){{ end }}{{ end }}
 Saklama:  ham loglar {{ .Values.retention.liveRetentionH }} saat sıcak diskte, sonra {{ .Values.retention.coldRetentionDays }} gün soğuk arşivde

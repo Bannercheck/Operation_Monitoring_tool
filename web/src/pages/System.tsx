@@ -62,7 +62,7 @@ export default function System() {
     {can("sys.maint") && <Maintenance docker={!!upd.data?.docker} ensure={su.ensure} />}
     {can("act.policy") && can("page.actions") && <ActModeCard />}
     {can("act.connect") && can("page.actions") && <ActActuatorsCard />}
-    {user?.role === "admin" && user?.all !== false && <DemoClean />}
+    {user?.role === "admin" && user?.all !== false && <DataReset ensure={su.ensure} />}
     {can("sys.auth") && <SignInProviders />}
     {!!rel.data?.length && <Collapsible id="sys-releases" title={t("sys_releases")} defaultOpen={false}><div className="stack small">{rel.data.slice(0, 6).map((r: any) => <div key={r.version}><b>v{r.version}</b> <span className="muted">{r.date} · {r.kind}</span><ul style={{ margin: "2px 0 0", paddingLeft: 18 }}>{(r.lines ?? []).map((n: string, i: number) => <li key={i}>{n}</li>)}</ul></div>)}</div></Collapsible>}
   </div>;
@@ -122,24 +122,39 @@ function Settings() {
     {saved && <div className="ok">{t("saved")}</div>}<Err e={save.error} /></div></Collapsible>;
 }
 
-/** Demo data purge (installation administrators): everything the simulator made, in every store (the same purge as switching it off). */
-function DemoClean() {
-  const { t } = useT(); const qc = useQueryClient();
+/** Data clean-up (installation administrators): what the retired simulator left, and the full reset of every analysis store. */
+function DataReset({ ensure }: { ensure: () => Promise<void> }) {
+  const { t } = useT(); const qc = useQueryClient(); const [word, setWord] = useState("");
+  const done = () => { forgetChat(); qc.invalidateQueries(); };
   const preview = useMutation({ mutationFn: () => get("/system/demo") });
-  const clean = useMutation({ mutationFn: () => post("/system/demo-clean"), onSuccess: () => { preview.reset(); forgetChat(); qc.invalidateQueries(); } });
-  const res: any = clean.data ?? preview.data;
-  return <Collapsible id="sys-demo" defaultOpen={false} title={`🧹 ${t("sys_demo")}`}>
+  const clean = useMutation({ mutationFn: () => post("/system/demo-clean"), onSuccess: () => { preview.reset(); done(); } });
+  const rprev = useMutation({ mutationFn: () => get("/system/data-reset") });
+  const reset = useMutation({ mutationFn: async () => { await ensure(); return post("/system/data-reset", { confirm: word }); }, onSuccess: () => { rprev.reset(); setWord(""); done(); } });
+  const res: any = clean.data ?? preview.data; const rres: any = reset.data ?? rprev.data;
+  const ok = word.trim().toUpperCase() === "SIFIRLA";
+  return <Collapsible id="sys-demo" defaultOpen={false} title={`🧹 ${t("sys_reset")}`}>
     <div className="stack small">
+      <b>{t("sys_demo")}</b>
       <p className="muted" style={{ margin: 0 }}>{t("sys_demo_lead")}</p>
       <div className="row">
         <Btn sm onClick={() => preview.mutate()} disabled={preview.isPending}>🔎 {t("sys_demo_preview")}</Btn>
         <Confirm onConfirm={() => clean.mutate()}>🧹 {t("sys_demo_clean")}</Confirm>
-        {preview.data && <span className="chip">{preview.data.demo ? t("sys_demo_on") : t("sys_demo_off")}</span>}
+        {preview.data && <span className="chip">{t("sys_demo_off")}</span>}
       </div>
       {res && <><b>{clean.data ? t("sys_demo_done", { n: res.total }) : t("sys_demo_found", { n: res.total })}</b><PurgeCounts res={res} /></>}
       {!!res?.kept_hosts?.length && <div className="muted">{t("sys_demo_kept", { h: res.kept_hosts.join(", ") })}</div>}
       {!!Object.keys(res?.pending ?? {}).length && <div className="muted">{t("sys_demo_pending", { n: Object.values(res.pending as Record<string, number>).reduce((a, b) => a + b, 0) })}</div>}
       <Err e={clean.error || preview.error} />
+      <hr style={{ width: "100%", borderColor: "var(--line)" }} />
+      <b>⚠ {t("sys_reset_all")}</b>
+      <p className="muted" style={{ margin: 0 }}>{t("sys_reset_lead")}</p>
+      <div className="row" style={{ flexWrap: "wrap" }}>
+        <Btn sm onClick={() => rprev.mutate()} disabled={rprev.isPending}>🔎 {t("sys_demo_preview")}</Btn>
+        <input className="input" style={{ width: 200 }} value={word} onChange={(e) => setWord(e.target.value)} placeholder={t("sys_reset_word")} aria-label={t("sys_reset_word")} autoComplete="off" />
+        <Btn sm kind="danger" disabled={!ok || reset.isPending} onClick={() => reset.mutate()}>🗑 {t("sys_reset_go")}</Btn>
+      </div>
+      {rres && <><b>{reset.data ? t("sys_demo_done", { n: rres.total }) : t("sys_demo_found", { n: rres.total })}</b><PurgeCounts res={rres} /></>}
+      <Err e={reset.error || rprev.error} />
     </div>
   </Collapsible>;
 }
@@ -148,6 +163,7 @@ function Maintenance({ docker, ensure }: { docker: boolean; ensure: () => Promis
   const { t } = useT(); const qc = useQueryClient(); const [msg, setMsg] = useState<any>(null);
   const run = async (fn: () => Promise<any>) => { try { setMsg({ ok: true, text: JSON.stringify(await fn()) }); qc.invalidateQueries(); } catch (e: any) { setMsg({ ok: false, text: e.message }); } };
   return <Collapsible id="sys-maint" defaultOpen={false} title={`🧰 ${t("sys_maint")}`}><div className="row" style={{ flexWrap: "wrap" }}>
+    <Btn title={t("sys_cache_hint")} onClick={() => run(async () => { const r = await post("/system/cache-clear"); qc.clear(); return r; })}>♻ {t("sys_cache_clear")}</Btn>
     <Confirm kind="" onConfirm={() => run(() => post("/live/clear"))}>📡 {t("sys_clear_live")}</Confirm>
     <Confirm kind="" onConfirm={() => run(() => post("/system/snapshots/prune?keep=10"))}>🗂 {t("sys_prune")}</Confirm>
     {!docker && <Confirm kind="" onConfirm={() => run(async () => { await ensure(); return post("/system/git-update"); })}>⬇ {t("sys_git_update")}</Confirm>}

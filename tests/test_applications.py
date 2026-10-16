@@ -328,10 +328,11 @@ def test_apps_v1_migration_grants_view_only(tmp_path):
 
 
 def test_demo_seed_only_in_demo_mode(app, monkeypatch):
+    from watchover import demo as wo_demo_mod
     svc = app.svc
-    monkeypatch.setenv("WATCHOVER_DEMO", "0")
+    monkeypatch.setattr(wo_demo_mod, "SIMULATOR", False)
     assert svc.apps.seed_demo() == 0 and svc.apps.list() == []
-    monkeypatch.setenv("WATCHOVER_DEMO", "1")
+    monkeypatch.setattr(wo_demo_mod, "SIMULATOR", True)
     assert svc.apps.seed_demo() == 4 and {a["origin"] for a in svc.apps.list()} == {"demo"}
     from watchover import demo
     out = demo.clean(svc, dry_run=False)
@@ -375,3 +376,23 @@ def test_applications_on_postgres(tmp_path, monkeypatch):
         assert c.get("/api/apps/discovery", headers=admin).status_code == 200
         assert c.get(f"/api/apps/{aid}/series?minutes=1440", headers=admin).json()["source"] == "history"
         assert c.delete(f"/api/apps/{aid}", headers=admin).json()["policies_disabled"] == 1
+
+
+def test_application_integration_map_api(app):
+    """GET /api/apps/{id}/integrations: the member servers' flows folded into one map; peers carry their applications and IPs."""
+    import random
+    from watchover.auth import INITIAL_EMAIL, INITIAL_PASSWORD
+    from watchover.live import simulate_flows
+    c, svc = app, app.svc
+    admin = login(c, INITIAL_EMAIL, INITIAL_PASSWORD)
+    svc.inventory.upsert({"hostname": "db-01", "ip": "172.16.1.55", "env": "prod"})
+    svc.inventory.upsert({"hostname": "kafka-01", "ip": "172.16.1.70", "env": "prod"})
+    svc.flows._names_at = 0
+    svc.live.ingest("flows.jsonl", simulate_flows(random.Random(3)), "flow-agent")
+    api = c.post("/api/apps", json={"name": "Ödeme", "members": {"hosts": ["prd-api-01", "prd-api-02"]}}, headers=admin).json()
+    c.post("/api/apps", json={"name": "Veri", "members": {"hosts": ["db-01"]}}, headers=admin)
+    m = c.get(f"/api/apps/{api['id']}/integrations?minutes=60", headers=admin).json()
+    assert m["app"] and m["host"] == "Ödeme" and {x["host"] for x in m["members"]} == {"prd-api-01", "prd-api-02"}
+    db = next(o for o in m["outbound"] if o["target"] == "db-01")
+    assert db["ip"] == "172.16.1.55" and db["apps"] == ["Veri"] and set(db["via"]) <= {"prd-api-01", "prd-api-02"}
+    assert c.get("/api/apps/999/integrations", headers=admin).status_code == 404

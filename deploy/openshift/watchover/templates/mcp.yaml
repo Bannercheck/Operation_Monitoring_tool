@@ -103,8 +103,6 @@ spec:
               value: {{ .Values.timezone | quote }}
             - name: HOME
               value: /tmp
-            - name: WATCHOVER_DEMO
-              value: {{ ternary "1" "0" .Values.demo | quote }}
             {{- if .Values.postgresql.enabled }}
             - name: POSTGRES_PASSWORD
               valueFrom:

@@ -32,6 +32,8 @@ function Agents() {
   const rotateKey = useMutation({ mutationFn: () => post("/agents/enroll-key/rotate"), onSuccess: inv });
   const upd = useMutation({ mutationFn: (p: { id: number; op: string; version?: string }) => post(`/agents/${p.id}/update/${p.op}`, p.op === "pin" ? { version: p.version ?? "" } : undefined), onSuccess: inv });
   const editable = can("act.connect");
+  const prune = useMutation({ mutationFn: () => post("/agents/prune?days=7"), onSuccess: inv });
+  const stale = (list.data ?? []).filter((r: any) => !isSelf(r) && liveness(r) === "stale").length;
   return <div className="stack">
     {editable && <div className="grid k2">
       <Card title={t("agent_enroll")}><div className="row"><input className="input" placeholder={t("name")} value={name} onChange={(e) => setName(e.target.value)} /><input className="input" style={{ width: 120 }} value={env} onChange={(e) => setEnv(e.target.value)} />
@@ -40,15 +42,27 @@ function Agents() {
       <Card title={t("agent_key")}><div className="row"><span className="mono">{key.data?.key || "-"}</span><Btn sm onClick={() => rotateKey.mutate()}>{t("agent_key_rotate")}</Btn></div>
         <div style={{ marginTop: 8 }}><InstallCmds auth={`--enroll-key ${key.data?.key || "wk_…"} --env prod`} /></div></Card>}</div>}
     <AgentUpdates editable={editable && wide} />
-    <Card><Table cols={[{ k: "name", label: t("name"), render: (r) => <div><b>{r.name}</b>{(r.team || wide) && <div><TeamChip name={r.team} /></div>}</div> }, { k: "env", label: t("env") }, { k: "site", label: "site" }, { k: "status", label: t("status"), render: (r) => <Badge v={r.status} /> },
-      { k: "last_seen", label: t("agent_last"), render: (r) => <span className="muted small">{fmtTs(r.last_seen)} {r.last_ip}</span> }, { k: "events", label: t("agent_events"), num: true },
-      { k: "update", label: t("agu_version"), render: (r) => <AgentVersion r={r} editable={editable} onOp={(op, version) => upd.mutate({ id: r.id, op, version })} /> },
+    <Card><div className="row between" style={{ marginBottom: 8 }}><span className="muted small">{t("agent_lead")}</span>
+      {editable && wide && stale > 0 && <Confirm onConfirm={() => prune.mutate()}>🧹 {t("agent_prune", { n: stale })}</Confirm>}</div><Err e={prune.error} />
+      <Table sort={{ k: "last_seen", desc: true }} cols={[{ k: "name", label: t("name"), render: (r) => <div><b>{r.name}</b>{isSelf(r) && <div className="dim small">{t("agent_builtin")}</div>}{(r.team || wide) && <div><TeamChip name={r.team} /></div>}</div> }, { k: "env", label: t("env") }, { k: "site", label: "site" }, { k: "status", label: t("status"), render: (r) => <Badge v={r.status} /> },
+      { k: "last_seen", label: t("agent_last"), render: (r) => { const l = liveness(r); return <div className="stack" style={{ gap: 2, alignItems: "flex-start" }}><Badge v={LIVE_COLOR[l]} label={t("agent_live_" + l)} /><span className="muted small">{fmtTs(r.last_seen)} {r.last_ip}</span></div>; } }, { k: "events", label: t("agent_events"), num: true },
+      { k: "update", label: t("agu_version"), render: (r) => isSelf(r) ? <span className="dim small">{t("agent_builtin_upd")}</span> : <AgentVersion r={r} editable={editable} onOp={(op, version) => upd.mutate({ id: r.id, op, version })} /> },
       { k: "x", label: "", render: (r) => editable ? <div className="row">{r.status === "active" ? <Btn sm onClick={() => act.mutate({ id: r.id, op: "revoke" })}>{t("agent_revoke")}</Btn> : <Btn sm onClick={() => act.mutate({ id: r.id, op: "reactivate" })}>{t("agent_reactivate")}</Btn>}
         <Btn sm onClick={() => act.mutate({ id: r.id, op: "rotate" })}>{t("agent_rotate")}</Btn><Confirm onConfirm={() => act.mutate({ id: r.id, op: "delete" })}>{t("delete")}</Confirm></div> : null }]} rows={list.data ?? []} /></Card>
     {tok && <Modal title={t("agent_enroll")} onClose={() => setTok(null)}><p className="muted">{t("agent_token_once")}</p><pre className="code">{tok.token}</pre>
       <div className="small muted">{t("agent_install")}</div><InstallCmds auth={`--token ${tok.token} --env ${env}`} /></Modal>}
   </div>;
 }
+
+/** Watchover's own built-in agent (selfmon.is_self): updated with Watchover itself, never by the agent self-update. */
+const isSelf = (r: any) => String(r.tags ?? "").split(",").map((s) => s.trim()).includes("self") && r.env === "local" && r.site === "watchover";
+/** Liveness from the last line (the status column is the enrolment's: active / revoked). */
+const liveness = (r: any): string => {
+  if (!r.last_seen) return "never";
+  const min = (Date.now() - Date.parse(r.last_seen)) / 60000;
+  return min < 3 ? "online" : min < 24 * 60 ? "silent" : min < 7 * 24 * 60 ? "away" : "stale";
+};
+const LIVE_COLOR: Record<string, string> = { online: "done", silent: "medium", away: "pending", stale: "disabled", never: "disabled" };
 
 const UPD_COLOR: Record<string, string> = { current: "done", updating: "medium", failed: "open", rolled_back: "open", paused: "pending", waiting: "pending" };
 

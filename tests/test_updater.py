@@ -501,3 +501,32 @@ def test_schema_changes_are_additive():
                 if "_exec" in code or "execute" in code:
                     found.add((p.name, m.group(0).strip()))
     assert found <= allowed, found - allowed
+
+
+def test_storage_request_moves_the_log_paths_through_watchover_sh(env):
+    """System › Storage on Docker: a request of kind "storage" makes the updater run ./watchover.sh storage set with what the admin
+    gave; its ::step lines move the job's steps; .env gets the paths; the copy, the final pass, the retention and the clean-up go
+    through the image as throwaway containers. Bad requests (a system directory, nested paths, numbers out of range) never run."""
+    up, fake, tmp = env
+    hot, cold = tmp / "nvme" / "wo-hot", tmp / "sata" / "wo-arsiv"
+    for rid, bad in (("stor-bad-01", {"hot": "/etc/wo"}), ("stor-bad-02", {"hot": str(hot), "cold": str(hot) + "/a"}),
+                     ("stor-bad-03", {"cold": str(cold), "cold_days": 99999}), ("stor-bad-04", {"cold": "relative/x"}), ("stor-bad-05", {"hot_hours": 48})):
+        U.write_json(up.spool / "requests" / f"{rid}.json", {"id": rid, "kind": "storage", "user": "x", **bad})
+    assert up.once() == []
+    U.write_json(up.spool / "requests" / "stor-ok-001.json", {"id": "stor-ok-001", "kind": "storage", "hot": str(hot), "cold": str(cold),
+                                                               "hot_hours": 72, "cold_days": 365, "user": "ops@firma.com"})
+    out = up.once()
+    assert len(out) == 1 and out[0]["status"] == "done", json.dumps(out, indent=1)
+    steps = {s["name"]: s["status"] for s in out[0]["steps"]}
+    assert [s["name"] for s in out[0]["steps"]] == list(("received", "validated", "prepare", "copy", "switch", "start", "health", "cleanup", "done"))
+    assert set(steps.values()) == {"ok"}
+    envf = (up.install / ".env").read_text()
+    assert f"WATCHOVER_LOG_HOT_PATH={hot}\n" in envf and f"WATCHOVER_LOG_COLD_PATH={cold}\n" in envf
+    assert "COMPOSE_FILE=docker-compose.yml:docker-compose.loghot.yml:docker-compose.logcold.yml" in envf
+    calls = (fake / "calls.log").read_text()
+    assert f"-v watchover_watchover-data:/from -v {hot}:/to:z watchover:1.53.0 python -m watchover.logtiers relocate /from/logs/hot /to --check --uid 10001" in calls
+    assert f"-v {cold}:/to:z watchover:1.53.0 python -m watchover.logtiers relocate /from/logs/cold /to --final" in calls
+    assert "retention --home /data --hot-hours 72 --cold-days 365" in calls and "relocate-clean /from/logs/cold /to" in calls
+    assert calls.index("relocate /from/logs/hot /to --uid") < calls.index("compose stop") < calls.index("--final") < calls.index("relocate-clean")
+    hist = [json.loads(x) for x in (up.spool / "history.jsonl").read_text().splitlines()]
+    assert hist[-1]["kind"] == "storage" and hist[-1]["status"] == "done" and hist[-1]["user"] == "ops@firma.com"

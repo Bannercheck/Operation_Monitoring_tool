@@ -2,13 +2,56 @@
 
 Watchover şirket içindeki **tek bir sunucuda, tamamen Docker'da** çalışır. Kurulum paketi bu klasördür (`watchover.zip`): imaj sunucuda kaynak koddan derlenir (Node aşaması React arayüzünü, Python aşaması motoru kurar); GitHub, imaj kaydı ya da sunucuda Python gerekmez. Üç konteyner vardır: **dashboard** (React arayüzü + HTTP API 8501, canlı alıcı 8600, konteynerin kendini izleyen ajanı), **postgres** (ürün veritabanı, PostgreSQL 16) ve isteğe bağlı **mcp** (kendi MCP sunucumuz, 8765). Eski Streamlit arayüzü `legacy` profiliyle 8502'de bir süre daha açılabilir. Kod imajın içindedir; ayarlar, sırlar, anlık görüntüler ve loglar `watchover-data` biriminde, veritabanı `watchover-pg` biriminde durur. Güncelleme, yeni paketi klasörün üstüne açıp `./watchover.sh update` demektir; birimlere dokunulmaz. Red Hat sunucuda motor Docker CE ya da Podman olabilir (bölüm 1b); aynı ürünün OpenShift kurulumu `docs/KURULUM_OPENSHIFT.md`'dedir, ikisinin karşılaştırması bölüm 1c.
 
+## 0. RHEL 9: tek komutla kurulum (önerilen)
+
+Hedef sürümler **RHEL 9.6, 9.7 ve 9.8**; Rocky Linux ve AlmaLinux 9.6+ aynı şekilde kurulur (çıktıda "RHEL 9 uyumlu"). Daha eski 9.x'te uyarı verip devam eder (önce `sudo dnf -y update` önerilir), RHEL 8 ve 10'u açık bir mesajla reddeder. Motor rootful **Podman 5.x** (AppStream) + crun, netavark / aardvark-dns, container-selinux; SELinux Enforcing kalır. İşlemci x86_64 ya da aarch64.
+
+```bash
+unzip -q watchover-<sürüm>.zip && cd watchover-<sürüm>
+sudo ./install-rhel.sh          # soru sormaz, parametre gerekmez (exec biti yoksa: sudo bash install-rhel.sh)
+sudo ./install-rhel.sh --check  # isteğe bağlı: yalnız ön kontrol, hiçbir şeyi değiştirmez
+```
+
+Betik sırayla şunları yapar; her adım tekrarlanabilir: yeniden çalıştırmak **onarır**, daha yeni bir sürüm klasöründen çalıştırmak **yükseltir** (önce yedek alır).
+
+1. **Ön kontrol** (hiçbir şey değiştirilmeden; sorunların hepsi listelenip çıkılır): işletim sistemi sürümü, mimari, en az 2 CPU / 4 GB RAM / konteyner deposunda 20 GB boş (önerilen 4 CPU / 8 GB / 40 GB; yerel LLM için 16 GB RAM ve 30 GB), SELinux, saat eşitleme, cgroup v2, 80 / 443 / 8600 / 5433 portları (dolu ise hangi servisin tuttuğu), paket depoları (`dnf repolist`; RHEL'de abonelik), aşağıdaki adreslere erişim, `/var/lib/containers`'ın diski (NFS / CIFS ve HDD uyarılır: **yerel SSD olmalı**), sanal makine ve AVX2 notu.
+2. **Paketler** `scripts/rhel-prepare.sh --engine podman` ile: podman, container-selinux, crun, netavark, aardvark-dns, openssl (edge sertifikası sunucuda üretilir), Docker deposundan yalnız `docker-compose-plugin` (Docker motoru kurulmaz), `podman.socket`, chrony.
+3. **Dosyalar `/opt/watchover`'a** kopyalanır (root:root, SELinux varsayılan etiketi): sabit yol systemd birimlerini, güncelleyiciyi ve desteği basitleştirir; ev dizininden çalışan birimler SELinux'ta engellenir. `.env`, `certs/`, `backups/`, `.releases/` korunur; yeni sürümde olmayan eski dosyalar silinir. Sonraki her işlem: `sudo watchover …` (= `sudo /opt/watchover/watchover.sh …`).
+4. **`watchover.sh install --production`**: `.env` (0600, rastgele parolalar), makineye göre boyutlandırma, imajlar, PostgreSQL kendi biriminde ve yalnız `127.0.0.1:5433`.
+5. **HTTPS**: `./watchover.sh edge on <fqdn>,<kısa ad>,<ip>,localhost` (Watchover iç CA'sı; `localhost` SSH tüneli için); 8501 yayınlanmaz. Rootless Podman motoru kullanılıyorsa 80 / 443 için `net.ipv4.ip_unprivileged_port_start=80` kalıcı yapılır (`/etc/sysctl.d/90-watchover.conf`); betiğin kurduğu rootful Podman'da gerekmez. Tarayıcılara bir kez yüklenecek CA: `/opt/watchover/certs/watchover-root.crt` (yeniden almak: `sudo watchover edge cert`). Şirket sertifikası: `certs/watchover.crt` + `certs/watchover.key` koyup `sudo watchover edge on` ya da betiği yeniden çalıştırın.
+6. **Uygulama içi güncelleme** açık, **açılışta başlama** (`watchover-stack.service`), **gecelik yedek** 02:15, son 14 kopya (`watchover-backup.timer`).
+7. **firewalld** (varsayılan rotanın arayüzünün bölgesi): 443 (arayüz ve ajanlar, HTTPS), 80 (https'e yönlendirme, isteğe bağlı), 8600 yalnız ajanların düz http gönderimi açıksa (varsayılan açık; kapatmak: `.env`'de `WATCHOVER_LIVE_PORT=127.0.0.1:8600`, sonra betiği yeniden çalıştırın); 8501 kapatılır. `sudo watchover mcp on` 8765'i, `sudo watchover otlp on` 4317 / 4318'i açar, `off` kapatır. firewalld kapalıysa açılmaz, uyarı verilir.
+8. **Yerel LLM**: 16 GB+ RAM, 30 GB+ boş alan ve model kaydına erişim varsa paketli CPU Ollama arka planda kurulur (16-47 GB: qwen2.5 3B + bge-m3; 48 GB+: 7B + 3B + bge-m3; kayıt `/var/log/watchover/llm-setup.log`). Kurulumu bekletmez, tanımlı bir LLM bağlantısına dokunmaz; koşul yoksa atlanır ve nedeni yazılır.
+9. **Özet**: açılacak adresler, CA dosyası, ilk giriş (yerleşik yönetici hesabı, ilk girişte yeni parola zorunlu; parola konsoldan da belirlenebilir: `sudo watchover user password <e-posta>`), ajan kurulum komutu (arayüzde Ajanlar paneli), açılan özellikler, devreye alma listesi ve tam kayıt: `/var/log/watchover/install-<zaman>.log`.
+
+**Güvenlik duvarı ekibine çıkış listesi** (HTTPS 443/tcp; ön kontrol ulaşamadığı adresi adıyla yazar):
+
+| Adres | Ne için |
+|---|---|
+| `registry-1.docker.io`, `auth.docker.io`, `production.cloudflare.docker.com`, `docker-images-prod.6aa30f8b08e16409b46e0173d6de2f56.r2.cloudflarestorage.com` | temel imajlar (python, node, golang, alpine, postgres, edge, docker, ollama); `registries.conf`'ta docker.io aynası varsa yalnız ayna |
+| `deb.debian.org`, `dl-cdn.alpinelinux.org` | imaj derlemesinde apt / apk |
+| `pypi.org`, `files.pythonhosted.org`, `registry.npmjs.org` | Python ve arayüz paketleri |
+| `download.docker.com` | yalnız Compose yoksa (`docker-compose-plugin`); son çare `github.com` + `release-assets.githubusercontent.com` (sha256 doğrulamalı) |
+| `cdn.redhat.com` ya da Satellite / yerel ayna | yalnız Podman paketleri kurulu değilse (Rocky / Alma: kendi aynaları) |
+| `registry.ollama.ai`, `dd20bb891979d25aebc8bec07b2b3bbc.r2.cloudflarestorage.com`, `download.pytorch.org`, `huggingface.co` | yalnız yerel LLM; ulaşılamazsa LLM atlanır, kurulum sürer |
+
+**Yük dengeleyici arkasında, masaüstü olmadan.** Sağlık kontrolü: `GET /healthz` → 200 (HTTPS 443 ya da HTTP 80). Yük dengeleyici `X-Forwarded-For` ve `X-Forwarded-Proto` başlıklarını iletmeli ya da TCP geçişi (TLS passthrough) kullanmalı; dengeleyicinin adresi güvenilir yapılır: `sudo watchover edge lb <IP / CIDR>` (loglarda gerçek istemci adresi; ayrıntı bölüm 8.2); geçişte tarayıcının gördüğü ad sertifikada olmalı: `sudo ./install-rhel.sh --host watchover.firma.com` (LB adı ana adres olur). Sunucuda masaüstü gerekmez: dizüstündeki tarayıcıdan LB VIP'i ya da sunucu adresiyle açın, ya da SSH tüneli: `ssh -L 8443:localhost:443 kullanici@sunucu` → `https://localhost:8443/` (sertifikada `localhost` da vardır).
+
+**Kurumsal proxy.** `HTTPS_PROXY` / `HTTP_PROXY` / `NO_PROXY` ortamda ya da `/etc/environment`'ta tanımlıysa (sudo ortamı siler, betik dosyayı da okur) kendiliğinden ayarlanır: `/etc/dnf/dnf.conf` (`proxy=`), boşsa `subscription-manager` proxy'si, Podman çekmeleri (`/etc/containers/containers.conf.d/watchover-proxy.conf` + `podman.service` drop-in; çalışan konteynerlere proxy geçmez), imaj derlemeleri (`.env`'de `WATCHOVER_HTTPS_PROXY`, derlemeye build-arg olarak) ve Ollama / eğitici. `NO_PROXY`'ye iç servis adları, sunucunun adları ve IP'leri eklenir. SSL denetimi yapan proxy'de yukarıdaki adresler denetimden muaf olmalı: derleme konteynerleri şirket CA'sını tanımaz.
+
+**İnternetsiz (air-gapped).** Aynı işlemci mimarisinde internetli bir makinede `./watchover.sh install` (yerel LLM de gidecekse `./watchover.sh llm on`) ve `./watchover.sh bundle` → `watchover-bundle-<sürüm>.tar` (imajlar, Ollama modelleri, Compose ikilisi, kaynak). Zip ile birlikte sunucuya kopyalayın; tar dosyası betiğin yanında ya da bir üst klasördeyse kendiliğinden kullanılır: internete çıkılmaz, derleme yapılmaz. Podman paketleri yine RHEL deposundan gelir (Satellite / yerel ayna / DVD deposu). Pakette Compose yoksa `docker-compose-linux-<x86_64|aarch64>` dosyasını betiğin yanına koyun.
+
+**Sanal makinede deneme.** RHEL 9.8 (Red Hat Developer aboneliğiyle ücretsiz ISO; kurulumdan sonra `sudo subscription-manager register`) ya da Rocky Linux / AlmaLinux 9.6+ minimal kurulum; 4 vCPU, 8 GB RAM (yerel LLM denemesi için 16 GB), 60 GB disk. Apple Silicon Mac'te (UTM / Parallels / VMware Fusion) aarch64 ISO'yu seçin; x86 sanallaştırmada CPU tipini "host" verin (AVX2 yoksa yerel LLM çok yavaş, betik not düşer). Zip'i kopyalayıp `sudo ./install-rhel.sh`; tarayıcıda `https://<VM IP>`, CA dosyasını Mac'te Anahtar Zinciri › Sistem'e alıp "Her zaman güven" yapın. Kontrol: `sudo watchover status`, `sudo watchover doctor`, `sudo watchover checklist`, SELinux engeli olmadığını görmek için `sudo ausearch -m avc -ts recent`.
+
+Eski `scripts/install.sh` ve `scripts/install_linux.sh` emekli Streamlit arayüzünü kurar; kullanılmaz (dosyaların başında not var).
+
 ## 1. Sunucu gereksinimleri
 
-Sunucuya kurulacak **tek bağımlılık konteyner motorudur**: Docker (Engine 24+ ve Compose v2) ya da RHEL'de Podman 4.4+ ile Compose v2 (bölüm 1b). Python, pip, PostgreSQL ana makineye kurulmaz; hepsi imajların içindedir.
+Sunucuya kurulacak **tek bağımlılık konteyner motorudur**: Docker (Engine 24+ ve Compose v2) ya da RHEL 9.6+'da Podman 5.x ile Compose v2 (bölüm 0 / 1b). Python, pip, PostgreSQL ana makineye kurulmaz; hepsi imajların içindedir.
 
 | | |
 |---|---|
-| İşletim sistemi | Ubuntu 22.04 / 24.04, Debian 12, RHEL 8.8 / 9 ve Rocky / Alma (Linux sunucu; RHEL için bölüm 1b). Deneme için macOS / Windows'ta Docker Desktop da çalışır |
+| İşletim sistemi | RHEL 9.6 / 9.7 / 9.8 ve Rocky / Alma 9.6+ (hedef sürümler; tek komut: bölüm 0), Ubuntu 22.04 / 24.04, Debian 12, RHEL 8.8 (Docker CE, bölüm 1b). Deneme için macOS / Windows'ta Docker Desktop da çalışır |
 | Kaynak | En az 2 CPU / 4 GB RAM / 20 GB disk. Günlük GB'larca log ve büyük SAP arşivleri için 4 CPU / 8 GB |
 | Ağ | Kullanıcılar için 8501, izlenen sunuculardan gelen ajanlar için 8600 (MCP açılırsa 8765; edge açıkken yalnız 443). İmaj derlenirken bir kez PyPI ve Docker Hub'a çıkış gerekir; kapalı ağ için bölüm 9 |
 
@@ -22,7 +65,7 @@ docker compose version             # v2.x görünmeli
 
 ## 1b. Red Hat Enterprise Linux 8.8 / 9 üretim sunucusu (Docker CE ya da Podman)
 
-RHEL'de Watchover iki motordan biriyle çalışır; compose dosyası, komutlar, veriler ve yedekler ikisinde de aynıdır. `watchover.sh` motoru kendisi bulur (Docker CLI varsa Docker, yoksa Podman) ve `.env`'ye `WATCHOVER_ENGINE=docker|podman` olarak yazar; elle değiştirmek için bu satır yeterlidir. Ana makineye başka bir şey kurulmaz: Python, PostgreSQL, Ollama, Caddy imajların içindedir.
+RHEL'de Watchover iki motordan biriyle çalışır; compose dosyası, komutlar, veriler ve yedekler ikisinde de aynıdır. `watchover.sh` motoru kendisi bulur (Docker CLI varsa Docker, yoksa Podman) ve `.env`'ye `WATCHOVER_ENGINE=docker|podman` olarak yazar; elle değiştirmek için bu satır yeterlidir. Ana makineye başka bir şey kurulmaz: Python, PostgreSQL, Ollama, nginx imajların içindedir (edge sertifikası için `openssl` RHEL'de zaten vardır).
 
 | | Docker CE (varsayılan) | Podman (Red Hat'in kendi motoru) |
 |---|---|---|
@@ -44,40 +87,75 @@ cd /opt/watchover-docker
 sudo bash scripts/rhel-prepare.sh --check                 # ne yapacağını gösterir, değişiklik yapmaz (Podman: --engine podman ekleyin)
 sudo bash scripts/rhel-prepare.sh --user ops --mcp        # Docker CE; Podman için:  sudo bash scripts/rhel-prepare.sh --engine podman --mcp
 # (Docker: oturumu kapatıp açın, docker grubu)
-cp .env.docker.example .env                               # kurulumdan önce ayrı log diskleri (isteğe bağlı, önerilir; aşağıda):
-#   WATCHOVER_LOG_HOT_PATH=/srv/watchover/hot   WATCHOVER_LOG_COLD_PATH=/srv/watchover/cold
 ./watchover.sh install --production                       # Podman: sudo ./watchover.sh install --production
+./watchover.sh storage set --hot /srv/watchover/hot --cold /srv/watchover/arsiv   # ham log yerleri ELLE (aşağıda "Ham log yerleri")
 sudo ./watchover.sh backup-timer on 02:15                 # gecelik yedek (systemd timer)
 ./watchover.sh edge on watchover.sirket.local             # TLS: ./certs/watchover.crt + watchover.key şirket sertifikası ya da iç CA
 ./watchover.sh llm on                                     # yerel LLM istenirse (internetli: modeller iner; internetsiz: paketten gelir)
 ```
 
-**Üretim kurulumu (`install --production`).** Normal kurulumun aynısı, ek olarak `.env`'ye `WATCHOVER_DEMO=0` yazar (simülatör açılamaz, demo verisi oluşmaz) ve sonunda devreye alma listesini basar; `./watchover.sh checklist` aynı listeyi istendiğinde, yapılanları işaretleyerek yeniden gösterir:
+**Üretim kurulumu (`install --production`).** Normal kurulumun aynısı, ek olarak `.env`'ye `WATCHOVER_PRODUCTION=1` yazar ve sonunda devreye alma listesini basar; `./watchover.sh checklist` aynı listeyi istendiğinde, yapılanları işaretleyerek yeniden gösterir:
 
 - gecelik yedek açık mı (`backup-timer on`), yedek klasörü başka bir makineye kopyalanıyor mu,
 - açılışta başlama (Podman'da `watchover-stack.service`; Docker'da servis zaten açar),
 - yönetici parolası: `admin@watchover.local` ilk girişte parolasını değiştirir ya da `./watchover.sh user password admin@watchover.local`; kişisel yönetici hesapları (`user add … --admin`),
-- disk üst sınırları: Sistem › Ayarlar'da `hot_max_gb` / `cold_max_gb`; betik diske göre öneri yazar (kendi diskinin %80'i, iki katman aynı diskteyse %40'ı, veri biriminde %30'u),
-- ham loglar ayrı disklerde mi, TLS (edge) açık mı, güvenlik duvarında yalnız gereken portlar mı.
+- ham log yerleri elle verildi mi (`storage set --hot DİZİN --cold DİZİN`; verilmediyse "not set" yazar), arşiv süresi (varsayılan 365 gün) ve yıllık ihtiyaç (`./watchover.sh storage show`),
+- TLS (edge) açık mı, güvenlik duvarında yalnız gereken portlar mı.
 
-**Ayrı sıcak / soğuk log diskleri.** Ham loglar varsayılan olarak veri biriminin içindedir (`/data/logs/hot`, `/data/logs/cold`). Üretimde sıcak loglar (son 48-72 saat, satır başına ~65-90 bayt; dakikada 100 bin satırda ~13 GB/gün) hızlı bir diske (NVMe / SSD), soğuk arşiv (~7-8 bayt/satır, ~1,1 GB/gün) ayrı ve ucuz bir diske konur. `.env`'de iki ana makine dizini verilir; `watchover.sh` bunları `docker-compose.loghot.yml` / `docker-compose.logcold.yml` üzerinden konteynerlerde `/logs/hot` ve `/logs/cold` olarak bağlar (OpenShift'teki yollarla aynı), `COMPOSE_FILE`'ı kendisi yazar:
+**Ham log yerleri (sıcak ve arşiv) elle verilir.** Sunucu hiçbir diski kendiliğinden seçmez ya da önermez: sıcak loglar (son `live_retention_h` saat, varsayılan 48; satır başına ~65-90 bayt) ve arşiv (sıkıştırılmış, ~7-8 bayt/satır, **varsayılan 365 gün**, denetim için) için dizini yönetici verir: "buraya yaz". Verilmezse loglar veri biriminin içinde kalır (`/data/logs/hot`, `/data/logs/cold`; eski kurulumlar bozulmaz) ve hem `./watchover.sh storage show` hem Sistem › Depolama bunu **"ayarlanmadı / NOT SET"** diye gösterir.
 
 ```bash
-sudo mkfs.xfs /dev/vg_data/lv_hot && sudo mkfs.xfs /dev/vg_data/lv_cold          # örnek LVM: 200 GB'lık sunucuda ör. 60 GB hot, 50 GB cold
-sudo mkdir -p /srv/watchover/hot /srv/watchover/cold
-echo '/dev/vg_data/lv_hot  /srv/watchover/hot  xfs defaults,noatime 0 0' | sudo tee -a /etc/fstab
-echo '/dev/vg_data/lv_cold /srv/watchover/cold xfs defaults,noatime 0 0' | sudo tee -a /etc/fstab
+# önce diskleri bağlayın (örnek LVM: hızlı disk sıcak, ucuz ve büyük disk arşiv)
+sudo mkfs.xfs /dev/vg_fast/lv_hot && sudo mkfs.xfs /dev/vg_big/lv_arsiv
+sudo mkdir -p /srv/watchover/hot /srv/watchover/arsiv
+echo '/dev/vg_fast/lv_hot  /srv/watchover/hot   xfs defaults,noatime 0 0' | sudo tee -a /etc/fstab
+echo '/dev/vg_big/lv_arsiv /srv/watchover/arsiv xfs defaults,noatime 0 0' | sudo tee -a /etc/fstab
 sudo mount -a
-sudo chown -R 10001:0 /srv/watchover/hot /srv/watchover/cold && sudo chmod 2770 /srv/watchover/hot /srv/watchover/cold
-# .env:  WATCHOVER_LOG_HOT_PATH=/srv/watchover/hot   WATCHOVER_LOG_COLD_PATH=/srv/watchover/cold
-./watchover.sh start && ./watchover.sh storage           # bağlama, boş alan ve önerilen hot_max_gb / cold_max_gb
+
+./watchover.sh storage set --hot /srv/watchover/hot --cold /srv/watchover/arsiv   # yerleri ver, var olan günleri taşı
+./watchover.sh storage set --cold-days 365 --hot-hours 48                          # yalnız süreler (yer değişmeden)
+./watchover.sh storage show                                                        # yerler, süreler, boyutlar, boş alan, yıllık ihtiyaç
 ```
 
-- Konteynerler UID 10001 / GID 0 ile yazar; `watchover.sh` her başlatmada dizinin mutlak yol olduğunu, var olduğunu (root ile çalışıyorsa yoksa kendisi açar) ve bu kullanıcıya yazılabilir olduğunu denetler, değilse çalıştırılacak `chown` / `chmod` komutunu yazarak durur. Dizin kök dosya sistemindeyse "ayrı disk değil" uyarısı verir.
-- SELinux `enforcing` kalır: bağlamalar `:z` taşır, Podman (ya da `selinux-enabled` açık Docker) dizini ilk başlatmada `container_file_t` olarak etiketler (`ls -Zd /srv/watchover/hot`). Docker CE varsayılanında etiket gerekmez.
-- Mevcut bir kurulumu taşımak: `./watchover.sh stop`, sonra eski loglar kopyalanır (Podman'da `sudo podman run … docker.io/library/alpine`), `.env`'ye yollar yazılır, `./watchover.sh start`:
-  `sudo docker run --rm -v watchover_watchover-data:/data -v /srv/watchover/hot:/dst:z alpine cp -a /data/logs/hot/. /dst/` (soğuk için `cold`). Birimdeki eski kopya sonra silinebilir.
-- Log diskleri `./watchover.sh backup` içinde değildir: soğuk arşivi LVM / depolama anlık görüntüsüyle koruyun (OpenShift'teki VolumeSnapshot karşılığı).
+`storage set` şunları yapar (Podman'da `sudo ./watchover.sh storage set …`):
+
+1. **Denetim**: mutlak yol, yalnız harf / rakam / `. _ - /`; `/`, `/etc`, `/var/lib/docker` gibi sistem dizinleri, kurulum klasörünün içi, sıcak ile arşivin aynı ya da iç içe olması reddedilir. Dizin yoksa açılır, sahibi `10001:0`, kipi `2770` yapılır (yalnız o dizin, `-R` yok); içinde Watchover'a ait olmayan dosyalar varsa (ör. birinin ev dizini) **hiçbir şey değiştirilmeden** reddedilir. Hedefte yer yoksa reddedilir.
+2. **Kopyalama + doğrulama** (Watchover çalışırken): var olan gün dosyaları ve arşivler geçici adla kopyalanır; okunan baytların sha256'sı yazılanınkiyle aynı değilse durur.
+3. **Geçiş**: log yazan konteynerler kısa süre durur, son geçişte yalnız değişen dosyalar kopyalanır, `.env`'ye `WATCHOVER_LOG_HOT_PATH` / `WATCHOVER_LOG_COLD_PATH` yazılır, konteynerler yeniden oluşturulur, `/api/health` beklenir.
+4. **Eski kopyalar** yalnız yeni yer çalıştıktan sonra silinir (`--keep-old` ile kalır). Yeni yer ayağa kalkmazsa eski yollar geri yazılır ve eski veriye dokunulmamış olur.
+
+Uygulama içinden: **Sistem › Depolama › Yerleri ve süreleri ayarla** (sıcak dizin, arşiv dizini, sıcak saat, arşiv gün). Güncelleyici açıksa (bölüm 3b) istek ona gider ve aynı `storage set` adımları (hazırlık, kopyalama + sha256, geçiş, başlatma, sağlık, eski kopyalar) kartta izlenir; `sys.update` yetkisi ve taze kimlik doğrulaması (adım doğrulaması) gerekir, işlem güvenlik kaydına (`sys.storage`) yazılır. Güncelleyici kapalıysa kart çalıştırılacak komutu gösterir. Yalnız süreler değişiyorsa hemen kaydedilir.
+
+**Boyutlandırma.** Arşiv satır başına ~7-8 bayt tutar; Sistem › Depolama ve `storage show` ölçülen hızdan yıllık ihtiyacı yazar ve verilen alanın yetip yetmediğini söyler.
+
+| Dakikada satır | Arşiv / gün | Arşiv / 365 gün | Sıcak (48 saat, ~75 B/satır) |
+|---|---|---|---|
+| 10 bin | ~0,11 GB | ~40 GB | ~2,2 GB |
+| 50 bin | ~0,55 GB | ~200 GB | ~11 GB |
+| 100 bin | ~1,1 GB | ~400 GB | ~22 GB |
+| 300 bin | ~3,3 GB | ~1,2 TB | ~65 GB |
+
+Arşiv diskine bu tablonun en az %25 fazlasını verin (uyarılar %80'de başlar).
+
+**Disk dolarsa (veri kaybı yok).** Saklama süresi dolmamış bir arşiv **hiçbir boyut sınırı yüzünden silinmez**; yalnız `cold_retention_days` siler ve silişi manifestoya `expire` olarak yazar. `cold_max_gb` artık bir bütçedir: aşıldığında uyarır, silmez. Arşiv diski (ya da bütçe) **%80**'de uyarı, **%90**'da kritik uyarı verir; arşiv diski bir sonraki günü alamayacak durumdaysa (tahmini arşiv boyu + 1 GB / diskin %1'i kadar pay) **arşivleme durur**: gün sıcak diskte kalır, kritik `cold_full` uyarısı gider ve yer açılınca arşivleme kendiliğinden sürer. Sıcak disk de %80 / %90'da uyarır: arşivleme durduğunda günler orada birikir ve sıcak disk de tamamen dolarsa yeni ham satırlar yazılamaz (sayaçlarda reddedilen olarak görünür), bu yüzden kritik uyarıda arşiv diskine yer açmak ya da arşivi `storage set --cold` ile büyük bir diske taşımak gerekir. Uyarılar Sistem › Depolama'da görünür ve bildirim kanallarıyla gider: `log_storage` koşullu bir kural yoksa kritik olanlar yöneticilere e-postayla (ve tanımlıysa webhook'a) gider; Bildirimler'de `log_storage` koşullu kural kurarak alıcıları ve eşiği (80 = uyarılar da, 90 = yalnız kritik) siz belirlersiniz.
+
+**Denetim için doğrulanabilir arşiv.** Her gün arşivlendiğinde dosya **mühürlenir** (`0440`, salt okunur) ve arşiv dizinindeki `MANIFEST.jsonl`'a bir kayıt eklenir: `seq`, `op` (seal / reseal / register / expire / remove), gün, dosya, **sha256**, bayt, satır sayısı, ilk / son zaman damgası ve **bir önceki kaydın karması** (`prev`); kaydın kendi karması (`hash`) diğer alanların sıralı JSON'unun sha256'sıdır. `MANIFEST.head` son kaydı tutar, son `seq` sıcak diskte de saklanır: sondan kesilmiş bir manifesto da fark edilir. Manifestodan önce var olan arşivler ilk çalışmada "registered later" notuyla eklenir; sonradan bilinmeyen bir arşiv sessizce eklenmez, "unregistered" sorunu olarak raporlanır.
+
+```bash
+docker compose exec dashboard python -m watchover.logtiers verify                          # tüm arşiv: zincir + her dosyanın sha256'sı
+docker compose exec dashboard python -m watchover.logtiers verify --from 2026-01-01 --to 2026-03-31
+docker compose exec dashboard python -m watchover.logtiers export --from 2026-01-01 --to 2026-03-31 --out /data/exports
+#   --format archive (varsayılan): arşiv dosyaları + MANIFEST.jsonl + SLICE.json + SHA256SUMS + README.txt tek .tar
+#   --format ndjson: o günlerin saklanan satırları gzip NDJSON
+```
+
+Doğrulama silinen (`missing`), değiştirilen (`altered`), sırası bozulan ya da araya giren / çıkarılan (`chain_broken`, `seq_order`, `entry_altered`), sondan kesilen (`truncated`) ve kaydı olmayan (`unregistered`) günleri bulur; her tam doğrulama arşiv dizinindeki `VERIFY.jsonl`'a yazılır, saatlik iş boyutları ve zinciri her saat denetler (sorun = kritik uyarı). Arayüzde: **Sistem › Depolama › Denetim** (`sys.maint` yetkisi; dışa aktarım ve arama için taze kimlik doğrulaması): *Arşivi doğrula*, *Denetçi için dışa aktar* (tarih aralığı, .tar ya da NDJSON) ve *Denetim araması*. Her dışa aktarımın yanında kendi `.sha256` dosyası vardır, indirme 10 dakikalık tek dosyalık bir bağlantıyla yapılır; dışa aktarımlar veri biriminde `/data/exports` altında 7 gün (en çok 10 dosya) tutulur. Denetçi paketi açınca: `sha256sum -c SHA256SUMS` ve `python -m watchover.logtiers verify --dir archive --manifest MANIFEST.jsonl --from … --to …`.
+
+**Aylar süren aramalar.** Log gezgini arşivi istek başına 1,5 saniye tarar ve en çok 40 istek kendiliğinden devam eder; aralık daha uzunsa durduğu yeri gösterir ve **Denetim araması**na bağlantı verir. Denetim araması aynı sorgu dilini kullanır, sıcak + arşivi süre sınırı olmadan arka planda tarar (ilerleme yüzdesi, durdurma), sonucu indirilebilir NDJSON olarak yazar; aynı anda bir denetim işi çalışır.
+
+- SELinux `enforcing` kalır: bağlamalar `:z` taşır (`ls -Zd /srv/watchover/hot`). Docker CE varsayılanında etiket gerekmez.
+- Konteynerler UID 10001 / GID 0 ile yazar; `watchover.sh` her başlatmada dizinin bu kullanıcıya yazılabilir olduğunu denetler, değilse çalıştırılacak `chown` / `chmod` komutunu yazarak durur.
+- Log diskleri `./watchover.sh backup` içinde değildir: arşivi LVM / depolama anlık görüntüsüyle ya da düzenli `export` ile koruyun (OpenShift'teki VolumeSnapshot karşılığı).
 
 **Üretim notları (RHEL)**
 
@@ -99,17 +177,17 @@ Kurulum günü hedef hangisi olursa olsun ikisi de hazırdır: aynı imajlar (`D
 | Yükseltme | `./watchover.sh upgrade` (git) ya da yeni paket + `./watchover.sh update`; veri birimleri ve log diskleri yerinde kalır | Yeni etiketli imajlar + `helm upgrade … --set image.tag=X`; pod `Recreate` ile durup yenisi açılır, PVC'ler yerinde kalır |
 | Geri alma | Önceki sürümün kaynak ağacı (eski commit ya da paket) + `./watchover.sh update`. Göçler ileriye dönüktür: veritabanı için yükseltmeden önce alınan yedekle `./watchover.sh restore` | `helm rollback watchover <REVİZYON>` (imaj etiketi dahil). Göçler ileriye dönüktür: veritabanı için yükseltmeden önce alınan dump ile `pg_restore` |
 | Otomatik boyutlandırma | `watchover.sh` her install / update / start'ta CPU ve belleği ölçüp konteyner sınırlarını yazar (8 CPU / 64 GB = `cpu8` profili); sabit değer: `profile cpu8` / `cpu16` | Fark: ölçme yoktur, istek / sınır değer dosyasındadır (`values.yaml`, tam performans `values-performance.yaml`). Ortak: alıcı kendi cgroup sınırını okuyup Go'nun CPU sayısını (GOMAXPROCS) ve bellek hedefini ona göre ayarlar |
-| Ayrı sıcak / soğuk disk | `.env`: `WATCHOVER_LOG_HOT_PATH`, `WATCHOVER_LOG_COLD_PATH` (ana makine dizinleri, sahibi `10001:0`, SELinux `:z`); `/logs/hot`, `/logs/cold` olarak bağlanır. Boşsa veri biriminin içinde (`/data/logs`) | Her zaman ayrı PVC: `logs-hot` (hızlı sınıf), `logs-cold` (ucuz sınıf), aynı `/logs/hot`, `/logs/cold` yolları. Üst sınırlar `retention.hotMaxGb` / `coldMaxGb` ile sabitlenir |
+| Ayrı sıcak / soğuk disk | `./watchover.sh storage set --hot DİZİN --cold DİZİN` (ya da Sistem › Depolama, güncelleyiciyle): `.env`'de `WATCHOVER_LOG_HOT_PATH` / `_COLD_PATH`, `/logs/hot`, `/logs/cold` olarak bağlanır, var olan günler sha256 ile doğrulanarak taşınır. Verilmezse veri biriminde ("ayarlanmadı") | Her zaman ayrı PVC: `logs-hot`, `logs-cold`, aynı yollar; boyut ve süre Helm değerleriyle (`persistence.logsCold.size`, `retention.coldRetentionDays`), pod'dan değiştirilmez |
 | PostgreSQL | `postgres:16-alpine` konteyneri (birim `watchover-pg`, parola `.env`'de üretilir) ya da `.env` `DATABASE_URL` ile kurumun sunucusu | `rhel9/postgresql-16` StatefulSet (parola Secret'ta üretilir, korunur) ya da `postgresql.enabled: false` + `externalDatabase.existingSecret` |
 | LLM (yalnız CPU) | `./watchover.sh llm on`: Ollama + eğitim konteyneri, CPU payı otomatik; modeller indirilir (kapalı ağda paketten gelir) | `llm.enabled: true`: Ollama pod'u, tek model, `llm.lock`, indirdikten sonra `llm.ollama.allowEgress: false`; eğitim `trainer.enabled` |
-| MCP sunucusu | `./watchover.sh mcp on`: aynı imaj, `http://<sunucu>:8765/mcp`; edge açıkken Caddy `https://<ad>/mcp` yolunu bu konteynere (TLS), `https://<ad>/api/mcp` yolunu arayüzün kendi MCP ucuna gönderir. Anahtarlar: arayüzde adlı, kapsamlı anahtarlar (Ayarlar › Bağlantılar › MCP); `.env` `MCP_API_KEY` kurulum çapında okuma anahtarıdır (ilk kurulumda üretilir; `MCP_API_KEY_WRITE=1` yazma da verir). Canlı ürün araçları arayüze iletilir (`WATCHOVER_API_URL=http://watchover:8501`); dosyalar `./datasets` | `mcp.enabled: true`: ayrı Deployment + Route (`https://<mcp route>/mcp`, edge TLS) + NetworkPolicy; arayüzün kendi ucu `https://<ui route>/api/mcp`. Anahtarlar: aynı adlı anahtarlar; kurulum anahtarı Secret'ta (üretilir, upgrade'de korunur, arayüz pod'una da verilir) ya da `mcp.existingSecret`, yazma `mcp.installKeyWrite`. Canlı araçlar `WATCHOVER_API_URL=http://watchover:8501` ile iletilir; dosyalar kendi PVC'sinde (`/datasets`, `oc cp`). Fark: OpenShift'te MCP pod'u `/data` ve log disklerini görmez, canlı veriye arayüz üzerinden ulaşır; RHEL'de 8765 ayrıca düz http açıktır (`WATCHOVER_MCP_PORT=127.0.0.1:8765` ile yalnız yerel) |
-| Demo kapalı | `install --production` → `WATCHOVER_DEMO=0` (Docker'ın varsayılanı 1); kalan demo verisi: `./watchover.sh demo-clean` | Her zaman üretim (`demo: false`); kalan demo verisi: Sistem › Demo verisi ya da `oc exec … python -m watchover.demo clean` |
+| MCP sunucusu | `./watchover.sh mcp on`: aynı imaj, `http://<sunucu>:8765/mcp`; edge açıkken nginx `https://<ad>/mcp` yolunu bu konteynere (TLS), `https://<ad>/api/mcp` yolunu arayüzün kendi MCP ucuna gönderir. Anahtarlar: arayüzde adlı, kapsamlı anahtarlar (Ayarlar › Bağlantılar › MCP); `.env` `MCP_API_KEY` kurulum çapında okuma anahtarıdır (ilk kurulumda üretilir; `MCP_API_KEY_WRITE=1` yazma da verir). Canlı ürün araçları arayüze iletilir (`WATCHOVER_API_URL=http://watchover:8501`); dosyalar `./datasets` | `mcp.enabled: true`: ayrı Deployment + Route (`https://<mcp route>/mcp`, edge TLS) + NetworkPolicy; arayüzün kendi ucu `https://<ui route>/api/mcp`. Anahtarlar: aynı adlı anahtarlar; kurulum anahtarı Secret'ta (üretilir, upgrade'de korunur, arayüz pod'una da verilir) ya da `mcp.existingSecret`, yazma `mcp.installKeyWrite`. Canlı araçlar `WATCHOVER_API_URL=http://watchover:8501` ile iletilir; dosyalar kendi PVC'sinde (`/datasets`, `oc cp`). Fark: OpenShift'te MCP pod'u `/data` ve log disklerini görmez, canlı veriye arayüz üzerinden ulaşır; RHEL'de 8765 ayrıca düz http açıktır (`WATCHOVER_MCP_PORT=127.0.0.1:8765` ile yalnız yerel) |
+| Yalnız gerçek veri | Simülatör kaldırıldı (ayar yok); eski sürümden kalan demo verisi ilk açılışta kendiliğinden, ya da `./watchover.sh demo-clean`; tüm analiz verisini sıfırlama: `./watchover.sh reset-data` | Aynı; kalan demo verisi ilk açılışta, ya da Sistem › Veri temizliği; sıfırlama: Sistem › Veri temizliği ya da `oc exec … python -m watchover.demo reset --yes` |
 | Yedek | `./watchover.sh backup-timer on [SS:DD]`: her gece PostgreSQL dökümü + veri birimi (ham loglar hariç) + `.env` → `backups/`, son 14 (systemd timer; systemd yoksa cron). Geri: `./watchover.sh restore DOSYA`. Log diskleri: LVM / depolama anlık görüntüsü | `backup.enabled: true`: her gece `pg_dump` CronJob'u + kendi PVC'si, `keepDays`. Geri: `pg_restore`. Fark: `data` diski (ayarlar, `.vault.key`) ve log diskleri için VolumeSnapshot gerekir |
 | Ajan kayıt adresi | `http://<sunucu>:8600/ingest`, edge açıkken `https://<ad>/ingest`; kayıt anahtarı ve hazır komut Bağlantılar sayfasında | `https://<ingest route>/ingest` (ya da tek adres `routes.ui.host`); chart bu adresi uygulamaya verir (`WATCHOVER_INGEST_URL`), hazır komut aynı sayfada |
-| TLS | `./watchover.sh edge on <ad>`: Caddy 443'te; şirket sertifikası `./certs/watchover.crt` + `.key` ya da Caddy'nin kendi CA'sı (`edge cert`) | OpenShift router'ı (Route, edge TLS, http → https); kümenin `*.apps` sertifikası ya da `routes.tls` |
+| TLS | `./watchover.sh edge on <ad>`: nginx 443'te; şirket sertifikası `./certs/watchover.crt` + `.key` ya da kurulumun kendi CA'sı (`edge cert`); yük dengeleyici: `edge lb <CIDR>`, sağlık `/healthz` | OpenShift router'ı (Route, edge TLS, http → https); kümenin `*.apps` sertifikası ya da `routes.tls` |
 | İzleme / sağlık | `./watchover.sh status` ve `doctor`; sağlık uçları `/api/health` (8501), `/health` (8600, MCP 8765); konteynerin kendi ajanı (`WATCHOVER_SELFMON=1`) | Aynı uçlarda startup / readiness / liveness probları; `oc get pods`; pod'un kendi ajanı (`dashboard.selfMonitor`) |
 | Açılışta başlama | Docker: servis + `restart: unless-stopped`; Podman: `watchover-stack.service` (install açar, `./watchover.sh autostart on` / `off`) | Kubernetes (Deployment / StatefulSet) |
-| Sorun giderme | `./watchover.sh logs [servis]`, `./watchover.sh doctor`, `./watchover.sh storage`, `./watchover.sh checklist`; Docker rehberi bölüm 11 | `oc logs deploy/watchover -c dashboard` (ya da `-c receiver`), `oc describe pod`, `oc get events`; OpenShift rehberi bölüm 11 |
+| Sorun giderme | `./watchover.sh logs [servis]`, `./watchover.sh doctor`, `./watchover.sh storage show`, `./watchover.sh checklist`; Docker rehberi bölüm 11 | `oc logs deploy/watchover -c dashboard` (ya da `-c receiver`), `oc describe pod`, `oc get events`; OpenShift rehberi bölüm 11 |
 
 ## 2. Kurulum (on dakika)
 
@@ -248,7 +326,7 @@ Sinyaller › Loglar. Üstteki sorgu çubuğuna `level:err OR level:crit`, `host
 
 ## 2j. Log depolama: sıcak ve soğuk (v1.48)
 
-Ham log satırları artık ana veritabanında değil, veri biriminde iki dizinde tutulur: **sıcak** (`/data/logs/hot`, gün başına bir dosya, son `live_retention_h` saat; ölçülen ~65-90 bayt/satır) ve **soğuk** (`/data/logs/cold`, şablon + sıkıştırma ile ~7-8 bayt/satır, `cold_retention_days` gün, varsayılan 7). Süresi dolan gün tek dosya silinerek gider, PostgreSQL şişmez. Log gezgini eski günleri arşivden tarar ("arşivden" rozeti, ilerleme çubuğu). Disk dolmasın diye Sistem › Ayarlar'da üst sınır verin: `hot_max_gb` (dolunca biten en eski gün erkenden arşive geçer) ve `cold_max_gb` (dolunca en eski arşiv günü silinir); Sistem › Depolama kartı doluluğu gösterir ve %85'te uyarır. Dakikada 100 bin satırda sıcak ~13 GB/gün, soğuk ~1,1 GB/gün. İlk açılışta eski `live_batches` tablosu arka planda dosyalara taşınır. Eski davranış için `.env`'de `WATCHOVER_LOG_STORE=db`. Sunucuda iki katmanı **ayrı disklere** almak için `.env`'de `WATCHOVER_LOG_HOT_PATH` / `WATCHOVER_LOG_COLD_PATH` (bölüm 1b); `./watchover.sh storage` nerede durduklarını ve önerilen üst sınırları gösterir.
+Ham log satırları ana veritabanında değil, iki dizinde tutulur: **sıcak** (gün başına bir SQLite dosyası, son `live_retention_h` saat; ölçülen ~65-90 bayt/satır) ve **arşiv** (şablon + sıkıştırma ile ~7-8 bayt/satır, `cold_retention_days` gün, **varsayılan 365**; eski varsayılan 7 olan kurulumlar da 365'e geçer). Süresi dolan gün tek dosya silinerek gider, PostgreSQL şişmez. Log gezgini eski günleri arşivden tarar ("arşivden" rozeti, ilerleme çubuğu). Yerleri yönetici verir (bölüm 1b, "Ham log yerleri"); verilmezse veri biriminde kalır ve "ayarlanmadı" görünür. `hot_max_gb` dolunca biten en eski gün erkenden arşive geçer; `cold_max_gb` yalnız bir bütçedir (%80 / %90 uyarı), arşiv silmez. Arşiv diski dolarsa arşivleme durur, gün sıcakta kalır, kritik uyarı gelir. Her arşiv günü mühürlenir ve karma zincirli manifestoya yazılır; doğrulama, denetçi dışa aktarımı ve aylar süren arka plan araması Sistem › Depolama › Denetim'dedir. İlk açılışta eski `live_batches` tablosu arka planda dosyalara taşınır. Eski davranış için `.env`'de `WATCHOVER_LOG_STORE=db`.
 
 ## 2j-b. Anahtar servisi: watchover-keyd (aksiyon ajanı)
 
@@ -262,15 +340,11 @@ LLM'i açmak: `./watchover.sh llm on` (Ollama başlar, modeller iner: günlük k
 
 **Eğitim takvimi:** LLM › Kalite › Eğitim takvimi: günler, başlangıç / bitiş saati ve saat dilimi. Takvim açıkken otomatik eğitim yalnız bu pencerede başlar (bitiş başlangıçtan önceyse pencere gece yarısını geçer, ör. 22:00-05:00); "Şimdi eğit" takvimi beklemez, başlamış eğitim pencere bitince kesilmez.
 
-**Demo verisi ve simülasyon:** simülasyon (Operasyon › ⋯ › Simülasyon) gerçek veri ile asla karışmaz:
+**Simülatör kaldırıldı; yalnız gerçek veri.** Watchover artık sentetik veri üretmez: Operasyon'da simülasyon, Veri setleri'nde demo / örnek veri seti, ITSM'de demo ticket ve aksiyon ajanında demo kontrolleri yoktur (API 403); hiçbir ayar ya da ortam değişkeni bunları açmaz. Eski bir sürümün simülatöründen kalan veri (gönderen `simulator`, `wo.demo` işareti, `demo = 1` sütunu) **yükseltmeden sonraki ilk açılışta kendiliğinden** her depodan silinir: log satırları, metrikler, izler ve RUM, anomaliler, uyarılar, topoloji, iş akışları, aksiyonlar, demo veri setleri, **LLM hafızası** ve demo verisiyle eğitilmiş **ince ayar modelleri** (indirilmiş temel modellere dokunulmaz). Gerçek veriye dokunulmaz; işlem denetim kaydına yazılır. Elle: `./watchover.sh demo-clean --dry-run` (sayar), sonra `./watchover.sh demo-clean`; ya da Sistem › Veri temizliği.
 
-* **Yalnız boş kurulumda açılır.** Kayıtlı bir ajan (Watchover'ın kendi sunucusunu izleyen yerleşik ajan hariç), son 30 günde veri göndermiş başka bir gönderen, gerçek oturumu olan bir RUM uygulaması, açık bir çekme kaynağı ya da gerçek iz varsa simülasyon başlamaz; ekran nedenini Türkçe gösterir.
-* **Çalışırken gerçek veri gelirse kendiliğinden durur.** Gerçek veri hiç reddedilmez; ekranda "Simülasyon durdu: gerçek veri geldi" uyarısı ve *Kapat ve temizle* düğmesi çıkar.
-* **Her şey kaynağında işaretlenir.** Simülatörün satırlarının göndereni `simulator`'dır ve `wo.demo` işareti taşır (başka bir gönderen bu adı ya da işareti kullanamaz: ad `simulator-ext` olur, işaret silinir); bunlardan türeyen her kayıt (`demo = 1` sütunu: izler, metrik özetleri, anomaliler, uyarılar — başlıkta `[DEMO]` —, eşik durumları, envanter, akışlar, teknoloji izleri, iş akışı olayları, aksiyonlar, LLM çağrıları, sohbetler, değerlendirmeler, kural önerileri) işaretlidir.
-* **Hiçbir öğrenme demo verisinden beslenmez:** anomali tabanı / öğrenme süresi, yeni desen şablonları, Drain, öğrenilmiş sütun profilleri, kurumsal hafıza (canlı öğrenici, anomali ve aksiyon hafızası), demo / örnek veri setlerinin playbook ve ders kayıtları, eğitim örnekleri, otomatik eğitim ve aksiyon ajanı (vaka, kanıt, eşleştirici, metrik, güven olayları).
-* **Kapatmak = tertemiz.** Kapatırken önce kategori başına neyin silineceği gösterilir (log satırları, metrikler, izler ve RUM, anomaliler, uyarılar, topoloji, iş akışları, aksiyonlar, veri setleri, **LLM hafızası**, **öğrenilmiş modeller**); onaydan sonra simülasyonun ürettiği her şey her depodan (veritabanı, sıcak / soğuk log dosyaları, `data/live/events.jsonl`, `profiles.json`, bellek) silinir, demo verisiyle eğitilmiş bir ince ayar modeli devreden çıkar (indirilmiş temel modellere dokunulmaz). Gerçek veriye dokunulmaz.
+**Tüm analiz verisini sıfırlama (`./watchover.sh reset-data`).** Kim üretmiş olursa olsun her analiz deposunu boşaltır: anomaliler, incident'lerden açılan aksiyonlar ve ajan vakaları, uyarılar ve eşik durumları, öğrenilmiş taban çizgileri / şablonlar / Drain kümeleri, LLM hafızası (sohbetler, kurallar, değerlendirmeler, çağrılar), ince ayar modelleri ve adaptörleri, dakikalık / saatlik geçmiş, izler ve RUM oturumları, keşfedilen topoloji (ağ akışları, teknoloji izleri, namespace'ler), iş akışı olayları, öğrenilmiş sütun profilleri. **Kalanlar:** kullanıcılar, ekipler, roller, ayarlar (LLM bağlantısı dahil), kayıtlı ajanlar ve token'ları, kaynaklar, bildirim ve eşik politikaları, elle girilen envanter / uygulama / iş akışı tanımları, denetim kayıtları, gerçek sunucuların saklanan log satırları (sıcak disk ve bir yıllık arşiv, manifest zinciri bozulmaz) ve indirilen temel modeller. Önce sayımı gösterir; terminalde `SIFIRLA` yazmanızı ister (otomasyon için `--yes`). Sıfırlama dashboard'un **bir sonraki açılışında**, hiçbir iş parçacığı bellekteki veriyi geri yazmadan önce çalışır; betik dashboard'u yeniden başlatır ve sonucu basar. Arayüzde: Sistem › Veri temizliği › *Tüm analiz verisini sıfırla* (kurulum yöneticisi, `SIFIRLA` yazılır ve şifre yeniden sorulur). Geri alınamaz: önce `./watchover.sh backup`.
 
-Aynı temizlik terminalden: `./watchover.sh demo-clean --dry-run` (sayar), sonra `./watchover.sh demo-clean`; ya da Sistem › Demo verisi. Üretimde (`.env`'de `WATCHOVER_DEMO=0`, `install --production`) simülatör, Veri setleri'ndeki demo / örnek veri seti düğmeleri ve ITSM demo ticket'ları görünmez ve API'de reddedilir (403); gerçek sunucuya geçmeden önce eski demo verisini `./watchover.sh demo-clean` ile silin.
+**Önbelleği temizle:** Sistem › Bakım › *Önbelleği temizle* sunucudaki hesaplanmış önbellekleri (canlı analiz, panolar, APM, log arama, envanter, ITSM, ajan token önbelleği) ve tarayıcının sorgu önbelleğini boşaltır; hiçbir veri ya da öğrenilmiş bilgi silinmez, ilk okumada yeniden dolar.
 
 ## 3. Günlük işletim: watchover.sh
 
@@ -281,11 +355,12 @@ Aynı temizlik terminalden: `./watchover.sh demo-clean --dry-run` (sayar), sonra
 | `./watchover.sh stop` / `start` / `restart` | Durdur / başlat / yeniden başlat (veri kalır) |
 | `./watchover.sh update` | Yeni paket klasörün üstüne açıldıktan sonra: imajı yeniden derler, konteynerleri yeniler, eski imajı temizler |
 | `./watchover.sh upgrade` | **Yeni sürüme geçmenin tek komutu**: `git fetch` + ileri sarma + `update`. Klasörde elle değiştirilmiş dosya varsa kenara alır (`git stash`) ve sonra geri koyar; düz `git pull`'un "unstaged changes" diye durduğu yerde durmaz. Kendi commit'i olan klasörü elle birleştirmeye bırakır |
-| `./watchover.sh install --production` | Kurulum + `WATCHOVER_DEMO=0` + devreye alma listesi (yedek, açılışta başlama, yönetici parolası, disk sınırları, TLS); `./watchover.sh checklist` listeyi yeniden gösterir |
+| `./watchover.sh install --production` | Kurulum + `WATCHOVER_PRODUCTION=1` + devreye alma listesi (yedek, açılışta başlama, yönetici parolası, disk sınırları, TLS); `./watchover.sh checklist` listeyi yeniden gösterir |
 | `./watchover.sh backup [--no-logs] [--keep N]` | PostgreSQL dökümü + veri birimi + `.env` → `backups/watchover-YYYYMMDD-HHMM.tgz` (`--no-logs`: veri birimindeki ham loglar hariç) |
 | `./watchover.sh backup-timer on [SS:DD]` / `off` | Gecelik yedek (`backup --no-logs`): systemd timer, systemd yoksa cron; varsayılan 02:15; argümansız durumu gösterir |
 | `./watchover.sh autostart on` / `off` | Açılışta başlatan systemd birimi (`watchover-stack.service`); Podman'da `install` kendisi açar |
-| `./watchover.sh storage` | Ham logların yeri (veri birimi ya da ayrı diskler), boş alan, önerilen `hot_max_gb` / `cold_max_gb` |
+| `./watchover.sh storage show` | Ham logların yeri (elle verilen dizin ya da "NOT SET": veri birimi), süreler, boyutlar, boş alan, manifesto, ölçülen hızla yıllık ihtiyaç (öneri yapmaz) |
+| `./watchover.sh storage set [--hot DİZİN] [--cold DİZİN] [--hot-hours N] [--cold-days N] [--keep-old]` | Yerleri ve süreleri verir; var olan günleri kopyalar, sha256 ile doğrular, geçer, sağlık denetiminden sonra eski kopyaları siler; yer yoksa ya da dizin yabancı dosya içeriyorsa reddeder |
 | `./watchover.sh restore DOSYA` | Yedeği geri yükler (veritabanı ve veri birimi; konteynerler bu sırada durur) |
 | `./watchover.sh user …` | `list`, `add EMAIL [--admin]`, `promote`, `password EMAIL`, `unlock`, `enable`, `disable`, `delete` |
 | `./watchover.sh mcp on\|off` | Kendi MCP sunucumuzu açar / kapatır (bölüm 7) |
@@ -378,9 +453,9 @@ Geçişten sonraki bir adım başarısız olursa ve "otomatik geri dön" açıks
 | `WATCHOVER_CPUS` / `WATCHOVER_MEMORY` | otomatik | Dashboard konteynerinin sınırı (bölüm 2k; `WATCHOVER_SIZING=manual` ile elle) |
 | `WATCHOVER_PG_CPUS` / `WATCHOVER_PG_MEMORY` | otomatik | PostgreSQL konteynerinin sınırı |
 | `WATCHOVER_ENGINE` | algılanır | `docker` ya da `podman` (RHEL, rootful Podman: bölüm 1b) |
-| `WATCHOVER_LOG_HOT_PATH` / `WATCHOVER_LOG_COLD_PATH` | boş | Ham logların ayrı diskleri (ana makine dizinleri, sahibi `10001:0`); boşsa veri biriminde |
+| `WATCHOVER_LOG_HOT_PATH` / `WATCHOVER_LOG_COLD_PATH` | boş ("ayarlanmadı") | Ham logların elle verilen yerleri (ana makine dizinleri, sahibi `10001:0`); `./watchover.sh storage set` yazar ve verileri taşır; boşsa veri biriminde |
+| `WATCHOVER_EXPORT_DIR` | `/data/exports` | Denetim dışa aktarımlarının ve arama sonuçlarının yazıldığı yer (7 gün / 10 dosya tutulur) |
 | `WATCHOVER_BACKUP_DIR` / `WATCHOVER_BACKUP_KEEP` | `backups` / `14` | Yedeklerin klasörü (başka disk önerilir) ve saklanacak sayı |
-| `WATCHOVER_DEMO` | `1` | `0` = üretim: simülatör, demo / örnek veri seti düğmeleri ve ITSM demo ticket'ları yok (API 403), demo verisi yazılmaz (`install --production` yazar). `1`: simülatör yalnız gerçek verisi olmayan kurulumda açılır, kapatılınca ürettiği her şeyi siler |
 | `WATCHOVER_SELFMON` | `1` | Konteynerin kendini izlemesi; ana makinede ayrı ajan varsa `0` |
 | `WATCHOVER_PARALLEL` | boş | Çoklu dosya ayrıştırmada paralellik: boş otomatik (8+ çekirdek), `1` zorla, `0` kapalı |
 | `TZ` | `Europe/Istanbul` | Konteyner saat dilimi |
@@ -440,7 +515,7 @@ Ajanlar paneli her sunucunun sürümünü ve güncelleme durumunu gösterir (*g�
 # düz http (8600): önce boot.sh sha256 ile, sonra imzalı manifest sürüm anahtarıyla (openssl >= 1.1.1) doğrulanır
 f=$(mktemp) && curl -fsSL -o "$f" http://<sunucu>:8600/agent/boot.sh && echo "<boot.sh sha256>  $f" | sha256sum -c --quiet \
   && sudo bash "$f" --url http://<sunucu>:8600/ingest --release-key SHA256:<sürüm anahtarı> --enroll-key wk_… --env prod
-# edge açıkken https: Caddy'nin kendi CA'sı sha256 ile sabitlenir ve ajan için kurulur (elle CA kopyalamak yok)
+# edge açıkken https: kurulumun kendi CA'sı sha256 ile sabitlenir ve ajan için kurulur (elle CA kopyalamak yok)
 f=$(mktemp) && curl -fsSLk -o "$f" https://<ad>/agent/boot.sh && echo "<boot.sh sha256>  $f" | sha256sum -c --quiet \
   && sudo bash "$f" --url https://<ad>/ingest --ca-sha256 <CA sha256> --release-key SHA256:<sürüm anahtarı> --enroll-key wk_… --env prod
 ```
@@ -449,7 +524,7 @@ f=$(mktemp) && curl -fsSLk -o "$f" https://<ad>/agent/boot.sh && echo "<boot.sh 
 - Şirket sertifikası (`./certs/watchover.crt`) kullanılıyorsa ve sunucular o CA'ya zaten güveniyorsa komutta `-k` ve `--ca-sha256` yoktur. Güvenmiyorlarsa şirket kök sertifikasını `./certs/watchover-ca.crt` olarak koyun; alıcı onu sunar, komut onu sabitler.
 - Sunucuda `openssl` (>= 1.1.1; RHEL 8+, Ubuntu 18.04+, Debian 10+'da var) gerekir; yoksa https komutunu kullanın.
 - Eski, güvensiz işaretli kurulumlar kendini güncelleyerek güvenli hale **gelmez**: ilk ikili ve sabitlenen anahtar aynı korumasız kanaldan geldiği için sonraki her "doğrulama" de o kanala dayanır. Bu sunucularda paneldeki komutu bir kez çalıştırmak yeter (kimlik, jeton, kuyruk ve konumlar korunur, güvensiz işareti kalkar).
-- Edge açıkken Caddy ajan yollarını da alıcıya yönlendirir: `/ingest`, `/enroll`, `/agent.py`, `/agent/*` (kurulum, `boot.sh`, `ca.crt`, manifest, ikili dosyalar, `/agent/update`, eylem ajanlarının `/agent/v1/` iş kanalı), `/rum`, `/rum.js`, `/mobile` ve OTLP/HTTP `/v1/*`. 8600 açık kalır; `./watchover.sh edge on` Caddy'nin kök sertifikasını `./certs/watchover-root.crt` olarak dışa aktarır, alıcı onu `/agent/ca.crt` olarak sunar.
+- Edge açıkken nginx ajan yollarını da alıcıya yönlendirir: `/ingest`, `/enroll`, `/agent.py`, `/agent/*` (kurulum, `boot.sh`, `ca.crt`, manifest, ikili dosyalar, `/agent/update`, eylem ajanlarının `/agent/v1/` iş kanalı), `/rum`, `/rum.js`, `/mobile` ve OTLP/HTTP `/v1/*`. 8600 açık kalır; `./watchover.sh edge on` kurulumun kendi CA'sını oluşturur, kökü `./certs/watchover-root.crt`'dir, alıcı onu `/agent/ca.crt` olarak sunar.
 
 ## 6. PostgreSQL: ürün veritabanı
 
@@ -476,7 +551,7 @@ cp uretim-log.zip datasets/        # istemcilerin analiz edeceği dosyalar
 {"mcpServers": {"watchover": {"url": "http://<sunucu>:8765/mcp", "headers": {"Authorization": "Bearer <MCP_API_KEY>"}}}}
 ```
 
-Sonra istemciden `analyze_dataset("uretim-log.zip")` demek yeter. Anahtarsız istekler 401 alır. MCP konteyneri canlı ürün araçlarını (loglar, panolar, anomaliler, envanter) arayüzün kendi MCP ucuna iletir (`WATCHOVER_API_URL`, varsayılan `http://watchover:8501`). Edge açıkken (bölüm 8) aynı sunucu TLS ile `https://<ad>/mcp` adresindedir (Caddy → `mcp:8765`), arayüzün kendi MCP ucu `https://<ad>/api/mcp`; düz 8765'i `.env`'de `WATCHOVER_MCP_PORT=127.0.0.1:8765` ile yalnız yerelde tutun (MCP kapalıyken `/mcp` 502 döner). Anahtarlar: Ayarlar › Bağlantılar › MCP'de adlı, kapsamlı (hesap ya da ekip, okuma / yazma) anahtarlar; `.env`'deki `MCP_API_KEY` kurulum çapında okuma anahtarıdır, `MCP_API_KEY_WRITE=1` ona yazma da verir. OpenShift'te aynı sunucu `mcp.enabled: true` ile kendi pod'u ve TLS'li Route'uyla gelir (OpenShift rehberi bölüm 5b).
+Sonra istemciden `analyze_dataset("uretim-log.zip")` demek yeter. Anahtarsız istekler 401 alır. MCP konteyneri canlı ürün araçlarını (loglar, panolar, anomaliler, envanter) arayüzün kendi MCP ucuna iletir (`WATCHOVER_API_URL`, varsayılan `http://watchover:8501`). Edge açıkken (bölüm 8) aynı sunucu TLS ile `https://<ad>/mcp` adresindedir (nginx → `mcp:8765`), arayüzün kendi MCP ucu `https://<ad>/api/mcp`; düz 8765'i `.env`'de `WATCHOVER_MCP_PORT=127.0.0.1:8765` ile yalnız yerelde tutun (MCP kapalıyken `/mcp` 502 döner). Anahtarlar: Ayarlar › Bağlantılar › MCP'de adlı, kapsamlı (hesap ya da ekip, okuma / yazma) anahtarlar; `.env`'deki `MCP_API_KEY` kurulum çapında okuma anahtarıdır, `MCP_API_KEY_WRITE=1` ona yazma da verir. OpenShift'te aynı sunucu `mcp.enabled: true` ile kendi pod'u ve TLS'li Route'uyla gelir (OpenShift rehberi bölüm 5b).
 
 **Canlı ürünün araçları ve adlı anahtarlar.** Arayüzün kendisi de MCP sunucusudur: `https://<sunucu>/api/mcp` (doğrudan `http://<sunucu>:8501/mcp`). Araçlar: `whoami`, `log_search` (sorgu dili + zaman aralığı), `log_tail`, `dash_infra` / `dash_alarms` / `dash_pools`, `host_detail` (özet, alarm metrikleri, eşik seviyeleri), `thresholds_state`, `list_anomalies` / `get_anomaly`, `integration_hosts` / `host_integrations` (teknolojiyle), `search_traces` / `get_trace` / `trace_session`, `list_flows` / `flow_funnel` / `flow_items`, `inventory_lookup`, `list_actions` / `get_action`; yazma: `create_action`, `ack_anomaly`, `set_threshold`. Anahtarları **Ayarlar › Bağlantılar › MCP**'de oluşturun: her anahtar bir hesaba (o hesabın gördüğü kadar) ya da bir ekibe (yalnız ekibin sunucuları) bağlıdır, varsayılan salt okunurdur, yazma araçları yalnız "yazma" izniyle açılır; iptal anında geçerlidir. Kişisel veri (KVKK) maskelenir; her çağrı kim / araç / kapsam olarak denetim kaydına düşer (argüman değerleri yazılmaz). `MCP_API_KEY` kurulum geneli **okuma** anahtarı olarak çalışmaya devam eder (`MCP_API_KEY_WRITE=1` eski yazma iznini geri verir). 8765 konteyneri adlı anahtarları da kabul eder; `.env`'e `WATCHOVER_API_URL=http://watchover:8501` yazılırsa canlı araçları da çağıranın anahtarıyla API'ye iletir.
 
@@ -514,39 +589,55 @@ Soldaki **Uygulamalar** menüsü sunucuları ve servisleri iş uygulamalarına (
 * **Log sorgusu:** `app:"SAP ERP"` (ya da `application:`) uygulamanın üye sunucularını ve servislerini seçer; canlı kuyruk, log uyarıları ve MCP `log_search` aynı ifadeyi anlar. Böyle bir uygulama yoksa eski anlamıyla servis adı olarak aranır (uyarı gösterilir).
 * **Eşikler:** yeni kapsam *Uygulama*. Öncelik: sunucu > ad deseni > uygulama > pool > ortam > tümü (ekibin kendi politikası önce). Birden çok uygulamadaki bir sunucuda en sıkı uygulama seviyesi geçerlidir; bildirimler sunucunun uygulamalarını yazar.
 * **MCP:** salt okunur `list_applications` ve `application_health` araçları anahtarın ekip kapsamıyla çalışır.
-* Üretim modunda (`WATCHOVER_DEMO=0`) hiçbir örnek uygulama oluşmaz; demo modunda simülatör açılınca birkaç örnek uygulama eklenir ve *Demo verisini temizle* bunları da siler.
+* Hiçbir örnek uygulama oluşmaz (simülatör kaldırıldı); eski bir sürümün eklediği örnek uygulamalar ilk açılıştaki temizlikle silinir.
 
 ## 8. TLS ve şirket ağı: uygulamayı dışarı açmak
 
-Uygulama şirket ağına **tek bir https ucu** üzerinden açılır: `edge` profili Caddy'yi dashboard'un önüne koyar, TLS'i kendi sertifika otoritesiyle (ya da şirket sertifikasıyla) yapar, 80'i 443'e yönlendirir, güvenlik başlıklarını ekler ve `/ingest` yolunu alıcıya (8600) aktarır. `edge on` açıkken düz http portu (8501) hiç yayınlanmaz (Caddy konteynere Docker ağından ulaşır; `docker-compose.edge.yml` `.env`'deki `COMPOSE_FILE` ile devreye girer), 8600 ajanlar için açık kalır; dışarıdan sadece https görünür. Bu yüzden Mac'te launcher'daki Streamlit 8501'i kullanmaya devam edebilir.
+Uygulama şirket ağına **tek bir https ucu** üzerinden açılır: `edge` profili **nginx**'i (resmî `nginx:1.28-alpine` imajı) dashboard'un önüne koyar, TLS'i kurulumun kendi sertifika otoritesiyle (ya da şirket sertifikasıyla) yapar (yalnız TLS 1.2 / 1.3, HSTS ve güvenlik başlıkları), 80'i 443'e yönlendirir ve ajan yollarını alıcıya (8600) aktarır. `edge on` açıkken düz http portu (8501) hiç yayınlanmaz (nginx konteynere konteyner ağından ulaşır; `docker-compose.edge.yml` `.env`'deki `COMPOSE_FILE` ile devreye girer), 8600 ajanlar için açık kalır; dışarıdan sadece https görünür. Yapılandırma `docker/nginx/watchover.conf.template`'tedir; arkadaki konteyner adları her istekte çözülür, bu yüzden bir konteyner yeniden oluşturulduğunda nginx'i yeniden başlatmak gerekmez.
+
+**Sertifika.** `edge on` ilk çalıştığında `scripts/edge-cert.sh` ile bu kuruluma özel bir CA oluşturur (`./certs/.ca/watchover-ca.key`, yalnız sahibi okur; gece yedeği `./certs`'i de alır) ve sunucu sertifikasını verilen adlara ve makinenin IP'sine keser (397 gün; her `start` / `upgrade` bitişe 30 gün kala yeniler, adlar değişince yeniden keser). Kök sertifika `./certs/watchover-root.crt`'dir; tarayıcılar bir kez güvenir, ajanlar onu Ajanlar panelindeki https komutuyla sha256'sından sabitler. Şirket CA'sından alınmış bir sertifika varsa `./certs/watchover.crt` (zincirli) ve `./certs/watchover.key` olarak koyun: `edge on` onu kullanır ve hiç dokunmaz. **Caddy'den geçerken:** v1.57'den önceki kurulumlarda edge Caddy idi; yükseltmede yeni CA oluşur, bu yüzden meslektaşlar yeni `watchover-root.crt`'yi bir kez daha kurar ve https ile kurulmuş ajanlarda paneldeki komut bir kez yeniden çalıştırılır (düz http ile kurulmuş olanlar etkilenmez).
 
 ### 8.1 macOS'ta (Docker Desktop) şirket ağına açmak
 
 ```bash
 cd ~/watchover-docker
 ./watchover.sh edge on watchover.local    # sanal ad: Mac adı Bonjour ile ağa duyurur; sertifika ada ve Mac'in IP'sine birlikte kesilir
-./watchover.sh edge cert                  # Caddy'nin kök sertifikası -> ./certs/watchover-root.crt (meslektaşlar bir kez kurar)
+./watchover.sh edge cert                  # kök sertifika ./certs/watchover-root.crt ve sha256'sı (meslektaşlar bir kez kurar)
 ./watchover.sh status
 ```
 
-Meslektaşlar `https://watchover.local` yazar. `.local` adları Mac, iPhone / iPad ve Windows 10+ makinelerde ek kurulum olmadan çözülür (mDNS / Bonjour); Linux'ta `avahi-daemon` gerekir. Ad yerine ya da adla birlikte IP de verilebilir: `edge on watchover.local,192.168.1.107`; IP her durumda sertifikaya eklenir, `https://192.168.1.107` de çalışır. Duyuru bir LaunchAgent olarak kurulur (`~/Library/LaunchAgents/local.watchover.mdns.*.plist`): Mac yeniden başlasa, oturum kapansa ya da `update` çalışsa da sürer; `edge off` kaldırır. v1.42.1'den beri duyuruyu küçük bir izleyici yapar: Mac başka bir ağa geçtiğinde (Wi-Fi değişimi, yeni DHCP adresi, uykudan uyanma, USB-C Ethernet) 15 saniye içinde yeni adresi duyurur; elle bir şey yapmak gerekmez. Eski kurulumlardaki sabit adresli kayıt `upgrade` / `start` ile kendiliğinden yenilenir. launchd olmayan sistemlerde duyuru arka plan süreci olarak çalışır ve `install` / `update` / `start` kaybolduysa yeniden açar.
+Meslektaşlar `https://watchover.local` yazar. `.local` adları Mac, iPhone / iPad ve Windows 10+ makinelerde ek kurulum olmadan çözülür (mDNS / Bonjour); Linux'ta `avahi-daemon` gerekir. Ad yerine ya da adla birlikte IP de verilebilir: `edge on watchover.local,192.168.1.107`; IP her durumda sertifikaya eklenir, `https://192.168.1.107` de çalışır. Duyuru bir LaunchAgent olarak kurulur (`~/Library/LaunchAgents/local.watchover.mdns.*.plist`): Mac yeniden başlasa, oturum kapansa ya da `update` çalışsa da sürer; `edge off` kaldırır. v1.42.1'den beri duyuruyu küçük bir izleyici yapar: Mac başka bir ağa geçtiğinde (Wi-Fi değişimi, yeni DHCP adresi, uykudan uyanma, USB-C Ethernet) 15 saniye içinde yeni adresi duyurur; elle bir şey yapmak gerekmez. launchd olmayan sistemlerde duyuru arka plan süreci olarak çalışır ve `install` / `update` / `start` kaybolduysa yeniden açar.
 
 Sonra:
 
 1. **Sabit adres.** Şirket DNS'i varsa BT'den `watchover.sirket.com` gibi bir A kaydı isteyip `./watchover.sh edge on watchover.sirket.com` demek en kalıcısıdır (Google girişi de yalnız gerçek alan adıyla çalışır). Bonjour adı yoksa ve IP ile giriliyorsa yönlendiricide Mac'e sabit IP ayırın.
 2. **macOS güvenlik duvarı.** Sistem Ayarları › Ağ › Güvenlik Duvarı açıksa ilk bağlantıda Docker için "İzin ver" deyin (443 ve 80).
 3. **Uyku.** Mac uyuyunca servis durur: Sistem Ayarları › Pil › Güç adaptörü › "Ekran kapalıyken otomatik uykuyu engelle", ya da terminalde `caffeinate -s &`. Docker Desktop › Settings › General › "Start Docker Desktop when you sign in" açık olsun.
-4. **Sertifika.** `edge cert` ile alınan `watchover-root.crt` dosyasını meslektaşlarınıza verin: macOS'ta Anahtar Zinciri Erişimi › Sistem'e sürükleyip "Her Zaman Güven"; Windows'ta `certutil -addstore -f Root watchover-root.crt`; Linux'ta `/usr/local/share/ca-certificates/` altına koyup `update-ca-certificates`. Kurmayan tarayıcı uyarısıyla yine girer. Şirket CA'sından alınmış bir sertifikanız varsa `./certs/watchover.crt` ve `./certs/watchover.key` olarak koyun; `edge on` onu otomatik kullanır, kök sertifika dağıtmak gerekmez.
-5. **Ajanlar ve kaynaklar.** Diğer sunuculardaki ajanlar `https://<adres>/ingest` adresine gönderir: kurulum komutunda `--url https://watchover.local/ingest --ca watchover-root.crt` (elle çalıştırmak için `wo-agent ship --url … --token … --ca …` ya da `python3 agent.py` ile aynı seçenekler; Linux sunucularda `.local` çözülmüyorsa IP kullanın) (şirket sertifikasında `--ca` gerekmez). Mevcut `http://<adres>:8600/ingest` de çalışmaya devam eder (token'lı düz HTTP, sadece şirket ağı içinde).
-6. **SSO.** Google / Microsoft / OIDC geri dönüş adresleri `https://<adres>/api/auth/oidc/<sağlayıcı>/callback` olur; Sistem › Giriş sağlayıcıları kartı adresi gösterir. Google özel IP'yi (192.168.x.x) geri dönüş adresi olarak kabul etmez, gerçek bir alan adı (`watchover.sirket.com`) ister; Microsoft daha esnektir. Apple girişi kaldırıldı (geliştirici üyeliği ve genel alan adı gerektiriyordu).
+4. **Kök sertifikayı dağıtmak.** `watchover-root.crt` dosyasını meslektaşlarınıza verin: macOS'ta Anahtar Zinciri Erişimi › Sistem'e sürükleyip "Her Zaman Güven"; Windows'ta `certutil -addstore -f Root watchover-root.crt`; RHEL'de `/etc/pki/ca-trust/source/anchors/` altına koyup `update-ca-trust`; Debian / Ubuntu'da `/usr/local/share/ca-certificates/` + `update-ca-certificates`. Kurmayan tarayıcı uyarısıyla yine girer. Şirket sertifikasında dağıtmak gerekmez.
+5. **Ajanlar ve kaynaklar.** Diğer sunuculardaki ajanlar `https://<adres>/ingest` adresine gönderir: Ajanlar panelindeki https komutu CA'yı kendisi sabitleyip kurar (bölüm 5a). Mevcut `http://<adres>:8600/ingest` de çalışmaya devam eder (token'lı düz HTTP, sadece şirket ağı içinde).
+6. **SSO.** Google / Microsoft / OIDC geri dönüş adresleri `https://<adres>/api/auth/oidc/<sağlayıcı>/callback` olur; Sistem › Giriş sağlayıcıları kartı adresi gösterir. Google özel IP'yi (192.168.x.x) geri dönüş adresi olarak kabul etmez, gerçek bir alan adı (`watchover.sirket.com`) ister; Microsoft daha esnektir.
 
-`curl -vk https://<IP>/api/health` "tlsv1 alert internal error" derse Caddyfile'daki `default_sni` ayarı eksiktir (v1.13.3+ ile gelir; `./watchover.sh update && ./watchover.sh edge on` yeterli): IP ile bağlanan istemciler sunucu adı göndermez, Caddy bu ayarla yine de sertifikayı verir.
+Kapatmak: `./watchover.sh edge off` (8501 yeniden yayınlanır; Mac'te başka bir program 8501'i tutuyorsa `.env`'de `WATCHOVER_UI_PORT=8511` gibi bir port verin). Portlar: `.env` içinde `WATCHOVER_EDGE_HTTPS_PORT=8443` gibi.
 
-Kapatmak: `./watchover.sh edge off` (8501 yeniden yayınlanır; Mac'te başka bir program 8501'i tutuyorsa `.env`'de `WATCHOVER_UI_PORT=8511` gibi bir port verin). `edge on` "address already in use" derse 8501'i tutan programı `lsof -nP -iTCP:8501 -sTCP:LISTEN` ile görebilirsiniz; v1.13.1'den itibaren edge açıkken bu port yayınlanmadığı için hata oluşmaz. Portlar: `.env` içinde `WATCHOVER_EDGE_HTTPS_PORT=8443` gibi.
+### 8.2 Sunucuda (RHEL, arayüzü olmayan sunucu)
 
-### 8.2 Sunucuda
+Aynı komutlar; güvenlik duvarında yalnızca 443 (ve yönlendirme / sağlık kontrolü için 80) açılır. RHEL'de `firewall-cmd --permanent --add-service=https --add-service=http && firewall-cmd --reload` (kurulum betiği bunu kendisi yapar); Ubuntu'da `ufw allow 80,443/tcp`. 8501, 8600 ve 5433 dışarıya kapalı kalabilir; ajanlar `https://<adres>/ingest` kullanır. Şirket DNS'inde A kaydı ve şirket CA'sından sertifika (`./certs/`) en temiz kurulumdur. RHEL kurulum betiği Podman'ı root olarak çalıştırır; 443 / 80 doğrudan açılır. Rootless Podman 1024'ün altındaki portları açamaz: o kurulumda betik `net.ipv4.ip_unprivileged_port_start=80` ayarını kalıcı yapar (ya da `.env`'de `WATCHOVER_EDGE_HTTPS_PORT=8443` ve yük dengeleyici 443 → 8443).
 
-Aynı komutlar; ek olarak güvenlik duvarında yalnızca 443 (ve yönlendirme için 80) açılır: `ufw allow 80,443/tcp`. 8501, 8600 ve 5433 dışarıya kapalı kalır; ajanlar `https://<adres>/ingest` kullanır (Ajanlar panelindeki https komutu CA'yı kendisi sabitleyip kurar, bölüm 5a). Şirket DNS'inde A kaydı ve şirket CA'sından sertifika (`./certs/`) en temiz kurulumdur. Kendi Caddy / nginx / Traefik'iniz zaten varsa `edge` yerine `docker/Caddyfile` içindeki iki `reverse_proxy` satırını oraya taşıyın: arayüz + API `watchover:8501`, `/ingest` `watchover:8600`.
+**Sunucuda masaüstü yok: arayüze nasıl girilir?** Arayüz tarayıcıdan açılır, sunucuda ekran gerekmez. Üç yol:
+
+1. **Yük dengeleyici ya da DNS adı (kalıcı yol).** Kendi bilgisayarınızın tarayıcısında `https://watchover.sirket.com` (yük dengeleyicinin VIP adı / IP'si). Ayrıntı aşağıda.
+2. **Doğrudan sunucu adresi.** Ağ izin veriyorsa `https://<sunucu IP>` (sertifika IP'yi de kapsar).
+3. **SSH tüneli (yalnız SSH açıksa, ilk kurulum ve sorun giderme için).** Kendi bilgisayarınızda: `ssh -L 8443:localhost:443 kullanici@sunucu` ve tarayıcıda `https://localhost:8443`. Edge kapalıysa: `ssh -L 8501:localhost:8501 kullanici@sunucu` ve `http://localhost:8501`. Sunucuda sadece terminal varken durum için `./watchover.sh status` ve `./watchover.sh doctor --check`; sağlık için `curl -sk https://localhost/healthz`.
+
+**Yük dengeleyici arkasında.** Önerilen düzen: yük dengeleyici 443'ü dinler ve sunucunun 443'üne gider (TLS'i ister kendisi sonlandırıp yeniden şifreler, ister TCP olarak geçirir); 80 → 443 yönlendirmesi hem dengeleyicide hem nginx'te çalışır.
+
+- **Sağlık kontrolü:** `GET /healthz` → 200 (dashboard yanıt veriyorsa). 443'te HTTPS ya da 80'de HTTP; ikisi de yönlendirme yapmadan cevaplar. Aralık 10-30 sn, zaman aşımı 5 sn, 3 hatada düşür.
+- **Gerçek istemci adresi:** dengeleyici `X-Forwarded-For` (ve `X-Forwarded-Proto`) eklesin; sonra sunucuda `./watchover.sh edge lb 10.20.30.0/28` (dengeleyicinin adresleri ya da alt ağı, birden çok verilebilir). Yalnız bu adreslerden gelen `X-Forwarded-For`'a inanılır; giriş kayıtları, kilitlenme ve denetim izi gerçek istemci adresini görür. Liste boşken başlık yok sayılır, sahte bir başlıkla adres değiştirilemez. Kaldırmak: `./watchover.sh edge lb off`. TCP geçişli (TLS passthrough) dengeleyicide başlık eklenemez; o durumda nginx dengeleyicinin adresini görür (PROXY protokolü bu sürümde yok).
+- **Sertifika:** dengeleyici TLS'i sonlandırıyorsa kullanıcıların gördüğü sertifika dengeleyicinindir (şirket sertifikası oraya konur); dengeleyiciden sunucuya giden bağlantı kurulumun CA'sıyla şifrelenir; dengeleyiciye `watchover-root.crt`'yi güvenilir CA olarak tanıtın ya da sunucu sertifika doğrulamasını o havuz için kapatın. TCP geçişlide kullanıcılar doğrudan nginx'in sertifikasını görür: `edge on watchover.sirket.com,<VIP adresi>` ile sertifikaya dengeleyicinin adını da ekleyin ya da şirket sertifikasını `./certs/`'e koyun.
+- **Ajanlar:** dengeleyici adresiyle de çalışır (`https://watchover.sirket.com/ingest`); büyük gövdeler için dengeleyicide istek boyutu sınırı en az 512 MB, boşta zaman aşımı en az 300 sn olsun (canlı izleme uzun bağlantı kullanır).
+- **Oturum yapışkanlığı gerekmez** (tek sunucu); birden çok Watchover sunucusu tek dengeleyici arkasında aynı veriyi paylaşmaz.
+
+Kendi nginx / HAProxy / Traefik'iniz zaten varsa `edge` yerine `docker/nginx/watchover.conf.template`'teki yolları oraya taşıyın: arayüz + API `watchover:8501`, ajan yolları (`/ingest`, `/enroll`, `/agent.py`, `/agent/`, `/rum`, `/rum.js`, `/mobile`, `/v1/`) `receiver:8600`.
 
 **Güvenlik notu.** Giriş 5 hatalı denemede geçici kilitlenir (`./watchover.sh user unlock EMAIL` açar), yönetici olmayan hesaplara e-posta ile ikinci faktör sorulur (Sistem › Ayarlar), parolalar scrypt ile, sırlar şifreli tutulur. Yönetici parolasını ilk girişte değiştirin ve `.env`'yi paylaşmayın.
 
@@ -607,7 +698,8 @@ Gecelik yedek: `sudo ./watchover.sh backup-timer on 02:15` (systemd `watchover-b
 | `password authentication failed` | `.env` parolası birim oluşturulduktan sonra değişti: bölüm 6'daki `ALTER USER` |
 | Giriş yapılamıyor | `./watchover.sh user list`, `user password EMAIL`, `user unlock EMAIL` |
 | Entegrasyonlarda teknoloji "olası" ya da yalnız protokol görünüyor | Ajan 0.6.0'dan eski: ajanı yeniden kurun (bölüm 2d); ajan root çalışmıyorsa süreç adları ve parmak izleri okunamaz. Kesin bilgi için "Elle düzelt" |
-| Disk doluyor | Sistem › Depolama: hangi katman doluyor; Sistem › Ayarlar'da `hot_max_gb` / `cold_max_gb` ya da `cold_retention_days` düşürün; `./watchover.sh storage` öneri verir; ham logları ayrı disklere alın (bölüm 1b) |
+| Disk doluyor / "Arşivleme durdu" | Sistem › Depolama: hangi katman doluyor ve yıllık ihtiyaç; arşiv diskini büyütün ya da `./watchover.sh storage set --cold YENİ_DİZİN` ile daha büyük bir diske taşıyın (veri kaybı yok, arşivleme yer açılınca kendiliğinden sürer). Arşivi kısaltmak bilinçli bir karardır: `--cold-days N` (silinen günler manifestoya `expire` yazılır) |
+| "Arşiv doğrulaması sorun buldu" | Sistem › Depolama › Denetim › Arşivi doğrula: `missing` / `altered` / `chain_broken` / `truncated` / `unregistered` hangi günler; dosyayı yedekten (`export` paketi ya da disk anlık görüntüsü) geri koyun, değişikliği güvenlik ekibine bildirin |
 | `WATCHOVER_LOG_HOT_PATH=… belongs to …` | Log dizini konteyner kullanıcısına ait değil: mesajdaki `sudo chown -R 10001:0 DİZİN && sudo chmod 2770 DİZİN`, sonra `./watchover.sh start` |
 | `the Podman socket … is not there` / `needs root` | `sudo systemctl enable --now podman.socket`; Podman'da komutlar `sudo ./watchover.sh …` ile |
 | Podman'da konteynerler birbirini bulamıyor (`postgres` adı çözülmüyor) | Ağ arka ucu CNI: `podman info --format '{{.Host.NetworkBackend}}'`; netavark + aardvark-dns'e geçin (bölüm 1b, Podman ağı) |

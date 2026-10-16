@@ -14,7 +14,7 @@ export const Chip = ({ children, color }: { children: ReactNode; color?: string 
 
 const STATUS_COLOR: Record<string, string> = { open: "red", ack: "amber", in_progress: "amber", resolved: "green", done: "green", ignored: "", suppressed: "", active: "green", revoked: "red", pending: "amber", disabled: "",
   critical: "red", high: "amber", medium: "blue", low: "", P1: "red", P2: "amber", P3: "blue", P4: "", ERROR: "red", CRITICAL: "red", WARN: "amber", INFO: "blue", DEBUG: "" };
-export const Badge = ({ v, label }: { v: string; label?: string }) => <span lang="en" className={`badge ${STATUS_COLOR[v] ?? ""}`}>{label ?? v}</span>;   // lang=en: CSS uppercase must give CRITICAL, not CRİTİCAL under a Turkish page
+export const Badge = ({ v, label }: { v: string; label?: string }) => <span lang={label ? undefined : "en"} className={`badge ${STATUS_COLOR[v] ?? ""}`}>{label ?? v}</span>;   // a raw value is English (CSS uppercase must give CRITICAL, not CRİTİCAL); a translated label keeps the page's language (BİLİNMİYOR)
 
 export const Btn = ({ children, kind = "", sm, ...p }: { children: ReactNode; kind?: string; sm?: boolean } & React.ButtonHTMLAttributes<HTMLButtonElement>) => (
   <button className={`btn ${kind} ${sm ? "sm" : ""}`} {...p}>{children}</button>
@@ -45,11 +45,25 @@ export function Tabs<T extends string>({ tabs, value, onChange }: { tabs: { k: T
   return <div className="tabs">{tabs.map((x) => <button key={x.k} className={x.k === value ? "on" : ""} onClick={() => onChange(x.k)}>{x.label}</button>)}</div>;
 }
 
-export function Table({ cols, rows, empty }: { cols: { k: string; label: ReactNode; num?: boolean; render?: (r: any) => ReactNode }[]; rows: any[]; empty?: ReactNode }) {
+const blank = (v: any) => v === null || v === undefined || v === "";
+const cmpVal = (a: any, b: any): number => typeof a === "number" && typeof b === "number" ? a - b : String(a).localeCompare(String(b), "tr", { numeric: true });
+
+/** A table; with `sort` its headers sort (click again: reverse) by the raw row value of a column (ISO times sort as text). */
+export function Table({ cols, rows, empty, sort }: { cols: { k: string; label: ReactNode; num?: boolean; render?: (r: any) => ReactNode }[]; rows: any[]; empty?: ReactNode; sort?: { k: string; desc?: boolean } }) {
+  const [s, setS] = useState(sort);
   if (!rows.length) return <Empty>{empty}</Empty>;
+  const can = (k: string) => !!sort && rows.some((r) => ["string", "number"].includes(typeof r[k]));
+  const shown = !s ? rows : [...rows].sort((a, b) => {
+    const x = a[s.k], y = b[s.k];
+    if (blank(x) || blank(y)) return blank(x) && blank(y) ? 0 : blank(x) ? 1 : -1;   // empty cells last, whichever way
+    return s.desc ? -cmpVal(x, y) : cmpVal(x, y);
+  });
+  const click = (k: string) => setS((o) => ({ k, desc: o?.k === k ? !o.desc : k.endsWith("_seen") || k.endsWith("_at") || k === "ts" }));
   return (
-    <div className="table-wrap"><table className="table"><thead><tr>{cols.map((c) => <th key={c.k} className={c.num ? "right" : ""}>{c.label}</th>)}</tr></thead>
-      <tbody>{rows.map((r, i) => <tr key={r.id ?? r.key ?? i}>{cols.map((c) => <td key={c.k} className={c.num ? "num" : ""}>{c.render ? c.render(r) : String(r[c.k] ?? "")}</td>)}</tr>)}</tbody></table></div>
+    <div className="table-wrap"><table className="table"><thead><tr>{cols.map((c) => <th key={c.k} className={c.num ? "right" : ""}
+      {...(can(c.k) ? { onClick: () => click(c.k), style: { cursor: "pointer", userSelect: "none" }, "aria-sort": s?.k === c.k ? (s.desc ? "descending" : "ascending") : undefined } : {})}>
+      {c.label}{s?.k === c.k ? (s.desc ? " ▼" : " ▲") : ""}</th>)}</tr></thead>
+      <tbody>{shown.map((r, i) => <tr key={r.id ?? r.key ?? i}>{cols.map((c) => <td key={c.k} className={c.num ? "num" : ""}>{c.render ? c.render(r) : String(r[c.k] ?? "")}</td>)}</tr>)}</tbody></table></div>
   );
 }
 

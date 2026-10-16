@@ -69,7 +69,9 @@ class PolicyError(ValueError):
 
 
 def act_demo() -> bool:
-    return os.environ.get("WATCHOVER_ACT_DEMO", "").strip().lower() in ("1", "true", "yes", "on")
+    """The run engine's demo controls (simulated disk, time scale): retired with the simulator (demo.enabled), whatever WATCHOVER_ACT_DEMO says."""
+    from .. import demo as wo_demo
+    return wo_demo.enabled() and os.environ.get("WATCHOVER_ACT_DEMO", "").strip().lower() in ("1", "true", "yes", "on")
 
 
 def _cmp_stricter(base, new, higher: bool) -> bool:

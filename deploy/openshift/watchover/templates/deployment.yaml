@@ -52,8 +52,8 @@ spec:
               value: {{ .Values.timezone | quote }}
             - name: HOME
               value: /tmp
-            - name: WATCHOVER_DEMO
-              value: {{ ternary "1" "0" .Values.demo | quote }}
+            - name: WATCHOVER_FORWARDED_ALLOW               # behind the OpenShift router: its X-Forwarded-For / -Proto are believed
+              value: "*"
             {{- if .Values.postgresql.enabled }}
             - name: POSTGRES_PASSWORD
               valueFrom:

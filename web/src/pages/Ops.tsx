@@ -83,7 +83,7 @@ export default function Ops() {
   const nCrit = items.filter((i) => i.level === 3).length; const crit = nCrit > 0;
   const health = !s ? "" : !s.total ? t("ops_h_nodata") : !items.length ? t("ops_h_ok") : crit ? t("ops_h_crit", { n: items.length, c: nCrit }) : t("ops_h_warn", { n: items.length });
   const apiHealth = useQuery({ queryKey: ["api-health"], queryFn: () => get("/health"), staleTime: 300000 });
-  const demoMode = (apiHealth.data as any)?.demo === true;          // production installs (WATCHOVER_DEMO=0) have no simulator at all
+  const demoMode = (apiHealth.data as any)?.demo === true;          // the simulator is retired: the API reports demo=false, so its controls never show
   const simAllowed = demoMode && can("act.sim") && user?.all !== false;
   const [simDlg, setSimDlg] = useState(false);
   const sim = useSimState(simAllowed);

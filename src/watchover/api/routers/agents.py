@@ -170,3 +170,17 @@ def rotate(aid: int, acc=Depends(access), svc=Depends(services), _u=Depends(perm
 def delete(aid: int, acc=Depends(access), svc=Depends(services), _u=Depends(perm_scope("act.connect"))):
     _agent(svc, acc, aid, "act.connect")
     svc.agents.delete(aid); return {"ok": True}
+
+
+@router.post("/prune")
+def prune(days: int = 7, user=Depends(require_install("act.connect")), svc=Depends(services)):
+    """Agents not heard from for `days` days go (their tokens with them); Watchover's own built-in agent stays. Audited."""
+    from ... import selfmon
+    keep = tuple(a["id"] for a in svc.agents.list() if selfmon.is_self(a))
+    gone = svc.agents.prune(days, keep)
+    try:
+        svc.users._event(user.get("email", ""), "agents-prune", True, f"{len(gone)} agents not seen for {days} days removed: "
+                                                                     + ", ".join(a["name"] for a in gone)[:400])
+    except Exception:  # noqa: BLE001
+        pass
+    return {"removed": gone}

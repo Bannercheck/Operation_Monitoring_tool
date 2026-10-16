@@ -19,6 +19,8 @@ Install folder (it stays the running release, so ./watchover.sh works as before)
 
 Apply:    received → validated → backup → build (bundle: load images) → switch → start → health → done
 Rollback: received → validated → backup → build (skipped when the images are there) → switch → [restore_db] → start → health → done
+Storage:  received → validated → prepare → copy → switch → start → health → cleanup → done: ./watchover.sh storage set with the raw-log
+          paths and retention an admin gave on System › Storage (logaudit.py); its "::step NAME" lines move the steps
 A failure after the switch brings the previous release back when auto-rollback is on (the default). Python 3.9, standard library."""
 from __future__ import annotations
 
@@ -39,6 +41,13 @@ if __package__ in (None, ""):                                   # run as a scrip
     from watchover import updates as U                          # noqa: E402
 else:
     from . import updates as U
+try:                                                             # raw-log path checks (storage requests); a release without it refuses them
+    if __package__ in (None, ""):
+        from watchover import logaudit as LA                    # noqa: E402
+    else:
+        from . import logaudit as LA
+except ImportError:                                              # pragma: no cover
+    LA = None
 
 DASH_UID = 10001                                                 # the dashboard container's user (writes inbox/ requests/ dash/)
 LOCAL_TOP = {".env", ".git", ".releases", ".updater", "backups", "datasets", "certs", "data", ".venv", "venv", "node_modules",
@@ -48,6 +57,8 @@ SKIP_ANY = {"__pycache__", "node_modules", ".pytest_cache", ".DS_Store", ".mypy_
 BIG_SUFFIX = (".tar", ".tgz", ".tar.gz", ".zip", ".db", ".bak", ".log")
 APPLY_STEPS = ("received", "validated", "backup", "build", "switch", "start", "health", "done")
 ROLLBACK_STEPS = ("received", "validated", "backup", "build", "switch", "start", "health", "done")
+STORAGE_STEPS = ("received", "validated", "prepare", "copy", "switch", "start", "health", "cleanup", "done")
+KINDS = {"apply": APPLY_STEPS, "rollback": ROLLBACK_STEPS, "storage": STORAGE_STEPS}
 
 
 def now() -> str:
@@ -176,7 +187,7 @@ class Updater:
         e.update({k: str(v) for k, v in extra.items()})
         return e
 
-    def sh(self, args: List[str], cwd: Optional[Path] = None, timeout: int = 7200, quiet: bool = False, **env) -> int:
+    def sh(self, args: List[str], cwd: Optional[Path] = None, timeout: int = 7200, quiet: bool = False, on_line=None, **env) -> int:
         """./watchover.sh ARGS in the install folder (or a release tree), output appended to the job's log with secrets masked."""
         cwd = Path(cwd or self.install)
         (self.work / "tmp").mkdir(parents=True, exist_ok=True)
@@ -199,6 +210,8 @@ class Updater:
                 if log:
                     log.write(U.redact(line))
                     log.flush()
+                if on_line is not None:
+                    on_line(line)
             rc = p.wait()
         finally:
             timer.cancel()
@@ -521,6 +534,49 @@ class Updater:
         job.save()
 
     # ---------------------------------------------------------------- retention
+    def storage(self, req: dict) -> None:
+        """Raw-log paths / retention (System › Storage): ./watchover.sh storage set does the work (prepare the directories, copy
+        and verify while the stack runs, stop the log writers, final copy, switch .env, start, health, old copies removed; it puts
+        the old paths back by itself when the new ones do not come up). Its '::step NAME' lines move this job's steps."""
+        job = self.job = Job(self, req, STORAGE_STEPS)
+        job.s["from"] = job.s["to"] = self.folder_version()
+        job.set("received", "ok", ", ".join(f"{k} {req[k]}" for k in ("hot", "cold", "hot_hours", "cold_days") if req.get(k) not in (None, "")))
+        job.set("validated", "running")
+        for k in ("hot", "cold"):
+            why = LA.check_path(req[k]) if req.get(k) else None
+            if why:
+                raise StepError("bad_path", f"{k}: {req[k]} ({why})")
+        why = LA.check_pair(req.get("hot", ""), req.get("cold", ""))
+        if why:
+            raise StepError("bad_path", why)
+        job.set("validated", "ok")
+        args = ["storage", "set"]
+        for k, flag in (("hot", "--hot"), ("cold", "--cold"), ("hot_hours", "--hot-hours"), ("cold_days", "--cold-days")):
+            if req.get(k) not in (None, ""):
+                args += [flag, str(req[k])]
+        if req.get("keep_old"):
+            args.append("--keep-old")
+        cur = {"name": ""}
+        last = {"line": ""}
+
+        def on_line(line: str) -> None:
+            t = U.redact(line).strip()
+            if t.startswith("::step "):
+                name = t.split()[1] if len(t.split()) > 1 else ""
+                if name in STORAGE_STEPS:
+                    if cur["name"]:
+                        job.set(cur["name"], "ok")
+                    cur["name"] = name
+                    job.set(name, "running", t[len("::step ") + len(name):].strip())
+            elif t:
+                last["line"] = t
+        rc = self.sh(args, on_line=on_line, timeout=48 * 3600)
+        if rc != 0:
+            raise StepError("storage_failed", f"./watchover.sh {' '.join(args)}: exit {rc}: {last['line'][-300:]}")
+        if cur["name"]:
+            job.set(cur["name"], "ok")
+        job.finish("done")
+
     def prune(self, keep: int) -> List[str]:
         """Keep the `keep` most recently used releases (source tree + images); the current and the previous one always stay."""
         idx = self.index()
@@ -603,8 +659,28 @@ class Updater:
         if not isinstance(raw, dict):
             return None
         rid = str(raw.get("id", ""))
-        if rid != stem or not U.ID_RE.match(rid) or raw.get("kind") not in ("apply", "rollback"):
+        if rid != stem or not U.ID_RE.match(rid) or raw.get("kind") not in KINDS:
             return None
+        if raw["kind"] == "storage":                              # only what storage set takes: checked paths, numbers in range
+            if LA is None:
+                return None
+            req = {"id": rid, "kind": "storage", "user": str(raw.get("user", ""))[:200], "keep_old": raw.get("keep_old") is True}
+            for k in ("hot", "cold"):
+                v = raw.get(k) or ""
+                if v and (not isinstance(v, str) or LA.check_path(v)):
+                    return None
+                req[k] = v
+            for k, lo, hi in (("hot_hours", 1, 8760), ("cold_days", 0, 3650)):
+                v = raw.get(k)
+                if v is None:
+                    req[k] = None
+                elif isinstance(v, int) and not isinstance(v, bool) and lo <= v <= hi:
+                    req[k] = v
+                else:
+                    return None
+            if not (req["hot"] or req["cold"]) or LA.check_pair(req["hot"], req["cold"]):
+                return None
+            return req
         req = {"id": rid, "kind": raw["kind"], "user": str(raw.get("user", ""))[:200], "auto_rollback": raw.get("auto_rollback", True) is not False,
                "restore_db": raw.get("restore_db") is True, "sig": str(raw.get("sig", ""))[:512], "name": str(raw.get("name", ""))[:200],
                "version": str(raw.get("version", ""))[:40]}
@@ -638,15 +714,15 @@ class Updater:
         self.work.mkdir(parents=True, exist_ok=True)
         (self.work / "busy").write_text(json.dumps({"id": req["id"], "kind": req["kind"], "at": now()}) + "\n", encoding="utf-8")
         try:
-            (self.apply if req["kind"] == "apply" else self.rollback)(req)
+            {"apply": self.apply, "rollback": self.rollback, "storage": self.storage}[req["kind"]](req)
         except (StepError, U.PackageError) as e:
             if self.job is None:
-                self.job = Job(self, req, APPLY_STEPS if req["kind"] == "apply" else ROLLBACK_STEPS)
+                self.job = Job(self, req, KINDS[req["kind"]])
             self.job.fail_running(e)
             self.job.finish("failed", e)
         except Exception as e:  # noqa: BLE001 - the state must say what happened, the daemon must live on
             if self.job is None:
-                self.job = Job(self, req, APPLY_STEPS)
+                self.job = Job(self, req, KINDS.get(req["kind"], APPLY_STEPS))
             self.job.fail_running(e)
             self.job.finish("failed", StepError("internal", repr(e)[:300]))
         finally:
@@ -747,8 +823,10 @@ def _recency(m: dict) -> str:
 
 
 def _code_ok(install: Path) -> bool:
-    for name in ("updater.py", "updates.py"):
+    for name in ("updater.py", "updates.py", "logaudit.py"):
         p = install / "src" / "watchover" / name
+        if name == "logaudit.py" and not p.exists():
+            continue
         try:
             compile(p.read_text(encoding="utf-8"), str(p), "exec")
         except (OSError, SyntaxError, ValueError):

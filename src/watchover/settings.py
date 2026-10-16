@@ -16,7 +16,7 @@ DEFAULTS = {"setup_done": False, "lang": "tr", "workspace": "", "llm_provider": 
             "self_monitor": True, "self_agent_token": "", "thr_cpu": 85, "thr_memory": 90, "thr_disk": 90, "thr_gpu": 95, "alerts_on": True, "smtp_host": "", "smtp_port": 587, "smtp_security": "starttls", "smtp_user": "", "smtp_password": "", "smtp_from": "", "smtp_from_name": "Watchover",
             "sms_preset": "http", "sms_url": "", "sms_method": "POST", "sms_auth": "bearer", "sms_user": "", "sms_password": "", "sms_token": "", "sms_from": "", "sms_account": "", "sms_body": "", "sms_content_type": "application/json", "demo_on_start": False,
             "live_retention_h": 48, "live_window_max_events": 200000, "live_ring": 50000, "live_spool_mb": 64, "history_retention_days": 400,
-            "cold_retention_days": 7, "cold_max_gb": 0, "hot_max_gb": 0,      # log tiers (logtiers.py): cold archive days, size caps (0 = none)
+            "cold_retention_days": 365, "cold_max_gb": 0, "hot_max_gb": 0,    # log tiers (logtiers.py): archive days (a year, audits), cold_max_gb = an alert budget, hot cap (0 = none)
             "logs_raw": True, "logs_attr_max_bytes": 2048, "logs_msg_max_bytes": 16384,      # stored log lines v2 (logstore.py)
             "trace_sample_pct": 10, "trace_slow_ms": 1000, "trace_apdex_ms": 500, "trace_retention_h": 72, "trace_rollup_days": 30, "rum_retention_days": 30, "anomaly_learning_days": 7, "anomaly_learning_mode": "dinamik", "anomaly_learning_min_days": 1, "teams_strict": False, "teams_self_claim": False,
             "train_auto": True, "train_every_h": 24, "train_schedule_on": False, "train_days": "1,2,3,4,5,6,7", "train_start": "01:00", "train_end": "06:00", "train_tz": "Europe/Istanbul", "train_min_examples": 200, "train_min_new": 50, "train_base": "qwen2.5:1.5b-instruct", "train_gate_min": 0.6, "train_use_ops": True, "version": 2}
@@ -47,6 +47,10 @@ def load() -> dict:
     if int(cfg.get("version") or 1) < 2:                    # v2 (Watchover 1.15): self-registration is on by default, as the sign-in page promises
         cfg["auth_self_register"] = True
         cfg["version"] = 2
+    if int(cfg.get("version") or 1) < 3:                    # v3 (1.57): the raw-log archive is kept a year (audits); the old default 7 follows
+        if cfg.get("cold_retention_days") in (7, "7"):
+            cfg["cold_retention_days"] = 365
+        cfg["version"] = 3
     legacy = cfg.pop("auth_mode", None)                     # earlier versions had one mode instead of per-provider flags
     if legacy == "local":
         cfg["auth_local"] = True

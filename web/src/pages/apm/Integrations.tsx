@@ -4,7 +4,9 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { get } from "../../api";
 import { useT } from "../../i18n";
 import { Workflow } from "lucide-react";
-import { Card, Empty, Kpi } from "../../components/ui";
+import { Card, Empty, Kpi, Tabs } from "../../components/ui";
+import { useAuth } from "../../auth";
+import { AppIntegrationsView } from "./AppIntegrations";
 import { CAT_COLOR, ConfLegend, type Sel, TechDrawer, TechLabel, confK, fmtTs, parseSel, sameSel, selStr, stackName } from "./IntegTech";
 
 export { CAT_COLOR };
@@ -96,8 +98,8 @@ function HostBox({ m, w, L, sel, onSel }: { m: any; w: number; L: ReturnType<typ
     <g className={`in-host ${sel?.dir === "host" ? "on" : ""}`} onClick={host} onKeyDown={onKey(host)} role="button" tabIndex={0}>
       <title>{`${m.host} · ${t("itc_stack")}`}</title>
       <rect className="hbox" width={w} height={L.h} rx={12} />
-      <text x={w / 2} y={24} textAnchor="middle" className="topo-nl" style={{ fontSize: 14 }}>🖥 {fit(m.host, w - 40, 14, 600)}</text>
-      <text x={w / 2} y={40} textAnchor="middle" className="topo-ns">{fit(m.ips.join(", ") || t("integ_no_ip"), w - 24)}</text>
+      <text x={w / 2} y={24} textAnchor="middle" className="topo-nl" style={{ fontSize: 14 }}>{m.app ? "▣" : "🖥"} {fit(m.host, w - 40, 14, 600)}</text>
+      <text x={w / 2} y={40} textAnchor="middle" className="topo-ns">{fit(m.app ? `${t("integ_members")}: ${(m.members ?? []).map((x: any) => x.host).join(", ") || "-"}` : m.ips.join(", ") || t("integ_no_ip"), w - 24)}</text>
       <text x={12} y={58} className="topo-ns">{fit(`${t("integ_procs")}: ${m.processes.slice(0, 5).join(", ") || "-"}`, w - 24)}</text>
     </g>
     {L.chips.map((c, i) => { const y = L.chipTop + c.row * 22, open = () => onSel({ dir: "host", key: c.key });
@@ -118,15 +120,23 @@ function HostBox({ m, w, L, sel, onSel }: { m: any; w: number; L: ReturnType<typ
 
 type DProps = { m: any; sel: Sel | null; onSel: (s: Sel) => void };
 const lab = (x: any) => (x.tech ? `${x.tech.label}${confK(x.tech.confidence) === "olasi" ? " ?" : ""}` : x.protocol);
+/** A peer's address to show under its name: a named target's IP, a caller's known address (nothing when the name is the IP). */
+export const ipOf = (x: any): string => {
+  if (x.target !== undefined) return x.known ? x.ip ?? "" : "";
+  const ip = (x.ips ?? [])[0] ?? "";
+  return ip && ip !== x.source ? ip : "";
+};
+const appTag = (x: any) => (x.apps?.length ? ` ▣ ${x.apps[0]}` : "");
 function useNodeText() {
   const { t } = useT();
   const conf = (x: any) => (x.tech ? t(`itc_conf_${confK(x.tech.confidence)}`) : "");
+  const extra = (x: any) => [ipOf(x) && `IP ${ipOf(x)}`, x.apps?.length && `▣ ${x.apps.join(", ")}`, x.via?.length && `${t("integ_via")}: ${x.via.join(", ")}`].filter(Boolean).join("\n");
   return {
-    inTitle: (m: any, c: any) => `${c.source} → ${m.host}:${c.port}\n${lab(c)} (${conf(c)})\n${c.connections} ${t("topo_conn")} · ${c.processes.join(", ")}`,
-    outTitle: (m: any, o: any) => `${m.host} → ${o.target}:${o.port}\n${lab(o)} (${conf(o)})\n${o.connections} ${t("topo_conn")} · ${o.processes.join(", ")}`,
-    inL1: (c: any) => `${c.source}${c.tech?.client?.name ? ` · ${c.tech.client.name}` : c.processes.length ? ` · ${c.processes[0]}` : ""}`,
-    outL1: (o: any) => `${t(`integ_cat_${o.category}`)} · ${o.target}`,
-    l2: (x: any) => lab(x),
+    inTitle: (m: any, c: any) => `${c.source} → ${m.host}:${c.port}\n${lab(c)} (${conf(c)})\n${c.connections} ${t("topo_conn")} · ${c.processes.join(", ")}${extra(c) ? "\n" + extra(c) : ""}`,
+    outTitle: (m: any, o: any) => `${m.host} → ${o.target}:${o.port}\n${lab(o)} (${conf(o)})\n${o.connections} ${t("topo_conn")} · ${o.processes.join(", ")}${extra(o) ? "\n" + extra(o) : ""}`,
+    inL1: (c: any) => `${c.source}${appTag(c)}${c.tech?.client?.name ? ` · ${c.tech.client.name}` : c.processes.length ? ` · ${c.processes[0]}` : ""}`,
+    outL1: (o: any) => `${t(`integ_cat_${o.category}`)} · ${o.target}${appTag(o)}`,
+    l2: (x: any) => (ipOf(x) ? `${ipOf(x)} · ${lab(x)}` : lab(x)),
     more: (n: number) => `+${n} ${t("itc_more")}`,
   };
 }
@@ -211,7 +221,7 @@ function VDiagram({ m, sel, onSel }: DProps) {
 }
 
 /** Picks the layout by the card's width (not the window's), so the map also fits a narrow column. */
-function MapView(p: DProps) {
+export function MapView(p: DProps) {
   const ref = useRef<HTMLDivElement>(null); const [w, setW] = useState(0);
   useLayoutEffect(() => {
     const el = ref.current; if (!el) return;
@@ -244,6 +254,7 @@ export function IntegrationsView() {
       <input className="input" placeholder={t("itc_search")} title={t("itc_search_t")} value={q} onChange={(e) => setQ(e.target.value)} style={{ marginBottom: 8 }} />
       <div className="stack integ-hosts" style={{ gap: 2 }}>{shown.map((h) => <button key={h.host} className={`hostrow ${h.host === host ? "on" : ""}`} onClick={() => pick(h.host)}>
         <div style={{ minWidth: 0 }}><b>{h.agent ? "🖥" : "◌"} {h.host}</b>
+          {h.ips?.length && h.ips[0] !== h.host ? <div className="dim small mono">{h.ips.slice(0, 3).join(", ")}</div> : null}
           {h.tech?.length ? <div className="htech small" title={h.tech.join(" · ")}>{h.tech.slice(0, 3).join(" · ")}</div> : null}
           <div className="dim small">⇠ {h.inbound} · ⇢ {h.outbound} · {h.protocols.slice(0, 4).join(", ")}</div></div></button>)}
         {!shown.length && <div className="dim small" style={{ padding: 8 }}>{t("none")}</div>}</div>
@@ -275,7 +286,7 @@ export function IntegrationsView() {
               <td className="mono">{o.protocol}:{o.port}</td><td className="small">{o.processes.join(", ")}</td><td className="num">{o.connections}</td><td className="small nowrap">{fmtTs(o.last_seen)}<div className="dim">{t("itc_first_short")} {fmtTs(o.first_seen)}</div></td></tr>)}</tbody></table></div>}</Card>
         <Card title={t("integ_in")}>{!d.inbound.length && !d.listens.length ? <Empty>{t("integ_none")}</Empty> :
           <div className="table-wrap"><table className="table integ-t"><thead><tr><th>{t("integ_source")}</th><th>{t("itc_tech")}</th><th>{t("integ_proto")}</th><th>{t("integ_procs")}</th><th className="right">{t("topo_conn")}</th><th>{t("integ_last")}</th></tr></thead>
-            <tbody>{d.inbound.map((c: any, i: number) => <tr key={i} {...row({ dir: "in", peer: c.source, port: String(c.port) })}><td className="tgt">{names.includes(c.source) ? hostLink(c.source) : <b>{c.source}</b>}</td>
+            <tbody>{d.inbound.map((c: any, i: number) => <tr key={i} {...row({ dir: "in", peer: c.source, port: String(c.port) })}><td className="tgt">{names.includes(c.source) ? hostLink(c.source) : <b>{c.source}</b>}{ipOf(c) && <div className="dim small mono">{ipOf(c)}</div>}</td>
               <td><TechLabel tech={c.tech} /></td><td className="mono">{c.protocol}:{c.port}</td><td className="small">{c.processes.join(", ")}</td><td className="num">{c.connections}</td><td className="small">{fmtTs(c.last_seen)}</td></tr>)}
               {d.listens.map((l: any, i: number) => <tr key={"l" + i} {...row({ dir: "listen", peer: "", port: String(l.port) })}><td className="dim">{t("integ_listen_row")}</td>
                 <td><TechLabel tech={l.tech} /></td><td className="mono">{l.protocol}:{l.port}</td><td className="small">{l.process}</td><td className="num">{l.peers}</td><td className="small">{fmtTs(l.last_seen)}</td></tr>)}</tbody></table></div>}</Card>
@@ -287,11 +298,14 @@ export function IntegrationsView() {
   </div>;
 }
 
-/** The page behind the "Integrations" menu item. */
+/** The page behind the "Integrations" menu item: by server, or by application (its member servers folded into one map). */
 export default function Integrations() {
-  const { t } = useT();
+  const { t } = useT(); const { can } = useAuth(); const [sp, setSp] = useSearchParams();
+  const mode = can("page.apps") && sp.get("mode") === "app" ? "app" : "host";
+  const setMode = (k: string) => { const n = new URLSearchParams(); if (sp.get("minutes")) n.set("minutes", sp.get("minutes")!); if (k === "app") n.set("mode", "app"); setSp(n, { replace: true }); };
   return <div className="stack">
-    <div><h2><Workflow size={20} style={{ verticalAlign: -3 }} /> {t("nav_integ")}</h2><span className="muted small">{t("topo_sub_integrations")}</span></div>
-    <IntegrationsView />
+    <div className="row between" style={{ flexWrap: "wrap" }}><div><h2><Workflow size={20} style={{ verticalAlign: -3 }} /> {t("nav_integ")}</h2><span className="muted small">{t("topo_sub_integrations")}</span></div>
+      {can("page.apps") && <Tabs value={mode} onChange={setMode} tabs={[{ k: "host", label: `🖥 ${t("integ_by_host")}` }, { k: "app", label: `▣ ${t("integ_by_app")}` }]} />}</div>
+    {mode === "app" ? <AppIntegrationsView /> : <IntegrationsView />}
   </div>;
 }

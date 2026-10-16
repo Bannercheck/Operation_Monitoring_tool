@@ -1,12 +1,14 @@
-"""Demo mode, the strict separation of simulator data from real data, and "simulation off = spotless".
+"""The simulator's retirement, the strict separation of simulator data from real data, and the clean-up of what it left behind.
 
-WATCHOVER_DEMO=1 (default; the Docker installs): Operations › ⋯ › Simulator may be switched on - unless real data exists (an
-enrolled agent other than Watchover's own host agent, any other sender in the live window or the last CLAIM_DAYS of history, a RUM
-app with real sessions, an enabled pull source, real traces): then it refuses (RealDataPresent, 409, Turkish message). While it
-runs it feeds synthetic hosts and, once, seeds demo inventory rows, two RUM apps, the "Sipariş → Fatura" flow, sample applications
-and the technology demo hosts. A real sender arriving while it runs stops it at once (Services.demo_notice says why; real data is
-never refused). WATCHOVER_DEMO=0 (production; the OpenShift chart): no simulator (403), no Datasets demo / sample sets, no ITSM
-demo tickets.
+The simulator is retired (v1.57): no installation runs it and no setting, environment variable or API turns it on. SIMULATOR is a
+module constant only the test suite sets, to generate fixture data. With it off: Operations has no simulator (the API answers 403),
+Datasets has no demo / sample sets, ITSM no demo tickets, the action agent no demo controls (act.policy.act_demo).
+What older versions' simulator left on an installation goes at the first start (Services.purge_leftovers: purge(), markers only,
+real data stays) and with ./watchover.sh demo-clean. A full reset (reset_all; ./watchover.sh reset-data; System › Veri sıfırlama)
+also empties every analysis store whoever wrote it: anomalies, incidents' actions and cases, alerts, learned baselines, the
+assistant's memory, fine-tunes, history, traces, discovered topology (RESET_WIPE). Accounts, teams, settings (the LLM connection
+included), enrolled agents, sources, policies, audit logs, operator-defined inventory / applications / flows, stored log lines of
+real senders and downloaded base models stay.
 
 Marking at the source (never by guessing a host name):
   * every observation the simulator ingests has sender (agent) "simulator" and the attribute DEMO_ATTR ("wo.demo" = 1); the
@@ -28,8 +30,8 @@ training-example export and automatic training (demo-flagged lessons / rules / a
 skips simulator lines), the action agent (demo anomalies, incidents, log-query hits and flows never become triggers, so its cases,
 evidence, matcher, metrics and trust events never see demo input). The per-service hourly history skips demo lines.
 
-"Simulation off" (Services.simulate(False, confirm=True); POST /api/live/simulate; ./watchover.sh demo-clean; python -m
-watchover.demo clean): preview() counts per category, purge() stops the simulator and empties every store below.
+The clean-up (Services.purge_leftovers at start; ./watchover.sh demo-clean; POST /api/system/demo-clean; python -m watchover.demo
+clean): preview() counts per category, purge() stops the simulator and empties every store below of its rows.
 
 STORES - every place simulator-derived data can land. Add new stores here; tests/test_demo_purge.py fails on a table that is
 in none of FLAGGED / HOST_TABLES / MARKED_TABLES / EXEMPT.
@@ -91,6 +93,7 @@ DEMO_FLOW = {"name": "Sipariş → Fatura", "key_regex": r"sipariş\s+(\d{7})",
 SIM_FILES = ("sim.jsonl", "metrics.jsonl", "flows.jsonl", "otel.jsonl", "hr-api.jsonl")   # stream names the simulator ingests under
 CLAIM_DAYS = 30                           # another sender in the history this recent is real data (no mixing; claimed names)
 EXTRA_HOSTS = ("payroll-db",)             # backend lines of the simulated HR sessions (live.simulate_rum)
+SIMULATOR = False                         # retired: no setting / environment variable / API turns it on (the test suite sets it for fixtures)
 PURGERS: list = []                        # other stores of simulator data (log tiers, sample applications): fn(agent, hosts, dry_run) -> {name: count}
 
 # what each count of purge() belongs to (the confirmation dialog shows the categories; web i18n sim_cat_*)
@@ -109,6 +112,7 @@ CATEGORY_OF = {
     "lessons": "llm_memory", "rules": "llm_memory", "answer_feedback": "llm_memory", "llm_calls": "llm_memory", "eval_runs": "llm_memory",
     "train_runs": "models", "trained_models": "models", "adapters": "models", "act_models": "models", "profiles": "models",
     "drain_clusters": "models", "anomaly_templates": "models", "playbook": "models",
+    "history_hours": "metrics", "learn_runs": "models", "scan_runs": "topology", "mcp_tickets": "actions",
 }
 # tables with a demo column (DEMO_COL) -> purge() count key
 FLAGGED = (("svc_minute", "svc_minutes"), ("spans", "spans"), ("rum_sessions", "rum_sessions"), ("anomalies", "anomalies"), ("alerts", "alerts"),
@@ -184,14 +188,14 @@ def describe(reasons: dict, lang: str = "tr") -> str:
 
 
 def enabled() -> bool:
-    """Demo mode: WATCHOVER_DEMO unset or 1 (Docker installs keep their simulator); 0 / false / off = production."""
-    return os.environ.get("WATCHOVER_DEMO", "1").strip().lower() not in ("0", "false", "no", "off")
+    """The simulator and the demo content it brings (Datasets demo / sample sets, ITSM demo tickets, act demo controls): retired."""
+    return SIMULATOR
 
 
 def require() -> None:
-    """Demo-only content (simulator, Datasets demo / sample sets, ITSM demo tickets): refused on a production install."""
+    """Demo-only content: refused (the simulator is retired; DemoDisabled answers 403)."""
     if not enabled():
-        raise DemoDisabled("demo content is disabled on this installation (WATCHOVER_DEMO=0)")
+        raise DemoDisabled("the simulator is retired: demo content is not available")
 
 
 # ---------------------------------------------------------------- markers
@@ -751,7 +755,7 @@ def _purge_datasets(p: _Purge) -> None:
 
 
 def reset_memory(svc) -> None:
-    """Every in-memory copy that could still show or reuse demo data: windows, counters, caches (real data rebuilds them)."""
+    """Every in-memory copy that could still show or reuse demo data: windows, counters, learned state, caches (real data rebuilds them)."""
     live = getattr(svc, "live", None)
     if live is not None:
         live.purge(SIM_AGENT, tuple(sorted(getattr(live, "demo_hosts", set()) or ())))
@@ -759,8 +763,6 @@ def reset_memory(svc) -> None:
             for k in [k for k in live._detect if k[0] == SIM_AGENT]:
                 live._detect.pop(k, None)
             live.demo_hosts = set()
-        live._memo.clear()
-    svc._live_an = None
     tpl = getattr(svc, "templates", None)
     if tpl is not None and hasattr(tpl, "_load"):            # Drain's in-memory clusters: reloaded from what the purge left
         try:
@@ -771,19 +773,49 @@ def reset_memory(svc) -> None:
             pass
     an = getattr(svc, "anomalies", None)
     if an is not None:
-        for attr, val in (("_sig", {}), ("_learn_memo", {}), ("_season", {}), ("_slo_cache", None), ("_ov", None), ("_win", None), ("last_found", [])):
+        for attr, val in (("_sig", {}), ("_learn_memo", {}), ("_season", {}), ("last_found", [])):
             if hasattr(an, attr):
                 setattr(an, attr, val)
-    for obj, attr, val in ((getattr(svc, "inventory", None), "_index", None), (getattr(svc, "bizflows", None), "_compiled", None),
-                           (getattr(svc, "thresholds", None), "_cache", (0.0, [])), (getattr(svc, "ranges", None), "_cache", {}),
-                           (getattr(svc, "logs", None), "_cache", {}), (svc, "_sim_inventory", False), (svc, "_sim_flow", False), (svc, "_sim_tech_n", 0)):
+    for obj, attr, val in ((svc, "_sim_inventory", False), (svc, "_sim_flow", False), (svc, "_sim_tech_n", 0)):
         if obj is not None and hasattr(obj, attr):
             setattr(obj, attr, val)
+    lw = getattr(svc, "logwatch", None)
+    if lw is not None and isinstance(getattr(lw, "rules", None), dict):
+        lw.rules.clear()                                     # stream counters of log-query alerts (rebuilt from the next lines)
+    al = getattr(svc, "alerts", None)
+    if al is not None and hasattr(al, "last_fired"):
+        al.last_fired = []
+    clear_caches(svc)
+
+
+def clear_caches(svc) -> list:
+    """Cached computations only (System › Bakım › Önbelleği temizle; also after a purge): the live analysis, anomaly / threshold /
+    inventory / applications / technology / log search / time range / APM / dashboard / ITSM caches, agent token lookups. No stored
+    data and no learned state is touched; every cache refills from the stores on its next read. Returns the names cleared."""
+    done = []
+    live = getattr(svc, "live", None)
+    if live is not None and hasattr(live, "_memo"):
+        live._memo.clear(); done.append("live_analysis")
+    svc._live_an = None
+    an = getattr(svc, "anomalies", None)
+    if an is not None:
+        for attr, val in (("_slo_cache", None), ("_ov", None), ("_win", None)):
+            if hasattr(an, attr):
+                setattr(an, attr, val)
+        done.append("anomalies")
+    for name, obj, attr, val in (("inventory", getattr(svc, "inventory", None), "_index", None), ("bizflows", getattr(svc, "bizflows", None), "_compiled", None),
+                                 ("thresholds", getattr(svc, "thresholds", None), "_cache", (0.0, [])), ("ranges", getattr(svc, "ranges", None), "_cache", {}),
+                                 ("log_search", getattr(svc, "logs", None), "_cache", {})):
+        if obj is not None and hasattr(obj, attr):
+            setattr(obj, attr, val); done.append(name)
+    ag = getattr(svc, "agents", None)
+    if ag is not None and hasattr(ag, "_cache"):
+        ag._cache.clear(); ag._active = None; done.append("agents")
     for name in ("apps", "techstack"):
         o = getattr(svc, name, None)
         if o is not None and hasattr(o, "invalidate"):
             try:
-                o.invalidate()
+                o.invalidate(); done.append(name)
             except Exception:  # noqa: BLE001
                 pass
     for obj, attrs in ((getattr(svc, "apps", None), (("_uni", None), ("_suni", None), ("_ns", None))),     # host / service / namespace universes
@@ -791,21 +823,16 @@ def reset_memory(svc) -> None:
         for attr, val in attrs if obj is not None else ():
             if hasattr(obj, attr):
                 setattr(obj, attr, val)
-    lw = getattr(svc, "logwatch", None)
-    if lw is not None and isinstance(getattr(lw, "rules", None), dict):
-        lw.rules.clear()                                     # stream counters of log-query alerts (rebuilt from the next lines)
-    al = getattr(svc, "alerts", None)
-    if al is not None and hasattr(al, "last_fired"):
-        al.last_fired = []
     import sys
     for mod, fn in (("watchover.api.routers.apm", lambda m: m._cache.clear()), ("watchover.api.routers.dash", lambda m: m.CACHE._d.clear()),
                     ("watchover.api.routers.itsm", lambda m: m._cache.update({"tickets": None, "at": 0.0, "system": ""}))):
         m = sys.modules.get(mod)
         if m is not None:
             try:
-                fn(m)
+                fn(m); done.append(mod.rsplit(".", 1)[-1])
             except Exception:  # noqa: BLE001
                 pass
+    return done
 
 
 def preview(svc) -> dict:
@@ -965,6 +992,151 @@ def _finish(p: _Purge, svc, own: set, real: set, pending: dict) -> dict:
     return {"dry_run": dry_run, "counts": counts, "categories": cats, "total": total, "hosts": sorted(own), "kept_hosts": sorted(real), "pending": pending}
 
 
+# ---------------------------------------------------------------- the full reset
+# Emptied by reset_all whoever wrote them: what analysis made from the logs (table, count key). The rest of the database stays:
+# EXEMPT (accounts, teams, settings, agents, sources, policies, audit logs), the action agent's configuration / keys / audit chain,
+# operator-defined inventory / applications / flows / RUM apps / team hosts / integration notes (their demo rows go with purge()),
+# stored log lines of real senders (live_batches, the hot / cold tiers: the archive auditors may ask for).
+RESET_WIPE = (("anomalies", "anomalies"), ("anomaly_learning", "anomaly_learning"), ("anomaly_signal", "anomaly_signal"),
+              ("anomaly_templates", "anomaly_templates"), ("drain_clusters", "drain_clusters"), ("alerts", "alerts"), ("threshold_state", "threshold_states"),
+              ("act_trust_events", "act_rows"), ("act_steps", "act_rows"), ("act_decisions", "act_rows"), ("act_proposals", "act_rows"),
+              ("act_frozen_inputs", "act_rows"), ("act_runs", "act_rows"), ("act_evidence", "act_rows"), ("act_triggers", "act_rows"),
+              ("act_dataset_examples", "act_rows"), ("act_examples", "act_rows"), ("act_datasets", "act_rows"), ("actions", "actions"),
+              ("lessons", "lessons"), ("rules", "rules"), ("answer_feedback", "answer_feedback"), ("llm_calls", "llm_calls"), ("eval_runs", "eval_runs"),
+              ("spans", "spans"), ("svc_minute", "svc_minutes"), ("rum_sessions", "rum_sessions"), ("slo_minute", "history_minutes"),
+              ("slo_hour_service", "history_hours"), ("learn_runs", "learn_runs"), ("net_flows", "net_flows"), ("tech_seen", "tech_seen"),
+              ("app_namespaces", "app_namespaces"), ("biz_events", "biz_events"), ("scan_results", "scan_results"), ("scan_runs", "scan_runs"),
+              ("mcp_tickets", "mcp_tickets"))
+RESET_WORD = "SIFIRLA"                     # typed by the operator before a full reset (System › Veri sıfırlama, ./watchover.sh reset-data)
+RESET_REQUEST = ".reset-request"           # under WATCHOVER_HOME: the API process runs the reset at its next start, before any thread
+RESET_RESULT = "reset-result.json"         # can flush memory back (./watchover.sh reset-data writes the request, then restarts it)
+
+
+def _wipe_models(p: _Purge) -> None:
+    """Every fine-tune: watchover-ops tags leave the bundled Ollama, adapter directories go, the train_runs rows go; the action agent's
+    fine-tunes are retired (its speed probes of base models stay). Downloaded base models are never touched."""
+    kb = p.kb
+    if p.has("train_runs"):
+        runs = _rows(kb, "SELECT id, ts, status, note FROM train_runs")
+        dirs = []
+        for r in runs:
+            note = str(r.get("note") or "")
+            d = Path(note.split(" · ")[-1].strip()) if note else None
+            if d is not None and d.name and (d / "train.jsonl").is_file():
+                dirs.append(d)
+        passed = [r for r in runs if r["status"] == "pass"]
+        p.add("trained_models", len(passed))
+        p.add("adapters", len(dirs))
+        if not p.dry:
+            for d in dirs:
+                shutil.rmtree(d, ignore_errors=True)
+            if passed:
+                try:
+                    from . import ollama as wo_ollama
+                    url = _ollama_url()
+                    for t in sorted({"watchover-ops:" + str(r.get("ts") or "")[:10].replace("-", "") for r in passed}) + ["watchover-ops"]:
+                        wo_ollama.delete(url, t)
+                except Exception:  # noqa: BLE001 - Ollama unreachable: no run is "pass" any more, so 'ops' falls back to the chat model
+                    pass
+        p.delete("train_runs", "train_runs", "1 = 1")
+        if hasattr(p.svc, "_ops_at"):
+            p.svc._ops_at = 0
+    if p.has("act_models", "status"):
+        where = "status <> 'retired' AND (train_run_id IS NOT NULL OR dataset_id IS NOT NULL)"
+        r = _rows(kb, f"SELECT COUNT(*) AS n FROM act_models WHERE {where}")
+        p.add("act_models", int(r[0]["n"] or 0) if r else 0)
+        if not p.dry or p.rehearse:
+            kb._exec(f"UPDATE act_models SET status='retired' WHERE {where}")
+
+
+def _wipe(p: _Purge) -> None:
+    for table, key in RESET_WIPE:
+        p.delete(key, table, "1 = 1")
+    _wipe_models(p)
+
+
+def _drop_all_pending(svc) -> None:
+    """Rows of any sender still waiting in memory for their next flush (history minutes, trace aggregates, held spans, discoveries)."""
+    h = getattr(svc, "history", None)
+    if h is not None and hasattr(h, "pending_min"):
+        with h.lock:
+            h.pending_min.clear()
+    tr = getattr(svc, "traces", None)
+    if tr is not None and hasattr(tr, "_agg"):
+        with tr.lock:
+            tr._agg.clear()
+            tr._held.clear()
+            tr._held_n = 0
+    ts = getattr(svc, "techstack", None)
+    if ts is not None and hasattr(ts, "_pending"):
+        with ts._plock:
+            ts._pending.clear()
+    apps = getattr(svc, "apps", None)
+    if apps is not None and hasattr(apps, "_ns_pending"):
+        apps._ns_pending.clear()
+
+
+def reset_all(svc, dry_run: bool = False) -> dict:
+    """The full reset: every row of RESET_WIPE and every fine-tune, whoever made them, plus everything purge() removes (the demo rows of
+    the kept tables, the simulator's lines in every store, demo datasets). Returns purge()'s shape with "reset": True; dry_run counts only."""
+    if not dry_run:
+        _stop(svc)
+        _drop_pending(svc)
+        _drop_all_pending(svc)
+    p = _Purge(svc, dry_run)
+    kb = p.kb
+    marked = marked_hosts(svc)
+    win = _sim_window(svc)
+    ran = bool(marked) or win is not None or present(svc)
+    names = (sim_hosts() if ran else set()) | marked
+    real = claimed(svc, names) if names else set()
+    own = names - real
+    pending: dict = {}
+    ldb = _live_db(svc)
+    if ldb is not kb:
+        rows = _rows(ldb, f"SELECT COALESCE(SUM(n), 0) AS n FROM live_batches WHERE agent = '{SIM_AGENT}'")
+        if rows and int(rows[0]["n"] or 0):
+            pending["live_lines_hot"] = int(rows[0]["n"])
+    pb = getattr(getattr(svc, "playbook", None), "db", None)
+    n_pb = 0
+    if pb is not None:                                       # the playbook file: every learned entry
+        r = _rows(pb, "SELECT COUNT(*) AS n FROM playbook")
+        n_pb = int(r[0]["n"] or 0) if r else 0
+        if n_pb and not dry_run:
+            pb._exec("DELETE FROM playbook")
+    if dry_run:                                              # one rehearsal: a row both the wipe and a demo marker match counts once
+        try:
+            with kb.tx():
+                p.rehearse = True
+                _wipe(p)
+                _purge_database(p, own, win)
+                raise _Rollback()
+        except _Rollback:
+            pass
+        finally:
+            p.rehearse = False
+    else:
+        _wipe(p)
+        _purge_database(p, own, win)
+    p.counts["playbook"] = n_pb                              # _purge_learned counted the demo entries of these again (dry run)
+    _purge_files(p, own, pending)
+    n_prof = 0
+    try:                                                     # every learned (auto) column profile; ones the operator wrote stay
+        from . import profiles as wo_profiles
+        with wo_profiles._lock:
+            d = wo_profiles.load()
+            gone = [k for k, r in d.items() if r.get("source") == "auto"]
+            n_prof = len(gone)
+            if gone and not dry_run:
+                for k in gone:
+                    d.pop(k, None)
+                wo_profiles.save(d)
+    except Exception:  # noqa: BLE001
+        pass
+    p.counts["profiles"] = n_prof
+    return {**_finish(p, svc, own, real, pending), "reset": True}     # _finish: in-memory windows, caches, the live analysis
+
+
 def clean(svc, dry_run: bool = False) -> dict:
     """The full purge (the name of the earlier, narrower clean-up; ./watchover.sh demo-clean and the System page call it)."""
     return purge(svc, dry_run=dry_run)
@@ -972,12 +1144,33 @@ def clean(svc, dry_run: bool = False) -> dict:
 
 def _main(argv=None) -> int:
     import argparse
-    ap = argparse.ArgumentParser(prog="python -m watchover.demo", description="Demo mode status and the purge of everything the simulator made.")
+    ap = argparse.ArgumentParser(prog="python -m watchover.demo", description="The simulator's state, the purge of everything it made, the full reset of analysis data.")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("status", help="demo mode on / off")
+    sub.add_parser("status", help="simulator available (always false: retired)")
     c = sub.add_parser("clean", help="delete every demo-derived item (counts printed as JSON); real data stays")
     c.add_argument("--dry-run", action="store_true", help="count, delete nothing")
+    r = sub.add_parser("reset", help="full reset: every analysis store (anomalies, actions and cases, alerts, learned baselines, the "
+                                     "assistant's memory, fine-tunes, history, traces, discovered topology) plus the demo clean-up")
+    r.add_argument("--dry-run", action="store_true", help="count, delete nothing")
+    r.add_argument("--yes", action="store_true", help="required to delete (the counts first: --dry-run)")
+    r.add_argument("--at-start", action="store_true", help="with --yes: ask the API process to reset at its next start (then restart it)")
+    r.add_argument("--result", action="store_true", help="print the result of the last reset run at start")
     a = ap.parse_args(argv)
+    if a.cmd == "reset" and (a.at_start or a.result):
+        from . import settings as wo_settings
+        h = wo_settings.home()
+        if a.result:
+            f = h / RESET_RESULT
+            print(f.read_text(encoding="utf-8") if f.is_file() else "{}")
+            return 0
+        if not a.yes:
+            ap.error("--at-start needs --yes")
+        (h / RESET_RESULT).unlink(missing_ok=True)
+        (h / RESET_REQUEST).write_text(json.dumps({"by": "cli", "at": datetime.now(timezone.utc).isoformat(timespec="seconds")}), encoding="utf-8")
+        print(json.dumps({"requested": True}))
+        return 0
+    if a.cmd == "reset" and not a.dry_run and not a.yes:
+        ap.error("reset deletes every analysis store: run with --dry-run first, then --yes")
     if a.cmd == "status":
         print(json.dumps({"demo": enabled()}))
         return 0
@@ -985,10 +1178,11 @@ def _main(argv=None) -> int:
     from .api.services import Services
     svc = Services(background=False)                         # no receiver, no threads: the database and the files only
     try:
-        out = clean(svc, dry_run=a.dry_run)
+        out = reset_all(svc, dry_run=a.dry_run) if a.cmd == "reset" else clean(svc, dry_run=a.dry_run)
         if not a.dry_run:
             try:
-                svc.users._event("cli", "demo-clean", True, f"demo data removed: {out['total']} ({json.dumps(out['categories'], sort_keys=True)})")
+                what = ("data-reset", "full reset") if a.cmd == "reset" else ("demo-clean", "demo data removed")
+                svc.users._event("cli", what[0], True, f"{what[1]}: {out['total']} ({json.dumps(out['categories'], sort_keys=True)})")
             except Exception:  # noqa: BLE001 - the audit log never blocks the clean-up
                 pass
         print(json.dumps(out, ensure_ascii=False, indent=1))

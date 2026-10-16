@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Prepare a Red Hat Enterprise Linux 8.8 / 9 server (or Rocky / Alma) for Watchover. Two container engines, pick one:
+# (RHEL 9.6-9.8 with Podman is the one-command production path: sudo ./install-rhel.sh at the release root calls this script)
 #   docker (default)  Docker CE + Compose v2 from Docker's RHEL repository (podman / buildah / runc are removed first: they conflict),
 #                     the service enabled, the operator in the docker group, /etc/docker/daemon.json (log caps, live-restore)
-#   podman            Red Hat's own engine, rootful: podman + container-selinux from the RHEL repositories, podman.socket (the
+#   podman            Red Hat's own engine, rootful (RHEL 9.6-9.8: Podman 5.x from AppStream, crun, netavark + aardvark-dns, cgroup v2):
+#                     podman + container-selinux from the RHEL repositories, podman.socket (the
 #                     Docker-compatible API) and only the Compose v2 binary (docker-compose-plugin RPM from Docker's repository, no
 #                     Docker engine); watchover.sh then drives Podman through that socket (WATCHOVER_ENGINE=podman, run it with sudo)
 # Both: firewalld rules for the dashboard (8501), the agent receiver (8600), HTTPS (443), with --mcp the MCP server (8765) and
@@ -31,7 +33,9 @@ docker_repo() {   # Docker's RHEL repository (docker: the engine; podman: only t
   if [ "$CHECK" = 1 ]; then echo "  would run: dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo"; else
     dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo 2>/dev/null || dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo; fi
 }
-compose_found() { for c in "$(command -v docker-compose 2>/dev/null || true)" /usr/libexec/docker/cli-plugins/docker-compose /usr/local/lib/docker/cli-plugins/docker-compose /usr/lib/docker/cli-plugins/docker-compose; do [ -n "$c" ] && [ -x "$c" ] && return 0; done; return 1; }
+compose_found() {   # an explicit binary (WATCHOVER_COMPOSE_BIN, as in watchover.sh; install-rhel.sh sets it) is the only one looked at
+  if [ -n "${WATCHOVER_COMPOSE_BIN:-}" ]; then [ -x "$WATCHOVER_COMPOSE_BIN" ]; return; fi
+  for c in "$(command -v docker-compose 2>/dev/null || true)" /usr/libexec/docker/cli-plugins/docker-compose /usr/local/lib/docker/cli-plugins/docker-compose /usr/lib/docker/cli-plugins/docker-compose; do [ -n "$c" ] && [ -x "$c" ] && return 0; done; return 1; }
 
 # ---- host facts
 . /etc/os-release 2>/dev/null || true
@@ -39,6 +43,9 @@ STORE=/var/lib/docker; [ "$ENGINE" = podman ] && STORE=/var/lib/containers
 say "host: ${PRETTY_NAME:-unknown} · $(nproc 2>/dev/null || echo ?) CPU · $(awk '/MemTotal/ {printf "%d GB", $2/1024/1024}' /proc/meminfo 2>/dev/null) RAM · $(df -h /var/lib 2>/dev/null | awk 'NR==2 {print $4}') free under /var/lib · engine: $ENGINE"
 case "${ID:-}" in rhel|rocky|almalinux|centos|ol) ;; *) warn "this is not a RHEL family system (ID=${ID:-?}); the install steps assume dnf and the RHEL repositories" ;; esac
 [ "${VERSION_ID%%.*}" = "8" ] || [ "${VERSION_ID%%.*}" = "9" ] || warn "tested on RHEL 8 and 9, this is ${VERSION_ID:-?}"
+if [ "$ENGINE" = podman ]; then case "${VERSION_ID:-}" in
+  9.[6-9]*) ;; 9|9.*) warn "Podman is tested on RHEL 9.6-9.8 (Podman 5.x); this is ${VERSION_ID}: sudo dnf -y update first" ;;
+  8|8.*) warn "the Podman engine targets RHEL 9.6+; on RHEL 8 use --engine docker" ;; esac; fi
 if [ "$CHECK" = 0 ] && [ "$(id -u)" != 0 ]; then echo "run with sudo (or use --check)" >&2; exit 1; fi
 avail_kb=$(df -k /var/lib 2>/dev/null | awk 'NR==2 {print $4}'); [ -n "$avail_kb" ] && [ "$avail_kb" -lt $((40 * 1024 * 1024)) ] && warn "/var/lib has less than 40 GB free: images, PostgreSQL and the live spool live in $STORE; mount a volume there (raw logs can go to disks of their own: WATCHOVER_LOG_HOT_PATH / WATCHOVER_LOG_COLD_PATH)"
 
@@ -66,8 +73,8 @@ else
   if [ "$DOCKER" = 1 ]; then
     command -v dockerd >/dev/null 2>&1 && warn "Docker CE is installed too: watchover.sh picks Docker unless .env says WATCHOVER_ENGINE=podman"
     say "installing Podman from the RHEL repositories (podman, container-selinux; netavark + aardvark-dns: containers find each other by name)"
-    run dnf -y install podman container-selinux
-    run dnf -y install netavark aardvark-dns || warn "netavark / aardvark-dns not in the repositories: container name resolution needs them (RHEL 8: podman-plugins with CNI)"
+    run dnf -y install podman container-selinux crun openssl          # openssl: watchover.sh edge on issues the edge certificate on the host
+    run dnf -y install netavark aardvark-dns || warn "netavark / aardvark-dns not in the repositories: container name resolution needs them (RHEL 9 AppStream has both)"
     if compose_found; then say "Compose v2 binary already present"; else
       say "installing only the Compose v2 plugin from download.docker.com (docker-compose-plugin: one binary, no Docker engine, no conflict with Podman)"
       run dnf -y install dnf-plugins-core
@@ -105,7 +112,7 @@ fi
 if ! systemctl is-active chronyd >/dev/null 2>&1; then say "enabling chronyd (time sync)"; run dnf -y install chrony >/dev/null 2>&1 || true; run systemctl enable --now chronyd || true; fi
 
 if [ "$ENGINE" = podman ]; then
-  say "done. Next: git clone (or unpack the bundle) into /opt/watchover-docker, then  sudo ./watchover.sh install --production  (Podman: the stack starts on boot by itself, watchover-stack.service)"
+  say "done. Next (RHEL 9): sudo ./install-rhel.sh at the release root does everything else; by hand: sudo ./watchover.sh install --production  (Podman: the stack starts on boot by itself, watchover-stack.service)"
 else
   say "done. Next: git clone (or unpack the bundle) into /opt/watchover-docker and run ./watchover.sh install --production  (air-gapped: ./watchover.sh unbundle FILE first)"
 fi

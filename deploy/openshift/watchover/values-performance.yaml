@@ -18,13 +18,13 @@ receiver:
 persistence:
   data: {size: 30Gi, storageClass: ""}           # hızlı sınıf
   logsHot: {size: 50Gi, storageClass: ""}        # yerel NVMe / SSD sınıfı (ör. "lvms-vg1")
-  logsCold: {size: 50Gi, storageClass: ""}       # ucuz blok sınıfı
+  logsCold: {size: 450Gi, storageClass: ""}      # ucuz blok sınıfı; 100 bin satır/dk × 365 gün ≈ 400 GB arşiv (+ pay)
 
 retention:
   liveRetentionH: 48
-  coldRetentionDays: 30
+  coldRetentionDays: 365                          # denetim: 1 yıl; arşivi yalnız bu süre siler
   hotMaxGb: 40
-  coldMaxGb: 40
+  coldMaxGb: 0                                    # 0 = PVC'nin kendisi; %80 / %90 uyarı, silme yok
 
 postgresql:
   storage: {size: 30Gi, storageClass: ""}        # yerel NVMe / SSD sınıfı

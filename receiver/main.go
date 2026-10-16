@@ -93,7 +93,7 @@ func loadConfig() config {
 	}
 }
 
-// agentCAs: WO_AGENT_CA, plus WO_AGENT_CA_INTERNAL (Caddy's own CA) only while the edge uses it (WATCHOVER_EDGE_TLS=internal):
+// agentCAs: WO_AGENT_CA, plus WO_AGENT_CA_INTERNAL (the install's own edge CA) only while the edge uses it (WATCHOVER_EDGE_TLS=internal):
 // a company certificate must never be paired with a stale internal root the installer would then pin.
 func agentCAs() string {
 	ca := os.Getenv("WO_AGENT_CA")

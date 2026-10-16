@@ -188,6 +188,10 @@ export default function Logs() {
     if (fromCold && incomplete && !loadingMore && !moreErr && auto < COLD_AUTO && searchRows.length < PAGE) { setAuto((n) => n + 1); more(); }
   }, [fromCold, incomplete, loadingMore, moreErr, auto, searchRows.length]);   // eslint-disable-line react-hooks/exhaustive-deps
   const autoOn = fromCold && incomplete && auto > 0 && auto < COLD_AUTO && searchRows.length < PAGE;
+  // the synchronous scan stops after COLD_AUTO requests of 1.5 s: months of archive are an audit search in the background (System › Depolama)
+  const longHint = fromCold && incomplete && auto >= COLD_AUTO && first?.range ? <div className="small dim" style={{ marginTop: 6 }}>{t("lg_cold_long", { n: COLD_AUTO })}{" "}
+    {can("sys.maint") ? <Link to={`/system?audit_q=${encodeURIComponent(st.q ?? "")}&audit_from=${String(first.range.start).slice(0, 10)}&audit_to=${String(first.range.end).slice(0, 10)}`}>{t("lg_cold_bg")}</Link>
+      : <span>{t("lg_cold_bg")}</span>}</div> : null;
   const emptyMsg = (() => {
     if (st.tail) return tailInfo ? t("lg_tail_wait") : t("loading");
     if (st.group) return groups.isLoading ? t("loading") : groups.error ? errText(toErr(groups.error), lang) : groups.data?.source === "history" ? retMsg : t("lg_empty");
@@ -199,12 +203,13 @@ export default function Logs() {
   })();
   const empty = <div className="lg-empty">{emptyMsg}{incomplete && !rows.length && <> {fromCold && <ColdProgress range={first.range} frontier={scan.frontier} />}
     {autoOn ? <button className="linklike" onClick={() => setAuto(COLD_AUTO)}>{t("lg_cold_stop")}</button>
-      : <button className="linklike" onClick={more} disabled={loadingMore}>{loadingMore && fromCold ? t("lg_cold_scanning") : t("lg_scan_more")}</button>}</>}</div>;
+      : <button className="linklike" onClick={more} disabled={loadingMore}>{loadingMore && fromCold ? t("lg_cold_scanning") : t("lg_scan_more")}</button>}</>}{longHint}</div>;
   const bottom = st.tail || !rows.length ? (st.tail && rows.length >= MAX_ROWS ? <div className="lg-endnote dim small">{t("lg_cap_note", { n: fullN(MAX_ROWS, lang) })}</div> : null) : <div className="lg-endnote">
     <div ref={sentinel} />
     {loadingMore ? <span className="dim small">{t("loading")}</span> : moreErr ? <span className="bad small">{errText(moreErr, lang)}</span> :
       lastPage?.next ? (incomplete && !fullPage ? <span className="small dim">{t("lg_scanned", { from: tsLocal(scan.frontier), to: tsLocal(first.range.end), n: fullN(scan.lines, lang) })} · <button className="linklike" onClick={more}>{t("lg_scan_more")}</button></span>
         : <button className="btn sm" onClick={more}>{t("lg_older")}</button>) : <span className="dim small">{t("lg_end")}</span>}
+    {longHint}
   </div>;
   const top = !st.tail && droppedTop > 0 ? <div className="lg-endnote dim small">{t("lg_dropped_top", { n: fullN(droppedTop, lang) })} · <button className="linklike" onClick={refresh}>{t("lg_back_newest")}</button></div> : null;
   const pill = st.tail && paused && buf.length > 0 ? <button className="lg-pill" onClick={backToTop}>▲ {t("lg_tail_new", { n: fullN(buf.length, lang) })}</button> : null;

@@ -16,15 +16,47 @@ from pathlib import Path
 AGENT_NAME_SUFFIX = "watchover-host"
 
 
+def in_container() -> bool:
+    return bool(os.environ.get("WATCHOVER_DOCKER") or os.environ.get("KUBERNETES_SERVICE_HOST")
+                or Path("/.dockerenv").exists() or Path("/run/.containerenv").exists())
+
+
 def host_name() -> str:
+    """The built-in agent's name and host. In a container the host name is the container / pod id, new at every re-create (each
+    upgrade): the agent enrolled again under a fresh name every time. There it is WATCHOVER_SELF_NAME, else 'watchover-host'."""
+    n = os.environ.get("WATCHOVER_SELF_NAME", "").strip()
+    if n:
+        return n[:64]
+    if in_container():
+        return AGENT_NAME_SUFFIX
     return socket.gethostname().split(".")[0] or "localhost"
+
+
+def is_self(a: dict) -> bool:
+    """A row of the built-in agent (enrol_token below): tag "self", env "local", site "watchover"."""
+    return "self" in [t.strip() for t in str(a.get("tags") or "").split(",")] and a.get("env") == "local" and a.get("site") == "watchover"
+
+
+def collapse(registry, name: str):
+    """One built-in agent row: older versions enrolled a new one per container id (one per upgrade). The newest is kept and renamed
+    to `name`; the others (never seen again) go. Returns the kept row or None."""
+    mine = [a for a in registry.list() if is_self(a)]
+    rec = next((a for a in mine if a["name"].lower() == name.lower()), None) \
+        or max(mine, key=lambda a: str(a.get("last_seen") or a.get("created_at") or ""), default=None)
+    for a in mine:
+        if rec is not None and a["id"] != rec["id"]:
+            registry.delete(a["id"])
+    if rec is not None and rec["name"] != name and not any(a["name"].lower() == name.lower() for a in registry.list() if a["id"] != rec["id"]):
+        registry.rename(rec["id"], name)
+        rec = registry.get(rec["id"])
+    return rec
 
 
 def ensure_token(registry, settings_mod) -> str:
     """The self agent's token: kept (encrypted) in the settings; re-issued when the registry lost the agent or the token is gone."""
     cfg = settings_mod.load()
     name = host_name()
-    rec = next((a for a in registry.list() if a["name"].lower() == name.lower()), None)
+    rec = collapse(registry, name) or next((a for a in registry.list() if a["name"].lower() == name.lower()), None)
     tok = cfg.get("self_agent_token", "") or ""
     if rec and rec["status"] == "active" and tok and registry.verify(tok):
         return tok
@@ -86,7 +118,7 @@ class SelfMonitor:
                 return self
             _kill_stale()
             out = open(self.log, "ab") if self.log else subprocess.DEVNULL
-            env = {**os.environ, "PYTHONUNBUFFERED": "1"}
+            env = {**os.environ, "PYTHONUNBUFFERED": "1", "WATCHOVER_HOSTNAME": host_name()}   # the host its lines and metrics carry
             self.proc = subprocess.Popen(command(self.port, self.token, self.interval), stdout=out, stderr=subprocess.STDOUT, env=env, start_new_session=True)
             self.started = time.time()
             try:

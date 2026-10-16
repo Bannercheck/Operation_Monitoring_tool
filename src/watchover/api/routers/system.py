@@ -8,13 +8,15 @@ import time
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import FileResponse, PlainTextResponse
 from pydantic import BaseModel
+from typing import Optional
 
 from fastapi import Request
 
 from ... import __version__
 from ... import admin as wo_admin
+from ... import logaudit
 from ... import release as wo_release
 from ... import settings as wo_settings
 from ... import updates as wo_updates
@@ -47,8 +49,233 @@ def status(user=Depends(require("sys.status")), svc=Depends(services)):
 
 @router.get("/storage")
 def storage(user=Depends(require("sys.status")), svc=Depends(services)):
-    """Log tiers (logtiers.py): hot day files and cold archive sizes, days, caps, bytes per line; the main database size."""
-    return svc.log_tiers.report(svc.kb, svc.live)
+    """Log tiers (logtiers.py): hot day files and cold archive sizes, days, caps, bytes per line; the main database size; where the
+    tiers live (set by hand or not), the alerts, the yearly estimate, the manifest check and the running audit job."""
+    rep = svc.log_tiers.report(svc.kb, svc.live)
+    m = wo_updates.mode()
+    pinned = wo_settings.pinned()
+    rep["setup"] = {"mode": m, "paths": logaudit.storage_paths(m), "pinned": sorted(k for k in ("live_retention_h", "cold_retention_days") if k in pinned),
+                    "updater_online": bool(m == "updater" and _updater(_spool()).get("online"))}
+    job = svc.audit_jobs.running()
+    rep["job"] = job
+    return rep
+
+
+# ---------------------------------------------------------------- raw-log storage: paths by hand, a year's archive, audits (logaudit.py)
+# Docker / Podman: the paths are host directories in .env; the dashboard never touches them. A change goes to the updater as a request
+# (kind "storage"): it runs ./watchover.sh storage set (prepare, copy + verify, stop, final copy, switch, start, health, old copies
+# removed). Without the updater the page shows that command. OpenShift: PVCs, set with Helm values; nothing is changed from the pod.
+PATH_MSG = {"not_absolute": ("Mutlak bir dizin yazın (/srv/watchover/arsiv gibi)", "Give an absolute directory (such as /srv/watchover/archive)"),
+            "bad_chars": ("Dizinde yalnız harf, rakam ve . _ - / kullanın", "Use only letters, digits and . _ - / in the directory"),
+            "system_dir": ("Bu bir sistem dizini; kendine ait bir alt dizin verin (/srv/watchover/arsiv gibi)", "That is a system directory; give a directory of its own (such as /srv/watchover/archive)"),
+            "same_dir": ("Sıcak ve arşiv dizini ayrı olmalı", "The hot and the archive directory must differ"),
+            "nested": ("Sıcak ve arşiv dizini iç içe olamaz", "The hot and the archive directory cannot be inside each other"),
+            "empty": ("Dizin boş", "No directory given")}
+
+
+class StorageConfigIn(BaseModel):
+    hot_path: str = ""
+    cold_path: str = ""
+    hot_hours: Optional[int] = None
+    cold_days: Optional[int] = None
+    keep_old: bool = False
+
+
+def _stg_audit(svc, user, detail: str, ok: bool = True) -> None:
+    try:
+        svc.users._event(user.get("email", "") if isinstance(user, dict) else str(user), "sys.storage", bool(ok), detail[:200])
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _storage_cmd(hot: str, cold: str, hh, cd, keep_old: bool) -> str:
+    parts = ["./watchover.sh storage set"]
+    if hot:
+        parts.append(f"--hot {hot}")
+    if cold:
+        parts.append(f"--cold {cold}")
+    if hh is not None:
+        parts.append(f"--hot-hours {int(hh)}")
+    if cd is not None:
+        parts.append(f"--cold-days {int(cd)}")
+    if keep_old:
+        parts.append("--keep-old")
+    return " ".join(parts)
+
+
+def _helm_storage(hh, cd) -> list:
+    sets = [f"--set retention.liveRetentionH={int(hh)}" if hh is not None else "", f"--set retention.coldRetentionDays={int(cd)}" if cd is not None else "",
+            "--set persistence.logsCold.size=<BOYUT>Gi"]
+    return ["helm upgrade watchover deploy/openshift/watchover -n watchover --reuse-values " + " ".join(x for x in sets if x),
+            "oc get pvc watchover-logs-cold -n watchover   # büyütme: StorageClass allowVolumeExpansion: true olmalı",
+            "oc exec deploy/watchover -n watchover -- python -m watchover.logtiers verify"]
+
+
+@router.put("/storage/config")
+def storage_config(body: StorageConfigIn, user=Depends(require_install("sys.update")), svc=Depends(services)):
+    """The raw-log places and retention, given by hand. Paths: Docker through the updater (request kind "storage") or the command;
+    OpenShift: the Helm values. Hours / days alone: saved at once (the tier job reads them every hour). sys.update + a fresh step-up."""
+    stepup(svc, user)
+    m = wo_updates.mode()
+    paths = logaudit.storage_paths(m)
+    hot, cold = (body.hot_path or "").strip(), (body.cold_path or "").strip()
+    for v in (hot, cold):
+        why = logaudit.check_path(v) if v else None
+        if why:
+            raise err(422, f"stg_path_{why}", *PATH_MSG.get(why, (why, why)), path=v)
+    why = logaudit.check_pair(hot or paths["hot"]["host_path"], cold or paths["cold"]["host_path"])
+    if why:
+        raise err(422, f"stg_path_{why}", *PATH_MSG[why])
+    if body.hot_hours is not None and not 1 <= body.hot_hours <= 8760:
+        raise err(422, "stg_bad_hours", "Sıcak süre 1-8760 saat olmalı", "Hot hours must be 1-8760")
+    if body.cold_days is not None and not 0 <= body.cold_days <= 3650:
+        raise err(422, "stg_bad_days", "Arşiv süresi 0-3650 gün olmalı", "Archive days must be 0-3650")
+    move = {k: v for k, v in (("hot", hot), ("cold", cold)) if v and v.rstrip("/") != (paths[k]["host_path"] or "").rstrip("/")}
+    if m == "openshift":
+        return {"applied": False, "mode": m, "helm": _helm_storage(body.hot_hours, body.cold_days)}
+    nums = {k: v for k, v in (("live_retention_h", body.hot_hours), ("cold_retention_days", body.cold_days)) if v is not None}
+    if not move:
+        pinned = [k for k in nums if k in wo_settings.pinned()]
+        if pinned:
+            raise err(409, "stg_pinned", "Bu değerler kurulumda sabitlenmiş (WATCHOVER_SETTINGS)", "These values are pinned by the deployment (WATCHOVER_SETTINGS)", keys=pinned)
+        if nums:
+            before = wo_settings.load()
+            cfg = wo_settings.save(nums)
+            svc.apply_capacity_settings(cfg)
+            _stg_audit(svc, user, "storage retention " + ", ".join(f"{k} {before.get(k)} -> {v}" for k, v in nums.items()))
+        return {"applied": True, "mode": m, "saved": nums}
+    cmd = _storage_cmd(move.get("hot", ""), move.get("cold", ""), body.hot_hours, body.cold_days, body.keep_old)
+    if m == "updater":
+        sp = _spool()
+        _idle(sp)
+        if not _updater(sp).get("online"):
+            raise err(409, "upd_offline", "Güncelleyici çalışmıyor: sunucuda ./watchover.sh updater on (ya da komutu sunucuda çalıştırın)",
+                      "The updater is not running: ./watchover.sh updater on on the server (or run the command there)", command=cmd)
+        rid = wo_updates.new_id()
+        wo_updates.write_json(sp / "requests" / f"{rid}.json", {"id": rid, "kind": "storage", "hot": move.get("hot", ""), "cold": move.get("cold", ""),
+                                                               "hot_hours": body.hot_hours, "cold_days": body.cold_days, "keep_old": body.keep_old,
+                                                               "user": user.get("email", ""), "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}, mode=0o640)
+        _stg_audit(svc, user, f"storage move requested: {cmd[len('./watchover.sh '):]}")
+        return {"applied": False, "mode": m, "queued": rid, "command": cmd}
+    if m == "manual":
+        return {"applied": False, "mode": m, "command": cmd}
+    return {"applied": False, "mode": m, "commands": [
+        *(f"python -m watchover.logtiers relocate {paths[k]['dir']} {v} && python -m watchover.logtiers relocate {paths[k]['dir']} {v} --final" for k, v in move.items()),
+        *(f"WATCHOVER_LOG_{k.upper()}_DIR={v}" for k, v in move.items()), "# uygulamayı yeniden başlatın; sonra: python -m watchover.logtiers relocate-clean ESKİ YENİ"]}
+
+
+class AuditJobIn(BaseModel):
+    kind: str = "verify"            # verify | export | search
+    start: str = ""                 # YYYY-MM-DD (inclusive)
+    end: str = ""                   # YYYY-MM-DD (inclusive)
+    format: str = "archive"         # export: archive | ndjson
+    query: str = ""                 # search: the log explorer's query language
+
+
+_TICKETS: dict = {}
+
+
+@router.post("/storage/jobs", status_code=202)
+def storage_job(body: AuditJobIn, user=Depends(require_install("sys.maint")), svc=Depends(services)):
+    """A background audit job: verify (every archive re-read against the manifest), export (archives + manifest for auditors, or
+    the stored lines as NDJSON) or search (a log query over months, hot and archive, no time budget). One at a time; exports and
+    searches need a fresh step-up."""
+    if svc.log_cold is None:
+        raise err(409, "stg_no_archive", "Bu kurulumda arşiv yok (WATCHOVER_LOG_STORE=db)", "No archive in this installation (WATCHOVER_LOG_STORE=db)")
+    if body.kind not in ("verify", "export", "search") or body.format not in ("archive", "ndjson"):
+        raise err(422, "stg_bad_job", "Bilinmeyen iş", "Unknown job")
+    try:
+        frm, to = logaudit.day_arg(body.start), logaudit.day_arg(body.end)
+    except ValueError:
+        raise err(422, "stg_bad_date", "Tarih YYYY-AA-GG olmalı", "Dates are YYYY-MM-DD")
+    if frm and to and frm > to:
+        raise err(422, "stg_bad_range", "Başlangıç bitişten sonra", "The start is after the end")
+    if body.kind != "verify":
+        stepup(svc, user)
+    email = user.get("email", "")
+    if body.kind == "verify":
+        def fn(prog, cancel, out):
+            return svc.log_tiers.verify_deep(frm, to, prog, cancel, email)
+    elif body.kind == "export" and body.format == "archive":
+        def fn(prog, cancel, out):
+            return logaudit.export_archive(svc.log_cold.dir, frm, to, out, prog, cancel)
+    elif body.kind == "export":
+        def fn(prog, cancel, out):
+            return logaudit.export_ndjson(svc.log_cold, frm, to, out, svc.log_hot, prog, cancel)
+    else:
+        if not frm or not to:
+            raise err(422, "stg_range_needed", "Arama için başlangıç ve bitiş tarihi gerekli", "A search needs a start and an end date")
+        try:
+            svc.logs.query(body.query, None)
+        except Exception as e:  # noqa: BLE001 - the query language says what is wrong
+            raise err(400, "stg_bad_query", f"Sorgu çalıştırılamadı: {e}", f"The query does not run: {e}")
+        s_iso = f"{frm[:4]}-{frm[4:6]}-{frm[6:]}T00:00:00+00:00"
+        from datetime import datetime as _dt, timedelta as _td
+        e_iso = (_dt.fromisoformat(f"{to[:4]}-{to[4:6]}-{to[6:]}T00:00:00+00:00") + _td(days=1)).isoformat()
+
+        def fn(prog, cancel, out):
+            return logaudit.ndjson_file(out, f"watchover-search-{frm}-{to}", lambda w: svc.logs.export_matches(body.query, s_iso, e_iso, None, w, prog, cancel))
+    try:
+        job = svc.audit_jobs.start(body.kind, {"start": frm, "end": to, "format": body.format, "query": body.query[:500]}, email, fn)
+    except logaudit.Busy:
+        raise err(409, "stg_job_busy", "Bir denetim işi zaten sürüyor", "An audit job is already running")
+    _stg_audit(svc, user, f"audit {body.kind} {frm or '-'}..{to or '-'}" + (f" {body.format}" if body.kind == "export" else "") + (f" q={body.query[:80]}" if body.query else ""))
+    return job
+
+
+@router.post("/storage/stepup")
+def storage_stepup(user=Depends(require_install("sys.maint")), svc=Depends(services)):
+    """428 act_stepup_required until the account has verified itself again (the page asks before an export or a search)."""
+    return {"ok": True, **stepup(svc, user)}
+
+
+@router.get("/storage/jobs")
+def storage_jobs(user=Depends(require_install("sys.maint")), svc=Depends(services)):
+    return svc.audit_jobs.list()
+
+
+@router.get("/storage/jobs/{jid}")
+def storage_job_state(jid: str, user=Depends(require_install("sys.maint")), svc=Depends(services)):
+    j = svc.audit_jobs.get(jid)
+    if j is None:
+        raise HTTPException(404, "not found")
+    return j
+
+
+@router.post("/storage/jobs/{jid}/cancel")
+def storage_job_cancel(jid: str, user=Depends(require_install("sys.maint")), svc=Depends(services)):
+    return {"ok": svc.audit_jobs.cancel(jid)}
+
+
+@router.post("/storage/exports/{name}/ticket")
+def storage_export_ticket(name: str, user=Depends(require_install("sys.maint")), svc=Depends(services)):
+    """A one-file download link valid for 10 minutes (an export can be gigabytes: the browser saves it straight to disk)."""
+    if svc.audit_jobs.path(name) is None:
+        raise HTTPException(404, "not found")
+    now = time.time()
+    for k in [k for k, v in _TICKETS.items() if v[1] < now]:
+        _TICKETS.pop(k, None)
+    import secrets
+    tk = secrets.token_urlsafe(24)
+    _TICKETS[tk] = (name, now + 600, user.get("email", ""))
+    _stg_audit(svc, user, f"audit export download {name}")
+    return {"url": f"/api/system/storage/exports/{name}?ticket={tk}", "expires_s": 600}
+
+
+@router.get("/storage/exports/{name}")
+def storage_export_file(name: str, ticket: str = "", svc=Depends(services)):
+    t = _TICKETS.get(ticket or "")
+    if not t or t[0] != name or t[1] < time.time():
+        raise HTTPException(403, "a download ticket is required (POST …/ticket)")
+    p = svc.audit_jobs.path(name)
+    if p is None:
+        raise HTTPException(404, "not found")
+    sha = ""
+    try:
+        sha = (p.parent / (p.name + ".sha256")).read_text(encoding="utf-8").split()[0]
+    except (OSError, IndexError):
+        pass
+    return FileResponse(str(p), filename=name, media_type="application/octet-stream", headers={"X-Content-SHA256": sha} if sha else None)
 
 
 _coverage_cache: dict = {}

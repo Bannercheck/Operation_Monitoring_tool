@@ -3,9 +3,9 @@
 #   update:   copy the new source tree over this folder, then  ./watchover.sh update
 #   mcp:      ./watchover.sh mcp on                          (our MCP server; MCP_API_KEY in .env; datasets in ./datasets)
 #   legacy:   ./watchover.sh legacy on                       (the former Streamlit interface on :8502, same database; to be removed)
-#   edge:     ./watchover.sh edge on <host>                  (Caddy: https://<host> for the company network, TLS from its own CA or ./certs)
+#   edge:     ./watchover.sh edge on <host>                  (nginx: https://<host> for the company network, TLS from this install's CA or ./certs)
 #   external PostgreSQL: DATABASE_URL in .env and  docker compose up -d --no-deps dashboard
-#   raw logs on disks of their own: WATCHOVER_LOG_HOT_PATH / WATCHOVER_LOG_COLD_PATH in .env (docker-compose.loghot.yml / .logcold.yml)
+#   raw logs where you say: ./watchover.sh storage set --hot DIR --cold DIR (WATCHOVER_LOG_HOT_PATH / _COLD_PATH in .env, docker-compose.loghot.yml / .logcold.yml)
 #   updater:  ./watchover.sh updater on|off                (on by default: in-app updates and rollbacks, Sistem › Güncelleme; the
 #             'updater' service is the only one with the engine socket; the dashboard only shares the watchover-updates spool with it)
 #   Podman (RHEL): the same file through podman.socket (WATCHOVER_ENGINE=podman); bind mounts carry :z for SELinux
@@ -31,7 +31,6 @@ services:
       TZ: ${TZ:-Europe/Istanbul}
       DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-watchover}:${POSTGRES_PASSWORD:-change-me}@postgres:5432/${POSTGRES_DB:-watchover}}
       WATCHOVER_SELFMON: ${WATCHOVER_SELFMON:-1}
-      WATCHOVER_DEMO: ${WATCHOVER_DEMO:-1}           # 0 = production: no simulator, no demo seeding (./watchover.sh demo-clean removes old demo data)
       WATCHOVER_PARALLEL: ${WATCHOVER_PARALLEL:-}
       WATCHOVER_API_RECEIVER: "1"
       WATCHOVER_RECEIVER: go                        # the Go receiver owns :8600 and spools to /data/spool; this container consumes it
@@ -161,7 +160,6 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-watchover}:${POSTGRES_PASSWORD:-change-me}@postgres:5432/${POSTGRES_DB:-watchover}}
       WATCHOVER_SELFMON: "0"
-      WATCHOVER_DEMO: ${WATCHOVER_DEMO:-1}
       LIVE_PORT: "8601"                            # its own receiver port: the product's receiver is on the dashboard container
     depends_on:
       postgres:
@@ -174,22 +172,30 @@ services:
 
   edge:
     profiles: [edge]
-    image: caddy:2-alpine
+    image: nginx:1.28-alpine
     container_name: watchover-edge
     restart: unless-stopped
     ports:
       - "${WATCHOVER_EDGE_HTTPS_PORT:-443}:${WATCHOVER_EDGE_HTTPS_PORT:-443}"   # the only ports colleagues reach; UI / API and /ingest go through here
-      - "${WATCHOVER_EDGE_HTTP_PORT:-80}:${WATCHOVER_EDGE_HTTP_PORT:-80}"       # redirect to https
+      - "${WATCHOVER_EDGE_HTTP_PORT:-80}:${WATCHOVER_EDGE_HTTP_PORT:-80}"       # redirect to https, and /healthz for a load balancer
     environment:
-      WATCHOVER_EDGE_HOST: ${WATCHOVER_EDGE_HOST:-localhost}
-      WATCHOVER_EDGE_HOSTS: ${WATCHOVER_EDGE_HOSTS:-localhost}
-      WATCHOVER_EDGE_TLS: ${WATCHOVER_EDGE_TLS:-internal}
+      WATCHOVER_EDGE_SERVER_NAMES: ${WATCHOVER_EDGE_SERVER_NAMES:-localhost}
       WATCHOVER_EDGE_HTTPS_PORT: ${WATCHOVER_EDGE_HTTPS_PORT:-443}
       WATCHOVER_EDGE_HTTP_PORT: ${WATCHOVER_EDGE_HTTP_PORT:-80}
+      WATCHOVER_EDGE_CERT: /certs/watchover.crt     # this install's CA (scripts/edge-cert.sh) or a company certificate placed in ./certs
+      WATCHOVER_EDGE_KEY: /certs/watchover.key
+      WATCHOVER_EDGE_TRUSTED: ${WATCHOVER_EDGE_TRUSTED:-}   # load balancers whose X-Forwarded-For is believed (./watchover.sh edge lb)
+      NGINX_ENVSUBST_FILTER: ^WATCHOVER_EDGE_       # only these are filled into the template; nginx's own $variables stay
     volumes:
-      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro,z
-      - ./certs:/certs:ro,z                         # company certificate (optional): watchover.crt + watchover.key
-      - watchover-edge:/data                        # Caddy's own CA and issued certificates
+      - ./docker/nginx/watchover.conf.template:/etc/nginx/templates/watchover.conf.template:ro,z
+      - ./docker/nginx/40-watchover-edge.sh:/docker-entrypoint.d/40-watchover-edge.sh:ro,z
+      - ./certs:/certs:ro,z
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:$${WATCHOVER_EDGE_HTTP_PORT}/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     depends_on:
       - dashboard
     logging:
@@ -210,6 +216,8 @@ services:
       OLLAMA_NUM_PARALLEL: ${WATCHOVER_LLM_PARALLEL:-1}        # concurrent requests per model (CPU-only: keep low)
       OLLAMA_MAX_LOADED_MODELS: ${WATCHOVER_LLM_MAX_MODELS:-2} # chat + embeddings resident at once
       OMP_NUM_THREADS: ${WATCHOVER_LLM_THREADS:-4}             # CPU threads for inference (= the cpus limit below)
+      HTTPS_PROXY: ${WATCHOVER_HTTPS_PROXY:-}                   # company proxy for model pulls (https only: no HTTP_PROXY, it would catch
+      NO_PROXY: ${WATCHOVER_NO_PROXY:-}                         # the client-server calls); install-rhel.sh writes both to .env
     volumes:
       - watchover-ollama:/root/.ollama                        # downloaded models persist here; cache cleanup never touches them
       - watchover-models:/models:ro                           # adapters written by the trainer (legacy Modelfile import path)
@@ -252,6 +260,8 @@ services:
       WATCHOVER_MODELS_DIR: /models
       HF_HUB_OFFLINE: ${WATCHOVER_OFFLINE:-0}                    # air-gapped (unbundle): never call huggingface.co, use the cached base weights
       TRANSFORMERS_OFFLINE: ${WATCHOVER_OFFLINE:-0}
+      HTTPS_PROXY: ${WATCHOVER_HTTPS_PROXY:-}                   # company proxy for the base weights (Hugging Face, https); empty = direct
+      NO_PROXY: ${WATCHOVER_NO_PROXY:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -351,7 +361,6 @@ volumes:
   watchover-secrets:                              # vault key and keyd's client certificate
   watchover-updates:                              # in-app update spool shared by the dashboard and the updater (packages, requests, state)
   watchover-pg:
-  watchover-edge:
   watchover-ollama:
   watchover-hf:
   watchover-models:

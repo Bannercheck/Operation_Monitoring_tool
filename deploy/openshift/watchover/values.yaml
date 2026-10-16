@@ -19,10 +19,6 @@ image:
   pullPolicy: IfNotPresent
 imagePullSecrets: []                   # dış kayıt defteri için: [{name: benim-pull-secret}]
 
-# ---------------------------------------------------------------- üretim modu
-# false (önerilen): simülatör başlatılamaz, demo envanter / RUM uygulaması / akış / teknoloji demo sunucusu hiç yazılmaz
-# (WATCHOVER_DEMO=0). true yalnız gösterim ortamları içindir.
-demo: false
 timezone: Europe/Istanbul
 
 # ---------------------------------------------------------------- arayüz + API konteyneri (port 8501)
@@ -57,8 +53,9 @@ persistence:
     size: 50Gi                         # ölçülen ~65-90 bayt/satır; gün dosyası olduğu için 48-72 saat: 100 bin satır/dk ≈ 13 GB/gün
     storageClass: ""                   # örn. "ocs-storagecluster-ceph-rbd" / "gp3-csi" / "thin-csi" (hızlı)
     accessMode: ReadWriteOnce
-  logsCold:                            # daha eski loglar, sıkıştırılmış arşiv: AYRI, ucuz disk
-    size: 50Gi                         # ölçülen ~7-8 bayt/satır: 100 bin satır/dk ≈ 1,1 GB/gün, 30 gün ≈ 33 GB
+  logsCold:                            # arşiv: denetim için 365 gün (retention.coldRetentionDays), mühürlü + karma zincirli; AYRI, ucuz disk
+    size: 100Gi                        # ~7-8 bayt/satır: 10 bin satır/dk ≈ 40 GB/yıl, 100 bin ≈ 1,1 GB/gün ≈ 400 GB/yıl. Kendi hacminize
+                                       # göre verin (KURULUM_OPENSHIFT.md › Depolama); dolarsa arşivleme durur, günler sıcakta kalır, uyarı gelir
     storageClass: ""                   # örn. yavaş / ucuz sınıf; hot ile aynı sınıf da olabilir ama ayrı PVC kalır
     accessMode: ReadWriteOnce
   keys:                                # watchover-keyd anahtarları: YALNIZ keyd kabı bağlar; /data ve veritabanı yedeklerinde yok
@@ -83,9 +80,9 @@ keyd:
 # ---------------------------------------------------------------- saklama (arayüzden değiştirilemez; Helm değeri geçerlidir)
 retention:
   liveRetentionH: 48                   # ham loglar sıcak diskte kaç saat kalır
-  coldRetentionDays: 30                # soğuk arşivde kaç gün kalır (coldMaxGb dolarsa en eskiler daha önce gider)
-  hotMaxGb: 40                         # sıcak dizin üst sınırı (GB, 0 = sınırsız); logsHot.size'ın ~%80'i
-  coldMaxGb: 40                        # soğuk dizin üst sınırı (GB, 0 = sınırsız); logsCold.size'ın ~%80'i
+  coldRetentionDays: 365               # arşivde kaç gün kalır (denetim: 1 yıl). Yalnız bu süre arşiv siler; boyut sınırı silmez
+  hotMaxGb: 40                         # sıcak dizin üst sınırı (GB, 0 = sınırsız); aşılınca en eski gün erkenden ARŞİVLENİR; logsHot.size'ın ~%80'i
+  coldMaxGb: 0                         # arşiv bütçesi (GB, 0 = PVC'nin kendisi): %80 / %90'da uyarı; arşiv SİLİNMEZ
   historyRetentionDays: 400            # dakikalık özetler (PostgreSQL)
 
 # Ek sabitlenmiş ayarlar (WATCHOVER_SETTINGS): {anahtar: değer}. Örn. {teams_strict: true}. Parola koymayın.

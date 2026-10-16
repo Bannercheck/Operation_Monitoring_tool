@@ -345,6 +345,33 @@ def topology(aid: int, minutes: int = Query(60, ge=5, le=10080), acc=Depends(acc
     return {"services": top, "network": net}
 
 
+@router.get("/{aid}/integrations")
+def integrations(aid: int, minutes: int = Query(1440, ge=5, le=10080), acc=Depends(access), svc=Depends(services),
+                 user=Depends(require("page.apps"))):
+    """The application's integration map (flows.app_map): its member hosts, plus the hosts its services ran on, folded into one;
+    every caller / target outside it carries the member hosts it goes through ("via") and the applications it belongs to."""
+    _need_apm(acc)
+    a = _app(svc, acc, aid)
+    sc = _sc(acc)
+    hosts, svc_ok, _h = svc.apps.scoped(a, sc)
+    names, mine = set(hosts), []
+    for s, hs in svc.apps._service_universe().items():
+        if svc_ok(s):
+            mine.append(s)
+            names |= set(hs or ())
+    asc = acc.scope("page.apm")
+    if asc is not None:
+        names = {h for h in names if asc.allows(h)}
+    teams = None if acc.wide else set(acc.team_ids("page.apm"))
+    m = svc.flows.app_map(a["name"], names, minutes, visible=None if asc is None else asc.allows,
+                          manual_ok=None if teams is None else (lambda t: t is None or t in teams))
+    for d in (*m["inbound"], *m["outbound"]):
+        peer = d.get("source") or d.get("target")
+        d["apps"] = [x for x in svc.apps.apps_of_host(peer) if x != a["name"]]
+    m["id"], m["services"] = aid, sorted(mine)[:50]
+    return m
+
+
 @router.get("/{aid}/traces")
 def traces(aid: int, minutes: int = Query(60, ge=5, le=10080), errors: bool = False, order: str = Query("recent", pattern="^(recent|duration)$"),
            limit: int = Query(50, ge=1, le=200), acc=Depends(access), svc=Depends(services), user=Depends(require("page.apps"))):

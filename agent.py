@@ -42,10 +42,16 @@ from pathlib import Path
 __version__ = "0.6.0"
 
 
+def hostname() -> str:
+    """This machine's name on its lines and metrics: WATCHOVER_HOSTNAME when set (Watchover's built-in agent in a container, whose
+    own host name is the container id, new at every re-create), else the OS host name."""
+    return os.environ.get("WATCHOVER_HOSTNAME", "").strip() or socket.gethostname()
+
+
 def host_metrics() -> dict:
     """CPU / memory / disk percent using only the standard library (Linux / macOS; each field falls back gracefully)."""
     import shutil
-    out = {"ts": datetime.now(timezone.utc).isoformat(), "host": socket.gethostname()}
+    out = {"ts": datetime.now(timezone.utc).isoformat(), "host": hostname()}
     try:
         load1 = os.getloadavg()[0]
         out["cpu"] = round(min(100.0, 100.0 * load1 / max(os.cpu_count() or 1, 1)), 1)
@@ -92,7 +98,7 @@ class Sender:
 
     def __init__(self, url: str, key: str | None, agent: str, spool: str | None = None, timeout: int = 15, ca: str | None = None, insecure: bool = False):
         self.url, self.key, self.agent, self.timeout = url, key, agent, timeout
-        self.ctx = None                                        # TLS: system store by default; --ca adds the company / Caddy root; --insecure skips checks
+        self.ctx = None                                        # TLS: system store by default; --ca adds the company / edge CA root; --insecure skips checks
         if url.lower().startswith("https"):
             self.ctx = ssl.create_default_context(cafile=ca) if ca else ssl.create_default_context()
             if insecure:
@@ -396,7 +402,7 @@ MIGRATION = Migration()
 
 def hello(sender: Sender, env: str) -> dict | None:
     line = json.dumps({"ts": datetime.now(timezone.utc).isoformat(), "level": "info", "service": "watchover-agent", "host": sender.agent,
-                       "env": env, "msg": f"agent {__version__} started on {socket.gethostname()}"}) + "\n"
+                       "env": env, "msg": f"agent {__version__} started on {hostname()}"}) + "\n"
     return sender.send(line.encode(), "agent.jsonl")
 
 
@@ -671,7 +677,7 @@ def tcp_flows() -> list[dict]:
 
 
 def flows_loop(sender: "Sender", interval: float, env: str, stop: threading.Event) -> None:
-    host = socket.gethostname()
+    host = hostname()
     while not stop.is_set():
         try:
             fl = tcp_flows()
@@ -839,7 +845,7 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--url", default=os.environ.get("WATCHOVER_URL", "http://localhost:8600/ingest"), help="receiver URL (…/ingest); env WATCHOVER_URL")
     ap.add_argument("--key", "--token", dest="key", default=os.environ.get("WATCHOVER_TOKEN"), help="this agent's token (Connection settings › Agents) or the legacy shared key; env WATCHOVER_TOKEN")
-    ap.add_argument("--agent", default=os.environ.get("WATCHOVER_AGENT") or socket.gethostname(), help="name sent as X-Agent (a registered token overrides it)")
+    ap.add_argument("--agent", default=os.environ.get("WATCHOVER_AGENT") or hostname(), help="name sent as X-Agent (a registered token overrides it)")
     ap.add_argument("--ca", default=os.environ.get("WATCHOVER_CA"), help="CA certificate (PEM) to trust for an https receiver, e.g. the Watchover edge root; env WATCHOVER_CA")
     ap.add_argument("--insecure", action="store_true", help="skip TLS certificate checks (testing only)")
     ap.add_argument("--env", default=os.environ.get("AGENT_ENV", ""), help="environment tag for this host (a registered token overrides it)")

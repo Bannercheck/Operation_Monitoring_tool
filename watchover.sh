@@ -2,11 +2,15 @@
 # Watchover on one server, entirely in Docker, built from this source tree. No GitHub, no registry, no Python on the host.
 #
 #   ./watchover.sh install          first start: writes .env (random passwords / keys), builds the image, starts PostgreSQL + dashboard
-#   ./watchover.sh install --production   the same on a production server: demo off (WATCHOVER_DEMO=0) and the go-live checklist
+#   ./watchover.sh install --production   the same on a production server: production mode and the go-live checklist
 #   ./watchover.sh checklist        the production checklist again: backup timer, start on boot, disk caps, admin password, TLS
 #   ./watchover.sh backup-timer on [HH:MM]|off   nightly backup (systemd timer; cron where there is no systemd), default 02:15
 #   ./watchover.sh autostart on|off the stack starts with the server (systemd unit; switched on by 'install' with Podman)
-#   ./watchover.sh storage          where raw logs live (data volume, or the WATCHOVER_LOG_HOT_PATH / _COLD_PATH disks) and free space
+#   ./watchover.sh storage show     where the raw logs live (the paths you set, or "not set": the data volume), retention, sizes,
+#                                   free space, the archive manifest and the yearly need at the current rate (nothing is proposed)
+#   ./watchover.sh storage set [--hot DIR] [--cold DIR] [--hot-hours N] [--cold-days N] [--keep-old]
+#                                   put the hot logs / the archive where you say: existing days are copied and verified (sha256),
+#                                   the stack switches, the old copies go once it runs (--keep-old keeps them); refused without room
 #                                   engine: Docker, or rootful Podman (RHEL): WATCHOVER_ENGINE=docker|podman in .env, detected when unset
 #   ./watchover.sh update           new source tree copied over this folder: rebuild the image, recreate the containers, keep the data
 #   ./watchover.sh upgrade          git pull of this folder (local edits set aside and put back) + update: the one-line way to a new version
@@ -14,7 +18,7 @@
 #   ./watchover.sh mcp on|off       our MCP server as a third container (MCP_API_KEY from .env)
 #   ./watchover.sh otlp on|off      publish the OpenTelemetry ports 4317 (gRPC) / 4318 (HTTP) on the receiver (OTLP/HTTP also on 8600)
 #   ./watchover.sh legacy on|off    the former Streamlit interface as an extra container (:8502) while teams move over
-#   ./watchover.sh edge on NAME     Caddy in front: https://NAME for the company network (TLS from Caddy's CA, or ./certs/watchover.crt+key);
+#   ./watchover.sh edge on NAME     nginx in front: https://NAME for the company network (TLS from this install's own CA, or ./certs/watchover.crt+key);
 #                                   NAME may be a DNS name, an IP or a Bonjour name like watchover.local (announced by the Mac itself)
 #   ./watchover.sh edge off|cert    stop it | export the CA root certificate colleagues install once (./certs/watchover-root.crt)
 #   ./watchover.sh doctor [--check] the address does not open? checks containers, the edge, the name (Bonjour) and repairs what it can
@@ -22,7 +26,9 @@
 #                                   -> ./backups/watchover-YYYYMMDD-HHMM.tgz (WATCHOVER_BACKUP_DIR; oldest beyond N=14 removed)
 #   ./watchover.sh restore FILE     bring a backup back (containers are stopped meanwhile)
 #   ./watchover.sh user ...         account management, e.g.  user list | user add ops@firma.com --admin | user password EMAIL | user unlock EMAIL
-#   ./watchover.sh demo-clean [--dry-run] [--yes]   delete everything the simulator made, in every store (counts first; real data stays)
+#   ./watchover.sh demo-clean [--dry-run] [--yes]   delete everything the retired simulator left, in every store (counts first; real data stays)
+#   ./watchover.sh reset-data [--dry-run] [--yes]   full reset: every analysis store (anomalies, actions / cases, alerts, learned baselines, LLM memory,
+#                                                   fine-tunes, history, traces, topology) emptied; accounts, settings, agents, audit logs, real log lines stay
 #   ./watchover.sh migrate          copy old SQLite files (knowledge.db / actions.db / playbook.db in ./data or the volume) into PostgreSQL
 #   ./watchover.sh save|load FILE   export the built images to a .tgz (build on a machine with internet), import them on an air-gapped server
 #   ./watchover.sh bundle [FILE]    everything an air-gapped server needs in one .tar: all images, downloaded Ollama models, training weights, source
@@ -219,7 +225,12 @@ build() {
 # one image: Docker through compose; Podman with podman build (Docker image format keeps HEALTHCHECK) under the name Docker gives
 # 'watchover:<tag>', which is the name compose asks the Podman socket for
 build_img() {
-  local svc="$1" f=Dockerfile n=watchover tag; tag="$(version)"; shift
+  local svc="$1" f=Dockerfile n=watchover tag k v; tag="$(version)"; shift
+  # company proxy (WATCHOVER_HTTP_PROXY / _HTTPS_PROXY / _NO_PROXY in .env, written by install-rhel.sh): apt, apk, pip and npm in
+  # the build steps go through it (proxy build args are predefined in Docker and Buildah, nothing of them stays in the image)
+  for k in HTTP_PROXY HTTPS_PROXY NO_PROXY; do
+    v=$(env_get "WATCHOVER_$k"); if [ -n "$v" ]; then set -- --build-arg "$k=$v" --build-arg "$(echo "$k" | tr 'A-Z' 'a-z')=$v" "$@"; fi
+  done
   if [ "$ENGINE" = podman ]; then
     case "$svc" in receiver) f=Dockerfile.receiver; n=watchover-receiver ;; trainer) f=Dockerfile.trainer; n=watchover-trainer ;;
       updater) f=Dockerfile.updater; n=watchover-updater; tag=$UPDATER_TAG; set -- "$@" --build-arg PODMAN=1 ;; esac
@@ -227,6 +238,19 @@ build_img() {
   elif [ "$svc" = trainer ]; then $COMPOSE --profile llm build "$@" trainer
   elif [ "$svc" = updater ]; then $COMPOSE --profile updater build "$@" updater
   else $COMPOSE build "$@" "$svc"; fi
+}
+# firewalld (RHEL): open | close the host ports a feature publishes (mcp, otlp). Only as root with firewalld running, else nothing;
+# the zone is the one install-rhel.sh used (WATCHOVER_FW_ZONE in .env), else firewalld's default zone. 127.0.0.1:PORT stays closed.
+fw_ports() {
+  local op="$1" z p opened=""; shift
+  [ "$(id -u)" = 0 ] && command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1 || return 0
+  z=$(env_get WATCHOVER_FW_ZONE); [ -n "$z" ] || z=$(firewall-cmd --get-default-zone 2>/dev/null) || return 0
+  for p in "$@"; do
+    case "$p" in 127.*|localhost:*|"") continue ;; esac
+    firewall-cmd --permanent --zone="$z" "--$op-port=${p##*:}/tcp" >/dev/null 2>&1 && opened="$opened ${p##*:}/tcp"
+  done
+  firewall-cmd --reload >/dev/null 2>&1 || true
+  [ -z "$opened" ] || say "firewalld ($z): $([ "$op" = add ] && echo opened || echo closed)$opened"
 }
 # compose volume name (project prefix) for a volume declared in docker-compose.yml
 vol_name() { $COMPOSE config --format json 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin)['volumes']['$1']['name'])" 2>/dev/null || echo "watchover_$1"; }
@@ -403,31 +427,167 @@ doctor() {
 # the version the dashboard container is actually running (it can differ from this folder when an update did not finish)
 running_version() { $COMPOSE exec -T dashboard curl -fsS --max-time 5 http://127.0.0.1:8501/api/health 2>/dev/null | sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' || true; }
 # after update: wait for the new container and say plainly which version runs; the browser keeps an open tab on the old build until reloaded
+wait_health() {   # VERSION SECONDS: until the dashboard answers /api/health with VERSION (1 after SECONDS)
+  local want="$1" secs="$2" v="" end; end=$(( $(date +%s) + secs ))
+  while :; do v=$(running_version); [ "$v" = "$want" ] && { say "dashboard answers: v$v"; return 0; }; [ "$(date +%s)" -ge "$end" ] && break; sleep "${WATCHOVER_HEALTH_POLL:-3}"; done
+  say "the dashboard reports '${v:-no answer}', expected v$want"; return 1
+}
+
+# ---------------------------------------------------------------- raw-log storage, given by hand (storage show | storage set)
+# Nothing picks or proposes a disk: the operator names the hot directory and the archive directory. Data moves in a throwaway
+# container of this release's image run as root (it reaches the data volume and any host path, from the host or the updater):
+# copy + sha256 check while the stack runs, then the log writers stop for a final pass of what changed, .env switches, the stack
+# starts, and only when /api/health answers do the old copies go. A new path that does not come up puts the old one back.
+# The Python side: python -m watchover.logtiers relocate | relocate-clean | show | retention (logtiers.py, logaudit.py).
+LOG_SYSTEM_DIRS="/ /bin /boot /dev /etc /home /lib /lib32 /lib64 /libx32 /media /mnt /opt /proc /root /run /sbin /srv /sys /tmp /usr /var /var/lib /var/log /var/tmp /Users /Volumes /private /System /Library /Applications"
+log_path_ok() {   # KIND PATH: what logaudit.check_path allows: absolute, plain characters, not a system directory nor inside one
+  local k="$1" p="$2" q d
+  case "$p" in /*) ;; *) die "--$k must be an absolute directory such as /srv/watchover/$k (got '$p')" ;; esac
+  case "$p" in *[!A-Za-z0-9._/-]*|*//*|*/./*|*/.|*/../*|*/..) die "--$k: use only letters, digits and . _ - / in the path (got '$p')" ;; esac
+  q="${p%/}"; [ -n "$q" ] || q=/
+  for d in $LOG_SYSTEM_DIRS; do [ "$q" = "$d" ] && die "--$k $p is a system directory: give a directory of its own, e.g. ${q%/}/watchover-$k"; done
+  case "$q/" in /proc/*|/sys/*|/dev/*|/etc/*|/boot/*|/usr/*|/bin/*|/sbin/*|/lib/*|/lib64/*|/run/*|/var/lib/docker/*|/var/lib/containers/*|/System/*|/Library/*|/private/etc/*)
+    die "--$k $p is inside a system directory" ;; esac
+  case "$q/" in "$(pwd -P)/"*) die "--$k $p is inside the install folder: give a directory outside it" ;; esac
+  return 0
+}
+log_img() { local t; t=$(env_get WATCHOVER_TAG); echo "watchover:${t:-$(version)}"; }
+logpy() { docker run --rm --network none "$@"; }       # MOUNTS... IMAGE python -m watchover.logtiers ...
+stg_step() { in_updater && echo "::step $1 $2"; say "$2"; }
+tier_mount() {    # KIND PATH -> "-v SRC:/from[:z] /from/..." for the tier's current place: a host path, or the data volume's logs/KIND
+  if [ -n "$2" ]; then echo "-v $2:/from:z /from"; else echo "-v $(vol_name watchover-data):/from /from/logs/$1"; fi
+}
+storage_show() {
+  local hp cp img a h c
+  hp=$(env_get WATCHOVER_LOG_HOT_PATH); cp=$(env_get WATCHOVER_LOG_COLD_PATH); img=$(log_img)
+  if have_image "$img"; then
+    a="-v $(vol_name watchover-data):/data:ro"; h=/data/logs/hot; c=/data/logs/cold
+    [ -n "$hp" ] && { a="$a -v $hp:/hot:ro,z"; h=/hot; }
+    [ -n "$cp" ] && { a="$a -v $cp:/cold:ro,z"; c=/cold; }
+    # shellcheck disable=SC2086
+    logpy --user 0 $a "$img" python -m watchover.logtiers show --home /data --hot "$h" --cold "$c" --hot-path "$hp" --cold-path "$cp" \
+      || die "could not read the storage (image $img)"
+  else
+    for k in hot cold; do
+      if [ "$k" = hot ]; then p="$hp"; else p="$cp"; fi
+      if [ -n "$p" ]; then printf '  %-5s%s  (set by hand)   %s\n' "$k" "$p" "$(df -Ph "$p" 2>/dev/null | awk 'NR==2 {print $2" disk, "$4" free"}')"
+      else printf '  %-5sNOT SET - inside the data volume (/data/logs/%s); set it: ./watchover.sh storage set --%s DIR\n' "$k" "$k" "$k"; fi
+    done
+  fi
+  return 0
+}
+storage_set() {
+  local hot="" cold="" hh="" cd="" keep=0 k K p cur moves="" img m src old_hot old_cold usage a b
+  usage="usage: ./watchover.sh storage set [--hot DIR] [--cold DIR] [--hot-hours N] [--cold-days N] [--keep-old]"
+  while [ $# -gt 0 ]; do case "$1" in
+      --hot) hot="${2:-}"; shift ;; --cold) cold="${2:-}"; shift ;;
+      --hot-hours) hh="${2:-}"; shift ;; --cold-days) cd="${2:-}"; shift ;;
+      --keep-old) keep=1 ;;
+      *) die "$usage" ;;
+    esac; shift; done
+  [ -n "$hot$cold$hh$cd" ] || die "$usage"
+  case "$hh" in *[!0-9]*) die "--hot-hours must be a whole number of hours (1-8760)" ;; esac
+  case "$cd" in *[!0-9]*) die "--cold-days must be a whole number of days (0-3650)" ;; esac
+  [ -z "$hh" ] || { [ "$hh" -ge 1 ] && [ "$hh" -le 8760 ]; } || die "--hot-hours must be 1-8760"
+  [ -z "$cd" ] || [ "$cd" -le 3650 ] || die "--cold-days must be 0-3650"
+  [ -z "$hot" ] || { [ "$hot" = / ] || hot="${hot%/}"; log_path_ok hot "$hot"; }
+  [ -z "$cold" ] || { [ "$cold" = / ] || cold="${cold%/}"; log_path_ok cold "$cold"; }
+  old_hot=$(env_get WATCHOVER_LOG_HOT_PATH); old_cold=$(env_get WATCHOVER_LOG_COLD_PATH)
+  a="${hot:-$old_hot}"; b="${cold:-$old_cold}"
+  if [ -n "$a" ] && [ -n "$b" ]; then
+    case "$a/" in "$b/"*) die "the hot directory and the archive directory must differ and not be inside each other" ;; esac
+    case "$b/" in "$a/"*) die "the hot directory and the archive directory must differ and not be inside each other" ;; esac
+  fi
+  need_docker
+  img=$(log_img); have_image "$img" || die "image $img is not here: ./watchover.sh install (or update) first"
+  for k in hot cold; do
+    if [ "$k" = hot ]; then p="$hot"; cur="$old_hot"; else p="$cold"; cur="$old_cold"; fi
+    [ -n "$p" ] || continue
+    if [ "${cur%/}" = "$p" ]; then say "$k logs already at $p"; continue; fi
+    moves="$moves $k"
+  done
+  if [ -n "$moves" ]; then
+    stg_step prepare "checking the new directories (created when missing, owner $LOG_UID:0, mode 2770, empty or Watchover's own, enough room)"
+    for k in $moves; do
+      if [ "$k" = hot ]; then p="$hot"; cur="$old_hot"; else p="$cold"; cur="$old_cold"; fi
+      m=$(tier_mount "$k" "$cur"); src="${m##* }"
+      # shellcheck disable=SC2086
+      logpy --user 0 ${m% *} -v "$p:/to:z" "$img" python -m watchover.logtiers relocate "$src" /to --check --uid "$LOG_UID" --gid 0 >/dev/null \
+        || die "the $k directory $p cannot be used (see above); nothing was changed"
+      check_log_dir "$(echo "$k" | tr 'a-z' 'A-Z')" "$p"           # as every start will check it (host side)
+    done
+    stg_step copy "copying the existing $(echo $moves | sed 's/ / and /') files with a sha256 check while Watchover keeps running"
+    for k in $moves; do
+      if [ "$k" = hot ]; then p="$hot"; cur="$old_hot"; else p="$cold"; cur="$old_cold"; fi
+      m=$(tier_mount "$k" "$cur"); src="${m##* }"
+      # shellcheck disable=SC2086
+      logpy --user 0 ${m% *} -v "$p:/to:z" "$img" python -m watchover.logtiers relocate "$src" /to --uid "$LOG_UID" --gid 0 \
+        || die "copying the $k logs to $p failed (see above); Watchover still uses ${cur:-the data volume}, nothing was switched"
+    done
+    stg_step switch "stopping the log writers for the final pass (only what changed since the copy)"
+    $COMPOSE $(profiles) stop dashboard mcp legacy >/dev/null 2>&1 || $COMPOSE stop dashboard >/dev/null 2>&1 || true
+    for k in $moves; do
+      if [ "$k" = hot ]; then p="$hot"; cur="$old_hot"; else p="$cold"; cur="$old_cold"; fi
+      m=$(tier_mount "$k" "$cur"); src="${m##* }"
+      # shellcheck disable=SC2086
+      if ! logpy --user 0 ${m% *} -v "$p:/to:z" "$img" python -m watchover.logtiers relocate "$src" /to --final --uid "$LOG_UID" --gid 0; then
+        up; die "the final copy of the $k logs failed; Watchover started again on ${cur:-the data volume}, nothing was switched"
+      fi
+      K=$(echo "$k" | tr 'a-z' 'A-Z'); env_set "WATCHOVER_LOG_${K}_PATH" "$p"
+    done
+  fi
+  if [ -n "$hh$cd" ]; then
+    # shellcheck disable=SC2086
+    logpy -v "$(vol_name watchover-data):/data" "$img" python -m watchover.logtiers retention --home /data ${hh:+--hot-hours "$hh"} ${cd:+--cold-days "$cd"} >/dev/null \
+      || die "could not write the retention into the settings"
+    say "retention: ${hh:+hot $hh h }${cd:+archive $cd days}"
+  fi
+  [ -n "$moves" ] || return 0
+  stg_step start "starting Watchover on the new paths"
+  write_env
+  stg_step health "waiting for the dashboard"
+  if ! up || ! wait_health "$(version)" "${WATCHOVER_STORAGE_HEALTH_S:-300}"; then
+    env_set WATCHOVER_LOG_HOT_PATH "$old_hot"; env_set WATCHOVER_LOG_COLD_PATH "$old_cold"; write_env; up
+    die "Watchover did not come up on the new paths; the previous paths are back (their files were not touched; the copies stay in the new directories)"
+  fi
+  stg_step cleanup "$([ "$keep" = 1 ] && echo "keeping the old copies (--keep-old)" || echo "removing the old copies that were verified at the new place")"
+  for k in $moves; do
+    if [ "$k" = hot ]; then p="$hot"; cur="$old_hot"; else p="$cold"; cur="$old_cold"; fi
+    m=$(tier_mount "$k" "$cur"); src="${m##* }"
+    # shellcheck disable=SC2086
+    logpy --user 0 ${m% *} -v "$p:/to:z" "$img" python -m watchover.logtiers relocate-clean "$src" /to $([ "$keep" = 1 ] && echo --keep) >/dev/null \
+      || say "WARNING: the old $k copies in ${cur:-the data volume} could not all be removed; remove them by hand once you checked $p"
+  done
+  say "raw logs now: hot ${a:-the data volume} · archive ${b:-the data volume}   (./watchover.sh storage show)"
+}
+
 verify_running() {
   local v="" i; for i in $(seq 1 "${WATCHOVER_VERIFY_TRIES:-45}"); do v=$(running_version); [ "$v" = "$(version)" ] && break; sleep 2; done
   if [ "$v" = "$(version)" ]; then say "running v$v. In the browser reload the page once (Cmd+Shift+R / Ctrl+F5) if it still shows the old screens."
   else say "WARNING: this folder is v$(version) but the dashboard reports '${v:-no answer}'. See ./watchover.sh logs dashboard, then ./watchover.sh update"; fi
 }
 edge_url() { local h p; h=$(env_get WATCHOVER_EDGE_HOST); p=$(env_get WATCHOVER_EDGE_HTTPS_PORT || echo 443); [ "$p" = "443" ] && echo "https://$h" || echo "https://$h:$p"; }
-# Caddy's own CA root -> ./certs/watchover-root.crt (0644, public): for colleagues' browsers, and served by the receiver as
-# /agent/ca.crt, which the Agents panel's https install command pins by its sha256 (no manual CA copying on servers)
-edge_ca_export() {
+# The edge's certificate from this installation's own CA (scripts/edge-cert.sh): issued for WATCHOVER_EDGE_HOSTS, re-issued when the
+# names change or 30 days before it ends (every start / upgrade checks). Its public root ./certs/watchover-root.crt (0644) is for
+# colleagues' browsers, and the receiver serves it as /agent/ca.crt, which the Agents panel's https install command pins by its
+# sha256 (no manual CA copying on servers). A company certificate (./certs/watchover.crt + .key) is never touched.
+edge_cert() {
   [ "$(env_get WATCHOVER_EDGE)" = "1" ] && [ "$(env_get WATCHOVER_EDGE_TLS)" = "internal" ] || return 0
-  mkdir -p certs; local i
-  for i in 1 2 3 4 5 6 7 8 9 10; do
-    if docker cp watchover-edge:/data/caddy/pki/authorities/local/root.crt certs/watchover-root.crt.tmp 2>/dev/null; then
-      chmod 644 certs/watchover-root.crt.tmp && mv -f certs/watchover-root.crt.tmp certs/watchover-root.crt && return 0
-    fi
-    sleep 2
-  done
-  say "WARNING: the edge CA was not exported yet (./watchover.sh edge cert later): https agent installs need it"; return 1
+  mkdir -p certs
+  local before after; before=$(cksum certs/watchover.crt 2>/dev/null || true)
+  sh scripts/edge-cert.sh certs "$(env_get WATCHOVER_EDGE_HOSTS | tr -d ' ')" >/dev/null || { say "WARNING: the edge certificate could not be issued (openssl missing?)"; return 1; }
+  after=$(cksum certs/watchover.crt 2>/dev/null || true)
+  [ "$before" = "$after" ] && return 0
+  say "edge certificate issued for $(env_get WATCHOVER_EDGE_HOSTS) (CA root: ./certs/watchover-root.crt)"
+  $ENGINE exec watchover-edge nginx -s reload >/dev/null 2>&1 || true
+  return 2                                          # changed: the receiver re-reads the CA it serves at its next (re)start
 }
 up() {   # inside the updater its own container is left alone (its profile is not active, so it is not an orphan either)
   $COMPOSE $(profiles) up -d --remove-orphans
   in_updater && return 0
   if updater_on; then $COMPOSE --profile updater up -d --no-deps updater || say "WARNING: the updater did not start (in-app updates unavailable): ./watchover.sh logs updater"; fi
   mdns_ensure
-  [ -f certs/watchover-root.crt ] || edge_ca_export || true
+  edge_cert || [ $? -ne 2 ] || $COMPOSE $(profiles) up -d --no-deps --force-recreate receiver >/dev/null 2>&1 || true
 }
 
 # systemd (Linux servers): the stack at boot and the nightly backup; cron where there is no systemd (the backup only)
@@ -453,28 +613,23 @@ backup_timer_state() {
   elif command -v crontab >/dev/null 2>&1 && crontab -l 2>/dev/null | grep -q '# watchover-backup$'; then echo "on (cron)"
   else echo off; fi
 }
-cap_gb() {   # TIER OTHER -> suggested hot_max_gb / cold_max_gb: 80% of a disk of its own, 40% of one shared by both tiers, 30% of the engine's
-  local p o pct=30 base kb
-  p=$(env_get "WATCHOVER_LOG_$1_PATH"); o=$(env_get "WATCHOVER_LOG_$2_PATH")
-  if [ -n "$p" ]; then base="$p"; pct=80; [ -n "$o" ] && [ "$(fs_of "$p")" = "$(fs_of "$o")" ] && pct=40
-  else base=/var/lib/docker; [ "$ENGINE" = podman ] && base=/var/lib/containers; [ -d "$base" ] || base=/var/lib; [ -d "$base" ] || base=/; fi
-  kb=$(df -Pk "$base" 2>/dev/null | awk 'NR==2 {print $2}'); [ -n "$kb" ] && echo $((kb / 1048576 * pct / 100)) || echo "?"
-}
 checklist() {
   local bt as hot cold
   ck() { if [ "$1" = 1 ]; then printf '  [x] %s\n' "$2"; else printf '  [ ] %s\n' "$2"; fi; }
-  bt=$(backup_timer_state); as=$(autostart_state); hot=$(cap_gb HOT COLD); cold=$(cap_gb COLD HOT)
+  bt=$(backup_timer_state); as=$(autostart_state)
   echo; say "production checklist ($ENGINE; ./watchover.sh checklist shows it again)"
-  ck "$([ "$(env_get WATCHOVER_DEMO)" = 0 ] && echo 1)" "demo off (WATCHOVER_DEMO=0): no simulator, no demo data. Leftovers from a demo: ./watchover.sh demo-clean"
+  ck 1 "real data only: the simulator is retired (leftovers of an older version go at the first start, or ./watchover.sh demo-clean)"
   ck "$(case "$bt" in on*) echo 1 ;; esac)" "nightly backup: $bt  -> ./watchover.sh backup-timer on [HH:MM]; copy $(backup_dir)/ to another machine (data/.vault.key is in it)"
   if [ "$ENGINE" = podman ]; then ck "$([ "$as" = on ] && echo 1)" "start on boot: $as  -> sudo ./watchover.sh autostart on (Podman has no daemon that restarts containers)"
   else ck "$([ "$as" = on ] && echo 1 || { systemctl is-enabled -q docker.service 2>/dev/null && echo 1; })" "start on boot: Docker service enabled, containers restart: unless-stopped (optional unit: ./watchover.sh autostart on)"; fi
   ck "" "admin password: sign in as admin@watchover.local (a new password is required at once) or ./watchover.sh user password admin@watchover.local; personal admins: ./watchover.sh user add ops@firma.com --admin"
-  ck "" "disk caps: Sistem › Ayarlar  hot_max_gb ~ $hot, cold_max_gb ~ $cold  (0 = none; Sistem › Depolama warns at 85%)"
-  ck "$([ -n "$(env_get WATCHOVER_LOG_HOT_PATH)$(env_get WATCHOVER_LOG_COLD_PATH)" ] && echo 1)" "raw logs on disks of their own: WATCHOVER_LOG_HOT_PATH / WATCHOVER_LOG_COLD_PATH in .env (./watchover.sh storage)"
+  ck "$([ -n "$(env_get WATCHOVER_LOG_HOT_PATH)" ] && [ -n "$(env_get WATCHOVER_LOG_COLD_PATH)" ] && echo 1)" "raw-log paths set by hand (hot: $(env_get WATCHOVER_LOG_HOT_PATH | grep . || echo 'not set'), archive: $(env_get WATCHOVER_LOG_COLD_PATH | grep . || echo 'not set')): ./watchover.sh storage set --hot DIR --cold DIR"
+  ck "" "archive kept 365 days by default for audits (--cold-days N); size it: ./watchover.sh storage show (yearly need), alerts at 80 / 90 %, verify: Sistem › Depolama"
   ck "$([ "$(env_get WATCHOVER_EDGE)" = 1 ] && echo 1)" "TLS: ./watchover.sh edge on watchover.firma.com (company certificate: ./certs/watchover.crt + .key); then only 443 (+ 8600 for http agents) open"
   ck "$(updater_on || echo 1)" "in-app updates: $(updater_on && echo "on (the updater container holds the engine socket = root on this host; signing key: WATCHOVER_UPDATE_PUBKEY)" || echo off)  -> ./watchover.sh updater off|on"
-  ck "" "firewall: 8501 / 8600 / 443 (and 8765 with MCP, 4317 / 4318 with OTLP) for the right networks only: sudo bash scripts/rhel-prepare.sh prints and opens them"
+  if [ -n "$(env_get WATCHOVER_FW_ZONE)" ]; then   # set by install-rhel.sh (RHEL 9): it opened exactly what is published
+    ck 1 "firewall: firewalld zone $(env_get WATCHOVER_FW_ZONE) opened by install-rhel.sh: $([ "$(env_get WATCHOVER_EDGE)" = 1 ] && echo '443, 80' || echo 8501), 8600 (sudo ./watchover.sh mcp on adds 8765, otlp on 4317 / 4318); only some networks: a firewalld rich rule"
+  else ck "" "firewall: 8501 / 8600 / 443 (and 8765 with MCP, 4317 / 4318 with OTLP) for the right networks only: sudo bash scripts/rhel-prepare.sh prints and opens them"; fi
 }
 
 banner() {
@@ -496,10 +651,10 @@ TXT
 }
 
 case "${1:-}" in
-  install)   # --production: demo off for good (WATCHOVER_DEMO=0) and the go-live checklist at the end
+  install)   # --production: production mode and the go-live checklist at the end
     prod=0; for a in "${@:2}"; do case "$a" in --production|--prod) prod=1 ;; *) die "usage: ./watchover.sh install [--production]" ;; esac; done
     need_docker; write_env
-    if [ "$prod" = 1 ]; then env_set WATCHOVER_DEMO 0; env_set WATCHOVER_PRODUCTION 1; say "production install: WATCHOVER_DEMO=0 (no simulator, no demo data)"; fi
+    if [ "$prod" = 1 ]; then env_set WATCHOVER_PRODUCTION 1; say "production install"; fi
     build; up
     say "waiting for the containers to become healthy"
     for _ in $(seq 1 60); do
@@ -511,12 +666,11 @@ case "${1:-}" in
   checklist) [ -f "$ENV_FILE" ] || die "not installed yet: ./watchover.sh install --production"; checklist ;;
   storage)
     [ -f "$ENV_FILE" ] || die "not installed yet: ./watchover.sh install"
-    for k in HOT COLD; do
-      p=$(env_get "WATCHOVER_LOG_${k}_PATH")
-      if [ -n "$p" ]; then check_log_dir "$k" "$p"; printf '  %-4s %s -> /logs/%s   %s\n' "$(lower "$k")" "$p" "$(lower "$k")" "$(df -Ph "$p" | awk 'NR==2 {print $2" disk, "$4" free, mounted at "$6}')"
-      else printf '  %-4s data volume (/data/logs/%s)   for a disk of its own: WATCHOVER_LOG_%s_PATH=/srv/watchover/%s in .env, then ./watchover.sh start\n' "$(lower "$k")" "$(lower "$k")" "$k" "$(lower "$k")"; fi
-    done
-    say "suggested caps (Sistem › Ayarlar): hot_max_gb ~ $(cap_gb HOT COLD), cold_max_gb ~ $(cap_gb COLD HOT)" ;;
+    case "${2:-show}" in
+      show) storage_show ;;
+      set)  busy_guard; shift 2; storage_set "$@" ;;
+      *) die "usage: ./watchover.sh storage show | storage set [--hot DIR] [--cold DIR] [--hot-hours N] [--cold-days N] [--keep-old]" ;;
+    esac ;;
   backup-timer)   # nightly ./watchover.sh backup --no-logs (raw logs are large; their disks have their own snapshots)
     at="${3:-$(env_get WATCHOVER_BACKUP_AT)}"; at="${at:-02:15}"
     case "${2:-}" in
@@ -590,9 +744,7 @@ case "${1:-}" in
     need_docker; [ -n "${2:-}" ] && [ "$2" != "$(version)" ] || die "usage: ./watchover.sh images-rm VERSION   (never the version of this folder)"
     for i in watchover watchover-receiver watchover-trainer; do docker image rm "$i:$2" >/dev/null 2>&1 && say "removed $i:$2" || true; done ;;
   health)  # after a start: wait until the dashboard answers /api/health with VERSION; exit 1 after SECONDS
-    need_docker; want="${2:-$(version)}"; secs="${3:-180}"; v=""; end=$(( $(date +%s) + secs ))
-    while :; do v=$(running_version); [ "$v" = "$want" ] && { say "dashboard answers: v$v"; exit 0; }; [ "$(date +%s)" -ge "$end" ] && break; sleep "${WATCHOVER_HEALTH_POLL:-3}"; done
-    say "the dashboard reports '${v:-no answer}', expected v$want"; exit 1 ;;
+    need_docker; wait_health "${2:-$(version)}" "${3:-180}" || exit 1 ;;
   updater)   # in-app updates: the updater container is the only one with the engine socket; off = no socket in any container
     need_docker; case "${2:-}" in
       on)  env_set WATCHOVER_UPDATER 1; write_env
@@ -608,15 +760,16 @@ case "${1:-}" in
       *) die "usage: ./watchover.sh updater on|off|status" ;; esac ;;
   mcp)
     need_docker; case "${2:-}" in
-      on)  env_set WATCHOVER_MCP 1; up; say "MCP server on: http://$(host_ip):$(env_get WATCHOVER_MCP_PORT || echo 8765)/mcp  key: $(env_get MCP_API_KEY)" ;;
-      off) $COMPOSE --profile mcp stop mcp; $COMPOSE --profile mcp rm -f mcp; env_set WATCHOVER_MCP 0; say "MCP server off" ;;
+      on)  env_set WATCHOVER_MCP 1; up; mp=$(env_get WATCHOVER_MCP_PORT); fw_ports add "${mp:-8765}"; say "MCP server on: http://$(host_ip):$(env_get WATCHOVER_MCP_PORT || echo 8765)/mcp  key: $(env_get MCP_API_KEY)" ;;
+      off) $COMPOSE --profile mcp stop mcp; $COMPOSE --profile mcp rm -f mcp; env_set WATCHOVER_MCP 0; mp=$(env_get WATCHOVER_MCP_PORT); fw_ports remove "${mp:-8765}"; say "MCP server off" ;;
       *) die "usage: ./watchover.sh mcp on|off" ;; esac ;;
   otlp)   # OpenTelemetry: the receiver always speaks OTLP; "on" publishes 4317 / 4318 (off by default: a host collector may own them)
     need_docker; case "${2:-}" in
       on)  env_set WATCHOVER_OTLP 1; compose_files; up
+           og=$(env_get WATCHOVER_OTLP_GRPC_PORT); oh=$(env_get WATCHOVER_OTLP_HTTP_PORT); fw_ports add "${og:-4317}" "${oh:-4318}"
            say "OTLP on: gRPC http://$(host_ip):$(env_get WATCHOVER_OTLP_GRPC_PORT || echo 4317)  HTTP http://$(host_ip):$(env_get WATCHOVER_OTLP_HTTP_PORT || echo 4318)/v1/{logs,traces,metrics}"
            say "exporter header: Authorization: Bearer <agent token> (Ajanlar panelinde bir ajan olarak kaydet; açık modda gerekmez)" ;;
-      off) env_set WATCHOVER_OTLP 0; compose_files; up; say "OTLP ports closed (OTLP/HTTP stays on :$(env_get WATCHOVER_LIVE_PORT || echo 8600)/v1/*)" ;;
+      off) env_set WATCHOVER_OTLP 0; compose_files; up; og=$(env_get WATCHOVER_OTLP_GRPC_PORT); oh=$(env_get WATCHOVER_OTLP_HTTP_PORT); fw_ports remove "${og:-4317}" "${oh:-4318}"; say "OTLP ports closed (OTLP/HTTP stays on :$(env_get WATCHOVER_LIVE_PORT || echo 8600)/v1/*)" ;;
       *) die "usage: ./watchover.sh otlp on|off" ;; esac ;;
   llm)
     need_docker; write_env
@@ -688,27 +841,39 @@ case "${1:-}" in
         host="${hosts%%,*}"
         case ",$hosts," in *,"$(host_ip)",*) ;; *) hosts="$hosts,$(host_ip)" ;; esac      # the IP is always on the certificate too
         env_set WATCHOVER_EDGE 1; env_set WATCHOVER_EDGE_HOST "$host"; env_set WATCHOVER_EDGE_HOSTS "$(echo "$hosts" | sed 's/,/, /g')"
+        env_set WATCHOVER_EDGE_SERVER_NAMES "$(echo "$hosts" | tr ',' ' ')"
         mdns_start "$hosts"
         [ -n "$(env_get WATCHOVER_EDGE_TLS)" ] || env_set WATCHOVER_EDGE_TLS internal
         [ -n "$(env_get WATCHOVER_EDGE_HTTPS_PORT)" ] || env_set WATCHOVER_EDGE_HTTPS_PORT 443
         [ -n "$(env_get WATCHOVER_EDGE_HTTP_PORT)" ] || env_set WATCHOVER_EDGE_HTTP_PORT 80
-        if [ -f certs/watchover.crt ] && [ -f certs/watchover.key ]; then env_set WATCHOVER_EDGE_TLS "/certs/watchover.crt /certs/watchover.key"; say "company certificate found in ./certs"; fi
-        mkdir -p certs
+        if [ -f certs/watchover.crt ] && [ -f certs/watchover.key ] && [ ! -f certs/.ca/issued ]; then
+          env_set WATCHOVER_EDGE_TLS company; say "company certificate found in ./certs"
+        else
+          env_set WATCHOVER_EDGE_TLS internal
+        fi
+        mkdir -p certs; edge_cert || [ $? -eq 2 ] || die "the edge needs a certificate: install openssl (RHEL: sudo dnf install openssl), or place watchover.crt + watchover.key in ./certs"
         compose_files                                                          # + docker-compose.edge.yml: plain http ports not published while the edge is on
-        $COMPOSE $(profiles) up -d --remove-orphans --force-recreate dashboard edge
-        say "edge on: $(edge_url)   (http://$(env_get WATCHOVER_EDGE_HOST) redirects; plain :8501 is no longer published)"
-        if [ "$(env_get WATCHOVER_EDGE_TLS)" = "internal" ]; then
-          edge_ca_export && $COMPOSE $(profiles) up -d --no-deps --force-recreate receiver >/dev/null 2>&1 || true   # the receiver serves it as /agent/ca.crt
-          say "colleagues install the CA root once: ./certs/watchover-root.crt (agents: the Agents panel's https command pins it by itself)"
-        fi ;;
+        $COMPOSE $(profiles) up -d --remove-orphans --force-recreate dashboard receiver edge
+        say "edge on: $(edge_url)   (http://$(env_get WATCHOVER_EDGE_HOST) redirects; plain :8501 is no longer published; health check: /healthz)"
+        [ "$(env_get WATCHOVER_EDGE_TLS)" = "internal" ] && say "colleagues install the CA root once: ./certs/watchover-root.crt (agents: the Agents panel's https command pins it by itself)"
+        [ -n "$(env_get WATCHOVER_EDGE_TRUSTED)" ] || say "behind a load balancer: ./watchover.sh edge lb <its address or CIDR> (then the real client address is logged)" ;;
       off)
         $COMPOSE --profile edge stop edge; $COMPOSE --profile edge rm -f edge; env_set WATCHOVER_EDGE 0; mdns_stop
         compose_files
         $COMPOSE $(profiles) up -d --remove-orphans --force-recreate dashboard; say "edge off: http://$(host_ip):$(env_get WATCHOVER_UI_PORT || echo 8501)" ;;
       cert)
-        mkdir -p certs; docker cp watchover-edge:/data/caddy/pki/authorities/local/root.crt certs/watchover-root.crt && chmod 644 certs/watchover-root.crt
-        say "CA root: ./certs/watchover-root.crt  — macOS: Keychain Access › System › import, set to Always Trust; Windows: certutil -addstore -f Root watchover-root.crt; Linux agents: --ca watchover-root.crt" ;;
-      *) die "usage: ./watchover.sh edge on [name[,name2,ip]] | off | cert     e.g.  edge on watchover.local" ;; esac ;;
+        edge_cert || true
+        [ -f certs/watchover-root.crt ] || die "no CA root yet: ./watchover.sh edge on NAME first (a company certificate brings its own CA)"
+        say "CA root: ./certs/watchover-root.crt  sha256 $(openssl x509 -in certs/watchover-root.crt -noout -fingerprint -sha256 2>/dev/null | cut -d= -f2)"
+        say "macOS: Keychain Access › System › import, set to Always Trust; Windows: certutil -addstore -f Root watchover-root.crt; RHEL: cp to /etc/pki/ca-trust/source/anchors/ && update-ca-trust; Linux agents: --ca watchover-root.crt" ;;
+      lb)   # the load balancer(s) in front: only from these addresses is X-Forwarded-For believed (the client address in logs / sign-in records)
+        shift 2; [ $# -gt 0 ] || { say "trusted load balancers: $(env_get WATCHOVER_EDGE_TRUSTED || true)"; say "usage: ./watchover.sh edge lb 10.0.0.5/32 [10.0.1.0/24 ...] | off"; exit 0; }
+        if [ "$1" = off ]; then env_set WATCHOVER_EDGE_TRUSTED ""; else
+          for c in "$@"; do case "$c" in *[!0-9a-fA-F.:/]*|"") die "not an address / CIDR: $c" ;; esac; done
+          env_set WATCHOVER_EDGE_TRUSTED "$*"; fi
+        $COMPOSE $(profiles) up -d --no-deps --force-recreate edge
+        say "trusted load balancers: ${*}   (health check for the load balancer: GET https://<this server>/healthz, or http://…/healthz on port $(env_get WATCHOVER_EDGE_HTTP_PORT || echo 80))" ;;
+      *) die "usage: ./watchover.sh edge on [name[,name2,ip]] | off | cert | lb CIDR...     e.g.  edge on watchover.local" ;; esac ;;
   api)     say "the API now runs inside the dashboard container: http://$(host_ip):$(env_get WATCHOVER_UI_PORT || echo 8501)/api/docs" ;;
   backup)   # --no-logs: without the raw logs under /data/logs (the nightly timer's choice: they are large); on disks of their own they are never in it
     need_docker; keep="${WATCHOVER_BACKUP_KEEP:-$(env_get WATCHOVER_BACKUP_KEEP)}"; keep="${keep:-14}"; logs=1; out=""
@@ -718,7 +883,8 @@ case "${1:-}" in
     excl=""; [ "$logs" = 0 ] && excl="--exclude=./logs"
     docker run --rm -v "$(vol_name watchover-data)":/data -v "$tmp":/out:z "$ALPINE" tar czf /out/data.tgz $excl -C /data .
     printf 'version=%s\nengine=%s\nlogs=%s\n' "$(version)" "$ENGINE" "$logs" > "$tmp/MANIFEST"
-    cp "$ENV_FILE" "$tmp/env"; tar czf "$out" -C "$tmp" .; rm -rf "$tmp"; chmod 600 "$out"; say "backup written: $out ($(du -h "$out" | cut -f1))"
+    cp "$ENV_FILE" "$tmp/env"; [ -d certs ] && tar czf "$tmp/certs.tgz" certs 2>/dev/null || true   # the edge CA's key and certificates
+    tar czf "$out" -C "$tmp" .; rm -rf "$tmp"; chmod 600 "$out"; say "backup written: $out ($(du -h "$out" | cut -f1))"
     [ -n "$fixed" ] || ls -1t "$bdir"/watchover-*.tgz 2>/dev/null | tail -n +"$((keep + 1))" | while read -r old; do rm -f "$old"; say "old backup removed: $old"; done ;;   # --out (the updater's pre-update backup) prunes nothing
   restore)   # a backup made with --no-logs leaves the raw logs in place
     busy_guard; need_docker; [ -f "${2:-}" ] || die "usage: ./watchover.sh restore backups/watchover-….tgz"; write_env; tmp=$(mktemp -d); tar xzf "$2" -C "$tmp"
@@ -728,6 +894,7 @@ case "${1:-}" in
     say "restoring the database"; $COMPOSE exec -T postgres psql -q -U "$(env_get POSTGRES_USER || echo watchover)" -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;" "$(env_get POSTGRES_DB || echo watchover)"
     gunzip -c "$tmp/db.sql.gz" | $COMPOSE exec -T postgres psql -q -U "$(env_get POSTGRES_USER || echo watchover)" "$(env_get POSTGRES_DB || echo watchover)"
     say "restoring settings, secrets and snapshots"; docker run --rm -v "$(vol_name watchover-data)":/data -v "$tmp":/in:z "$ALPINE" sh -c "$wipe && tar xzf /in/data.tgz -C /data"
+    if [ -f "$tmp/certs.tgz" ] && [ ! -f certs/.ca/watchover-ca.key ]; then tar xzf "$tmp/certs.tgz"; say "edge CA and certificates restored to ./certs"; fi
     rm -rf "$tmp"; up; say "restored from $2"; $COMPOSE ps ;;
   user)    need_docker; shift; $COMPOSE exec dashboard python -m watchover.useradmin "$@" ;;
   profile)   # fixed caps for a known machine (WATCHOVER_SIZING=manual keeps them); the LLM gets a share, never every CPU, so a question
@@ -757,7 +924,7 @@ case "${1:-}" in
         for k in $keys; do printf '  %-28s %s\n' "$k" "$(env_get "$k")"; done ;;
       *) die "usage: ./watchover.sh profile [cpu8|cpu16|auto]" ;;
     esac ;;
-  demo-clean)   # the same full purge as switching the simulator off (watchover.demo.purge): lines, history, derived rows, LLM memory, demo-trained models; real data stays
+  demo-clean)   # what the retired simulator left (watchover.demo.purge; also runs at the first start): lines, history, derived rows, LLM memory, demo-trained models; real data stays
     need_docker; shift; dry=0; yes=0
     for a in "$@"; do case "$a" in --dry-run) dry=1 ;; --yes|-y) yes=1 ;; *) die "usage: ./watchover.sh demo-clean [--dry-run] [--yes]" ;; esac; done
     if [ "$dry" = 1 ]; then $COMPOSE exec -T dashboard python -m watchover.demo clean --dry-run; exit 0; fi
@@ -774,6 +941,26 @@ case "${1:-}" in
     $COMPOSE exec -T dashboard python -m watchover.demo clean
     $COMPOSE restart dashboard                     # its memory (caches, learned templates) is rebuilt from the purged stores
     say "demo data removed (audited as 'cli' in the sign-in log)" ;;
+  reset-data)   # the full reset (watchover.demo.reset_all): every analysis store, whoever wrote it, plus the demo clean-up; configuration stays
+    need_docker; shift; dry=0; yes=0
+    for a in "$@"; do case "$a" in --dry-run) dry=1 ;; --yes|-y) yes=1 ;; *) die "usage: ./watchover.sh reset-data [--dry-run] [--yes]" ;; esac; done
+    $COMPOSE exec -T dashboard python -m watchover.demo reset --dry-run
+    [ "$dry" = 1 ] && exit 0
+    if [ "$yes" != 1 ]; then
+      [ -t 0 ] || die "reset-data deletes every analysis store: run it in a terminal, or add --yes"
+      say "kept: users, teams, roles, settings (LLM connection), agents, sources, policies, hand-entered inventory, audit logs, real log lines, base models"
+      say "a backup first is wise: ./watchover.sh backup"
+      printf 'Type SIFIRLA to delete the analysis data counted above: '; read -r ans
+      case "$ans" in SIFIRLA|sifirla|sıfırla|Sıfırla|Sifirla) ;; *) say "nothing deleted"; exit 0 ;; esac
+    fi
+    $COMPOSE exec -T dashboard python -m watchover.demo reset --yes --at-start >/dev/null
+    say "restarting the dashboard: it resets at start, before anything in memory can be written back"
+    $COMPOSE restart dashboard
+    for _ in $(seq 1 90); do
+      if $COMPOSE ps --format '{{.Service}} {{.Health}}' 2>/dev/null | grep -q '^dashboard healthy'; then break; fi; sleep 2
+    done
+    $COMPOSE exec -T dashboard python -m watchover.demo reset --result
+    say "analysis data reset (audited as data-reset in the sign-in log); new findings come from real data only" ;;
   migrate) need_docker; shift; [ -d data ] && docker cp data/. watchover:/data/ 2>/dev/null || true; $COMPOSE exec dashboard python -m watchover.migrate --source /data "$@" ;;
   save)    need_docker; out="${2:-watchover-images-$(version).tgz}"; docker save "watchover:$(version)" "watchover-receiver:$(version)" postgres:16-alpine | gzip > "$out"; say "images saved to $out (copy it with this folder to the air-gapped server, then: ./watchover.sh load $out && ./watchover.sh install)" ;;
   load)    need_docker; [ -f "${2:-}" ] || die "usage: ./watchover.sh load watchover-images-X.Y.tgz"; gunzip -c "$2" | docker load; say "images loaded; ./watchover.sh install skips the build when the image tag matches" ;;
@@ -783,7 +970,7 @@ case "${1:-}" in
     tmp=$(mktemp -d); mkdir -p "$tmp/volumes" "$tmp/source"
     have_image "watchover-receiver:$(version)" || die "image watchover-receiver:$(version) is not built yet: ./watchover.sh update first"
     imgs="watchover:$(version) watchover-receiver:$(version) postgres:16-alpine"
-    for i in "watchover-trainer:$(version)" "watchover-updater:$UPDATER_TAG" caddy:2-alpine ollama/ollama:latest alpine:latest; do have_image "$i" && imgs="$imgs $i" || true; done
+    for i in "watchover-trainer:$(version)" "watchover-updater:$UPDATER_TAG" nginx:1.28-alpine ollama/ollama:latest alpine:latest; do have_image "$i" && imgs="$imgs $i" || true; done
     have_image alpine:latest || docker pull alpine:latest >/dev/null 2>&1 || true; have_image alpine:latest && case " $imgs " in *" alpine:latest "*) ;; *) imgs="$imgs alpine:latest" ;; esac
     if have_image "watchover-trainer:$(version)" && ! offline; then
       say "trainer image present: caching the training base weights so auto-learning works on the air-gapped server"
@@ -797,9 +984,15 @@ case "${1:-}" in
     done
     say "adding the source tree"
     if git rev-parse HEAD >/dev/null 2>&1; then git archive --format=tar HEAD | tar xf - -C "$tmp/source"; else tar cf - --exclude=./.git --exclude=./.releases --exclude=./.updater --exclude=./data --exclude=./backups --exclude=./certs --exclude=./.env --exclude='./*.tar' --exclude='./*.tgz' --exclude=./web/node_modules . | tar xf - -C "$tmp/source"; fi
-    printf 'version=%s\nimages=%s\nvolumes=%s\n' "$(version)" "$imgs" "$(ls "$tmp/volumes" 2>/dev/null | tr '\n' ' ')" > "$tmp/MANIFEST"
-    tar cf "$out" -C "$tmp" MANIFEST images.tar.gz volumes source; rm -rf "$tmp"
-    say "bundle written: $out ($(du -h "$out" | cut -f1)). On the air-gapped server:  tar xf $(basename "$out") --strip-components=1 source  &&  ./watchover.sh unbundle $(basename "$out")  &&  ./watchover.sh install" ;;
+    # the Compose v2 binary of this machine (Linux only; images and binary share its CPU architecture): an air-gapped RHEL server has
+    # no download.docker.com, install-rhel.sh installs it from here (bin/docker-compose) before anything else
+    mkdir -p "$tmp/bin"; arch=$(uname -m | sed 's/^arm64$/aarch64/; s/^amd64$/x86_64/'); cb=""
+    if [ "$(uname -s)" = Linux ]; then cb=$(compose_bin 2>/dev/null || command docker info --format '{{range .ClientInfo.Plugins}}{{if eq .Name "compose"}}{{.Path}}{{end}}{{end}}' 2>/dev/null || true); fi
+    if [ -n "$cb" ] && [ -x "$cb" ]; then cp "$cb" "$tmp/bin/docker-compose"; chmod 755 "$tmp/bin/docker-compose"; say "Compose binary added for linux/$arch ($cb)"
+    else say "note: no Linux Compose binary here; on an air-gapped RHEL server put docker-compose-linux-$arch next to install-rhel.sh"; fi
+    printf 'version=%s\narch=%s\nimages=%s\nvolumes=%s\ncompose=%s\n' "$(version)" "$arch" "$imgs" "$(ls "$tmp/volumes" 2>/dev/null | tr '\n' ' ')" "$([ -f "$tmp/bin/docker-compose" ] && echo 1 || echo 0)" > "$tmp/MANIFEST"
+    tar cf "$out" -C "$tmp" MANIFEST bin images.tar.gz volumes source; rm -rf "$tmp"
+    say "bundle written: $out ($(du -h "$out" | cut -f1)). RHEL 9: put it next to install-rhel.sh and run sudo ./install-rhel.sh. Elsewhere:  tar xf $(basename "$out") --strip-components=1 source  &&  ./watchover.sh unbundle $(basename "$out")  &&  ./watchover.sh install" ;;
   unbundle)  # on the air-gapped server: images, model volumes, offline marker
     busy_guard; need_docker; [ -f "${2:-}" ] || die "usage: ./watchover.sh unbundle watchover-bundle-X.Y.tar"
     tmp=$(mktemp -d); tar xf "$2" -C "$tmp" MANIFEST images.tar.gz volumes 2>/dev/null || tar xf "$2" -C "$tmp"

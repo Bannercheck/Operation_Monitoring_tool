@@ -23,7 +23,8 @@ from email.message import EmailMessage
 from email.utils import formataddr
 
 UTC = timezone.utc
-CONDITIONS = ("slo", "errors", "metric", "agent_offline", "source_failing", "incident", "anomaly", "query")   # query: log explorer (logwatch.py)
+CONDITIONS = ("slo", "errors", "metric", "agent_offline", "source_failing", "incident", "anomaly", "query",   # query: log explorer (logwatch.py)
+              "log_storage")      # raw-log disks: archive / hot disk at 80 % (threshold 80) or 90 %, archiving paused, integrity (logaudit.alerts)
 SEVERITIES = ("critical", "high", "medium", "low")
 # SMS gateways. fields: which inputs the settings form shows; number: how the recipient number is written (e164 +90…, digits 90…, national 0…);
 # custom: the URL and body come from the provider's own integration document (operator corporate SMS contracts carry a per-customer endpoint);
@@ -406,6 +407,8 @@ class AlertEngine:
         self.last_fired: list[str] = []
         self.logwatch = None                                    # LogWatch, set by the app: rule condition "query" (log explorer)
         self.team_hosts_fn = None                               # team id -> its hosts (set by access.wire): a team's rule sees only them
+        self.storage_fn = None                                  # LogTiers.alerts (set by the app): rule condition "log_storage"
+        self.storage_targets_fn = None                          # the installation's admins (set by the app): the built-in rule's recipients
 
     def evaluate(self, now_iso: str | None = None) -> list[dict]:
         from . import scenario
@@ -474,6 +477,11 @@ class AlertEngine:
                             fired.append(self.n.dispatch(rule, pre + f"source:{s_.name}", f"Source {s_.name} failing", f"{s_.kind} at {s_.url}: {s_.last_err[:200]}"))
                 elif cond == "query" and self.logwatch is not None:
                     fired.extend(self.logwatch.evaluate(rule, self.n))
+                elif cond == "log_storage" and self.storage_fn is not None and team is None:
+                    for a in self.storage_fn():                 # warn = 80 % (sent when the threshold is below 90), crit = 90 %, full, integrity
+                        if a.get("level") == "crit" or (thr or 80) < 90:
+                            fired.append(self.n.dispatch(dict(rule, severity="critical" if a.get("level") == "crit" else rule.get("severity", "high")),
+                                                         f"logstore:{a['code']}", a.get("title") or a["code"], a.get("body") or ""))
                 elif cond == "incident":
                     since = (datetime.now(UTC) - timedelta(minutes=max(int(self.every // 60) * 2, 20))).isoformat(timespec="seconds")
                     if team is not None:
@@ -484,10 +492,32 @@ class AlertEngine:
                         fired.append(self.n.dispatch(rule, pre + f"incident:{r['key']}", f"Incident pattern: {r['title'][:120]}", r["text"][:600]))
             except Exception as e:  # noqa: BLE001
                 fired.append({"error": f"{cond}: {type(e).__name__}: {str(e)[:120]}"})
+        if self.storage_fn is not None and not any(r["condition"] == "log_storage" for r in self.n.rules()):
+            fired.extend(self._storage_builtin())             # no rule of its own: a full archive disk must still reach someone
         self.runs += 1
         self.last_run = now_iso or datetime.now(UTC).isoformat(timespec="seconds")
         self.last_fired = [f.get("title", f.get("skipped", f.get("error", ""))) for f in fired]
         return fired
+
+    def _storage_builtin(self) -> list:
+        """The built-in log_storage rule (until an admin makes one, which replaces it): critical storage alerts (archive disk at 90 %,
+        archiving paused, an integrity problem) by e-mail to the installation's admins and to the webhook when one is set; every
+        attempt is in the alert log either way."""
+        out = []
+        try:
+            crit = [a for a in self.storage_fn() if a.get("level") == "crit"]
+            if not crit:
+                return out
+            cfg = self.n.channels_fn() or {}
+            chans = "email" + (",webhook" if (cfg.get("webhook") or {}).get("url") else "")
+            targets = ", ".join(self.storage_targets_fn() if self.storage_targets_fn else [])
+            rule = {"id": None, "name": "log_storage (built-in)", "condition": "log_storage", "threshold": 90, "severity": "critical",
+                    "channels": chans, "targets": targets, "cooldown_min": 720, "team_id": None}
+            for a in crit:
+                out.append(self.n.dispatch(rule, f"logstore:{a['code']}", a.get("title") or a["code"], a.get("body") or ""))
+        except Exception as e:  # noqa: BLE001
+            out.append({"error": f"log_storage: {type(e).__name__}: {str(e)[:120]}"})
+        return out
 
     def start(self) -> "AlertEngine":
         def loop():

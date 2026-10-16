@@ -881,3 +881,5 @@ button.ap-worst { cursor: pointer; } button.ap-worst:hover { border-color: var(-
 @media (max-width: 900px) { .ap-filters { grid-template-columns: 1fr 1fr; } .ap-filters > .input:first-child { grid-column: 1 / -1; } .ap-thr-add { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 640px) { .grid.k4.ap-kpis { grid-template-columns: 1fr 1fr; } .ap-form { grid-template-columns: 1fr; } .ap-filters { grid-template-columns: 1fr; } .ap-m { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ap-step { grid-template-columns: minmax(0, 1fr) 70px 48px; } .ap-step > span:last-child { grid-column: 1 / -1; } }
+.stg-bar.bad > i { background: var(--red); }
+.collapsible.nested { margin-top: 10px; }

@@ -9,8 +9,12 @@
         the stamp and the line id as deltas) and its digit runs in per-(template, slot) columns, lzma. Lines come back byte for
         byte (the privacy transform included), so search, detail and context read archived lines like stored ones.
   job   hourly, archiving in a child process at the lowest CPU priority: hot days older than live_retention_h go to cold,
-        hot_max_gb / cold_max_gb drop (archive) the oldest day first, cold_retention_days expires archives. Crash-safe: a temp
+        hot_max_gb archives the oldest hot day early, cold_retention_days (default 365) expires archives. Crash-safe: a temp
         file + rename, and a re-run merges with an existing archive by row id (no loss, no duplicate).
+  audit every archive is sealed (0440) and entered in a hash-chained manifest (logaudit.py); a size cap never deletes an archive
+        younger than the retention: cold_max_gb is a budget that raises alerts (80 % / 90 %). When the archive disk cannot take
+        the next day, archiving pauses (the day stays on the hot disk, alert cold_full) and resumes by itself once there is room.
+  paths given by hand (watchover.sh storage set, System › Storage): nothing picks or proposes a disk.
 
 WATCHOVER_LOG_STORE=db keeps the old layout: live_batches in the main database, pruned after live_retention_h, no archive.
 """
@@ -22,6 +26,7 @@ import lzma
 import os
 import queue
 import re
+import shutil
 import sqlite3
 import struct
 import subprocess
@@ -33,6 +38,8 @@ from datetime import datetime, timedelta, timezone
 from operator import itemgetter
 from pathlib import Path
 from typing import Iterable, Iterator, Optional
+
+from . import logaudit
 
 UTC = timezone.utc
 GB = 1024 ** 3
@@ -917,7 +924,10 @@ def write_day(cdir: Path, day: str, rows: Iterable, chunk_lines: int = CHUNK_LIN
         f.write(TRAILER.pack(off, len(ib), IMAGIC))
         f.flush()
         os.fsync(f.fileno())
+    if final.exists():
+        logaudit.unseal(final)                             # Windows cannot replace a read-only file (POSIX renames over it anyway)
     os.replace(tmp, final)
+    logaudit.seal(final)                                   # sealed: 0440, never written in place again
     try:
         fd = os.open(str(cdir), os.O_RDONLY)
         try:
@@ -972,6 +982,8 @@ class ColdStore:
         self.cache_max = max(0, mb) * 1024 * 1024
         self.decoded = 0                                   # chunks decoded (not served from the cache)
         self.skipped = 0                                   # chunks a search literal ruled out without decoding their lines
+        self.manifest = logaudit.Manifest(self.dir)        # the hash-chained record of every archive (logaudit.py)
+        self.on_manifest = None                            # LogTiers: keep the last seq on the hot disk too (truncation check)
 
     def path(self, day: str) -> Path:
         return self.dir / f"logs-{day}.wcl"
@@ -1165,16 +1177,38 @@ class ColdStore:
             if dry_run:
                 continue
             if all((r.get("agent") or "") == agent for r in self.iter_day(day)):
-                self.delete_day(day)
+                self.delete_day(day, "remove", f"demo clean-up: every line was the simulator's ({agent})")
             else:
                 write_day(self.dir, day, (r for r in self.iter_day(day) if (r.get("agent") or "") != agent), merge=False)
+                self.seal_day(day, f"demo clean-up: the simulator's lines ({agent}) removed")
         return n
 
-    def delete_day(self, day: str) -> None:
+    def seal_day(self, day: str, note: str = "", op: Optional[str] = None) -> Optional[dict]:
+        """Enter the archive of `day` in the manifest as it is now (seal, or reseal when an entry already describes it) and keep it
+        read-only. Returns the entry."""
+        p = self.path(day)
+        if not p.exists():
+            return None
+        logaudit.seal(p)
+        op = op or ("reseal" if day in self.manifest.active() else "seal")
+        e = self.manifest.append(op, day, logaudit.archive_info(self, day), note)
+        if self.on_manifest is not None:
+            self.on_manifest(e)
+        return e
+
+    def delete_day(self, day: str, op: str = "remove", note: str = "") -> None:
+        p = self.path(day)
+        known = self.manifest.active().get(day)
         try:
-            self.path(day).unlink()
+            logaudit.unseal(p)
+            p.unlink()
         except OSError:
             pass
+        else:
+            if known is not None:                          # the manifest says why the archive is gone (verify does not call it missing)
+                e = self.manifest.append(op, day, {k: known.get(k) for k in ("sha256", "bytes", "lines", "rows", "first", "last")}, note)
+                if self.on_manifest is not None:
+                    self.on_manifest(e)
         with self.lock:
             self._idx.pop(day, None)
             for k in [k for k in self._chunks if k[0] == day]:
@@ -1221,8 +1255,14 @@ class LogTiers:
         self.archived: list = []
         self.migration: dict = {"state": "none"}
         self._thread: Optional[threading.Thread] = None
+        self.paused: Optional[dict] = None                 # archiving held back: the archive disk cannot take the next day
+        self.check: Optional[dict] = None                  # the last hourly manifest check (sizes, chain; no re-hash)
+        self.audit_ok = True                               # False when the archive cannot be audited (manifest not writable)
+        self.on_tick = None                                # the app re-reads its retention (a CLI may have changed config.json)
         if hot is not None:                                # before the first tick too: prune must not delete what is not archived
             hot.archive_first = cold is not None and self.cfg()["cold_days"] > 0
+        if cold is not None and hot is not None:
+            cold.on_manifest = lambda e: hot._set_state("manifest_seq", int(e.get("seq") or 0))
 
     def cfg(self) -> dict:
         try:
@@ -1236,7 +1276,7 @@ class LogTiers:
                 return float(d if v is None or v == "" else v)
             except (TypeError, ValueError):
                 return float(d)
-        return {"retention_h": num("live_retention_h", 48) or 48.0, "cold_days": max(0.0, num("cold_retention_days", 7)),
+        return {"retention_h": num("live_retention_h", 48) or 48.0, "cold_days": max(0.0, num("cold_retention_days", 365)),
                 "cold_max": max(0.0, num("cold_max_gb", 0)) * GB, "hot_max": max(0.0, num("hot_max_gb", 0)) * GB}
 
     # ---------------------------------------------------------------- archive one day
@@ -1257,7 +1297,47 @@ class LogTiers:
                     pass                                   # no report: archive here (the merge by id makes a re-run harmless)
         return archive_file(path, self.cold.dir, day)      # no child process (or it failed): same code in this thread
 
+    def anchor(self) -> int:
+        """The manifest's last seq as the hot disk remembers it (0 when unknown)."""
+        try:
+            return self.hot._state("manifest_seq") if self.hot is not None else 0
+        except Exception:  # noqa: BLE001
+            return 0
+
+    def _room(self, day: str) -> Optional[dict]:
+        """None when the archive disk can take `day`, else why not: the estimated archive (its lines x the measured bytes per
+        line x 1.5, + 64 MB) does not fit in the free space minus a reserve (1 GB or 1 % of the disk)."""
+        try:
+            du = shutil.disk_usage(str(self.cold.dir))
+        except OSError:
+            return None
+        events = 0
+        p = self.hot.files.get(day)
+        if p is not None:
+            try:
+                c = sqlite3.connect(str(p))
+                r = c.execute("SELECT v FROM meta WHERE k = 'events'").fetchone()
+                c.close()
+                events = int(r[0] or 0) if r else 0
+            except sqlite3.Error:
+                events = 0
+            if not events:
+                events = _fsize(p) // 60                   # ~60+ bytes per line in a hot day file
+        cs = self.cold.stats() if events else {}
+        bpl = cs.get("bytes_per_line") if (cs.get("lines") or 0) >= 100_000 else None
+        need = int(events * float(bpl or logaudit.LINE_BYTES) * 1.5) + (64 << 20)
+        reserve = max(1 << 30, du.total // 100)
+        if du.free - need < reserve:
+            return {"day": day, "need": need, "free": du.free, "reserve": reserve, "since": (self.paused or {}).get("since") or _iso(datetime.now(UTC))}
+        return None
+
     def _retire(self, day: str, cold_on: bool, out: dict, reason: str) -> bool:
+        if cold_on:
+            full = self._room(day)
+            if full is not None:                           # no silent loss: the day stays hot, archiving waits for room (alert)
+                self.paused = full
+                out["paused"] = full
+                return False
         p = self.hot.close_day(day)
         if p is None:
             return False
@@ -1265,8 +1345,21 @@ class LogTiers:
             try:
                 st = self.archive(p, day)
             except Exception as e:  # noqa: BLE001 - kept closed and hot: the next tick retries
+                if isinstance(e, OSError) and getattr(e, "errno", None) == 28:     # ENOSPC: the estimate was short
+                    self.paused = {"day": day, "need": 0, "free": 0, "since": _iso(datetime.now(UTC)), "error": "no space left"}
+                    out["paused"] = self.paused
+                    self.cold.cleanup_tmp()                # the half-written temp file gives its space back at once
                 out["errors"].append({"day": day, "error": str(e)[:300]})
                 return False
+            try:
+                e = self.cold.seal_day(day, "")
+                st["seq"], st["sha256"] = (e or {}).get("seq"), (e or {}).get("sha256")
+            except OSError as e:                           # archived, but the manifest is not writable: keep the day hot, say so
+                self.audit_ok = False
+                out["errors"].append({"day": day, "error": f"manifest: {str(e)[:250]}"})
+                return False
+            self.audit_ok = True
+            self.paused = None
             st["reason"] = reason
             out["archived"].append(st)
             self.archived = (self.archived + [st])[-14:]
@@ -1277,9 +1370,21 @@ class LogTiers:
     def tick(self, now: Optional[datetime] = None) -> dict:
         now = now or datetime.now(UTC)
         out: dict = {"archived": [], "dropped_hot": [], "deleted_cold": [], "errors": []}
+        if self.on_tick is not None:
+            try:
+                self.on_tick()
+            except Exception:  # noqa: BLE001
+                pass
         with self.lock:
             c = self.cfg()
             cold_on = self.cold is not None and c["cold_days"] > 0
+            if self.cold is not None and not self.cold.manifest.exists() and not self.anchor():
+                try:                                       # the manifest's first run: archives made before it are entered (noted)
+                    out["registered"] = [e["day"] for e in logaudit.register_existing(self.cold, self.cold.manifest)]
+                    if out["registered"] and self.hot is not None:
+                        self.hot._set_state("manifest_seq", int(self.cold.manifest.head().get("seq") or 0))
+                except OSError as e:
+                    out["errors"].append({"error": f"manifest: {str(e)[:250]}"})
             if self.hot is not None:
                 self.hot.archive_first = cold_on
                 self.hot.retry_deletes()
@@ -1287,23 +1392,48 @@ class LogTiers:
                 today = day_key(now)
                 for day in self.hot.days():
                     if day < today and day_end(day) <= cut and not self.stop.is_set():
-                        self._retire(day, cold_on, out, "retention")
-                while c["hot_max"] > 0 and self.hot.total_bytes() > c["hot_max"] and not self.stop.is_set():
+                        if not self._retire(day, cold_on, out, "retention") and out.get("paused"):
+                            break
+                while c["hot_max"] > 0 and self.hot.total_bytes() > c["hot_max"] and not self.stop.is_set() and not out.get("paused"):
                     old = [d for d in self.hot.days() if d < today]
                     if not old or not self._retire(old[0], cold_on, out, "hot_cap"):
                         break
             if self.cold is not None:
                 self.cold.cleanup_tmp(older_s=60)
-                keep_from = now - timedelta(days=c["cold_days"])
-                for day in self.cold.days():
-                    if day_end(day) <= keep_from:
-                        self.cold.delete_day(day)
-                        out["deleted_cold"].append(day)
-                while c["cold_max"] > 0 and self.cold.total_bytes() > c["cold_max"] and len(self.cold.days()) > 1:
-                    day = self.cold.days()[0]
-                    self.cold.delete_day(day)
-                    out["deleted_cold"].append(day)
+                if c["cold_days"] > 0:                     # retention is the only thing that deletes an archive (cold_max_gb alerts)
+                    keep_from = now - timedelta(days=c["cold_days"])
+                    for day in self.cold.days():
+                        if day_end(day) <= keep_from:
+                            self.cold.delete_day(day, "expire", f"retention {c['cold_days']:g} days")
+                            out["deleted_cold"].append(day)
+                try:
+                    self.check = logaudit.verify(self.cold.dir, deep=False, anchor_seq=self.anchor())
+                except Exception as e:  # noqa: BLE001
+                    self.check = {"ok": False, "at": _iso(now), "problems": [{"code": "check_failed", "detail": str(e)[:200]}]}
+            if out.get("paused"):
+                out["paused"] = dict(out["paused"])
             self.last_run = {"at": _iso(now), **out}
+        return out
+
+    def verify_deep(self, frm: Optional[str] = None, to: Optional[str] = None, progress=None, cancel=None, user: str = "") -> dict:
+        """Every archive of [frm, to] re-read against the manifest (sha256), the chain checked; logged in VERIFY.jsonl."""
+        if self.cold is None:
+            raise logaudit.AuditError("no_archive", "this installation keeps no archive (WATCHOVER_LOG_STORE=db)")
+        res = logaudit.verify(self.cold.dir, frm, to, deep=True, anchor_seq=self.anchor(), progress=progress, cancel=cancel)
+        logaudit.log_verify(self.cold.dir, res, user)
+        if not frm and not to:
+            self.check = res
+        elif not res["ok"]:
+            self.check = res
+        return res
+
+    def alerts(self) -> list:
+        """The storage alerts (logaudit.alerts) with their notification text, for the alert engine (condition log_storage)."""
+        rep = self.report()
+        out = []
+        for a in rep.get("alerts", []):
+            t, b = logaudit.alert_text(a, rep)
+            out.append({**a, "title": t, "body": b})
         return out
 
     # ---------------------------------------------------------------- migration from the main database
@@ -1398,12 +1528,21 @@ class LogTiers:
         if self.cold is not None:
             cs = self.cold.stats()
             cs.update(cap_bytes=int(c["cold_max"]), pct=round(100.0 * cs["bytes"] / c["cold_max"], 1) if c["cold_max"] else None,
-                      enabled=c["cold_days"] > 0, disk=_disk(self.cold.dir), last_run=self.last_run or None, archived=self.archived[-7:])
+                      enabled=c["cold_days"] > 0, disk=_disk(self.cold.dir), last_run=self.last_run or None, archived=self.archived[-7:],
+                      paused=self.paused)
             out["cold"] = cs
-        for tier in ("hot", "cold"):
-            t = out.get(tier) or {}
-            if t.get("pct") is not None and t["pct"] >= 85:
-                warnings.append({"code": f"{tier}_cap", "tier": tier, "pct": t["pct"], "bytes": t.get("bytes"), "cap_bytes": t.get("cap_bytes")})
+            head = self.cold.manifest.head()
+            ck = self.check or {}
+            out["manifest"] = {"file": str(self.cold.manifest.path), "exists": self.cold.manifest.exists(), "head": head, "anchor_seq": self.anchor(),
+                               "writable": self.audit_ok,
+                               "check": {k: ck.get(k) for k in ("ok", "at", "deep", "checked", "problem_count")} if ck else None,
+                               "problems": (ck.get("problems") or [])[:20], "last_verify": logaudit.last_verify(self.cold.dir)}
+        out["estimate"] = logaudit.estimate(out.get("cold"), out.get("hot"), c["cold_days"])
+        tier = out.get("hot") or {}
+        if tier.get("pct") is not None and tier["pct"] >= 85:
+            warnings.append({"code": "hot_cap", "tier": "hot", "pct": tier["pct"], "bytes": tier.get("bytes"), "cap_bytes": tier.get("cap_bytes")})
+        out["alerts"] = logaudit.alerts(out, self.paused, self.check)
+        warnings += [{"code": a["code"], "tier": a.get("tier"), "pct": a.get("pct"), "level": a["level"]} for a in out["alerts"]]
         if kb is not None:
             try:
                 out["main_db"] = {"backend": kb.backend, "bytes": kb.size_bytes(), "label": kb.label}
@@ -1438,15 +1577,120 @@ def register_purger(tiers: "LogTiers") -> None:
 
 def _disk(p: Path) -> Optional[dict]:
     try:
-        import shutil
         u = shutil.disk_usage(str(p))
-        return {"total": u.total, "free": u.free}
+        return {"total": u.total, "free": u.free, "used": u.used}
     except OSError:
         return None
 
 
+def _hot_summary(d: Path) -> dict:
+    """Hot day files read-only (no meta.db is created): bytes, days, lines, oldest / newest stamp."""
+    days, events, b, lo, hi = [], 0, 0, "", ""
+    for p in sorted(d.glob("logs-*.db")) if d.is_dir() else []:
+        m = HOT_RE.match(p.name)
+        if not m:
+            continue
+        sz = _fsize(p)
+        b += sz
+        ev = 0
+        try:
+            c = sqlite3.connect(f"file:{p}?mode=ro&immutable=1", uri=True)   # no -wal / -shm created (a read-only mount)
+            r = c.execute("SELECT v FROM meta WHERE k = 'events'").fetchone()
+            ev = int(r[0] or 0) if r else 0
+            a, z = c.execute("SELECT MIN(ts_max), MAX(ts_max) FROM live_batches").fetchone()
+            c.close()
+            lo = min(lo, a) if lo and a else (lo or a or "")
+            hi = max(hi, z or "")
+        except sqlite3.Error:
+            pass
+        events += ev
+        days.append({"day": m.group(1), "bytes": sz, "events": ev})
+    return {"bytes": b, "events": events, "days": days, "oldest": lo, "newest": hi, "dir": str(d), "disk": _disk(d)}
+
+
+def _cold_summary(d: Path) -> dict:
+    if not d.is_dir():
+        return {"bytes": 0, "lines": 0, "days": [], "dir": str(d), "disk": None}
+    cs = ColdStore.__new__(ColdStore)                      # read-only: no directory is created, nothing cached across calls
+    cs.dir, cs.lock, cs._idx, cs._chunks, cs._cached, cs.cache_max = d, threading.Lock(), {}, OrderedDict(), 0, 0
+    cs.decoded = cs.skipped = 0
+    cs.manifest, cs.on_manifest = logaudit.Manifest(d), None
+    out = cs.stats()
+    out["disk"] = _disk(d)
+    return out
+
+
+def _config_path(home: str) -> Path:
+    return Path(home) / "config.json"
+
+
+def set_retention(home: str, hot_hours=None, cold_days=None) -> dict:
+    """live_retention_h / cold_retention_days written into <home>/config.json, nothing else touched (secrets stay encrypted as
+    they are): `./watchover.sh storage set --hot-hours N --cold-days N` runs this against the data volume."""
+    p = _config_path(home)
+    try:
+        cfg = json.loads(p.read_text(encoding="utf-8"))
+        cfg = cfg if isinstance(cfg, dict) else {}
+    except (OSError, ValueError):
+        cfg = {}
+    if hot_hours is not None:
+        cfg["live_retention_h"] = int(hot_hours)
+    if cold_days is not None:
+        cfg["cold_retention_days"] = int(cold_days)
+    tmp = p.with_name("config.json.storage.part")
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(json.dumps(cfg, indent=1, ensure_ascii=False))
+    os.chmod(str(tmp), 0o600)
+    os.replace(tmp, p)
+    return {"live_retention_h": cfg.get("live_retention_h", 48), "cold_retention_days": cfg.get("cold_retention_days", 365)}
+
+
+def _show(a) -> int:
+    """`./watchover.sh storage show`: where the tiers are (or that nothing was set), how long they keep lines, what they hold, the
+    free space and the yearly need at the current rate. Read-only."""
+    try:
+        cfg = json.loads(_config_path(a.home).read_text(encoding="utf-8")) if a.home else {}
+    except (OSError, ValueError):
+        cfg = {}
+    hh = float(cfg.get("live_retention_h") or 48)
+    cd = float(cfg.get("cold_retention_days", 365) if cfg.get("cold_retention_days") not in (None, "") else 365)
+    hot, cold = _hot_summary(Path(a.hot)), _cold_summary(Path(a.cold))
+    est = logaudit.estimate(cold, hot, cd)
+    fb = logaudit.fmt_bytes
+
+    def disk(x):
+        dk = x.get("disk")
+        return f"disk {fb(dk['total'])}, {fb(dk['free'])} free" if dk else "disk not readable"
+    for k, path, t in (("hot", a.hot_path, hot), ("cold", a.cold_path, cold)):
+        where = f"{path}  (set by hand)" if path else f"NOT SET - inside the data volume (/data/logs/{k}); set it: ./watchover.sh storage set --{k} DIR"
+        print(f"  {k:<5}{where}")
+        if k == "hot":
+            print(f"       keeps {hh:g} h · {len(t['days'])} day files · {fb(t['bytes'])} · {t['events']:,} lines · {disk(t)}")
+        else:
+            print(f"       keeps {cd:g} days · {len(t['days'])} archives · {fb(t['bytes'])} · {t.get('lines', 0):,} lines"
+                  + (f" · {t['bytes_per_line']} B/line" if t.get("bytes_per_line") else "") + f" · {disk(t)}")
+            m = logaudit.Manifest(Path(a.cold))
+            h, lv = m.head(), logaudit.last_verify(Path(a.cold))
+            print(f"       manifest: {len(m.entries())} entries, head seq {h.get('seq', 0)} {str(h.get('hash', ''))[:16]}"
+                  + (f" · last verify {lv['at']}: {'OK' if lv.get('ok') else 'PROBLEMS'}" if lv else " · never verified (python -m watchover.logtiers verify)"))
+    if est.get("basis"):
+        print(f"  rate   ~{est['lines_per_min']:,} lines/min ({est['basis']}) x {est['bytes_per_line']} B/line"
+              f" -> ~{fb(est['daily_bytes'])}/day, ~{fb(est['yearly_bytes'])}/year; {cd:g} days of archive need ~{fb(est['retention_bytes'])}")
+    else:
+        print(f"  rate   not measured yet; sizing: ~7-8 B/line archived, e.g. 100,000 lines/min ~ 1.1 GB/day ~ 400 GB/year")
+    return 0
+
+
 def main(argv: list) -> int:
-    """`python -m watchover.logtiers archive <hot day file> <cold dir> <YYYYMMDD>`: the tier job's child (lowest CPU priority)."""
+    """python -m watchover.logtiers COMMAND
+      archive HOTFILE COLDDIR YYYYMMDD     the tier job's child (lowest CPU priority)
+      verify [--dir COLD] [--manifest FILE] [--from D] [--to D] [--quick] [--json]   check the archives against the manifest
+      export --from D --to D [--format archive|ndjson] [--out DIR] [--dir COLD] [--hot HOT]   an export for auditors
+      relocate SRC DST [--check|--final] [--uid N --gid N]   copy a tier to a new directory (watchover.sh storage set)
+      relocate-clean SRC DST [--keep]      after the switch: the old copies go (--keep: they stay)
+      show --home H --hot DIR --cold DIR [--hot-path P --cold-path P]   the storage summary
+      retention --home H [--hot-hours N] [--cold-days N]   write the retention into config.json"""
     if len(argv) == 4 and argv[0] == "archive":
         try:
             os.nice(19)
@@ -1455,8 +1699,124 @@ def main(argv: list) -> int:
         st = archive_file(argv[1], argv[2], argv[3])
         print(json.dumps(st))
         return 0
+    import argparse
+    ap = argparse.ArgumentParser(prog="python -m watchover.logtiers")
+    sub = ap.add_subparsers(dest="cmd")
+    v = sub.add_parser("verify")
+    v.add_argument("--dir", default="")
+    v.add_argument("--manifest", default="")
+    v.add_argument("--from", dest="frm", default="")
+    v.add_argument("--to", default="")
+    v.add_argument("--quick", action="store_true")
+    v.add_argument("--json", action="store_true")
+    e = sub.add_parser("export")
+    e.add_argument("--from", dest="frm", required=True)
+    e.add_argument("--to", required=True)
+    e.add_argument("--format", choices=("archive", "ndjson"), default="archive")
+    e.add_argument("--out", default=".")
+    e.add_argument("--dir", default="")
+    e.add_argument("--hot", default="")
+    r = sub.add_parser("relocate")
+    r.add_argument("src")
+    r.add_argument("dst")
+    r.add_argument("--final", action="store_true")
+    r.add_argument("--check", action="store_true", help="prepare the target and check its room, copy nothing")
+    r.add_argument("--uid", type=int)
+    r.add_argument("--gid", type=int, default=0)
+    rc = sub.add_parser("relocate-clean")
+    rc.add_argument("src")
+    rc.add_argument("dst")
+    rc.add_argument("--keep", action="store_true")
+    sh = sub.add_parser("show")
+    sh.add_argument("--home", default="")
+    sh.add_argument("--hot", required=True)
+    sh.add_argument("--cold", required=True)
+    sh.add_argument("--hot-path", default="")
+    sh.add_argument("--cold-path", default="")
+    rt = sub.add_parser("retention")
+    rt.add_argument("--home", required=True)
+    rt.add_argument("--hot-hours", type=int)
+    rt.add_argument("--cold-days", type=int)
+    a = ap.parse_args(argv)
+    try:
+        if a.cmd == "verify":
+            cdir = Path(a.dir) if a.dir else cold_dir()
+            res = logaudit.verify(cdir, logaudit.day_arg(a.frm), logaudit.day_arg(a.to), deep=not a.quick,
+                                  manifest=Path(a.manifest) if a.manifest else None, anchor_seq=_anchor_of(hot_dir()) if not a.dir else 0)
+            if not a.quick and not a.manifest:
+                logaudit.log_verify(cdir, res, "cli")
+            if a.json:
+                print(json.dumps(res, ensure_ascii=False, indent=1))
+            else:
+                print(f"{'OK' if res['ok'] else 'PROBLEMS'}: {res['checked']} archives checked ({'sha256' if res['deep'] else 'sizes'}), "
+                      f"{res['entries']} manifest entries, head seq {res['head']['seq']} {res['head']['hash'][:16]}")
+                for p in res["problems"]:
+                    print("  " + " ".join(f"{k}={v}" for k, v in p.items()))
+            return 0 if res["ok"] else 1
+        if a.cmd == "export":
+            cdir = Path(a.dir) if a.dir else cold_dir()
+            frm, to = logaudit.day_arg(a.frm), logaudit.day_arg(a.to)
+            if a.format == "archive":
+                res = logaudit.export_archive(cdir, frm, to, Path(a.out))
+            else:
+                hd = Path(a.hot) if a.hot else hot_dir()
+                res = logaudit.export_ndjson(_cold_summary_store(cdir), frm, to, Path(a.out), hot=_ro_hot(hd))
+            print(json.dumps(res, ensure_ascii=False, indent=1))
+            return 0 if not res.get("not_ok") else 1
+        if a.cmd == "relocate":
+            res = logaudit.relocate(a.src, a.dst, final=a.final, uid=a.uid, gid=a.gid, dry=a.check,
+                                    progress=lambda n: print(f"  copy {n}", flush=True))
+            print(json.dumps(res))
+            return 0
+        if a.cmd == "relocate-clean":
+            print(json.dumps(logaudit.cleanup_source(a.src, a.dst, delete=not a.keep)))
+            return 0
+        if a.cmd == "show":
+            return _show(a)
+        if a.cmd == "retention":
+            for k, val, lo, hi in (("--hot-hours", a.hot_hours, 1, 8760), ("--cold-days", a.cold_days, 0, 3650)):
+                if val is not None and not lo <= val <= hi:
+                    print(f"{k} must be {lo}..{hi}", file=sys.stderr)
+                    return 2
+            print(json.dumps(set_retention(a.home, a.hot_hours, a.cold_days)))
+            return 0
+    except logaudit.AuditError as e:
+        print(f"error {e.code}: {e.detail}", file=sys.stderr)
+        return {"no_space": 3, "target_not_empty": 4}.get(e.code, 5)
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
     print(main.__doc__, file=sys.stderr)
     return 2
+
+
+def _anchor_of(hdir: Path) -> int:
+    """The manifest's last seq as the hot disk's meta.db remembers it (0 when there is none)."""
+    if not (hdir / "meta.db").exists():
+        return 0
+    for q in ("mode=ro", "mode=ro&immutable=1"):            # a read-only mount cannot take the -shm file: read the main file then
+        try:
+            c = sqlite3.connect(f"file:{hdir / 'meta.db'}?{q}", uri=True)
+            r = c.execute("SELECT v FROM tier_state WHERE k = 'manifest_seq'").fetchone()
+            c.close()
+            return int(r[0] or 0) if r else 0
+        except sqlite3.Error:
+            continue
+    return 0
+
+
+def _cold_summary_store(d: Path) -> "ColdStore":
+    return ColdStore(d)
+
+
+class _ro_hot:
+    """The hot day files of a directory for an export (read-only: no HotStore, no meta.db)."""
+
+    def __init__(self, d: Path):
+        self.files = {HOT_RE.match(p.name).group(1): p for p in sorted(Path(d).glob("logs-*.db")) if HOT_RE.match(p.name)} if Path(d).is_dir() else {}
+
+    def days(self) -> list:
+        return sorted(self.files)
 
 
 if __name__ == "__main__":

@@ -11,7 +11,7 @@ import hashlib
 import hmac
 import time
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from .knowledge import Knowledge
 
@@ -150,6 +150,18 @@ class AgentRegistry:
         self.kb._exec("UPDATE agents SET token_hash=?, status='active' WHERE id=?", (_hash(token), aid))
         self._cache.clear(); self._active = None
         return token
+
+    def rename(self, aid: int, name: str) -> None:
+        self.kb._exec("UPDATE agents SET name=? WHERE id=?", (name.strip(), aid))
+        self._cache.clear(); self._active = None
+
+    def prune(self, days: int, keep: tuple = ()) -> list[dict]:
+        """Agents not heard from for `days` days (never seen: enrolled that long ago) go, but the ids in `keep`. Returns them."""
+        cut = (datetime.now(timezone.utc) - timedelta(days=max(1, int(days)))).isoformat(timespec="seconds")
+        gone = [a for a in self.list() if a["id"] not in keep and str(a.get("last_seen") or a.get("created_at") or "") < cut]
+        for a in gone:
+            self.delete(a["id"])
+        return [{"id": a["id"], "name": a["name"], "last_seen": a.get("last_seen")} for a in gone]
 
     def delete(self, aid: int) -> None:
         self.kb._exec("DELETE FROM agents WHERE id=?", (aid,))

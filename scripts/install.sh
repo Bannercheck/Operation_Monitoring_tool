@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
+# DEPRECATED: installs the retired Streamlit interface (python venv, no containers). Servers: RHEL 9 -> sudo ./install-rhel.sh at the
+# release root; other Linux -> ./watchover.sh install --production (docs/KURULUM_DOCKER.md). Kept only because older notes link to it.
 # Watchover — one-line install for macOS and Linux, as the current user (no sudo, no Docker).
 #   curl -fsSL https://raw.githubusercontent.com/Bannercheck/Operation_Monitoring_tool/main/scripts/install.sh | bash
 #   curl -fsSL .../install.sh | bash -s -- --with-ollama --models "qwen2.5:7b-instruct bge-m3"
 #   Options: --dir <path>  --repo <git url>  --branch <name>  --port 8501  --with-ollama  --models "…"  --no-autostart  --no-open
 set -euo pipefail
+printf '\033[1;33m! DEPRECATED: %s installs the retired Streamlit interface. RHEL 9: sudo ./install-rhel.sh; other Linux: ./watchover.sh install --production\033[0m\n' "$(basename "$0")" >&2
 REPO="${WATCHOVER_REPO:-https://github.com/Bannercheck/Operation_Monitoring_tool.git}"
 BRANCH="${WATCHOVER_BRANCH:-main}"
 PORT=8501; WITH_OLLAMA=0

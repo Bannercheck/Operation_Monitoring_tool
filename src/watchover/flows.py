@@ -62,6 +62,15 @@ def _tags(v) -> frozenset:
     return frozenset(v.split(",")) if v else frozenset()
 
 
+
+def _is_ip(s: str) -> bool:
+    import ipaddress
+    try:
+        ipaddress.ip_address(str(s))
+        return True
+    except ValueError:
+        return False
+
 class FlowStore:
     def __init__(self, kb, agents=None, inventory=None):
         self.kb, self.agents, self.inventory = kb, agents, inventory
@@ -171,6 +180,13 @@ class FlowStore:
             where.append("env = ?"); p.append(env)
         return self.kb._exec(f"SELECT {cols} FROM net_flows" + (" WHERE " + " AND ".join(where) if where else ""), tuple(p))
 
+    def host_ips(self) -> dict[str, list[str]]:
+        """host name -> its known addresses (agents' last addresses, the inventory)."""
+        rev: dict[str, list[str]] = {}
+        for ip, n in self._ip_names().items():
+            rev.setdefault(n, []).append(ip)
+        return {h: sorted(v) for h, v in rev.items()}
+
     def hosts(self, minutes: int | None = 1440, env: str | None = None) -> list[dict]:
         """Every host seen in flows (as a sender or as a named target) with how many integrations it has each way, and (with a
         TechStack attached) the top technologies running on it."""
@@ -196,7 +212,9 @@ class FlowStore:
             t = out.setdefault(tgt, {"host": tgt, "env": "", "agent": False, "outbound": set(), "inbound": set(), "protocols": set(), "last_seen": r["last_seen"]})
             t["inbound"].add((r["host"], port)); t["protocols"].add(proto)
         tops = self.tech.host_names(procs, list(out), key=(minutes, env)) if self.tech is not None else {}
+        rev = self.host_ips()
         return sorted(({**h, "agent": h["host"] in agents, "outbound": len(h["outbound"]), "inbound": len(h["inbound"]), "protocols": sorted(h["protocols"]),
+                        "ips": rev.get(h["host"]) or ([h["host"]] if _is_ip(h["host"]) else []),
                         **({"tech": tops.get(h["host"], [])} if self.tech is not None else {})}
                        for h in out.values()), key=lambda x: (not x["agent"], -(x["outbound"] + x["inbound"]), x["host"]))
 
@@ -244,6 +262,9 @@ class FlowStore:
                                                "processes": set(), "connections": 0, "last_seen": r["last_seen"], "_procs": {}})
                     i["processes"].add(r["process"]); i["connections"] += int(r["last_count"] or 0); i["last_seen"] = max(i["last_seen"], r["last_seen"])
                     i["_procs"].setdefault(r["process"], set()).update(tg)
+        rev = self.host_ips()
+        for i in inbound.values():                           # the caller's addresses, shown under its name on the map
+            i["ips"] = rev.get(i["source"]) or ([i["source"]] if _is_ip(i["source"]) else [])
         fix = lambda d: {**d, "processes": sorted(d["processes"])}   # noqa: E731
         out_l = sorted((fix(o) for o in outbound.values()), key=lambda x: (x["category"], -x["connections"]))
         by_cat: dict[str, int] = {}
@@ -260,6 +281,48 @@ class FlowStore:
         for d in (*m["outbound"], *m["inbound"], *m["listens"]):
             d.pop("_procs", None); d.pop("_tags", None)
         return m
+
+    def app_map(self, name: str, hosts, minutes: int | None = 1440, visible=None, manual_ok=None, cap: int = 60) -> dict:
+        """An application's integrations: the maps of its member hosts folded into one. Callers and targets outside the application
+        are its integrations, each with the member hosts it goes through ("via"); flows between two members are "internal". Same
+        shape as host_map (the map draws it the same way) plus "members", "internal" and "app": True."""
+        members = sorted(set(hosts))[:cap]
+        maps = [self.host_map(h, minutes, visible, manual_ok) for h in members]
+        mset = {h.lower() for h in members}
+        mips = {ip for m in maps for ip in m["ips"]}
+        inside = lambda peer, ip="": str(peer).lower() in mset or (ip and ip in mips)   # noqa: E731
+        outb: dict = {}; inb: dict = {}; internal: dict = {}; stack: dict = {}
+        listens, procs, rows = [], set(), []
+        for h, m in zip(members, maps):
+            rows.append({"host": h, "ips": m["ips"], "inbound": len(m["inbound"]), "outbound": len(m["outbound"]), "listens": len(m["listens"])})
+            procs |= set(m["processes"])
+            listens += [{**l, "host": h} for l in m["listens"]]
+            for s in m.get("stack") or []:
+                stack.setdefault(s.get("key") or s.get("name"), s)
+            for o in m["outbound"]:
+                if inside(o["target"], o.get("ip", "")):
+                    k = (h, o["target"], o["port"])
+                    e = internal.setdefault(k, {"source": h, "target": o["target"], "port": o["port"], "protocol": o["protocol"], "tech": o.get("tech"), "connections": 0})
+                    e["connections"] += o["connections"]
+                    continue
+                x = outb.setdefault((o["target"], o["port"]), {**o, "processes": set(), "connections": 0, "samples": 0, "via": set()})
+                x["processes"] |= set(o["processes"]); x["connections"] += o["connections"]; x["samples"] += o.get("samples", 0); x["via"].add(h)
+                x["first_seen"] = min(x["first_seen"], o["first_seen"]); x["last_seen"] = max(x["last_seen"], o["last_seen"])
+            for i in m["inbound"]:
+                if inside(i["source"], (i.get("ips") or [""])[0]):
+                    continue                                 # counted once, from the calling member's side
+                x = inb.setdefault((i["source"], i["port"]), {**i, "processes": set(), "connections": 0, "via": set()})
+                x["processes"] |= set(i["processes"]); x["connections"] += i["connections"]; x["via"].add(h)
+                x["last_seen"] = max(x["last_seen"], i["last_seen"])
+        fix = lambda d: {**d, "processes": sorted(d["processes"]), "via": sorted(d["via"])}   # noqa: E731
+        out_l = sorted((fix(o) for o in outb.values()), key=lambda x: (x["category"], -x["connections"]))
+        by_cat: dict[str, int] = {}
+        for o in out_l:
+            by_cat[o["category"]] = by_cat.get(o["category"], 0) + 1
+        return {"host": name, "app": True, "members": rows, "truncated": max(0, len(set(hosts)) - cap), "ips": sorted(mips), "processes": sorted(procs),
+                "listens": sorted(listens, key=lambda x: (x["host"], str(x["port"]))), "outbound": out_l,
+                "inbound": sorted((fix(i) for i in inb.values()), key=lambda x: -x["connections"]),
+                "internal": sorted(internal.values(), key=lambda x: -x["connections"]), "categories": by_cat, "stack": list(stack.values())}
 
     def _where(self, minutes: int | None, cond: str, params: tuple) -> list[dict]:
         where, p = [cond], list(params)

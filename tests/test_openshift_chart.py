@@ -19,7 +19,7 @@ RENDER_ARGS = ["--set", "postgresql.existingSecret=watchover-db", "--set", "rout
                "--set", "routes.ingest.host=watchover-ingest.apps.example.com"]
 SHAPES = {
     "default": [],
-    "everything": ["--set", "llm.enabled=true,trainer.enabled=true,backup.enabled=true,llm.ollama.allowEgress=false,demo=false,mcp.enabled=true",
+    "everything": ["--set", "llm.enabled=true,trainer.enabled=true,backup.enabled=true,llm.ollama.allowEgress=false,mcp.enabled=true",
                    "--set", "routes.ui.host=w.apps.example.com,routes.ingest.host=wi.apps.example.com"],
     "official-postgres": ["--set", "postgresql.flavor=official,postgresql.image=docker.io/library/postgres:16,backup.enabled=true"],
     "external-db": ["--set", "postgresql.enabled=false,externalDatabase.existingSecret=extdb,llm.enabled=true,llm.lock=false"],
@@ -107,7 +107,7 @@ def test_one_pod_shares_data_logs_on_their_own_volumes_production_mode(shape):
     env = {e["name"]: e for e in dash["env"]}
     mounts = {m["mountPath"]: m["name"] for m in dash["volumeMounts"]}
     claims = {v["name"]: v.get("persistentVolumeClaim", {}).get("claimName") for v in spec["volumes"]}
-    assert env["WATCHOVER_DEMO"]["value"] == "0"
+    assert "WATCHOVER_DEMO" not in env                     # the simulator is retired: no switch
     assert claims[mounts[env["WATCHOVER_LOG_HOT_DIR"]["value"]]].endswith("-logs-hot")
     assert claims[mounts[env["WATCHOVER_LOG_COLD_DIR"]["value"]]].endswith("-logs-cold")
     assert mounts["/data"] == "data" and {m["mountPath"]: m["name"] for m in recv["volumeMounts"]}["/data"] == "data"
@@ -117,9 +117,10 @@ def test_one_pod_shares_data_logs_on_their_own_volumes_production_mode(shape):
     assert app["spec"]["strategy"]["type"] == "Recreate" and spec["enableServiceLinks"] is False
     pvcs = {d["metadata"]["name"]: d for d in docs if d["kind"] == "PersistentVolumeClaim"}
     assert pvcs[claims["logs-hot"]]["spec"]["resources"]["requests"]["storage"] == "50Gi"
-    assert pvcs[claims["logs-cold"]]["spec"]["resources"]["requests"]["storage"] == "50Gi"
+    assert pvcs[claims["logs-cold"]]["spec"]["resources"]["requests"]["storage"] == "100Gi"          # a modest default; sized per install
     settings = __import__("json").loads(env["WATCHOVER_SETTINGS"]["value"])
     assert settings["live_retention_h"] == 48 and {"cold_retention_days", "hot_max_gb", "cold_max_gb"} <= set(settings)
+    assert settings["cold_retention_days"] == 365 and settings["cold_max_gb"] == 0                   # a year for audits; no cap deletes
 
 
 @pytest.mark.parametrize("shape", ["rendered"] + (["everything"] if HELM else []))
@@ -184,8 +185,8 @@ def test_mcp_server_off_by_default_its_own_pod_route_and_kept_key_when_on():
     assert [p["containerPort"] for p in c["ports"]] == [8765]
     env = {e["name"]: e for e in c["env"]}
     assert env["MCP_API_KEY"]["valueFrom"]["secretKeyRef"] == {"name": "watchover-mcp", "key": "mcp-api-key"} and "value" not in env["MCP_API_KEY"]
-    assert "$(POSTGRES_PASSWORD)" in env["DATABASE_URL"]["value"] and env["WATCHOVER_DATASETS"]["value"] == "/datasets" and env["WATCHOVER_DEMO"]["value"] == "0"
-    assert env["WATCHOVER_API_URL"]["value"] == "http://watchover:8501" and env["MCP_API_KEY_WRITE"]["value"] == "0"          # live tools via the dashboard
+    assert "$(POSTGRES_PASSWORD)" in env["DATABASE_URL"]["value"] and env["WATCHOVER_DATASETS"]["value"] == "/datasets"
+    assert "WATCHOVER_DEMO" not in env and env["WATCHOVER_API_URL"]["value"] == "http://watchover:8501" and env["MCP_API_KEY_WRITE"]["value"] == "0"          # live tools via the dashboard
     for probe in ("startupProbe", "readinessProbe", "livenessProbe"):
         assert c[probe]["httpGet"] == {"path": "/health", "port": "mcp"}, probe
     sec = by[("Secret", "watchover-mcp")]
@@ -245,7 +246,7 @@ def test_no_secret_value_in_chart_manifest_or_guide():
                         assert "valueFrom" in e and "value" not in e, (c["name"], e["name"])
     values = yaml.safe_load((CHART / "values.yaml").read_text(encoding="utf-8"))
     assert values["postgresql"]["existingSecret"] == "" and "password" not in values["postgresql"]
-    assert values["routes"]["tls"]["key"] == "" and values["demo"] is False and values["llm"]["enabled"] is False
+    assert values["routes"]["tls"]["key"] == "" and "demo" not in values and values["llm"]["enabled"] is False
 
 
 def test_rhel_vs_openshift_table_is_the_same_in_both_guides():
@@ -259,7 +260,7 @@ def test_rhel_vs_openshift_table_is_the_same_in_both_guides():
     assert docker == openshift
     rows = [l.split("|")[1].strip() for l in docker.splitlines() if l.startswith("| ") and not l.startswith("| Konu")]
     for topic in ("Kurulum", "Yükseltme", "Geri alma", "Otomatik boyutlandırma", "Ayrı sıcak / soğuk disk", "PostgreSQL", "LLM (yalnız CPU)",
-                  "MCP sunucusu", "Demo kapalı", "Yedek", "Ajan kayıt adresi", "TLS", "İzleme / sağlık", "Sorun giderme"):
+                  "MCP sunucusu", "Yalnız gerçek veri", "Yedek", "Ajan kayıt adresi", "TLS", "İzleme / sağlık", "Sorun giderme"):
         assert topic in rows, topic
     for html in ("KURULUM_DOCKER.html", "KURULUM_OPENSHIFT.html"):
         assert "RHEL sunucu vs OpenShift" in (ROOT / "docs" / html).read_text(encoding="utf-8"), html

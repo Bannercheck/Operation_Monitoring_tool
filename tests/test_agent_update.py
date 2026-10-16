@@ -7,7 +7,7 @@ goagent/internal/update, scripts/agent-boot.sh, scripts/agent-install.sh, agent.
 - agent.py moves itself to wo-agent in a sandbox root (a tiny systemd stub runs what the unit files say), and is put back
   when wo-agent does not come up;
 - the installer through the panel's own commands: plain http + boot.sh + release key, and https with the edge CA pinned;
-- the Caddy edge routes every agent path to the receiver.
+- the nginx edge routes every agent path to the receiver.
 Go-dependent parts skip without a Go toolchain."""
 import base64
 import hashlib
@@ -560,19 +560,18 @@ def test_installer_http_checksum_path_and_https_with_the_edge_ca_pinned(builds, 
 
 
 # ---------------------------------------------------------------- the edge and the images
-def test_caddy_routes_every_agent_path_to_the_receiver():
-    txt = (ROOT / "docker/Caddyfile").read_text()
-    line = next(ln for ln in txt.splitlines() if ln.strip().startswith("@receiver path"))
-    paths = set(line.split()[2:])
-    assert {"/ingest*", "/enroll*", "/agent.py", "/agent/*", "/rum", "/rum.js", "/mobile", "/v1/*"} <= paths
-    i = txt.index("handle @receiver {")
-    assert "reverse_proxy receiver:8600" in txt[i:txt.index("}", i)]
-    assert txt.index("handle @receiver") < txt.index("reverse_proxy watchover:8501")     # matched before the interface
+def test_edge_routes_every_agent_path_to_the_receiver():
+    txt = (ROOT / "docker/nginx/watchover.conf.template").read_text()
+    recv = [ln.split("{")[0].strip() for ln in txt.splitlines() if "proxy_pass http://$wo_receiver" in ln]
+    for loc in ("location ~ ^/(ingest|enroll)", "location = /agent.py", "location ^~ /agent/", "location = /rum", "location = /rum.js",
+                "location = /mobile", "location ^~ /v1/"):
+        assert loc in recv, loc                                                           # prefix / exact / regex: all win over "location /"
+    assert "set $wo_receiver receiver:8600;" in txt
     edge = (ROOT / "docker-compose.edge.yml").read_text()
     assert "receiver:" in edge and "WO_AGENT_CA: /certs/watchover-ca.crt" in edge and "WO_AGENT_CA_INTERNAL: /certs/watchover-root.crt" in edge
     assert "./certs:/certs:ro" in edge
     sh = (ROOT / "watchover.sh").read_text()
-    assert "edge_ca_export()" in sh and "chmod 644 certs/watchover-root.crt.tmp" in sh
+    assert "edge_cert()" in sh and "scripts/edge-cert.sh certs" in sh
     # keyd hashes <repo>/goagent/dist in the dashboard image: the image must carry the binaries there
     df = (ROOT / "Dockerfile").read_text()
     assert "COPY --from=goagent /out/ ./goagent/dist/" in df and "GOARCH=arm64" in df

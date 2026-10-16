@@ -26,12 +26,12 @@ function errText(e: any, t: (k: string, kw?: any) => string, lang: string): stri
 }
 
 /** Resolves once the account holds a fresh step-up; shows the code / password form when one is needed (OIDC: redirect). */
-export function useStepUp() {
+export function useStepUp(check = "/system/updates/stepup") {
   const { t } = useT();
   const [need, setNeed] = useState<{ method: string; ok: () => void; no: (e: any) => void } | null>(null);
   const [secret, setSecret] = useState(""); const [busy, setBusy] = useState(false); const [err, setErr] = useState<any>(null);
   const ensure = async (): Promise<void> => {
-    try { await post("/system/updates/stepup"); return; } catch (e: any) {
+    try { await post(check); return; } catch (e: any) {
       if (actErr(e).code !== "act_stepup_required") throw e;
     }
     const r: any = await post("/auth/stepup", { next: "/system" });
@@ -224,7 +224,7 @@ function JobCard({ s, watching }: { s: any; watching: boolean }) {
   const e = s.error; const ecode = e?.code ? `upd_err_${e.code}` : "";
   return <div className="card tight" style={{ boxShadow: "none" }}>
     <div className="row between" style={{ flexWrap: "wrap", gap: 8 }}>
-      <b>{t(s.kind === "rollback" ? "upd_job_rollback" : "upd_job_apply")}: v{s.from || "?"} → v{s.to || "?"}</b>
+      <b>{s.kind === "storage" ? t("upd_job_storage") : <>{t(s.kind === "rollback" ? "upd_job_rollback" : "upd_job_apply")}: v{s.from || "?"} → v{s.to || "?"}</>}</b>
       <span className={`badge ${STATUS_BADGE[status] ?? ""}`} lang={lang}>{t(`upd_st_${status}`)}</span>
     </div>
     <div className="dim small">{fmtTs(s.started)}{s.ended ? ` – ${fmtTs(s.ended)}` : ""}{s.user ? ` · ${s.user}` : ""}{s.restore_db ? " · DB" : ""}</div>

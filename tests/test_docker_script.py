@@ -25,6 +25,7 @@ def stage(tmp_path):
     for f in ("watchover.sh", "docker-compose.yml", "docker-compose.edge.yml", "docker-compose.loghot.yml", "docker-compose.logcold.yml",
               ".env.docker.example", "pyproject.toml"):
         shutil.copy(ROOT / f, tmp_path / f)
+    (tmp_path / "scripts").mkdir(exist_ok=True); shutil.copy(ROOT / "scripts" / "edge-cert.sh", tmp_path / "scripts" / "edge-cert.sh")
     (tmp_path / "bin").mkdir(); fake = tmp_path / "bin" / "docker"; fake.write_text(FAKE); fake.chmod(0o755)
     env = dict(os.environ, PATH=f"{tmp_path / 'bin'}:{os.environ['PATH']}", FAKE_LOG=str(tmp_path / "calls.log"), WATCHOVER_VERIFY_TRIES="1")
     return tmp_path, env
@@ -74,7 +75,8 @@ def test_usage_and_missing_docker(stage):
 
 
 def test_edge_on_off(stage):
-    """edge on <host>: Caddy profile, host in .env, plain UI port bound to localhost; edge off restores it."""
+    """edge on <host>: the nginx edge with a certificate from the install's own CA (names + the machine's IP), host in .env, plain
+    UI port no longer published; a load balancer is trusted with edge lb; a company certificate is kept; edge off restores it."""
     d, _ = stage
     run(stage, "install")
     r = run(stage, "edge", "on", "watchover.sirket.local")
@@ -84,8 +86,18 @@ def test_edge_on_off(stage):
     hosts = [l for l in env.splitlines() if l.startswith("WATCHOVER_EDGE_HOSTS=")][0]
     assert hosts.startswith("WATCHOVER_EDGE_HOSTS=watchover.sirket.local, ") and hosts.count(",") == 1          # the machine's IP is added
     assert "COMPOSE_FILE=docker-compose.yml:docker-compose.edge.yml" in env and "WATCHOVER_UI_PORT=127.0.0.1" not in env
-    assert "https://watchover.sirket.local" in r.stdout and "--profile edge up -d --remove-orphans --force-recreate dashboard edge" in (d / "calls.log").read_text()
-    assert (d / "certs").is_dir()
+    assert "https://watchover.sirket.local" in r.stdout and "--profile edge up -d --remove-orphans --force-recreate dashboard receiver edge" in (d / "calls.log").read_text()
+    assert "WATCHOVER_EDGE_SERVER_NAMES=watchover.sirket.local " in env
+    if shutil.which("openssl"):
+        assert (d / "certs" / "watchover.crt").is_file() and (d / "certs" / "watchover-root.crt").is_file() and (d / "certs" / ".ca" / "watchover-ca.key").is_file()
+        san = subprocess.run(["openssl", "x509", "-in", str(d / "certs" / "watchover.crt"), "-noout", "-text"], capture_output=True, text=True).stdout
+        assert "DNS:watchover.sirket.local" in san and "IP Address:" in san
+        assert "sha256" in run(stage, "edge", "cert").stdout
+    r = run(stage, "edge", "lb", "10.0.0.5/32", "10.0.1.0/24")
+    assert r.returncode == 0 and "WATCHOVER_EDGE_TRUSTED=10.0.0.5/32 10.0.1.0/24" in (d / ".env").read_text() and "/healthz" in r.stdout
+    assert run(stage, "edge", "lb", "10.0.0.5;reboot").returncode != 0
+    r = run(stage, "edge", "lb", "off")
+    assert r.returncode == 0 and "WATCHOVER_EDGE_TRUSTED=\n" in (d / ".env").read_text() + "\n"
     r = run(stage, "edge", "off")
     env = (d / ".env").read_text()
     assert r.returncode == 0 and "WATCHOVER_EDGE=0" in env and "COMPOSE_FILE=" not in env and "WATCHOVER_UI_PORT=8501" in env
@@ -393,7 +405,7 @@ def test_update_reports_the_running_version(stage):
 
 def test_demo_clean_counts_restarts_then_cleans(stage):
     """demo-clean: --dry-run only counts; the real run restarts the dashboard (the simulator stops, the in-memory window forgets the
-    demo hosts) and then deletes inside the container; anything else is a usage error. WATCHOVER_DEMO=1 stays the Docker default."""
+    demo hosts) and then deletes inside the container; anything else is a usage error. There is no demo switch any more."""
     d, _ = stage
     r = run(stage, "demo-clean", "--dry-run")
     assert r.returncode == 0, r.stderr
@@ -410,7 +422,30 @@ def test_demo_clean_counts_restarts_then_cleans(stage):
     r = run(stage, "demo-clean", "--everything")
     assert r.returncode != 0 and "usage: ./watchover.sh demo-clean" in r.stderr
     assert "demo-clean [--dry-run]" in run(stage, "help").stdout
-    assert "WATCHOVER_DEMO: ${WATCHOVER_DEMO:-1}" in (d / "docker-compose.yml").read_text()
+    assert "WATCHOVER_DEMO" not in (d / "docker-compose.yml").read_text()
+
+
+def test_reset_data_counts_requests_at_start_and_reports(stage):
+    """reset-data: the counts first; without a terminal it needs --yes; the reset is requested for the dashboard's next start (nothing
+    in memory can write back), the dashboard restarts, the result is printed."""
+    d, _ = stage
+    r = run(stage, "reset-data", "--dry-run")
+    assert r.returncode == 0, r.stderr
+    calls = (d / "calls.log").read_text()
+    assert "compose exec -T dashboard python -m watchover.demo reset --dry-run" in calls and "compose restart" not in calls
+    (d / "calls.log").unlink()
+    r = run(stage, "reset-data")                                                   # stdin is no terminal: refused without --yes
+    assert r.returncode != 0 and "--yes" in r.stderr and "--at-start" not in (d / "calls.log").read_text()
+    (d / "calls.log").unlink()
+    r = run(stage, "reset-data", "--yes")
+    assert r.returncode == 0, r.stderr
+    calls = (d / "calls.log").read_text().splitlines()
+    req = calls.index("docker compose exec -T dashboard python -m watchover.demo reset --yes --at-start")
+    restart = calls.index("docker compose restart dashboard")
+    res = calls.index("docker compose exec -T dashboard python -m watchover.demo reset --result")
+    assert req < restart < res and "analysis data reset" in r.stdout
+    assert run(stage, "reset-data", "--all").returncode != 0
+    assert "reset-data [--dry-run] [--yes]" in run(stage, "help").stdout
 
 
 # ---- RHEL server: separate log disks, Podman, production install, nightly backup, start on boot
@@ -481,8 +516,11 @@ def test_separate_hot_and_cold_log_disks(stage, tmp_path):
     assert envval(d, "COMPOSE_FILE") == "docker-compose.yml:docker-compose.loghot.yml:docker-compose.logcold.yml"
     r = run(stage, "edge", "on", "watchover.firma.com")                                           # edge and log disks together
     assert envval(d, "COMPOSE_FILE") == "docker-compose.yml:docker-compose.edge.yml:docker-compose.loghot.yml:docker-compose.logcold.yml"
-    r = run(stage, "storage")
-    assert r.returncode == 0 and f"{hot} -> /logs/hot" in r.stdout and f"{cold} -> /logs/cold" in r.stdout and "hot_max_gb ~" in r.stdout
+    r = run(stage, "storage")                                                                      # = storage show: read-only, in the image
+    calls = (d / "calls.log").read_text()
+    assert r.returncode == 0 and "suggest" not in r.stdout.lower() and "hot_max_gb ~" not in r.stdout                    # nothing is proposed
+    assert (f"run --rm --network none --user 0 -v watchover_watchover-data:/data:ro -v {hot}:/hot:ro,z -v {cold}:/cold:ro,z watchover:"
+            in calls and f"python -m watchover.logtiers show --home /data --hot /hot --cold /cold --hot-path {hot} --cold-path {cold}" in calls)
     r = run(stage, "edge", "off")
     assert envval(d, "COMPOSE_FILE") == "docker-compose.yml:docker-compose.loghot.yml:docker-compose.logcold.yml"
     (d / ".env").write_text((d / ".env").read_text().replace(f"WATCHOVER_LOG_COLD_PATH={cold}", "WATCHOVER_LOG_COLD_PATH=relative/cold"))
@@ -505,8 +543,8 @@ def test_compose_files_merge_with_the_real_compose(tmp_path):
     """the real Compose (when installed) accepts the base file with every override: log disks bind-mounted with :z next to /data,
     the edge resets the dashboard's plain port, MCP forwards live tools to the dashboard; bind mounts carry the SELinux label"""
     import json
-    caddy = (ROOT / "docker" / "Caddyfile").read_text()                                            # edge: /mcp -> MCP container, rest -> API
-    assert "@mcp path /mcp /mcp/*" in caddy and "reverse_proxy mcp:8765" in caddy and caddy.index("handle @mcp") < caddy.index("reverse_proxy watchover:8501")
+    ngx = (ROOT / "docker" / "nginx" / "watchover.conf.template").read_text()                    # edge: /mcp -> MCP container, rest -> API
+    assert "location ~ ^/mcp(/|$)" in ngx and "set $wo_mcp mcp:8765;" in ngx and "set $wo_ui watchover:8501;" in ngx
     real = shutil.which("docker")
     if not real or subprocess.run([real, "compose", "version"], capture_output=True).returncode != 0:
         pytest.skip("docker compose not installed")
@@ -572,16 +610,17 @@ def test_podman_engine_socket_compose_and_native_build(server, tmp_path):
 
 
 def test_production_install_prints_the_checklist(server):
-    """install --production: WATCHOVER_DEMO=0 for good and the go-live checklist (backup timer, start on boot, admin password,
+    """install --production: production mode and the go-live checklist (backup timer, start on boot, admin password,
     disk caps, log disks, TLS, firewall); 'checklist' prints it again with what is done ticked."""
     d, _ = server
     r = run(server, "install", "--production")
     assert r.returncode == 0, r.stderr
-    assert envval(d, "WATCHOVER_DEMO") == "0" and envval(d, "WATCHOVER_PRODUCTION") == "1"
+    assert envval(d, "WATCHOVER_PRODUCTION") == "1" and not envval(d, "WATCHOVER_DEMO")
     out = r.stdout
-    assert "production checklist" in out and "[x] demo off (WATCHOVER_DEMO=0)" in out and "[ ] nightly backup: off" in out
-    assert "./watchover.sh backup-timer on" in out and "admin@watchover.local" in out and "hot_max_gb ~ " in out and "cold_max_gb ~ " in out
-    assert "WATCHOVER_LOG_HOT_PATH" in out and "edge on" in out and "8765" in out
+    assert "production checklist" in out and "[x] real data only: the simulator is retired" in out and "[ ] nightly backup: off" in out
+    assert "./watchover.sh backup-timer on" in out and "admin@watchover.local" in out and "hot_max_gb ~ " not in out
+    assert "[ ] raw-log paths set by hand (hot: not set, archive: not set): ./watchover.sh storage set --hot DIR --cold DIR" in out
+    assert "archive kept 365 days" in out and "edge on" in out and "8765" in out
     assert run(server, "backup-timer", "on").returncode == 0
     out = run(server, "checklist").stdout
     assert "[x] nightly backup: on (systemd, 02:15)" in out

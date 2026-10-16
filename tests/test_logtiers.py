@@ -26,6 +26,7 @@ def _key(monkeypatch):
     import watchover.privacy as pv
     monkeypatch.setattr(pv, "_KEY", None)
     logstore._SCRUB.clear()
+    monkeypatch.setattr(lt, "_disk", lambda p: {"total": 4 << 40, "free": 3 << 40, "used": 1 << 40})   # not this machine's disk
 
 
 def payload(t0, host, n, svc="ea-portal", step_s=60):
@@ -251,7 +252,8 @@ def test_size_caps_and_cold_retention(tmp_path):
     assert rep["hot"]["pct"] > 85 and any(w["code"] == "hot_cap" for w in rep["warnings"])
     c2 = lt.LogTiers(hot, cold, lambda: {"live_retention_h": 48, "cold_retention_days": 7, "cold_max_gb": 1e-9}, subprocess_ok=False)
     out = c2.tick(now=NOON)
-    assert len(cold.days()) == 1 and len(out["deleted_cold"]) == 3                 # oldest days first, the newest one kept
+    assert len(cold.days()) == 4 and not out["deleted_cold"]                       # a cap never deletes an archive inside the retention:
+    assert any(a["code"] == "cold_90" for a in c2.report()["alerts"])                # it alerts (logaudit.alerts)
     c3 = lt.LogTiers(hot, cold, lambda: {"live_retention_h": 48, "cold_retention_days": 7}, subprocess_ok=False)
     assert c3.tick(now=NOON + timedelta(days=30))["deleted_cold"] and cold.days() == []
 
@@ -334,7 +336,7 @@ def test_storage_endpoint_and_files_mode(tmp_path, monkeypatch):
         assert r.status_code == 200, r.text
         d = r.json()
         assert d["mode"] == "files" and d["hot"]["events"] == 4 and d["hot"]["days"] and d["cold"]["bytes"] == 0
-        assert d["main_db"]["backend"] == "sqlite" and d["main_db"]["bytes"] > 0 and d["cold_retention_days"] == 7
+        assert d["main_db"]["backend"] == "sqlite" and d["main_db"]["bytes"] > 0 and d["cold_retention_days"] == 365
         assert c.get("/api/system/storage").status_code == 401
 
 

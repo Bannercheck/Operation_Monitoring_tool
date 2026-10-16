@@ -109,3 +109,27 @@ def test_host_integration_map(tmp_path):
     w = fs.host_map("hr-app-01", minutes=None)
     assert {o["category"] for o in w["outbound"]} == {"db", "api"} and any(not o["known"] for o in w["outbound"])   # an unnamed external API by IP
 
+
+
+def test_ips_under_hosts_and_application_integration_map(tmp_path):
+    """Every host carries its known addresses (an unnamed peer: its own IP); an application's map folds its members' maps: what
+    leaves or enters the member set is an integration (with the member it goes through), flows between members are internal."""
+    db = Database(str(tmp_path / "k.db"))
+    db._exec("CREATE TABLE inventory (id INTEGER PRIMARY KEY, hostname TEXT, ip TEXT)")
+    db.executemany("INSERT INTO inventory (hostname, ip) VALUES (?, ?)", [("db-01", "172.16.1.55"), ("kafka-01", "172.16.1.70"), ("hr-db", "172.16.2.10")])
+    fs = FlowStore(db)
+    live = LiveStore(spool=str(tmp_path / "l.jsonl")); live.on_flows = fs.add
+    live.ingest("flows.jsonl", simulate_flows(random.Random(3)), "sim")
+    hosts = {h["host"]: h for h in fs.hosts(minutes=None)}
+    assert hosts["db-01"]["ips"] == ["172.16.1.55"] and hosts["prd-api-01"]["ips"] == []
+    assert all(h["ips"] == [h["host"]] for h in hosts.values() if h["host"][:1].isdigit())          # known only by its address
+    d = fs.host_map("db-01", minutes=None)
+    assert all("ips" in i for i in d["inbound"])
+    a = fs.app_map("Ödeme", ["prd-api-01", "prd-api-02", "db-01"], minutes=None)
+    assert a["app"] and [m["host"] for m in a["members"]] == ["db-01", "prd-api-01", "prd-api-02"] and a["ips"] == ["172.16.1.55"]
+    assert {(e["source"], e["target"]) for e in a["internal"]} >= {("prd-api-01", "db-01")}                # inside the application
+    assert all(o["target"] not in ("db-01", "prd-api-01", "prd-api-02") for o in a["outbound"])
+    kafka = next(o for o in a["outbound"] if o["target"] == "kafka-01")
+    assert kafka["category"] == "messaging" and set(kafka["via"]) <= {"prd-api-01", "prd-api-02"} and kafka["via"]
+    worker = next(i for i in a["inbound"] if i["source"] == "worker-01")
+    assert worker["via"] == ["db-01"] and worker["port"] == 5432

@@ -46,7 +46,7 @@ th{background:#f8fafc}
 </tr>
 </tbody>
 </table>
-<p>Ham loglar <strong>son 48 saat hızlı diskte</strong> (<code>logs-hot</code>) aranır; daha eskiler saatlik bir işle <strong>ayrı, ucuz diskteki</strong> sıkıştırılmış arşive (<code>logs-cold</code>) taşınır ve orada da aranabilir. PostgreSQL ham log tutmaz; dakikalık özetler, izler, anomaliler, envanter ve ayarlar oradadır. Kurulum <strong>üretim modundadır</strong> (<code>WATCHOVER_DEMO=0</code>): simülatör açılamaz, demo envanteri / RUM uygulaması / iş akışı hiç oluşmaz. Caddy edge konteyneri ve mDNS OpenShift'te kullanılmaz; TLS'i OpenShift router'ı (Route, edge) sağlar.</p>
+<p>Ham loglar <strong>son 48 saat hızlı diskte</strong> (<code>logs-hot</code>) aranır; daha eskiler saatlik bir işle <strong>ayrı, ucuz diskteki</strong> sıkıştırılmış arşive (<code>logs-cold</code>) taşınır ve orada da aranabilir. PostgreSQL ham log tutmaz; dakikalık özetler, izler, anomaliler, envanter ve ayarlar oradadır. Watchover yalnız gerçek veri alır: simülatör üründen kaldırıldı, demo envanteri / RUM uygulaması / iş akışı hiç oluşmaz. nginx edge konteyneri ve mDNS OpenShift'te kullanılmaz; TLS'i OpenShift router'ı (Route, edge) sağlar.</p>
 <h2>RHEL sunucu vs OpenShift: aynı ürün, iki kurulum</h2>
 <p>Kurulum günü hedef hangisi olursa olsun ikisi de hazırdır: aynı imajlar (<code>Dockerfile</code>, <code>Dockerfile.receiver</code>), aynı veritabanı şeması, aynı <code>/logs/hot</code> ve <code>/logs/cold</code> yolları, aynı üretim kipi. RHEL sunucuda Docker CE ya da Podman (<code>docs/KURULUM_DOCKER.md</code> bölüm 1b), OpenShift'te Helm chart'ı (<code>docs/KURULUM_OPENSHIFT.md</code>). Tablo iki rehberde de aynıdır; "Fark" yazan yerde iki kurulum gerçekten ayrışır.</p>
 <table>
@@ -80,8 +80,8 @@ th{background:#f8fafc}
 </tr>
 <tr>
 <td>Ayrı sıcak / soğuk disk</td>
-<td><code>.env</code>: <code>WATCHOVER_LOG_HOT_PATH</code>, <code>WATCHOVER_LOG_COLD_PATH</code> (ana makine dizinleri, sahibi <code>10001:0</code>, SELinux <code>:z</code>); <code>/logs/hot</code>, <code>/logs/cold</code> olarak bağlanır. Boşsa veri biriminin içinde (<code>/data/logs</code>)</td>
-<td>Her zaman ayrı PVC: <code>logs-hot</code> (hızlı sınıf), <code>logs-cold</code> (ucuz sınıf), aynı <code>/logs/hot</code>, <code>/logs/cold</code> yolları. Üst sınırlar <code>retention.hotMaxGb</code> / <code>coldMaxGb</code> ile sabitlenir</td>
+<td><code>./watchover.sh storage set --hot DİZİN --cold DİZİN</code> (ya da Sistem › Depolama, güncelleyiciyle): <code>.env</code>'de <code>WATCHOVER_LOG_HOT_PATH</code> / <code>_COLD_PATH</code>, <code>/logs/hot</code>, <code>/logs/cold</code> olarak bağlanır, var olan günler sha256 ile doğrulanarak taşınır. Verilmezse veri biriminde ("ayarlanmadı")</td>
+<td>Her zaman ayrı PVC: <code>logs-hot</code>, <code>logs-cold</code>, aynı yollar; boyut ve süre Helm değerleriyle (<code>persistence.logsCold.size</code>, <code>retention.coldRetentionDays</code>), pod'dan değiştirilmez</td>
 </tr>
 <tr>
 <td>PostgreSQL</td>
@@ -95,13 +95,13 @@ th{background:#f8fafc}
 </tr>
 <tr>
 <td>MCP sunucusu</td>
-<td><code>./watchover.sh mcp on</code>: aynı imaj, <code>http://&lt;sunucu&gt;:8765/mcp</code>; edge açıkken Caddy <code>https://&lt;ad&gt;/mcp</code> yolunu bu konteynere (TLS), <code>https://&lt;ad&gt;/api/mcp</code> yolunu arayüzün kendi MCP ucuna gönderir. Anahtarlar: arayüzde adlı, kapsamlı anahtarlar (Ayarlar › Bağlantılar › MCP); <code>.env</code> <code>MCP_API_KEY</code> kurulum çapında okuma anahtarıdır (ilk kurulumda üretilir; <code>MCP_API_KEY_WRITE=1</code> yazma da verir). Canlı ürün araçları arayüze iletilir (<code>WATCHOVER_API_URL=http://watchover:8501</code>); dosyalar <code>./datasets</code></td>
+<td><code>./watchover.sh mcp on</code>: aynı imaj, <code>http://&lt;sunucu&gt;:8765/mcp</code>; edge açıkken nginx <code>https://&lt;ad&gt;/mcp</code> yolunu bu konteynere (TLS), <code>https://&lt;ad&gt;/api/mcp</code> yolunu arayüzün kendi MCP ucuna gönderir. Anahtarlar: arayüzde adlı, kapsamlı anahtarlar (Ayarlar › Bağlantılar › MCP); <code>.env</code> <code>MCP_API_KEY</code> kurulum çapında okuma anahtarıdır (ilk kurulumda üretilir; <code>MCP_API_KEY_WRITE=1</code> yazma da verir). Canlı ürün araçları arayüze iletilir (<code>WATCHOVER_API_URL=http://watchover:8501</code>); dosyalar <code>./datasets</code></td>
 <td><code>mcp.enabled: true</code>: ayrı Deployment + Route (<code>https://&lt;mcp route&gt;/mcp</code>, edge TLS) + NetworkPolicy; arayüzün kendi ucu <code>https://&lt;ui route&gt;/api/mcp</code>. Anahtarlar: aynı adlı anahtarlar; kurulum anahtarı Secret'ta (üretilir, upgrade'de korunur, arayüz pod'una da verilir) ya da <code>mcp.existingSecret</code>, yazma <code>mcp.installKeyWrite</code>. Canlı araçlar <code>WATCHOVER_API_URL=http://watchover:8501</code> ile iletilir; dosyalar kendi PVC'sinde (<code>/datasets</code>, <code>oc cp</code>). Fark: OpenShift'te MCP pod'u <code>/data</code> ve log disklerini görmez, canlı veriye arayüz üzerinden ulaşır; RHEL'de 8765 ayrıca düz http açıktır (<code>WATCHOVER_MCP_PORT=127.0.0.1:8765</code> ile yalnız yerel)</td>
 </tr>
 <tr>
-<td>Demo kapalı</td>
-<td><code>install --production</code> → <code>WATCHOVER_DEMO=0</code> (Docker'ın varsayılanı 1); kalan demo verisi: <code>./watchover.sh demo-clean</code></td>
-<td>Her zaman üretim (<code>demo: false</code>); kalan demo verisi: Sistem › Demo verisi ya da <code>oc exec … python -m watchover.demo clean</code></td>
+<td>Yalnız gerçek veri</td>
+<td>Simülatör kaldırıldı (ayar yok); eski sürümden kalan demo verisi ilk açılışta kendiliğinden, ya da <code>./watchover.sh demo-clean</code>; tüm analiz verisini sıfırlama: <code>./watchover.sh reset-data</code></td>
+<td>Aynı; kalan demo verisi ilk açılışta, ya da Sistem › Veri temizliği; sıfırlama: Sistem › Veri temizliği ya da <code>oc exec … python -m watchover.demo reset --yes</code></td>
 </tr>
 <tr>
 <td>Yedek</td>
@@ -115,7 +115,7 @@ th{background:#f8fafc}
 </tr>
 <tr>
 <td>TLS</td>
-<td><code>./watchover.sh edge on &lt;ad&gt;</code>: Caddy 443'te; şirket sertifikası <code>./certs/watchover.crt</code> + <code>.key</code> ya da Caddy'nin kendi CA'sı (<code>edge cert</code>)</td>
+<td><code>./watchover.sh edge on &lt;ad&gt;</code>: nginx 443'te; şirket sertifikası <code>./certs/watchover.crt</code> + <code>.key</code> ya da kurulumun kendi CA'sı (<code>edge cert</code>); yük dengeleyici: <code>edge lb &lt;CIDR&gt;</code>, sağlık <code>/healthz</code></td>
 <td>OpenShift router'ı (Route, edge TLS, http → https); kümenin <code>*.apps</code> sertifikası ya da <code>routes.tls</code></td>
 </tr>
 <tr>
@@ -130,7 +130,7 @@ th{background:#f8fafc}
 </tr>
 <tr>
 <td>Sorun giderme</td>
-<td><code>./watchover.sh logs [servis]</code>, <code>./watchover.sh doctor</code>, <code>./watchover.sh storage</code>, <code>./watchover.sh checklist</code>; Docker rehberi bölüm 11</td>
+<td><code>./watchover.sh logs [servis]</code>, <code>./watchover.sh doctor</code>, <code>./watchover.sh storage show</code>, <code>./watchover.sh checklist</code>; Docker rehberi bölüm 11</td>
 <td><code>oc logs deploy/watchover -c dashboard</code> (ya da <code>-c receiver</code>), <code>oc describe pod</code>, <code>oc get events</code>; OpenShift rehberi bölüm 11</td>
 </tr>
 </tbody>
@@ -208,14 +208,14 @@ image:
 persistence:
   data:     {size: 5Gi,  storageClass: ocs-storagecluster-ceph-rbd}
   logsHot:  {size: 25Gi, storageClass: ocs-storagecluster-ceph-rbd}
-  logsCold: {size: 30Gi, storageClass: yavas-blok}
+  logsCold: {size: 100Gi, storageClass: yavas-blok}   # arşiv 365 gün: yıllık ihtiyaca göre (bölüm 6b)
 postgresql:
   storage: {size: 10Gi, storageClass: ocs-storagecluster-ceph-rbd}
 retention:
   liveRetentionH: 48       # ham loglar sıcak diskte 48 saat
-  coldRetentionDays: 30    # arşivde 30 gün (coldMaxGb dolarsa en eski gün daha önce gider)
+  coldRetentionDays: 365   # arşivde 1 yıl (denetim); arşivi yalnız bu süre siler
   hotMaxGb: 20
-  coldMaxGb: 25
+  coldMaxGb: 0             # 0 = PVC'nin kendisi; bütçe: %80 / %90 uyarı, silme yok
 routes:
   ui:     {host: watchover.apps.kume.firma.com}
   ingest: {host: watchover-ingest.apps.kume.firma.com}
@@ -305,14 +305,14 @@ oc cp uretim-log.zip watchover/$POD:/datasets/uretim-log.zip                    
 </code></pre>
 <p>Küme dışından OTLP/HTTP, ingest Route'u üzerinden TLS ile gelir: <code>otlphttp</code> exporter'ında <code>endpoint: https://watchover-ingest.apps.&lt;küme alan adı&gt;</code> (yollar <code>/v1/logs</code>, <code>/v1/traces</code>, <code>/v1/metrics</code>). Jeton, Ajanlar panelinde collector için kaydedilen ajanın jetonudur. Eşlemeler ve desteklenen metrikler için Docker kılavuzunun "OpenTelemetry (OTLP)" bölümüne bakın.</p>
 <h2>6. Boyutlandırma</h2>
-<p>Ölçülen değerler (yük testi verisi, 300 ajan): sıcak diskte satır başına <strong>~65-90 bayt</strong>, soğuk arşivde <strong>~7-8 bayt</strong> (şablon + lzma). Sıcak loglar gün dosyalarında tutulduğu için sıcak disk 48 değil 48-72 saat taşır; <code>hotMaxGb</code> dolarsa biten en eski gün erkenden arşive geçer, <code>coldMaxGb</code> dolarsa en eski arşiv günü silinir. İlk günün sonunda Sistem › Depolama kartından (ya da <code>oc exec deploy/watchover -c dashboard -- du -sh /logs/hot /logs/cold</code>) gerçek değeri görüp gerekirse disk büyütün (<code>allowVolumeExpansion: true</code> olan blok depolama sınıfı).</p>
+<p>Ölçülen değerler (yük testi verisi, 300 ajan): sıcak diskte satır başına <strong>~65-90 bayt</strong>, arşivde <strong>~7-8 bayt</strong> (şablon + lzma). Sıcak loglar gün dosyalarında tutulduğu için sıcak disk 48 değil 48-72 saat taşır; <code>hotMaxGb</code> dolarsa biten en eski gün erkenden arşive geçer. Arşiv <strong>365 gün</strong> tutulur (denetim) ve hiçbir boyut sınırı saklama süresindeki bir arşivi silmez (bölüm 6b). İlk günün sonunda Sistem › Depolama kartı ölçülen hızdan yıllık ihtiyacı gösterir; <code>logs-cold</code>'u ona göre büyütün (<code>allowVolumeExpansion: true</code> olan blok depolama sınıfı).</p>
 <table>
 <thead>
 <tr>
 <th>Dakikada satır</th>
 <th>Sunucu (yaklaşık)</th>
 <th>logs-hot</th>
-<th>logs-cold (30 gün)</th>
+<th>logs-cold (365 gün)</th>
 <th>PostgreSQL</th>
 <th>data</th>
 <th>Watchover pod'u (istek → sınır)</th>
@@ -321,20 +321,30 @@ oc cp uretim-log.zip watchover/$POD:/datasets/uretim-log.zip                    
 </thead>
 <tbody>
 <tr>
+<td>10 bin</td>
+<td>~20-30</td>
+<td>10 Gi (<code>hotMaxGb: 8</code>)</td>
+<td>50 Gi (~40 GB/yıl)</td>
+<td>10 Gi</td>
+<td>10 Gi</td>
+<td>1 CPU / 4 Gi → 2 CPU / 8 Gi</td>
+<td>1 / 2 Gi → 2 / 4 Gi</td>
+</tr>
+<tr>
 <td>50 bin</td>
 <td>~100</td>
 <td>30 Gi (<code>hotMaxGb: 24</code>)</td>
-<td>25 Gi (<code>coldMaxGb: 20</code>)</td>
+<td>250 Gi (~200 GB/yıl)</td>
 <td>15 Gi</td>
 <td>20 Gi</td>
 <td>2 CPU / 6 Gi → 4 CPU / 12 Gi</td>
 <td>1 / 2 Gi → 2 / 4 Gi</td>
 </tr>
 <tr>
-<td><strong>100 bin</strong> (varsayılan)</td>
+<td><strong>100 bin</strong></td>
 <td>~200-300</td>
 <td><strong>50 Gi</strong> (<code>hotMaxGb: 40</code>)</td>
-<td><strong>50 Gi</strong> (<code>coldMaxGb: 40</code>)</td>
+<td><strong>450 Gi</strong> (~400 GB/yıl)</td>
 <td><strong>30 Gi</strong></td>
 <td><strong>30 Gi</strong></td>
 <td><strong>2 CPU / 8 Gi → 6 CPU / 16 Gi</strong></td>
@@ -344,7 +354,7 @@ oc cp uretim-log.zip watchover/$POD:/datasets/uretim-log.zip                    
 <td>300 bin</td>
 <td>300+</td>
 <td>150 Gi (<code>hotMaxGb: 120</code>)</td>
-<td>130 Gi (<code>coldMaxGb: 105</code>)</td>
+<td>1,4 Ti (~1,2 TB/yıl)</td>
 <td>50 Gi</td>
 <td>40 Gi</td>
 <td>8 CPU / 16 Gi → 12 CPU / 24 Gi</td>
@@ -352,12 +362,31 @@ oc cp uretim-log.zip watchover/$POD:/datasets/uretim-log.zip                    
 </tr>
 </tbody>
 </table>
+<p>Şablonun varsayılan <code>logs-cold</code> boyu bilerek küçüktür (<strong>100 Gi</strong>: dakikada ~25 bin satırın bir yılı); büyük bir varsayılan PVC, kapasitesi olmayan kümelerde kurulumu <code>Pending</code>'de bekletirdi. Kendi hızınıza göre <code>persistence.logsCold.size</code> verin.</p>
 <p>Watchover pod'u panel + alıcıdır (alıcı ayrıca 0,5 CPU / 512 Mi → 2 CPU / 2 Gi). Gece arşivleme bir çekirdeği düşük öncelikle birkaç saat kullanır (dakikada 100 bin satırda günde ~2 saat). Dakikada ~300 bin satır tek pod'un tavanına yakındır (docs/LOAD_TEST.md).</p>
 <p><strong>Tam performans profili</strong> — <code>deploy/openshift/watchover/values-performance.yaml</code>: istek = sınır (Guaranteed QoS: yoğun anda CPU kısıtlaması yok), panel 6 CPU / 16 Gi, alıcı 2 CPU / 2 Gi, PostgreSQL 2 CPU / 8 Gi (<code>shared_buffers</code> 2 GB), diskler tablodaki "100 bin" satırının değerleri. Sıcak loglar ve PostgreSQL için yerel NVMe/SSD blok depolama (LVM Storage ya da Local Storage Operator) seçin, NFS / CephFS kullanmayın; pod'u <code>nodeSelector</code> / <code>tolerations</code> ile az kalabalık, sabit bir düğüme koyun:</p>
 <pre><code class="language-bash">helm upgrade --install watchover deploy/openshift/watchover -n watchover \
   -f deploy/openshift/watchover/values-performance.yaml -f benim-degerlerim.yaml
 </code></pre>
-<p>Proje kotası önerisi (LLM kapalı): CPU 12, bellek 32 Gi, depolama 250 Gi; LLM açılacaksa CPU 20, bellek 40 Gi.</p>
+<p>Proje kotası önerisi (LLM kapalı): CPU 12, bellek 32 Gi, depolama 250 Gi + arşivin yıllık ihtiyacı (tablodaki <code>logs-cold</code> sütunu); LLM açılacaksa CPU 20, bellek 40 Gi.</p>
+<h2>6b. Ham log depolama: yerler, bir yıllık arşiv, denetim</h2>
+<p>OpenShift'te sıcak loglar ve arşiv her zaman ayrı PVC'lerdir (<code>watchover-logs-hot</code> → <code>/logs/hot</code>, <code>watchover-logs-cold</code> → <code>/logs/cold</code>); yerleri, boyutları ve süreleri <strong>Helm değerleri</strong> belirler, pod'dan hiçbir şey değiştirilmez. Sistem › Depolama › <em>Yerleri ve süreleri ayarla</em> formu OpenShift'te yalnız çalıştırılacak Helm komutunu gösterir:</p>
+<pre><code class="language-bash">helm upgrade watchover deploy/openshift/watchover -n watchover --reuse-values \
+  --set persistence.logsCold.size=450Gi \
+  --set retention.coldRetentionDays=365 --set retention.liveRetentionH=48
+oc get pvc watchover-logs-cold -n watchover          # büyütme: StorageClass allowVolumeExpansion: true olmalı
+</code></pre>
+<ul>
+<li><strong>PVC büyütme</strong> yerinde yapılır (çevrimiçi genişletme destekleyen CSI). <strong>Depolama sınıfını değiştirmek</strong> yeni bir PVC demektir: yeni PVC'yi oluşturup pod durdurulmuşken <code>python -m watchover.logtiers relocate /logs/cold /yeni --final</code> ile kopyalayın (sha256 doğrulamalı) ya da VolumeSnapshot'tan geri yükleyin.</li>
+<li><strong>Disk dolarsa veri kaybı yok</strong>: <code>cold_max_gb</code> (<code>retention.coldMaxGb</code>) yalnız bütçedir, arşiv silmez; PVC / bütçe %80'de uyarı, %90'da kritik uyarı; PVC bir sonraki günü alamayacaksa arşivleme durur, gün sıcak PVC'de kalır (kritik <code>cold_full</code>), yer açılınca kendiliğinden sürer. Sıcak PVC de %80 / %90'da uyarır; arşivleme uzun süre durursa sıcak PVC dolar ve yeni ham satırlar yazılamaz: kritik uyarıda <code>logs-cold</code>'u büyütün. Uyarılar Sistem › Depolama'da ve bildirim kanallarında (kural yoksa yöneticilere e-posta; <code>log_storage</code> koşullu kuralla alıcı ve %80 / %90 eşiği).</li>
+<li><strong>Doğrulanabilir arşiv</strong>: her gün mühürlenir (<code>0440</code>) ve <code>/logs/cold/MANIFEST.jsonl</code>'daki karma zincirine sha256, satır sayısı, ilk / son zamanla yazılır. Doğrulama ve denetçi dışa aktarımı:</li>
+</ul>
+<pre><code class="language-bash">oc exec deploy/watchover -c dashboard -n watchover -- python -m watchover.logtiers verify
+oc exec deploy/watchover -c dashboard -n watchover -- python -m watchover.logtiers verify --from 2026-01-01 --to 2026-03-31
+oc exec deploy/watchover -c dashboard -n watchover -- python -m watchover.logtiers export --from 2026-01-01 --to 2026-03-31 --out /data/exports
+oc cp watchover/&lt;pod&gt;:/data/exports/watchover-audit-20260101-20260331-&lt;zaman&gt;.tar ./ -c dashboard     # ve yanındaki .sha256
+</code></pre>
+<p>Aynısı arayüzde Sistem › Depolama › Denetim'dedir (doğrula, dışa aktar: .tar ya da NDJSON, aylar süren arka plan araması; <code>sys.maint</code> yetkisi, dışa aktarım için taze kimlik doğrulaması). Dışa aktarımlar <code>data</code> PVC'sine yazılır (yer yoksa reddedilir); çok büyük aralıkları parça parça alın. Paketi açan denetçi: <code>sha256sum -c SHA256SUMS</code> ve <code>python -m watchover.logtiers verify --dir archive --manifest MANIFEST.jsonl --from … --to …</code>. Log gezgini arşivi istek başına 1,5 saniye tarar; daha uzun aralıklar için arka plan aramasına bağlantı verir.</p>
 <h2>7. Yükseltme ve geri alma</h2>
 <pre><code class="language-bash"># 1) yeni sürümün imajları (bölüm 2), ör. 1.48.0
 # 2) etiketi değiştirip yükseltin; pod Recreate stratejisiyle durup yenisi açılır (kısa kesinti, ajanlar kendi kuyruklarında bekler)
@@ -384,7 +413,7 @@ oc cp ./watchover-20261015-0215.dump watchover/watchover-postgresql-0:/tmp/w.dum
 oc exec -n watchover watchover-postgresql-0 -- pg_restore -h 127.0.0.1 -U watchover -d watchover --clean --if-exists /tmp/w.dump
 oc scale deploy/watchover -n watchover --replicas=1
 </code></pre>
-<p><strong>Diskler.</strong> CSI sürücüsü destekliyorsa <code>data</code> ve <code>logs-cold</code> için VolumeSnapshot alın (sıcak loglar 48 saatte zaten arşive geçer):</p>
+<p><strong>Diskler.</strong> CSI sürücüsü destekliyorsa <code>data</code> ve <code>logs-cold</code> için VolumeSnapshot alın (sıcak loglar 48 saatte zaten arşive geçer; arşivin bütünlüğü geri yüklemeden sonra <code>python -m watchover.logtiers verify</code> ile denetlenir):</p>
 <pre><code class="language-yaml">apiVersion: snapshot.storage.k8s.io/v1
 kind: VolumeSnapshot
 metadata: {name: watchover-logs-cold-20261015, namespace: watchover}
@@ -434,11 +463,17 @@ spec:
 </code></pre>
 <p>Eğitim konteyneri (<code>trainer.enabled</code>) varsayılan kapalıdır; açılırsa Watchover pod'una üçüncü konteyner olarak eklenir, ilk eğitimde Hugging Face'ten temel ağırlıkları indirir ve saatlerce CPU kullanır.</p>
 <h2>10. Demo verisi</h2>
-<p>OpenShift kurulumu üretim modundadır (<code>WATCHOVER_DEMO=0</code>): simülatör hiç açılamaz (API 403), Veri setleri'ndeki demo / örnek veri seti düğmeleri ve ITSM demo ticket'ları görünmez ve reddedilir, örnek uygulama (Uygulamalar menüsü) oluşturulmaz; uygulamaları Uygulamalar › Keşif ya da Yeni uygulama ile siz tanımlarsınız (<code>act.apps</code> yetkisi rollere elle verilir).</p>
-<p>Docker'dan taşınan ya da demo modunda çalışmış bir kurulumda kalan simülatör verisini Sistem › Demo verisi › <strong>Demo verisini temizle</strong> siler; yalnız kurulum yöneticisi görür, işlem denetim kaydına yazılır. Temizlik, simülasyonu kapatmakla aynıdır ve her depoyu kapsar: işaretli kayıtlar (gönderen <code>simulator</code>, <code>demo = 1</code> sütunu: satırlar, saatlik özetler, izler, RUM, anomaliler, uyarılar, eşik durumları, envanter, akışlar, iş akışı olayları, aksiyonlar), <strong>LLM hafızası</strong> (demo bağlamında kaydedilen sohbetler, değerlendirmeler, LLM çağrıları, kural önerileri), <strong>öğrenilmiş modeller</strong> (demo verisiyle eğitilmiş ince ayar modeli devreden çıkar; indirilmiş temel modellere dokunulmaz), sıcak / soğuk log dosyaları, canlı spool, öğrenilmiş sütun profilleri, demo veri setleri ve bellekteki pencereler. İşaretlerden önceki eski kayıtlar yalnız simülatörün kullandığı sunucu adlarıyla bulunur; aynı adı taşıyan gerçek bir sunucunun (ör. kendi <code>db-01</code>'iniz) verisine dokunulmaz. Terminalden önce sayım, sonra silme:</p>
+<p>Simülatör üründen kaldırıldı: hiçbir ayar onu açmaz (API 403); Veri setleri'ndeki demo / örnek veri seti düğmeleri ve ITSM demo ticket'ları yoktur, örnek uygulama oluşturulmaz; uygulamaları Uygulamalar › Keşif ya da Yeni uygulama ile siz tanımlarsınız (<code>act.apps</code> yetkisi rollere elle verilir).</p>
+<p>Docker'dan taşınan ya da eski bir sürümde simülatörle çalışmış bir kurulumda kalan simülatör verisi yükseltmeden sonraki <strong>ilk açılışta kendiliğinden</strong> silinir (işaretli kayıtlar: gönderen <code>simulator</code>, <code>demo = 1</code> sütunu; LLM hafızası, demo verisiyle eğitilmiş ince ayar modelleri, sıcak / soğuk log dosyaları, canlı spool, öğrenilmiş sütun profilleri, demo veri setleri ve bellekteki pencereler dahil; indirilmiş temel modellere ve gerçek veriye dokunulmaz). Elle: Sistem › Veri temizliği ya da terminalden önce sayım, sonra silme:</p>
 <pre><code class="language-bash">oc exec -n watchover deploy/watchover -c dashboard -- python -m watchover.demo clean --dry-run
 oc exec -n watchover deploy/watchover -c dashboard -- python -m watchover.demo clean
 oc rollout restart deploy/watchover -n watchover      # çalışan pod'un bellekteki canlı penceresi de unutsun
+</code></pre>
+<p><strong>Tüm analiz verisini sıfırlama</strong> (anomaliler, aksiyonlar / vakalar, uyarılar, öğrenilmiş taban çizgileri, LLM hafızası, ince ayar modelleri, geçmiş, izler, keşfedilen topoloji; hesaplar, ayarlar, ajanlar, politikalar, denetim kayıtları, elle girilen tanımlar ve gerçek sunucuların log satırları kalır; ayrıntı Docker kılavuzunda): Sistem › Veri temizliği › <em>Tüm analiz verisini sıfırla</em>, ya da sıfırlamayı pod'un bir sonraki açılışına bırakıp yeniden başlatın:</p>
+<pre><code class="language-bash">oc exec -n watchover deploy/watchover -c dashboard -- python -m watchover.demo reset --dry-run
+oc exec -n watchover deploy/watchover -c dashboard -- python -m watchover.demo reset --yes --at-start
+oc rollout restart deploy/watchover -n watchover
+oc exec -n watchover deploy/watchover -c dashboard -- python -m watchover.demo reset --result
 </code></pre>
 <h2>11. Sorun giderme</h2>
 <table>

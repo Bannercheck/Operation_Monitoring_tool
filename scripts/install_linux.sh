@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
+# DEPRECATED: installs the retired Streamlit interface (python venv, no containers). Servers: RHEL 9 -> sudo ./install-rhel.sh at the
+# release root; other Linux -> ./watchover.sh install --production (docs/KURULUM_DOCKER.md). Kept only because older notes link to it.
 # Watchover — Linux server install (Debian/Ubuntu, RHEL/Rocky, Fedora). No Docker.
 #   sudo bash scripts/install_linux.sh                 # app only (python venv + systemd service on :8501)
 #   sudo bash scripts/install_linux.sh --with-ollama   # + Ollama runtime + recommended models (chat + embeddings)
 #   Options: --dir /opt/watchover  --user watchover  --port 8501  --models "qwen2.5:7b-instruct bge-m3"  --no-service
 set -euo pipefail
+printf '\033[1;33m! DEPRECATED: %s installs the retired Streamlit interface. RHEL 9: sudo ./install-rhel.sh; other Linux: ./watchover.sh install --production\033[0m\n' "$(basename "$0")" >&2
 DIR=/opt/watchover; USER_=watchover; PORT=8501; WITH_OLLAMA=0; MODELS="qwen2.5:7b-instruct bge-m3"; SERVICE=1
 while [[ $# -gt 0 ]]; do case "$1" in
   --with-ollama) WITH_OLLAMA=1;; --dir) DIR="$2"; shift;; --user) USER_="$2"; shift;; --port) PORT="$2"; shift;;

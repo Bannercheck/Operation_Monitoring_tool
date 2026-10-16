@@ -119,7 +119,7 @@ def env(request, tmp_path):
     mp = pytest.MonkeyPatch()
     vals = {"WATCHOVER_HOME": str(home), "LIVE_SPOOL": str(home / "live" / "events.jsonl"), "WATCHOVER_MODELS_DIR": str(home / "models"),
             "PLAYBOOK_DB": str(home / "playbook.db"), "ACTIONS_DB": str(home / "actions.db"), "WATCHOVER_API_BACKGROUND": "0",
-            "WATCHOVER_SELFMON": "0", "WATCHOVER_DEMO": "1", "OLLAMA_URL": "http://127.0.0.1:9"}
+            "WATCHOVER_SELFMON": "0", "OLLAMA_URL": "http://127.0.0.1:9"}
     if request.param == "postgresql":
         from watchover.db import Database
         scratch = Database(PG_URL)
@@ -380,7 +380,7 @@ def test_every_table_is_classified(env):
 
 def test_production_hides_and_refuses_demo_content(env, monkeypatch):
     c, h = env, env.h
-    monkeypatch.setenv("WATCHOVER_DEMO", "0")
+    monkeypatch.setattr(demo, "SIMULATOR", False)
     assert c.post("/api/live/simulate", json={"on": True}, headers=h).status_code == 403
     assert c.post("/api/datasets/demo", headers=h).status_code == 403
     assert c.get("/api/datasets/samples", headers=h).json() == []

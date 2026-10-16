@@ -668,6 +668,39 @@ class LogSearch:
         out = self._cached(key, lambda: self._search(q, s, e, live, upper, limit, colnames, h, who))
         return {**base, **out, "took_ms": int((time.perf_counter() - t0) * 1000)}
 
+    def export_matches(self, text: str, start: str, end: str, scope, write, progress=None, cancel=None) -> dict:
+        """The background audit search (System › Storage): every stored line in [start, end) that matches `text`, hot day files and
+        cold archive alike, newest first, with no time budget (the explorer's own scan stops after 1.5 s a request); `write` gets
+        each match as the explorer shows it (whole message) plus the stored line ("stored"). progress(fraction of the range
+        scanned); cancel: a threading.Event."""
+        q = self.query(text, scope)
+        s, e, _live = self.pin_range(None, start, end)
+        if self.live.db is None:
+            raise ValueError("no stored lines here (the live ring only)")
+        budget = Budget(ms=10 ** 12, lines=10 ** 15, rows=10 ** 15, cancel=cancel)
+        s_us, e_us = round(s.timestamp() * 1e6), round(e.timestamp() * 1e6)
+        span = max(1, e_us - s_us)
+        n = rows = 0
+        for r in self._rows(s, e, q.plan, budget, q.scope):
+            if cancel is not None and cancel.is_set():
+                break
+            for _tsu, _seq, v in self._row_lines(r, s_us, e_us, None, q.plan.prefilter, q.ctx, budget):
+                if q.pred(v):
+                    o = self.line_obj(v)
+                    o["message"] = v.msg or ""                  # whole, as stored (the explorer's list shortens it)
+                    if getattr(v, "d", None) is not None:
+                        o["stored"] = v.d                       # the stored line itself (what the archive holds)
+                    write(o)
+                    n += 1
+            rows += 1
+            if progress is not None and rows % 64 == 0:
+                try:
+                    progress(min(0.99, (e_us - _us(r["ts_max"])) / span))
+                except (KeyError, TypeError, ValueError):
+                    pass
+        return {"matched": n, "lines_scanned": budget.lines, "rows": budget.rows, "cold_rows": budget.cold,
+                "range": {"start": s.isoformat(), "end": e.isoformat()}, "query": q.norm, "cancelled": bool(cancel is not None and cancel.is_set())}
+
     def _search(self, q: Q, s, e, live, upper, limit, colnames, h, who) -> dict:
         ctx = q.ctx
         s_us, e_us = round(s.timestamp() * 1e6), round(e.timestamp() * 1e6)

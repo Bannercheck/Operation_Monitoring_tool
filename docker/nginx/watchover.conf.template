@@ -1,0 +1,92 @@
+# Watchover edge (nginx): TLS termination and reverse proxy in front of the containers (./watchover.sh edge on <names>).
+# The nginx image fills ${WATCHOVER_EDGE_*} from the environment at start (docker-compose.yml, from .env); nginx's own $variables
+# stay as they are. Certificates: ./certs/watchover.crt + watchover.key, issued by Watchover's own CA (scripts/edge-cert.sh; its
+# public root is ./certs/watchover-root.crt) or a company certificate placed there. A load balancer in front: its addresses go in
+# WATCHOVER_EDGE_TRUSTED (./watchover.sh edge lb <cidr> ...), then the client address comes from X-Forwarded-For (40-watchover-edge.sh).
+
+server_tokens off;
+client_max_body_size 512m;
+proxy_read_timeout 300s;
+proxy_send_timeout 300s;
+gzip on;
+gzip_types text/plain text/css application/json application/javascript application/x-ndjson image/svg+xml;
+gzip_min_length 1024;
+
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      '';
+}
+
+include /etc/nginx/conf.d/realip.inc;
+include /etc/nginx/conf.d/resolver.inc;   # the container network's DNS (Docker or Podman): names are looked up per request, so the edge
+                                          # starts and keeps running while a container behind it is down or re-created with a new address
+
+# plain http: the load balancer's health check answers here too; everything else moves to https
+server {
+    listen ${WATCHOVER_EDGE_HTTP_PORT} default_server;
+    server_name _;
+    set $wo_ui watchover:8501;
+    location = /healthz { access_log off; proxy_pass http://$wo_ui/api/health; proxy_connect_timeout 3s; proxy_read_timeout 5s; }
+    location / { return 301 https://$host$request_uri; }
+}
+
+server {
+    listen ${WATCHOVER_EDGE_HTTPS_PORT} ssl default_server;
+    http2 on;
+    server_name ${WATCHOVER_EDGE_SERVER_NAMES};
+
+    ssl_certificate     ${WATCHOVER_EDGE_CERT};
+    ssl_certificate_key ${WATCHOVER_EDGE_KEY};
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache shared:wo_tls:10m;
+    ssl_session_timeout 1d;
+    ssl_session_tickets off;
+
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $remote_addr;          # the client nginx accepted (realip.inc): a forged chain is not passed on
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header Upgrade $http_upgrade;                 # websockets; for any other request Connection is "" (upstream keepalive)
+    proxy_set_header Connection $connection_upgrade;
+    # NB: a location that sets its own proxy_set_header drops every one above (nginx inherits them only when a level sets none),
+    # and the client's X-Forwarded-For would then reach the application unchanged: locations below set none.
+    set $wo_ui watchover:8501;
+    set $wo_receiver receiver:8600;
+    set $wo_mcp mcp:8765;
+
+    # the load balancer's health check: 200 while the dashboard answers
+    location = /healthz { access_log off; proxy_pass http://$wo_ui/api/health; proxy_connect_timeout 3s; proxy_read_timeout 5s; }
+
+    # agents, enrolment, the agent installer and its verified bootstrap (/agent/boot.sh, /agent/ca.crt, /agent/manifest.json),
+    # the binaries and the self-update check (/agent/wo-agent-*, /agent/update), the action agent's job channel (/agent/v1/*),
+    # the web / mobile sensors and OTLP/HTTP (/v1/*) go to the Go receiver: agents use https://<NAME>/ingest like :8600
+    location ~ ^/(ingest|enroll)  { proxy_pass http://$wo_receiver; proxy_request_buffering off; }
+    location = /agent.py          { proxy_pass http://$wo_receiver; }
+    location ^~ /agent/           { proxy_pass http://$wo_receiver; proxy_request_buffering off; proxy_buffering off; }
+    location = /rum               { proxy_pass http://$wo_receiver; }
+    location = /rum.js            { proxy_pass http://$wo_receiver; }
+    location = /mobile            { proxy_pass http://$wo_receiver; }
+    location ^~ /v1/              { proxy_pass http://$wo_receiver; proxy_request_buffering off; }
+
+    # our MCP server (./watchover.sh mcp on): https://<host>/mcp, Authorization: Bearer <key>; streamed answers go out at once.
+    # (The API's own MCP endpoint stays at https://<host>/api/mcp, below.) While the MCP container is off this path answers 502.
+    location ~ ^/mcp(/|$) {
+        proxy_pass http://$wo_mcp;
+        proxy_buffering off;
+        proxy_cache off;
+    }
+
+    # interface and API (live tail and streamed answers: no buffering)
+    location / {
+        proxy_pass http://$wo_ui;
+        proxy_buffering off;
+    }
+}

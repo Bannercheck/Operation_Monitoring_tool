@@ -1,5 +1,6 @@
-"""Demo mode (WATCHOVER_DEMO) and the clean-up of simulator-made data: production installs never start the simulator nor seed
-demo rows; the clean-up removes only what the simulator made and keeps a real host that happens to share a demo name."""
+"""The retired simulator and the clean-up of simulator-made data: no installation starts the simulator nor seeds demo rows (only
+the test suite's fixtures turn it on); the clean-up removes only what the simulator made and keeps a real host that happens to share
+a demo name."""
 import json
 import random
 from datetime import datetime, timezone
@@ -18,7 +19,6 @@ def client(tmp_path_factory):
                  "WATCHOVER_LOG_STORE": "db"}.items():                      # stored lines in the main database: DELETE-able (hot files need a purger)
         mp.setenv(k, v)
     mp.delenv("DATABASE_URL", raising=False)
-    mp.delenv("WATCHOVER_DEMO", raising=False)
     from fastapi.testclient import TestClient
     from watchover.api import create_app
     from watchover.auth import INITIAL_EMAIL
@@ -42,14 +42,15 @@ def admin(client) -> dict:
     return login(client, INITIAL_EMAIL, INITIAL_PASSWORD)
 
 
-def test_flag_defaults_on_and_reads_off(monkeypatch):
-    monkeypatch.delenv("WATCHOVER_DEMO", raising=False)
-    assert demo.enabled()
-    for off in ("0", "false", "off", " no "):
-        monkeypatch.setenv("WATCHOVER_DEMO", off)
-        assert not demo.enabled()
-    monkeypatch.setenv("WATCHOVER_DEMO", "1")
-    assert demo.enabled()
+def test_simulator_is_retired_whatever_the_environment():
+    """Shipped default: off. No environment variable (the old WATCHOVER_DEMO=1, WATCHOVER_ACT_DEMO=1) turns it on in a fresh process."""
+    import os
+    import subprocess
+    import sys
+    env = {**os.environ, "WATCHOVER_DEMO": "1", "WATCHOVER_ACT_DEMO": "1", "PYTHONPATH": os.pathsep.join(sys.path)}
+    out = subprocess.run([sys.executable, "-c", "from watchover import demo; from watchover.act.policy import act_demo; "
+                          "print(demo.enabled(), act_demo())"], env=env, capture_output=True, text=True, timeout=60)
+    assert out.stdout.split() == ["False", "False"], out.stderr
 
 
 def test_sim_hosts_cover_every_host_the_simulator_writes():
@@ -66,12 +67,12 @@ def test_sim_hosts_cover_every_host_the_simulator_writes():
 
 
 def test_production_mode_refuses_the_simulator_and_seeds_nothing(client, monkeypatch):
-    monkeypatch.setenv("WATCHOVER_DEMO", "0")
+    monkeypatch.setattr(demo, "SIMULATOR", False)
     h = admin(client); svc = client.app.state.services
     assert client.get("/api/health").json()["demo"] is False
     assert client.get("/api/system/status", headers=h).json()["live"]["demo"] is False
     r = client.post("/api/live/simulate", json={"on": True}, headers=h)
-    assert r.status_code == 403 and "WATCHOVER_DEMO" in r.json()["detail"] and svc.sim_stop is None
+    assert r.status_code == 403 and "retired" in r.json()["detail"] and svc.sim_stop is None
     assert client.post("/api/live/simulate", json={"on": False}, headers=h).status_code == 200      # switching off stays harmless
     svc._simulate_users(random.Random(1), False)                  # even a direct call seeds nothing
     assert not [r for r in svc.inventory.list() if r.get("owner") == demo.DEMO_OWNER]
@@ -84,7 +85,7 @@ def _count(kb, sql, params=()):
 
 
 def test_demo_clean_removes_only_simulator_data(client, monkeypatch):
-    monkeypatch.setenv("WATCHOVER_DEMO", "1")
+    monkeypatch.setattr(demo, "SIMULATOR", True)
     h = admin(client); svc = client.app.state.services; kb = svc.kb
     from watchover import live
     # a real server named like a demo one, known before the simulator ever ran: an agent's lines and a hand-made inventory row
@@ -184,5 +185,5 @@ def test_cli_dry_run_and_clean(tmp_path, monkeypatch, capsys):
         assert any(e["event"] == "demo-clean" and e["email"] == "cli" for e in svc.users.events(10))
     finally:
         svc.close()
-    monkeypatch.setenv("WATCHOVER_DEMO", "0")
+    monkeypatch.setattr(demo, "SIMULATOR", False)
     assert demo._main(["status"]) == 0 and json.loads(capsys.readouterr().out) == {"demo": False}

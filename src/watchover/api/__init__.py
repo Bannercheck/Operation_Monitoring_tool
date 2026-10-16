@@ -61,7 +61,7 @@ def create_app(services=None) -> FastAPI:
     app.include_router(dash_router.router, prefix="/api")
     from .routers import apps as apps_router                  # business applications (watchover.applications)
     app.include_router(apps_router.router, prefix="/api")
-    from .routers import demo as demo_router                  # demo mode (WATCHOVER_DEMO) and the clean-up of simulator-made data
+    from .routers import demo as demo_router                  # the clean-up of simulator-made data and the full reset of analysis data
     app.include_router(demo_router.router, prefix="/api")
     from .routers import mcp as mcp_router                    # MCP both ways: keys / audit / MCP sources (/api/mcp/*), the MCP endpoint (/mcp)
     app.include_router(mcp_router.router, prefix="/api")

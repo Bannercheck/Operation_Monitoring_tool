@@ -36,7 +36,7 @@ class ConfigIn(BaseModel):
 
 
 def _systems() -> list:
-    """The selectable systems; the demo ticket set only in demo mode (WATCHOVER_DEMO=1)."""
+    """The selectable systems; the demo ticket set never (the simulator and its demo content are retired)."""
     from ... import demo as wo_demo
     return (["demo"] if wo_demo.enabled() else []) + [*SYSTEMS, "generic"]
 
