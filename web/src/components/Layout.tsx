@@ -18,6 +18,7 @@ export default function Layout() {
   const { pathname } = useLocation();
   const mainRef = useRef<HTMLElement>(null);
   useEffect(() => { mainRef.current?.scrollTo({ top: 0 }); }, [pathname]);   // the content column is the scroller: a new page starts at its top
+  useEffect(() => { const h = document.documentElement; h.classList.add("app-shell"); return () => h.classList.remove("app-shell"); }, []);   // page scroll is locked only while the shell is up
   const [collapsed, setCollapsed] = useState(() => { try { return localStorage.getItem("wo_side") === "1"; } catch { return false; } });
   const [open, setOpen] = useState(false);
   const [pw, setPw] = useState(!!user?.must_change);

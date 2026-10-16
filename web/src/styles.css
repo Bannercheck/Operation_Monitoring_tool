@@ -832,10 +832,10 @@ body.pn-lock { overflow: hidden; }
 
 /* app shell: only the content column scrolls, the page itself never does. Safari 26 draws its translucent toolbar over a scrolled
    page, which hid the top of the sticky sidebar and the top bar; a shell that never scrolls keeps both clear on every browser. */
-html, body, #root { overflow: hidden; }
+html.app-shell, html.app-shell body, html.app-shell #root { overflow: hidden; }   /* set by Layout only: the login page keeps normal page scroll */
 .shell { height: 100vh; height: 100dvh; min-height: 0; }
 .side { position: relative; top: auto; height: 100%; }
 .main { height: 100%; overflow-y: auto; overscroll-behavior: contain; scroll-padding-top: 12px; }
 .lg-side { max-height: calc(100dvh - 86px); }
 @media (max-width: 860px) { .side { position: fixed; height: 100vh; height: 100dvh; } }
-@media print { html, body, #root, .shell, .main { height: auto; overflow: visible; } }
+@media print { html.app-shell, html.app-shell body, html.app-shell #root, .shell, .main { height: auto; overflow: visible; } }
