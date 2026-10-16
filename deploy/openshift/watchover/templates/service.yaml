@@ -15,7 +15,18 @@ spec:
       port: 8501
       targetPort: http
       protocol: TCP
-    - name: ingest                   # Go receiver: agents, enrolment, agent files, RUM (Route "ingest")
+    - name: ingest                   # Go receiver: agents, enrolment, agent files, RUM, OTLP/HTTP /v1/* (Route "ingest")
       port: 8600
       targetPort: ingest
       protocol: TCP
+    {{- if .Values.otlp.enabled }}
+    - name: otlp-grpc                # OpenTelemetry OTLP/gRPC for in-cluster collectors
+      port: 4317
+      targetPort: otlp-grpc
+      protocol: TCP
+      appProtocol: grpc
+    - name: otlp-http                # OpenTelemetry OTLP/HTTP
+      port: 4318
+      targetPort: otlp-http
+      protocol: TCP
+    {{- end }}

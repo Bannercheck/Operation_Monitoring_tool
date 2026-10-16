@@ -12,6 +12,7 @@
 //	GET  /agent.py, /agent/install.sh                                                             -> the collector itself
 //	GET  /health, /metrics    counters, backlog, auth state (JSON / Prometheus text)
 //	GET/POST /agent/v1/…      action-agent job channel: actuator tokens (wa_, auth.json "actuators") only -> proxied to the dashboard
+//	POST /v1/logs|traces|metrics  OpenTelemetry OTLP/HTTP (also :4318; OTLP/gRPC on :4317)          -> converted in Go, spooled (otlp_http.go)
 //
 // Authentication mirrors the Python receiver: per-agent tokens (sha256 hashes exported by the dashboard to auth.json), the legacy
 // shared key, open mode only while no agent is enrolled. Backpressure: when the unprocessed spool exceeds WO_MAX_BACKLOG_MB the
@@ -369,6 +370,7 @@ type server struct {
 	jobProxy *httputil.ReverseProxy // /agent/v1/ (built from proxy's upstream when nil)
 	start    time.Time
 	stats    struct{ batches, bytes, rejected, busy, unauth, sensor atomic.Int64 }
+	otlp     *otlpIn // OpenTelemetry intake (otlp_http.go)
 }
 
 func (s *server) json(w http.ResponseWriter, code int, v any) {
@@ -589,6 +591,9 @@ func (s *server) health() map[string]any {
 		"batches": s.stats.batches.Load(), "sensor_batches": s.stats.sensor.Load(), "bytes": s.stats.bytes.Load(), "unauthorized": s.stats.unauth.Load(), "busy": s.stats.busy.Load(),
 		"write_errors": s.stats.rejected.Load(), "backlog_bytes": s.sp.backlog.Load(), "backlog_segments": s.sp.segments.Load(),
 		"max_backlog_bytes": s.cfg.maxBacklog, "queue": len(s.sp.in)}
+	if s.otlp != nil {
+		s.otlp.health(h)
+	}
 	if s.stage != nil {
 		s.stage.health(h)
 	} else {
@@ -667,6 +672,9 @@ func (s *server) routes() http.Handler {
 		}
 		jp.ServeHTTP(w, r) // the dashboard checks the token again and every signature; this route only keeps others out
 	})
+	if s.otlp != nil {
+		mux.HandleFunc("/v1/", s.otlp.serveHTTP) // OTLP/HTTP on the agents' port too
+	}
 	mux.HandleFunc("/rum", s.rum)
 	mux.HandleFunc("/mobile", s.rum)
 	files := map[string]string{"/agent.py": "agent.py", "/agent/install.sh": "agent-install.sh", "/rum.js": "rum.js"}
@@ -738,6 +746,7 @@ func main() {
 	a := &auth{path: cfg.authFile}
 	a.reload()
 	s := &server{cfg: cfg, auth: a, sp: sp, proxy: httputil.NewSingleHostReverseProxy(up), start: time.Now()}
+	s.otlp = newOTLP(s)
 	if cfg.parse != parseOff {
 		s.stage = newParseStage(cfg, sp)
 		s.stage.needExport = true // parse only once the dashboard has exported profiles.json (see parseStage.needExport)
@@ -770,6 +779,7 @@ func main() {
 	} else {
 		close(pdone)
 	}
+	otlpSrv := s.otlp.listen(env("WO_OTLP_HTTP", ":4318"), env("WO_OTLP_GRPC", ":4317"))
 	srv := &http.Server{Addr: cfg.listen, Handler: s.routes(), ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 60 * time.Second,
 		WriteTimeout: 30 * time.Second, IdleTimeout: 120 * time.Second, MaxHeaderBytes: 64 << 10}
 	go func() {
@@ -777,6 +787,9 @@ func main() {
 		sh, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		_ = srv.Shutdown(sh)
+		for _, x := range otlpSrv {
+			_ = x.Shutdown(sh)
+		}
 	}()
 	log.Printf("watchover receiver (go) on %s, spool %s, upstream %s, go parse %s", cfg.listen, cfg.spool, cfg.upstream, cfg.parse)
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {

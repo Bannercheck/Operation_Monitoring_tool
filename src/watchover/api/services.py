@@ -238,7 +238,8 @@ class Services:
                 rum_h = lambda h, body: rum_request(self.rum, h.get("app_key", ""), h.get("origin") or None, h.get("ua", ""), body)   # noqa: E731
                 self.spool_consumer = SpoolConsumer(os.environ.get("WATCHOVER_SPOOL", os.path.join(os.environ.get("WATCHOVER_HOME", "data") or "data", "spool")),
                                                     self.live, self.agents, key_fn=lambda: wo_settings.load().get("live_key") or "",
-                                                    handlers={"/rum": rum_h, "/mobile": rum_h}, apps_fn=self.rum.apps).start()
+                                                    handlers={"/rum": rum_h, "/mobile": rum_h, "/otlp/traces": lambda h, body: self.traces.add_otlp(body)},
+                                                    apps_fn=self.rum.apps).start()
                 port = int(os.environ.get("WATCHOVER_INTERNAL_PORT", "8601") or 8601)    # enrolment (proxied by Go) and this machine's own agent
             if os.environ.get("WATCHOVER_API_RECEIVER", "1") == "1":      # the API is the product now: it owns the agent receiver
                 try:

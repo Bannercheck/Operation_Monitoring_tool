@@ -5,10 +5,11 @@
 #   podman            Red Hat's own engine, rootful: podman + container-selinux from the RHEL repositories, podman.socket (the
 #                     Docker-compatible API) and only the Compose v2 binary (docker-compose-plugin RPM from Docker's repository, no
 #                     Docker engine); watchover.sh then drives Podman through that socket (WATCHOVER_ENGINE=podman, run it with sudo)
-# Both: firewalld rules for the dashboard (8501), the agent receiver (8600), HTTPS (443) and with --mcp the MCP server (8765);
+# Both: firewalld rules for the dashboard (8501), the agent receiver (8600), HTTPS (443), with --mcp the MCP server (8765) and
+# with --otlp the OpenTelemetry ports (4317 gRPC, 4318 HTTP);
 # SELinux stays enforcing; chrony for correct timestamps. Idempotent: run it again any time.
 #
-#   sudo bash scripts/rhel-prepare.sh [--engine docker|podman] [--user NAME] [--mcp] [--no-firewall] [--no-docker] [--check]
+#   sudo bash scripts/rhel-prepare.sh [--engine docker|podman] [--user NAME] [--mcp] [--otlp] [--no-firewall] [--no-docker] [--check]
 #
 # --check prints what it would do and verifies the host (no changes, no root needed). --no-docker skips the engine packages (both
 # engines; e.g. installed by hand). The packages need internet, Satellite or an internal mirror. Air-gapped, docker: download the
@@ -17,9 +18,9 @@
 # repositories (Satellite); copy the docker-compose-linux-x86_64 binary of github.com/docker/compose/releases to
 # /usr/local/lib/docker/cli-plugins/docker-compose (chmod 755) and run with --engine podman --no-docker.
 set -euo pipefail
-USER_NAME="${SUDO_USER:-$(id -un)}"; FIREWALL=1; DOCKER=1; CHECK=0; ENGINE=docker; MCP=0
+USER_NAME="${SUDO_USER:-$(id -un)}"; FIREWALL=1; DOCKER=1; CHECK=0; ENGINE=docker; MCP=0; OTLP=0
 while [ $# -gt 0 ]; do case "$1" in
-  --user) USER_NAME="$2"; shift ;; --engine) ENGINE="${2:-}"; shift ;; --mcp) MCP=1 ;;
+  --user) USER_NAME="$2"; shift ;; --engine) ENGINE="${2:-}"; shift ;; --mcp) MCP=1 ;; --otlp) OTLP=1 ;;
   --no-firewall) FIREWALL=0 ;; --no-docker) DOCKER=0 ;; --check) CHECK=1 ;;
   *) echo "unknown option $1" >&2; exit 1 ;; esac; shift; done
 case "$ENGINE" in docker|podman) ;; *) echo "--engine must be docker or podman" >&2; exit 1 ;; esac
@@ -84,9 +85,9 @@ else
 fi
 
 # ---- firewalld: who talks to Watchover
-PORTS="8501/tcp 8600/tcp 443/tcp"; [ "$MCP" = 1 ] && PORTS="$PORTS 8765/tcp"
+PORTS="8501/tcp 8600/tcp 443/tcp"; [ "$MCP" = 1 ] && PORTS="$PORTS 8765/tcp"; [ "$OTLP" = 1 ] && PORTS="$PORTS 4317/tcp 4318/tcp"
 if [ "$FIREWALL" = 1 ] && command -v firewall-cmd >/dev/null 2>&1 && (systemctl is-active firewalld >/dev/null 2>&1 || [ "$CHECK" = 1 ]); then
-  say "firewalld: $PORTS (8501 dashboard, 8600 agents, 443 edge TLS$([ "$MCP" = 1 ] && echo ', 8765 MCP'))"
+  say "firewalld: $PORTS (8501 dashboard, 8600 agents, 443 edge TLS$([ "$MCP" = 1 ] && echo ', 8765 MCP')$([ "$OTLP" = 1 ] && echo ', 4317 / 4318 OTLP'))"
   for p in $PORTS; do run firewall-cmd --permanent --add-port="$p" >/dev/null; done
   run firewall-cmd --reload >/dev/null
   say "note: $ENGINE publishes container ports through its own NAT rules; the firewalld rules keep the intent documented and cover the host. Only some networks: firewall-cmd --permanent --add-rich-rule='rule family=ipv4 source address=10.0.0.0/8 port port=8501 protocol=tcp accept' (instead of --add-port), or bind a port to one address in .env (WATCHOVER_UI_PORT=10.0.0.5:8501)"

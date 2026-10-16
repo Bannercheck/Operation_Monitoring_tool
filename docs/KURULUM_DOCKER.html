@@ -87,7 +87,7 @@ docker compose version             # v2.x görünmeli
 </tr>
 </tbody>
 </table>
-<p>Hazırlık betiği her iki motorda da firewalld'de 8501/tcp (arayüz), 8600/tcp (ajanlar), 443/tcp (edge TLS) ve <code>--mcp</code> ile 8765/tcp açar, chrony'yi açar; <code>--check</code> yalnız ne yapacağını yazar. Diğer gerekenler: <code>git</code> (ya da paket dosyası), <code>python3</code>, <code>tar</code>, <code>gzip</code>, <code>openssl</code>, <code>curl</code> (RHEL tabanında vardır: <code>dnf install git python3 tar gzip openssl curl</code>).</p>
+<p>Hazırlık betiği her iki motorda da firewalld'de 8501/tcp (arayüz), 8600/tcp (ajanlar), 443/tcp (edge TLS), <code>--mcp</code> ile 8765/tcp ve <code>--otlp</code> ile 4317-4318/tcp (OpenTelemetry) açar, chrony'yi açar; <code>--check</code> yalnız ne yapacağını yazar. Diğer gerekenler: <code>git</code> (ya da paket dosyası), <code>python3</code>, <code>tar</code>, <code>gzip</code>, <code>openssl</code>, <code>curl</code> (RHEL tabanında vardır: <code>dnf install git python3 tar gzip openssl curl</code>).</p>
 <p>Örnek: 8 CPU / 64 GB / 200 GB sunucu, ham loglar ayrı disklerde:</p>
 <pre><code class="language-bash">sudo dnf -y install git
 sudo git clone https://github.com/Bannercheck/Operation_Monitoring_tool.git /opt/watchover-docker   # internetsiz: bundle'ı açın (bölüm &quot;İnternetsiz sunucu&quot;)
@@ -253,6 +253,54 @@ unzip -q watchover.zip &amp;&amp; mv hackathon watchover &amp;&amp; cd watchover
 <li>Yükseltme <code>./watchover.sh upgrade</code> ile kendiliğinden olur: panel 8600'ü bırakır, alıcı servisi devralır. Güvenlik duvarı kuralı değişmez.</li>
 <li><strong>Go ile ayrıştırma (v1.46):</strong> alıcı, Python'la aynı sonucu verdiği kanıtlanmış biçimleri kendisi ayrıştırır (<code>.env</code> içinde <code>WATCHOVER_GO_PARSE=1</code>, varsayılan). Kullanıcı grok kalıpları, öğrenilmiş sütun eşlemeleri ve tanınmayan biçimler yine panelde ayrıştırılır. <code>WATCHOVER_GO_PARSE=0</code> eski davranışa birebir döner, <code>shadow</code> yalnız karşılaştırır. Ayrıştırılmış segmentler ham halin yaklaşık 3 katı yer kaplar ve kuyruk sınırına dahildir; disk elveriyorsa <code>WATCHOVER_SPOOL_MAX_MB</code> değerini 4096-6144 yapın. İşçi sayısı <code>WO_PARSE_WORKERS</code> (varsayılan: çekirdek sayısı); 4 çekirdekli makinede ekran yanıtları yavaşlarsa 2 yapın.</li>
 </ul>
+<h2>2b-2. OpenTelemetry (OTLP)</h2>
+<p>Alıcı OpenTelemetry'nin standart protokolünü (OTLP) doğrudan konuşur: bir OpenTelemetry Collector ya da uygulamadaki OpenTelemetry SDK'sı başka bir değişiklik olmadan Watchover'a gönderir. Loglar log gezginine ve canlı akışa, span'lar izlere (servis metrikleri, servis haritası), sunucu metrikleri (CPU, bellek, disk, GPU) operasyon ekranına düşer. Çözme ve dönüştürme alıcıda, Go ile yapılır.</p>
+<table>
+<thead>
+<tr>
+<th>Yol</th>
+<th>Adres</th>
+<th>Biçim</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>OTLP/HTTP</td>
+<td><code>http://&lt;sunucu&gt;:8600/v1/logs</code>, <code>/v1/traces</code>, <code>/v1/metrics</code> (her zaman açık) ya da <code>:4318</code></td>
+<td>protobuf veya JSON, gzip</td>
+</tr>
+<tr>
+<td>OTLP/gRPC</td>
+<td><code>&lt;sunucu&gt;:4317</code> (şifresiz HTTP/2)</td>
+<td>protobuf, gzip</td>
+</tr>
+</tbody>
+</table>
+<p>4317 / 4318 portları varsayılan olarak dışarı açılmaz (aynı sunucuda başka bir collector bu portları kullanıyor olabilir): <code>./watchover.sh otlp on</code> açar, <code>./watchover.sh otlp off</code> kapatır. RHEL'de güvenlik duvarı için <code>sudo bash scripts/rhel-prepare.sh --otlp</code>.</p>
+<p><strong>Kimlik:</strong> collector'ı <strong>Ajanlar</strong> panelinde bir ajan olarak kaydedin ve jetonunu başlıkta gönderin (<code>Authorization: Bearer wo_…</code>); kayıtlar o ajanın ortam ve site bilgisini alır. Hiç ajan kayıtlı değilken (açık mod) jeton gerekmez.</p>
+<p>Örnek Collector ayarı (<code>otelcol-contrib</code>, sunucu metrikleri dahil):</p>
+<pre><code class="language-yaml">receivers:
+  otlp:
+    protocols: {grpc: {}, http: {}}
+  hostmetrics:
+    collection_interval: 30s
+    scrapers: {cpu: {}, memory: {}, filesystem: {}}
+processors:
+  batch: {}
+  resourcedetection: {detectors: [system]}
+exporters:
+  otlphttp/watchover:
+    endpoint: http://watchover.firma.local:8600
+    headers: {Authorization: &quot;Bearer wo_xxxxxxxx&quot;}
+    compression: gzip
+service:
+  pipelines:
+    logs:    {receivers: [otlp], processors: [resourcedetection, batch], exporters: [otlphttp/watchover]}
+    traces:  {receivers: [otlp], processors: [resourcedetection, batch], exporters: [otlphttp/watchover]}
+    metrics: {receivers: [otlp, hostmetrics], processors: [resourcedetection, batch], exporters: [otlphttp/watchover]}
+</code></pre>
+<p>SDK'dan doğrudan göndermek için: <code>OTEL_EXPORTER_OTLP_ENDPOINT=http://watchover.firma.local:8600</code>, <code>OTEL_EXPORTER_OTLP_HEADERS=Authorization=Bearer%20wo_xxxxxxxx</code> (gRPC için <code>:4317</code>, <code>OTEL_EXPORTER_OTLP_PROTOCOL=grpc</code>).</p>
+<p>Eşlemeler: <code>service.name</code> → servis, <code>host.name</code> (yoksa <code>k8s.node.name</code>, <code>k8s.pod.name</code>) → sunucu, <code>deployment.environment(.name)</code> → ortam, log kaydının <code>trace_id</code>'si → ize kesin bağ. Metriklerden <code>system.cpu.time</code> / <code>system.cpu.utilization</code>, <code>system.memory.usage</code> / <code>.utilization</code>, <code>system.filesystem.usage</code> / <code>.utilization</code> (tmpfs, overlay gibi sanal diskler hariç en dolu disk) ve GPU kullanımı yüzdeye çevrilir; diğer metrikler sayılır ama saklanmaz (alıcının <code>/health</code> çıktısında <code>otlp_points_skipped</code>). Bir izde hata görülünce o izin bekletilen span'ları da tutulur. Sayaçlar: <code>curl -s localhost:8600/health</code> içinde <code>otlp_*</code>.</p>
 <h2>2c. Web ve mobil uygulamaları izlemek (Kullanıcı deneyimi)</h2>
 <ol>
 <li><strong>Uygulama ekleyin:</strong> APM › Kullanıcı deneyimi › Uygulamalar. Ad, platform (web, android, ios, flutter, react-native), web için izinli kökenler (<code>https://ik.sirket.com.tr</code>), gerekirse örnekleme yüzdesi. Bir anahtar (<code>pk_…</code>) üretilir; <strong>Kurulum</strong> düğmesi platforma göre hazır satırları gösterir.</li>

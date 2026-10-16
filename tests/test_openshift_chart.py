@@ -111,7 +111,7 @@ def test_one_pod_shares_data_logs_on_their_own_volumes_production_mode(shape):
     assert claims[mounts[env["WATCHOVER_LOG_COLD_DIR"]["value"]]].endswith("-logs-cold")
     assert mounts["/data"] == "data" and {m["mountPath"]: m["name"] for m in recv["volumeMounts"]}["/data"] == "data"
     assert "secretKeyRef" in env["POSTGRES_PASSWORD"]["valueFrom"] and "$(POSTGRES_PASSWORD)" in env["DATABASE_URL"]["value"]
-    assert [p["containerPort"] for p in dash["ports"]] == [8501] and [p["containerPort"] for p in recv["ports"]] == [8600]
+    assert [p["containerPort"] for p in dash["ports"]] == [8501] and [p["containerPort"] for p in recv["ports"]] == [8600, 4317, 4318]   # agents + OTLP gRPC / HTTP
     assert dash["livenessProbe"]["httpGet"]["path"] == "/api/health" and recv["livenessProbe"]["httpGet"]["path"] == "/health"
     assert app["spec"]["strategy"]["type"] == "Recreate" and spec["enableServiceLinks"] is False
     pvcs = {d["metadata"]["name"]: d for d in docs if d["kind"] == "PersistentVolumeClaim"}

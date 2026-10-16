@@ -196,6 +196,27 @@ oc cp uretim-log.zip watchover/$POD:/datasets/uretim-log.zip                    
 - **RHEL kurulumundan farkı**: MCP pod'u dashboard'un `/data` diskini ve ham log disklerini görmez (ayrı pod, diskler ReadWriteOnce); olaylar ve aksiyonlar veritabanından, canlı veriler arayüz üzerinden gelir, analiz edilecek dosyalar kendi `/datasets` diskindedir. RHEL'de 8765 düz http'dir; burada Route ile TLS'lidir.
 - Arayüzün kendi MCP ucu (`https://<ui route>/api/mcp`) `mcp.enabled` olmadan da vardır; bağımsız MCP sunucusu veri seti araçlarını (`analyze_dataset` …) ekler. Adlı, kapsamlı anahtarlar (hesap ya da ekip, okuma / yazma) Ayarlar › Bağlantılar › MCP'de oluşturulur ve iki uçta da geçer; Secret'taki kurulum anahtarı kurulum çapında okuma anahtarıdır.
 
+## 5c. OpenTelemetry (OTLP)
+
+Alıcı konteyneri OTLP/gRPC (4317) ve OTLP/HTTP (4318) dinler; Service'te `otlp-grpc` ve `otlp-http` portları vardır (`otlp.enabled: true`, varsayılan). Küme içindeki bir OpenTelemetry Collector doğrudan gönderir; ağ politikasında collector'ın ad alanını izinli yapın:
+
+```yaml
+networkPolicy:
+  ingestNamespaces: [{name: otel}]
+```
+
+Collector exporter'ı (küme içi, gRPC):
+
+```yaml
+exporters:
+  otlp/watchover:
+    endpoint: watchover.watchover.svc:4317
+    tls: {insecure: true}
+    headers: {authorization: "Bearer wo_xxxxxxxx"}
+```
+
+Küme dışından OTLP/HTTP, ingest Route'u üzerinden TLS ile gelir: `otlphttp` exporter'ında `endpoint: https://watchover-ingest.apps.<küme alan adı>` (yollar `/v1/logs`, `/v1/traces`, `/v1/metrics`). Jeton, Ajanlar panelinde collector için kaydedilen ajanın jetonudur. Eşlemeler ve desteklenen metrikler için Docker kılavuzunun "OpenTelemetry (OTLP)" bölümüne bakın.
+
 ## 6. Boyutlandırma
 
 Ölçülen değerler (yük testi verisi, 300 ajan): sıcak diskte satır başına **~65-90 bayt**, soğuk arşivde **~7-8 bayt** (şablon + lzma). Sıcak loglar gün dosyalarında tutulduğu için sıcak disk 48 değil 48-72 saat taşır; `hotMaxGb` dolarsa biten en eski gün erkenden arşive geçer, `coldMaxGb` dolarsa en eski arşiv günü silinir. İlk günün sonunda Sistem › Depolama kartından (ya da `oc exec deploy/watchover -c dashboard -- du -sh /logs/hot /logs/cold`) gerçek değeri görüp gerekirse disk büyütün (`allowVolumeExpansion: true` olan blok depolama sınıfı).

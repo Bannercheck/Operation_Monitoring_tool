@@ -36,6 +36,7 @@ func setup(t *testing.T, st *authState, mod func(*config)) (*server, *httptest.S
 	a.reload()
 	up, _ := url.Parse("http://127.0.0.1:1")
 	s := &server{cfg: cfg, auth: a, sp: sp, proxy: httputil.NewSingleHostReverseProxy(up), start: time.Now()}
+	s.otlp = newOTLP(s)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() { sp.run(ctx); close(done) }()

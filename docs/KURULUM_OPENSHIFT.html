@@ -286,6 +286,19 @@ oc cp uretim-log.zip watchover/$POD:/datasets/uretim-log.zip                    
 <li><strong>RHEL kurulumundan farkı</strong>: MCP pod'u dashboard'un <code>/data</code> diskini ve ham log disklerini görmez (ayrı pod, diskler ReadWriteOnce); olaylar ve aksiyonlar veritabanından, canlı veriler arayüz üzerinden gelir, analiz edilecek dosyalar kendi <code>/datasets</code> diskindedir. RHEL'de 8765 düz http'dir; burada Route ile TLS'lidir.</li>
 <li>Arayüzün kendi MCP ucu (<code>https://&lt;ui route&gt;/api/mcp</code>) <code>mcp.enabled</code> olmadan da vardır; bağımsız MCP sunucusu veri seti araçlarını (<code>analyze_dataset</code> …) ekler. Adlı, kapsamlı anahtarlar (hesap ya da ekip, okuma / yazma) Ayarlar › Bağlantılar › MCP'de oluşturulur ve iki uçta da geçer; Secret'taki kurulum anahtarı kurulum çapında okuma anahtarıdır.</li>
 </ul>
+<h2>5c. OpenTelemetry (OTLP)</h2>
+<p>Alıcı konteyneri OTLP/gRPC (4317) ve OTLP/HTTP (4318) dinler; Service'te <code>otlp-grpc</code> ve <code>otlp-http</code> portları vardır (<code>otlp.enabled: true</code>, varsayılan). Küme içindeki bir OpenTelemetry Collector doğrudan gönderir; ağ politikasında collector'ın ad alanını izinli yapın:</p>
+<pre><code class="language-yaml">networkPolicy:
+  ingestNamespaces: [{name: otel}]
+</code></pre>
+<p>Collector exporter'ı (küme içi, gRPC):</p>
+<pre><code class="language-yaml">exporters:
+  otlp/watchover:
+    endpoint: watchover.watchover.svc:4317
+    tls: {insecure: true}
+    headers: {authorization: &quot;Bearer wo_xxxxxxxx&quot;}
+</code></pre>
+<p>Küme dışından OTLP/HTTP, ingest Route'u üzerinden TLS ile gelir: <code>otlphttp</code> exporter'ında <code>endpoint: https://watchover-ingest.apps.&lt;küme alan adı&gt;</code> (yollar <code>/v1/logs</code>, <code>/v1/traces</code>, <code>/v1/metrics</code>). Jeton, Ajanlar panelinde collector için kaydedilen ajanın jetonudur. Eşlemeler ve desteklenen metrikler için Docker kılavuzunun "OpenTelemetry (OTLP)" bölümüne bakın.</p>
 <h2>6. Boyutlandırma</h2>
 <p>Ölçülen değerler (yük testi verisi, 300 ajan): sıcak diskte satır başına <strong>~65-90 bayt</strong>, soğuk arşivde <strong>~7-8 bayt</strong> (şablon + lzma). Sıcak loglar gün dosyalarında tutulduğu için sıcak disk 48 değil 48-72 saat taşır; <code>hotMaxGb</code> dolarsa biten en eski gün erkenden arşive geçer, <code>coldMaxGb</code> dolarsa en eski arşiv günü silinir. İlk günün sonunda Sistem › Depolama kartından (ya da <code>oc exec deploy/watchover -c dashboard -- du -sh /logs/hot /logs/cold</code>) gerçek değeri görüp gerekirse disk büyütün (<code>allowVolumeExpansion: true</code> olan blok depolama sınıfı).</p>
 <table>

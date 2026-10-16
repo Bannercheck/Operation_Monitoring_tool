@@ -164,6 +164,14 @@ class SpoolConsumer:
                     self.registry.touch(int(h["agent_id"]), h.get("ip", ""), n)
                 except Exception:  # noqa: BLE001
                     pass
+        elif path in ("/otlp/logs", "/otlp/metrics") and h.get("v") == 2 and h.get("kind") == "parsed":
+            n = self.store.ingest_parsed(body, h)                # OpenTelemetry, converted by the receiver (receiver/otlp)
+            self.parsed_records += 1
+            if h.get("agent_id") is not None and self.registry is not None:
+                try:
+                    self.registry.touch(int(h["agent_id"]), h.get("ip", ""), n)
+                except Exception:  # noqa: BLE001
+                    pass
         elif path in self.handlers:
             self.handlers[path](h, body)
 

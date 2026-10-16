@@ -12,6 +12,7 @@
 #   ./watchover.sh upgrade          git pull of this folder (local edits set aside and put back) + update: the one-line way to a new version
 #   ./watchover.sh start|stop|restart|status|logs [service]
 #   ./watchover.sh mcp on|off       our MCP server as a third container (MCP_API_KEY from .env)
+#   ./watchover.sh otlp on|off      publish the OpenTelemetry ports 4317 (gRPC) / 4318 (HTTP) on the receiver (OTLP/HTTP also on 8600)
 #   ./watchover.sh legacy on|off    the former Streamlit interface as an extra container (:8502) while teams move over
 #   ./watchover.sh edge on NAME     Caddy in front: https://NAME for the company network (TLS from Caddy's CA, or ./certs/watchover.crt+key);
 #                                   NAME may be a DNS name, an IP or a Bonjour name like watchover.local (announced by the Mac itself)
@@ -178,6 +179,7 @@ EOF_STAT
 compose_files() {   # COMPOSE_FILE in .env: the base file plus the overrides that apply now (edge on, separate log disks)
   local f="docker-compose.yml" k p
   [ "$(env_get WATCHOVER_EDGE)" = "1" ] && f="$f:docker-compose.edge.yml"
+  [ "$(env_get WATCHOVER_OTLP)" = "1" ] && f="$f:docker-compose.otlp.yml"
   for k in HOT COLD; do
     p=$(env_get "WATCHOVER_LOG_${k}_PATH"); [ -n "$p" ] || continue
     check_log_dir "$k" "$p"; f="$f:docker-compose.log$(lower "$k").yml"
@@ -417,7 +419,7 @@ checklist() {
   ck "" "disk caps: Sistem › Ayarlar  hot_max_gb ~ $hot, cold_max_gb ~ $cold  (0 = none; Sistem › Depolama warns at 85%)"
   ck "$([ -n "$(env_get WATCHOVER_LOG_HOT_PATH)$(env_get WATCHOVER_LOG_COLD_PATH)" ] && echo 1)" "raw logs on disks of their own: WATCHOVER_LOG_HOT_PATH / WATCHOVER_LOG_COLD_PATH in .env (./watchover.sh storage)"
   ck "$([ "$(env_get WATCHOVER_EDGE)" = 1 ] && echo 1)" "TLS: ./watchover.sh edge on watchover.firma.com (company certificate: ./certs/watchover.crt + .key); then only 443 (+ 8600 for http agents) open"
-  ck "" "firewall: 8501 / 8600 / 443 (and 8765 with MCP) for the right networks only: sudo bash scripts/rhel-prepare.sh prints and opens them"
+  ck "" "firewall: 8501 / 8600 / 443 (and 8765 with MCP, 4317 / 4318 with OTLP) for the right networks only: sudo bash scripts/rhel-prepare.sh prints and opens them"
 }
 
 banner() {
@@ -530,6 +532,13 @@ case "${1:-}" in
       on)  env_set WATCHOVER_MCP 1; up; say "MCP server on: http://$(host_ip):$(env_get WATCHOVER_MCP_PORT || echo 8765)/mcp  key: $(env_get MCP_API_KEY)" ;;
       off) $COMPOSE --profile mcp stop mcp; $COMPOSE --profile mcp rm -f mcp; env_set WATCHOVER_MCP 0; say "MCP server off" ;;
       *) die "usage: ./watchover.sh mcp on|off" ;; esac ;;
+  otlp)   # OpenTelemetry: the receiver always speaks OTLP; "on" publishes 4317 / 4318 (off by default: a host collector may own them)
+    need_docker; case "${2:-}" in
+      on)  env_set WATCHOVER_OTLP 1; compose_files; up
+           say "OTLP on: gRPC http://$(host_ip):$(env_get WATCHOVER_OTLP_GRPC_PORT || echo 4317)  HTTP http://$(host_ip):$(env_get WATCHOVER_OTLP_HTTP_PORT || echo 4318)/v1/{logs,traces,metrics}"
+           say "exporter header: Authorization: Bearer <agent token> (Ajanlar panelinde bir ajan olarak kaydet; açık modda gerekmez)" ;;
+      off) env_set WATCHOVER_OTLP 0; compose_files; up; say "OTLP ports closed (OTLP/HTTP stays on :$(env_get WATCHOVER_LIVE_PORT || echo 8600)/v1/*)" ;;
+      *) die "usage: ./watchover.sh otlp on|off" ;; esac ;;
   llm)
     need_docker; write_env
     models="$(env_get WATCHOVER_LLM_MODELS)"; models="${models:-qwen2.5:7b-instruct qwen2.5:3b-instruct bge-m3}"

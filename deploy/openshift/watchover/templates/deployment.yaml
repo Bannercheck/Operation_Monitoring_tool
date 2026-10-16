@@ -180,7 +180,21 @@ spec:
             - name: ingest
               containerPort: 8600
               protocol: TCP
+            {{- if .Values.otlp.enabled }}
+            - name: otlp-grpc
+              containerPort: 4317
+              protocol: TCP
+            - name: otlp-http
+              containerPort: 4318
+              protocol: TCP
+            {{- end }}
           env:
+            {{- if not .Values.otlp.enabled }}
+            - name: WO_OTLP_GRPC
+              value: "off"
+            - name: WO_OTLP_HTTP
+              value: "off"
+            {{- end }}
             - name: TZ
               value: {{ .Values.timezone | quote }}
             - name: HOME

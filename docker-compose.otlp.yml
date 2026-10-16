@@ -1,0 +1,8 @@
+# Applied while WATCHOVER_OTLP=1 in .env (./watchover.sh otlp on adds this file to COMPOSE_FILE): the receiver publishes the
+# standard OpenTelemetry ports, so a Collector or an SDK exports to this server without any other change. OTLP/HTTP also
+# answers on the agents' port (8600, /v1/logs|traces|metrics) without this file; gRPC needs 4317.
+services:
+  receiver:
+    ports:
+      - "${WATCHOVER_OTLP_GRPC_PORT:-4317}:4317"   # OTLP/gRPC (cleartext HTTP/2; gzip)
+      - "${WATCHOVER_OTLP_HTTP_PORT:-4318}:4318"   # OTLP/HTTP: /v1/logs, /v1/traces, /v1/metrics (protobuf or JSON; gzip)

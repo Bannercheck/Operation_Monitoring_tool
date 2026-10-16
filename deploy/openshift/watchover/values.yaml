@@ -190,10 +190,16 @@ mcp:
     limits: {cpu: "1", memory: 1Gi}
   extraEnv: []
 
+# ---------------------------------------------------------------- OpenTelemetry (OTLP)
+# Alıcı OTLP/gRPC (4317) ve OTLP/HTTP (4318) dinler; Service'te bu portlar açılır (küme içindeki collector'lar için, ağ politikasında
+# networkPolicy.ingestNamespaces). Küme dışından OTLP/HTTP, ingest Route'u üzerinden https://<ingest>/v1/logs|traces|metrics ile gelir.
+otlp:
+  enabled: true
+
 # ---------------------------------------------------------------- ağ politikası
 networkPolicy:
   enabled: true                        # PostgreSQL ve Ollama'ya yalnız Watchover pod'u erişir; 8501/8600 yalnız router'dan
-  # Küme içinden doğrudan alıcıya (8600) gönderecek ad alanları (örn. OpenTelemetry collector): [{name: otel}]
+  # Küme içinden doğrudan alıcıya (8600, OTLP açıkken 4317 / 4318) gönderecek ad alanları (örn. OpenTelemetry collector): [{name: otel}]
   ingestNamespaces: []
 
 # ---------------------------------------------------------------- yedek (isteğe bağlı pg_dump CronJob)

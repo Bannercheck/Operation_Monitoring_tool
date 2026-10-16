@@ -40,6 +40,10 @@ spec:
         {{- end }}
       ports:
         - {port: 8600, protocol: TCP}
+        {{- if $.Values.otlp.enabled }}
+        - {port: 4317, protocol: TCP}
+        - {port: 4318, protocol: TCP}
+        {{- end }}
     {{- end }}
 {{- if .Values.postgresql.enabled }}
 ---

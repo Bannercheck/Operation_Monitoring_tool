@@ -318,7 +318,8 @@ class TraceStore:
                     a[0] += 1; a[1] += sp["error"]; a[2] += d; a[3] = max(a[3], d); a[4][bucket(d)] += 1
                 tid = sp.get("trace_id")
                 from_user = str(sp.get("ref", "")).startswith("rum:") or str(sp.get("session_id", "")).startswith("sso:")
-                if from_user and tid:                            # tail sampling for user journeys: claim the trace, release held spans
+                if (from_user or (sp["error"] and sp.get("link") == "explicit")) and tid:   # tail sampling: a user journey or an error
+                    # claims its whole trace and releases the spans held so far (an OTLP child exported before its failed parent)
                     if tid not in self._force:
                         self._force[tid] = time.time()
                         if len(self._force) > 200000:
@@ -348,6 +349,33 @@ class TraceStore:
         if time.time() - self._last_prune > 3600:
             self.prune()
         return len(rows)
+
+    def add_otlp(self, body: bytes) -> int:
+        """A /otlp/traces spool record from the Go receiver: line 1 {"agg": [[minute, service, operation, kind, env, n, err, sum,
+        max, hist], ...]} (RED rollups already summed in Go), then one span row per line in add_spans' shape (`_counted`, start as
+        ISO text, the raw user id in `_user`). Here only the rollups are merged, user ids pseudonymised, messages scrubbed."""
+        lines = [ln for ln in body.split(b"\n") if ln.strip()]
+        if not lines:
+            return 0
+        head = json.loads(lines[0])
+        with self.lock:
+            for minute, svc, op, kind, env, n, err, total, mx, hist in head.get("agg") or []:
+                key = (minute, svc, op, kind, env)
+                a = self._agg.get(key)
+                if a is None:
+                    a = self._agg[key] = [0, 0, 0.0, 0.0, [0] * NB]
+                a[0] += n; a[1] += err; a[2] += total; a[3] = max(a[3], mx)
+                for i, c in enumerate(hist[:NB]):
+                    a[4][i] += c
+                self.received += n
+        spans = []
+        for ln in lines[1:]:
+            sp = json.loads(ln)
+            sp["start"] = datetime.fromisoformat(sp["start"])
+            sp["user_ref"] = pseudonym(sp.pop("_user", None) or None)
+            sp["message"] = scrub(sp.get("message") or "")[:300]
+            spans.append(sp)
+        return self.add_spans(spans) if spans else 0
 
     def add_events(self, events: list[Observation], keep_all: bool = False) -> int:
         spans = [sp for sp in (span_of(o) for o in events) if sp]

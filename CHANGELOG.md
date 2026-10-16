@@ -2,6 +2,12 @@
 
 Numaralandırma: büyük sürüm **v1, v2** (ürün sahibinin kararı), küçük güncelleme **v1.1, v1.2** (her devreye alınan özellik adımı), düzeltme **v1.1.1**. Her sürüm `python -m watchover.release <major|minor|patch> "özet"` ile açılır; Sistem › Güncelleme sayfası bu dosyayı gösterir, anlık görüntüler sürüm numarasını taşır.
 
+## v1.51 · 2026-10-16 · güncelleme
+
+- OpenTelemetry (OTLP) alımı Go'da: OTLP/HTTP (8600, 4318) ve OTLP/gRPC (4317), bağımlılıksız protobuf ve JSON çözücü, loglar / sunucu metrikleri / span'lar Go'da dönüştürülüyor, RED özetleri Go'da
+- Hatalı izlerde bekletilen span'lar da tutuluyor; ./watchover.sh otlp on|off, rhel-prepare --otlp, chart portları
+
+
 ## v1.50 · 2026-10-16 · güncelleme
 
 - Aksiyon ajanı 2. aşama (a): anahtar servisi (watchover-keyd) ve anahtarlı denetim zinciri, kanıt kaynağı ve enjeksiyon karantinası, sunucu iş kanalı, runbook eşleştirici ve gölge kip

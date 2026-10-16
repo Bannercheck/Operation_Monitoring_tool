@@ -33,7 +33,7 @@ RHEL'de Watchover iki motordan biriyle çalışır; compose dosyası, komutlar, 
 | SELinux | `enforcing` kalır; Docker CE konteynerleri SELinux dışında çalıştırır | `enforcing` kalır; konteynerler `container_t`, bind mount'lar `:z` ile etiketlenir |
 | Hazırlık | `sudo bash scripts/rhel-prepare.sh --user ops [--mcp]` | `sudo bash scripts/rhel-prepare.sh --engine podman [--mcp]` |
 
-Hazırlık betiği her iki motorda da firewalld'de 8501/tcp (arayüz), 8600/tcp (ajanlar), 443/tcp (edge TLS) ve `--mcp` ile 8765/tcp açar, chrony'yi açar; `--check` yalnız ne yapacağını yazar. Diğer gerekenler: `git` (ya da paket dosyası), `python3`, `tar`, `gzip`, `openssl`, `curl` (RHEL tabanında vardır: `dnf install git python3 tar gzip openssl curl`).
+Hazırlık betiği her iki motorda da firewalld'de 8501/tcp (arayüz), 8600/tcp (ajanlar), 443/tcp (edge TLS), `--mcp` ile 8765/tcp ve `--otlp` ile 4317-4318/tcp (OpenTelemetry) açar, chrony'yi açar; `--check` yalnız ne yapacağını yazar. Diğer gerekenler: `git` (ya da paket dosyası), `python3`, `tar`, `gzip`, `openssl`, `curl` (RHEL tabanında vardır: `dnf install git python3 tar gzip openssl curl`).
 
 Örnek: 8 CPU / 64 GB / 200 GB sunucu, ham loglar ayrı disklerde:
 
@@ -150,6 +150,47 @@ Ajanların bağlandığı 8600 portu v1.35'ten itibaren ayrı bir konteynerde, G
 - Durum: `curl http://<sunucu>:8600/health`, Prometheus için `/metrics`; log: `./watchover.sh logs receiver`.
 - Yükseltme `./watchover.sh upgrade` ile kendiliğinden olur: panel 8600'ü bırakır, alıcı servisi devralır. Güvenlik duvarı kuralı değişmez.
 - **Go ile ayrıştırma (v1.46):** alıcı, Python'la aynı sonucu verdiği kanıtlanmış biçimleri kendisi ayrıştırır (`.env` içinde `WATCHOVER_GO_PARSE=1`, varsayılan). Kullanıcı grok kalıpları, öğrenilmiş sütun eşlemeleri ve tanınmayan biçimler yine panelde ayrıştırılır. `WATCHOVER_GO_PARSE=0` eski davranışa birebir döner, `shadow` yalnız karşılaştırır. Ayrıştırılmış segmentler ham halin yaklaşık 3 katı yer kaplar ve kuyruk sınırına dahildir; disk elveriyorsa `WATCHOVER_SPOOL_MAX_MB` değerini 4096-6144 yapın. İşçi sayısı `WO_PARSE_WORKERS` (varsayılan: çekirdek sayısı); 4 çekirdekli makinede ekran yanıtları yavaşlarsa 2 yapın.
+
+## 2b-2. OpenTelemetry (OTLP)
+
+Alıcı OpenTelemetry'nin standart protokolünü (OTLP) doğrudan konuşur: bir OpenTelemetry Collector ya da uygulamadaki OpenTelemetry SDK'sı başka bir değişiklik olmadan Watchover'a gönderir. Loglar log gezginine ve canlı akışa, span'lar izlere (servis metrikleri, servis haritası), sunucu metrikleri (CPU, bellek, disk, GPU) operasyon ekranına düşer. Çözme ve dönüştürme alıcıda, Go ile yapılır.
+
+| Yol | Adres | Biçim |
+|---|---|---|
+| OTLP/HTTP | `http://<sunucu>:8600/v1/logs`, `/v1/traces`, `/v1/metrics` (her zaman açık) ya da `:4318` | protobuf veya JSON, gzip |
+| OTLP/gRPC | `<sunucu>:4317` (şifresiz HTTP/2) | protobuf, gzip |
+
+4317 / 4318 portları varsayılan olarak dışarı açılmaz (aynı sunucuda başka bir collector bu portları kullanıyor olabilir): `./watchover.sh otlp on` açar, `./watchover.sh otlp off` kapatır. RHEL'de güvenlik duvarı için `sudo bash scripts/rhel-prepare.sh --otlp`.
+
+**Kimlik:** collector'ı **Ajanlar** panelinde bir ajan olarak kaydedin ve jetonunu başlıkta gönderin (`Authorization: Bearer wo_…`); kayıtlar o ajanın ortam ve site bilgisini alır. Hiç ajan kayıtlı değilken (açık mod) jeton gerekmez.
+
+Örnek Collector ayarı (`otelcol-contrib`, sunucu metrikleri dahil):
+
+```yaml
+receivers:
+  otlp:
+    protocols: {grpc: {}, http: {}}
+  hostmetrics:
+    collection_interval: 30s
+    scrapers: {cpu: {}, memory: {}, filesystem: {}}
+processors:
+  batch: {}
+  resourcedetection: {detectors: [system]}
+exporters:
+  otlphttp/watchover:
+    endpoint: http://watchover.firma.local:8600
+    headers: {Authorization: "Bearer wo_xxxxxxxx"}
+    compression: gzip
+service:
+  pipelines:
+    logs:    {receivers: [otlp], processors: [resourcedetection, batch], exporters: [otlphttp/watchover]}
+    traces:  {receivers: [otlp], processors: [resourcedetection, batch], exporters: [otlphttp/watchover]}
+    metrics: {receivers: [otlp, hostmetrics], processors: [resourcedetection, batch], exporters: [otlphttp/watchover]}
+```
+
+SDK'dan doğrudan göndermek için: `OTEL_EXPORTER_OTLP_ENDPOINT=http://watchover.firma.local:8600`, `OTEL_EXPORTER_OTLP_HEADERS=Authorization=Bearer%20wo_xxxxxxxx` (gRPC için `:4317`, `OTEL_EXPORTER_OTLP_PROTOCOL=grpc`).
+
+Eşlemeler: `service.name` → servis, `host.name` (yoksa `k8s.node.name`, `k8s.pod.name`) → sunucu, `deployment.environment(.name)` → ortam, log kaydının `trace_id`'si → ize kesin bağ. Metriklerden `system.cpu.time` / `system.cpu.utilization`, `system.memory.usage` / `.utilization`, `system.filesystem.usage` / `.utilization` (tmpfs, overlay gibi sanal diskler hariç en dolu disk) ve GPU kullanımı yüzdeye çevrilir; diğer metrikler sayılır ama saklanmaz (alıcının `/health` çıktısında `otlp_points_skipped`). Bir izde hata görülünce o izin bekletilen span'ları da tutulur. Sayaçlar: `curl -s localhost:8600/health` içinde `otlp_*`.
 
 ## 2c. Web ve mobil uygulamaları izlemek (Kullanıcı deneyimi)
 

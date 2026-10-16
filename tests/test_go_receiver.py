@@ -146,3 +146,63 @@ def test_rum_through_go_receiver(binary, tmp_path, monkeypatch):
     finally:
         proc.terminate(); proc.wait(10)
 
+
+
+def _otlp(base: str, signal: str, doc: dict) -> int:
+    req = urllib.request.Request(f"{base}/v1/{signal}", data=json.dumps(doc).encode(), headers={"Content-Type": "application/json"})
+    return urllib.request.urlopen(req).status
+
+
+def test_otlp_through_go_receiver(binary, tmp_path, monkeypatch):
+    """OpenTelemetry OTLP/JSON to the Go receiver: logs reach the live store as parsed observations, host metrics the metric
+    store, spans the trace store with RED rollups summed in Go; a child span exported before its failed parent is kept."""
+    monkeypatch.setenv("WATCHOVER_PSEUDO_KEY", "k")
+    from watchover.db import Database
+    from watchover.live import LiveStore
+    from watchover.spool_consumer import SpoolConsumer
+    from watchover.traces import TraceStore
+    tr = TraceStore(Database(str(tmp_path / "k.db")), settings=lambda: {"trace_sample_pct": 0, "trace_slow_ms": 5000})
+    store = LiveStore(spool=str(tmp_path / "l.jsonl"))
+    spool = tmp_path / "spool"
+    cons = SpoolConsumer(str(spool), store, None, handlers={"/otlp/traces": lambda h, body: tr.add_otlp(body)})
+    cons.export_auth(force=True)
+    port = free_port()
+    proc = subprocess.Popen([str(binary)], env=dict(os.environ, WO_LISTEN=f"127.0.0.1:{port}", WO_SPOOL=str(spool), WO_SEGMENT_MS="100",
+                                                     WO_OTLP_HTTP="off", WO_OTLP_GRPC="off"), stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    base = f"http://127.0.0.1:{port}"
+    now = time.time_ns()
+    res = {"attributes": [{"key": "service.name", "value": {"stringValue": "billing"}}, {"key": "host.name", "value": {"stringValue": "prd-bill-01"}},
+                          {"key": "deployment.environment.name", "value": {"stringValue": "prod"}}]}
+    tid, root, child = "0af7651916cd43dd8448eb211c80319c", "b7ad6b7169203331", "00f067aa0ba902b7"
+
+    def span(sid, parent, name, kind, ms, err, attrs=()):
+        s = {"traceId": tid, "spanId": sid, "name": name, "kind": kind, "startTimeUnixNano": str(now - 10**9),
+             "endTimeUnixNano": str(now - 10**9 + ms * 10**6), "attributes": list(attrs), "status": {"code": 2 if err else 0}}
+        if parent:
+            s["parentSpanId"] = parent
+        return {"resourceSpans": [{"resource": res, "scopeSpans": [{"scope": {"name": "io.opentelemetry.jdbc"}, "spans": [s]}]}]}
+    try:
+        assert wait(lambda: _ok(base + "/health"))
+        assert _otlp(base, "logs", {"resourceLogs": [{"resource": res, "scopeLogs": [{"scope": {"name": "com.bill.Invoice"}, "logRecords": [
+            {"timeUnixNano": str(now), "severityNumber": 17, "body": {"stringValue": "invoice 12 rejected"}, "traceId": tid, "spanId": root}]}]}]}) == 200
+        assert _otlp(base, "metrics", {"resourceMetrics": [{"resource": res, "scopeMetrics": [{"metrics": [
+            {"name": "system.memory.utilization", "gauge": {"dataPoints": [{"timeUnixNano": str(now), "asDouble": 0.61, "attributes": [
+                {"key": "state", "value": {"stringValue": "used"}}]}]}}]}]}]}) == 200
+        assert _otlp(base, "traces", span(child, root, "SELECT invoices", 3, 20, False, [{"key": "db.system", "value": {"stringValue": "oracle"}}])) == 200
+        assert wait(lambda: cons.pending())
+        cons.run_once()
+        assert _otlp(base, "traces", span(root, None, "POST /invoices", 2, 80, True, [{"key": "http.route", "value": {"stringValue": "/invoices"}},
+                                                                                        {"key": "http.request.method", "value": {"stringValue": "POST"}}])) == 200
+        assert wait(lambda: cons.pending())
+        cons.run_once()
+        logs = [o for o in store.buf if o.service == "billing"]
+        assert len(logs) == 1 and logs[0].severity == "ERROR" and logs[0].host == "prd-bill-01" and logs[0].attributes.get("trace_id") == tid
+        assert any(m[1] == "prd-bill-01" and m[2] == "memory" and m[3] == 61.0 for m in store.metrics)
+        t = tr.trace(tid)
+        ops = sorted((s["operation"], s["kind"]) for s in t["spans"])
+        assert ("POST /invoices", "server") in ops and ("SELECT invoices", "db") in ops      # the held child came back with its failed parent
+        tr.flush()
+        svc = {s["service"]: s for s in tr.services(minutes=None)}
+        assert svc["billing"]["calls"] == 1 and svc["billing"]["error_rate"] == 1.0       # RED (server calls) from the rollups summed in Go
+    finally:
+        proc.terminate(); proc.wait(10)
