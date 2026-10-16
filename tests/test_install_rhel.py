@@ -163,6 +163,7 @@ def test_fresh_install_then_rerun_is_idempotent(rhel):
     assert (dest / "watchover.sh").exists() and (dest / ".install-files").exists() and oct((dest / ".env").stat().st_mode)[-3:] == "600"
     wrapper = (r / "usr/local/bin/watchover").read_text()
     assert f'exec sudo -- "{dest}/watchover.sh"' in wrapper and f'exec "{dest}/watchover.sh" "$@"' in wrapper
+    assert os.readlink(r / "usr/bin/watchover") == "/usr/local/bin/watchover"     # sudo's secure_path has no /usr/local/bin
     for k, v in (("WATCHOVER_ENGINE", "podman"), ("WATCHOVER_PRODUCTION", "1"), ("WATCHOVER_UPDATER", "1"),
                  ("WATCHOVER_EDGE", "1"), ("WATCHOVER_EDGE_HOST", "watchover01.firma.local"), ("WATCHOVER_BACKUP_AT", "02:15"),
                  ("WATCHOVER_BACKUP_KEEP", "14"), ("WATCHOVER_FW_ZONE", "public"), ("WATCHOVER_LLM_MODELS", "qwen2.5:3b-instruct bge-m3"),

@@ -459,6 +459,12 @@ case "$ctx" in *home_t|*tmp_t|user_*) ! have restorecon || restorecon -R -e "$DE
 mkdir -p "$R/usr/local/bin"
 printf '#!/bin/sh\n# Watchover command (written by install-rhel.sh): the stack runs on rootful Podman, so every call runs as root\n[ "$(id -u)" = 0 ] || exec sudo -- "%s/watchover.sh" "$@"\nexec "%s/watchover.sh" "$@"\n' "$DEST" "$DEST" > "$R/usr/local/bin/watchover"
 chmod 755 "$R/usr/local/bin/watchover"; ! have restorecon || restorecon "$R/usr/local/bin/watchover" >/dev/null 2>&1 || true
+# sudo's secure_path on RHEL (/sbin:/bin:/usr/sbin:/usr/bin) leaves /usr/local/bin out, so 'sudo watchover ...' answered "command
+# not found" (seen on the first real RHEL 9.8 install): a link in /usr/bin lets 'watchover' and 'sudo watchover' both work
+mkdir -p "$R/usr/bin"
+if [ ! -e "$R/usr/bin/watchover" ] || [ "$(readlink "$R/usr/bin/watchover" 2>/dev/null)" = /usr/local/bin/watchover ]; then
+  ln -sfn /usr/local/bin/watchover "$R/usr/bin/watchover"
+else note "$R/usr/bin/watchover başka bir programa ait: komutu 'watchover ...' (sudo'suz; yetkiyi kendisi ister) ya da 'sudo $DEST/watchover.sh ...' ile çalıştırın"; fi
 ok "Kurulum klasörü $DEST (root:root) · komut: watchover (= sudo $DEST/watchover.sh)"
 
 # ---------------------------------------------------------------------------------------------------------------- .env

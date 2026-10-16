@@ -85,7 +85,7 @@ docker() {
 need_docker() {
   if [ "$ENGINE" = podman ]; then
     command -v podman >/dev/null 2>&1 || die "Podman is not installed: sudo dnf -y install podman   (or: sudo bash scripts/rhel-prepare.sh --engine podman)"
-    compose_bin >/dev/null || die "Compose v2 is missing for Podman: sudo bash scripts/rhel-prepare.sh --engine podman installs docker-compose-plugin (Compose only, no Docker engine); air-gapped: copy the docker-compose-linux-x86_64 binary to /usr/local/lib/docker/cli-plugins/docker-compose (chmod +x)"
+    compose_bin >/dev/null || die "Compose v2 is missing for Podman$([ -f install-rhel.sh ] && [ ! -f /usr/local/bin/watchover ] && echo ' (Watchover is not installed yet: sudo ./install-rhel.sh installs everything, then use the watchover command)'): sudo bash scripts/rhel-prepare.sh --engine podman installs docker-compose-plugin (Compose only, no Docker engine); air-gapped: copy the docker-compose-linux-$(uname -m) binary to /usr/local/lib/docker/cli-plugins/docker-compose (chmod +x)"
     if [ ! -S "$PODMAN_SOCK" ] && [ "$(id -u)" = 0 ] && command -v systemctl >/dev/null 2>&1; then systemctl enable --now podman.socket >/dev/null 2>&1 || true; fi
     [ -S "$PODMAN_SOCK" ] || die "the Podman socket $PODMAN_SOCK is not there: sudo systemctl enable --now podman.socket"
     [ -w "$PODMAN_SOCK" ] || die "Watchover runs on rootful Podman and its socket needs root: sudo ./watchover.sh ${CMD:-start}"
