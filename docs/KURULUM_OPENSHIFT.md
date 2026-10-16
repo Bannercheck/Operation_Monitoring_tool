@@ -316,7 +316,7 @@ Eğitim konteyneri (`trainer.enabled`) varsayılan kapalıdır; açılırsa Watc
 
 ## 10. Demo verisi
 
-OpenShift kurulumu üretim modundadır; simülatör hiç açılamaz. Docker'dan taşınan ya da demo modunda çalışmış bir kurulumda kalan simülatör verisini (simülatörün satırları, "demo (simulator)" envanter kayıtları, demo RUM uygulamaları ve oturumları, demo iş akışı ve yalnız simülatörün kullandığı sunucu adlarına ait kayıtlar) Sistem › Demo verisi › **Demo verisini temizle** siler; yalnız kurulum yöneticisi görür, işlem denetim kaydına yazılır. Aynı adı taşıyan gerçek bir sunucunun (ör. kendi `db-01`'iniz) verisine dokunulmaz. Terminalden önce sayım, sonra silme:
+OpenShift kurulumu üretim modundadır; simülatör hiç açılamaz ve örnek uygulama (Uygulamalar menüsü) oluşturulmaz; uygulamaları Uygulamalar › Keşif ya da Yeni uygulama ile siz tanımlarsınız (`act.apps` yetkisi rollere elle verilir). Docker'dan taşınan ya da demo modunda çalışmış bir kurulumda kalan simülatör verisini (simülatörün satırları, "demo (simulator)" envanter kayıtları, demo RUM uygulamaları ve oturumları, demo iş akışı ve yalnız simülatörün kullandığı sunucu adlarına ait kayıtlar) Sistem › Demo verisi › **Demo verisini temizle** siler; yalnız kurulum yöneticisi görür, işlem denetim kaydına yazılır. Aynı adı taşıyan gerçek bir sunucunun (ör. kendi `db-01`'iniz) verisine dokunulmaz. Terminalden önce sayım, sonra silme:
 
 ```bash
 oc exec -n watchover deploy/watchover -c dashboard -- python -m watchover.demo clean --dry-run

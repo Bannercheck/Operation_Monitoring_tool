@@ -54,14 +54,28 @@ def _team_for_new(acc, team_id: Optional[int]) -> Optional[int]:
     return team_id
 
 
-def _validate_team(svc, body: dict, team_id: Optional[int]) -> None:
+def _validate_team(svc, body: dict, team_id: Optional[int], acc=None) -> None:
     if team_id is not None:
         svc.notifier.check_team_targets(body.get("targets") or "", body.get("channels") or "", team_id)
+    _app_scope(svc, body, acc)
+
+
+def _app_scope(svc, body: dict, acc) -> None:
+    """scope "application": the value must name an application the writer may see (watchover.applications); stored as its name."""
+    if body.get("scope") != "application":
+        return
+    a = svc.apps.by_name(str(body.get("scope_value") or ""))
+    if a is None or (acc is not None and not svc.apps.visible(a, acc.scope("page.thr"))):
+        raise HTTPException(400, "unknown application")
+    body["scope_value"] = a["name"]
 
 
 @router.get("/meta")
-def meta(user=Depends(require("page.thr"))):
-    return {"metrics": METRICS, "scopes": SCOPES, "channels": CHANNELS}
+def meta(acc=Depends(access), svc=Depends(services), user=Depends(require("page.thr"))):
+    apps = []
+    if getattr(svc, "apps", None) is not None:
+        apps = svc.apps.names(acc.scope("page.thr"))       # application scope: the names the writer may pick
+    return {"metrics": METRICS, "scopes": SCOPES, "channels": CHANNELS, "applications": apps}
 
 
 @router.get("")
@@ -82,7 +96,7 @@ def list_policies(acc=Depends(access), svc=Depends(services), _u=Depends(require
 def create(body: PolicyIn, acc=Depends(access), svc=Depends(services), _u=Depends(require("page.thr"))):
     d = body.model_dump()
     d["team_id"] = _team_for_new(acc, body.team_id)
-    _validate_team(svc, d, d["team_id"])
+    _validate_team(svc, d, d["team_id"], acc)
     return svc.thresholds.save(d)
 
 
@@ -95,7 +109,7 @@ def update(pid: int, body: PolicyIn, acc=Depends(access), svc=Depends(services),
         raise HTTPException(403, "permission required to edit this policy")
     d = body.model_dump()
     d["team_id"] = cur.get("team_id") if "team_id" not in body.model_fields_set else _team_for_new(acc, body.team_id)
-    _validate_team(svc, d, d["team_id"])
+    _validate_team(svc, d, d["team_id"], acc)
     return svc.thresholds.save(d, pid)
 
 
@@ -110,8 +124,10 @@ def delete(pid: int, acc=Depends(access), svc=Depends(services), _u=Depends(requ
 
 
 @router.post("/preview")
-def preview(body: PolicyIn, svc=Depends(services), sc=Depends(perm_scope("page.thr"))):
-    out = svc.thresholds.preview(body.model_dump())
+def preview(body: PolicyIn, acc=Depends(access), svc=Depends(services), sc=Depends(perm_scope("page.thr"))):
+    d = body.model_dump()
+    _app_scope(svc, d, acc)
+    out = svc.thresholds.preview(d)
     if sc is not None:
         out["hosts"] = [h for h in out["hosts"] if sc.allows(h)]
         out["beyond"] = [b for b in out["beyond"] if sc.allows(b["host"])]

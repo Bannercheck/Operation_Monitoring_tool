@@ -839,3 +839,45 @@ html.app-shell, html.app-shell body, html.app-shell #root { overflow: hidden; } 
 .lg-side { max-height: calc(100dvh - 86px); }
 @media (max-width: 860px) { .side { position: fixed; height: 100vh; height: 100dvh; } }
 @media print { html.app-shell, html.app-shell body, html.app-shell #root, .shell, .main { height: auto; overflow: visible; } }
+
+/* ---------------------------------------------------------------- applications (pages/apps): cards, detail head, tabs, editor */
+.ap-filters { display: grid; grid-template-columns: minmax(180px, 2fr) repeat(3, minmax(120px, 1fr)) auto; gap: 8px; align-items: center; }
+.ap-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 12px; }
+.ap-card { display: flex; flex-direction: column; gap: 8px; color: var(--fg); text-decoration: none; border-left: 3px solid var(--st-none); min-width: 0; transition: border-color 0.12s, transform 0.12s; }
+.ap-card:hover { border-color: var(--line2); transform: translateY(-1px); } .ap-card.st-ok { border-left-color: var(--st-ok); } .ap-card.st-warn { border-left-color: var(--st-warn); } .ap-card.st-crit { border-left-color: var(--st-crit); }
+.ap-card-h { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.ap-card-t { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; } .ap-card-t b { font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ap-desc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ap-m { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; } .ap-m > div { display: flex; flex-direction: column; min-width: 0; }
+.ap-m span { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ap-m b { font-size: 16px; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ap-spark { height: 34px; } .ap-spark .stat-sp { position: static; width: 100%; height: 34px; display: block; }
+.ap-card-f { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; color: var(--muted); } .ap-card-f span { display: inline-flex; align-items: center; gap: 4px; }
+.ap-reasons { display: flex; gap: 4px; flex-wrap: wrap; }
+.ap-st { font-size: 12px; }
+.ap-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; } .ap-head-t { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.ap-head-t h2 { margin: 0; overflow-wrap: anywhere; }
+.ap-tabs { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--line); padding-bottom: 6px; }
+.ap-tabs button { border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 13px; font-weight: 600; padding: 7px 11px; border-radius: 8px; cursor: pointer; white-space: nowrap; }
+.ap-tabs button:hover { color: var(--fg); background: rgba(148, 163, 184, 0.08); } .ap-tabs button.on { color: var(--fg); background: rgba(45, 212, 191, 0.12); box-shadow: inset 0 -2px 0 var(--accent); }
+.ap-worst { display: flex; flex-direction: column; gap: 2px; text-align: left; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: transparent; color: var(--fg); font: inherit; }
+button.ap-worst { cursor: pointer; } button.ap-worst:hover { border-color: var(--line2); }
+.ap-q { display: block; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line2); background: rgba(148, 163, 184, 0.06); overflow-wrap: anywhere; }
+.ap-table td, .ap-table th { white-space: nowrap; } .ap-table td:first-child { white-space: normal; }
+.ap-cards2 { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr)); gap: 12px; }
+.ap-step { display: grid; grid-template-columns: minmax(90px, 1.2fr) minmax(60px, 2fr) 56px minmax(0, 1fr); gap: 8px; align-items: center; }
+.ap-step .bt-tr { display: block; height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; } .ap-step .bt-tr i { display: block; height: 100%; border-radius: 4px; }
+.ap-thr-add { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) auto; gap: 8px; align-items: end; margin-top: 10px; }
+.ap-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.ap-chips { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; padding: 5px 6px; border-radius: 10px; border: 1px solid var(--line2); background: rgba(5, 10, 20, 0.5); min-height: 40px; }
+.light .ap-chips { background: rgba(250, 251, 253, 0.92); }
+.ap-chip { padding: 2px 4px 2px 9px; max-width: 100%; } .ap-chip .mono { overflow: hidden; text-overflow: ellipsis; }
+.ap-chip button { border: 0; background: transparent; color: var(--muted); cursor: pointer; display: inline-flex; padding: 2px; border-radius: 50%; } .ap-chip button:hover { color: var(--red); }
+.ap-chip-in { flex: 1 1 120px; min-width: 0; border: 0; outline: none; background: transparent; color: var(--fg); padding: 4px; font: inherit; }
+.ap-prop .row.between { align-items: flex-start; } .ap-samples { margin-top: 6px; color: var(--muted); overflow-wrap: anywhere; }
+.ap-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 4px; max-height: 50vh; overflow-y: auto; }
+.ap-pick-r { display: flex; gap: 8px; align-items: center; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line); cursor: pointer; min-width: 0; }
+.ap-pick-r .mono { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .ap-pick-r.on { border-color: rgba(45, 212, 191, 0.45); background: rgba(45, 212, 191, 0.06); }
+@media (max-width: 900px) { .ap-filters { grid-template-columns: 1fr 1fr; } .ap-filters > .input:first-child { grid-column: 1 / -1; } .ap-thr-add { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 640px) { .grid.k4.ap-kpis { grid-template-columns: 1fr 1fr; } .ap-form { grid-template-columns: 1fr; } .ap-filters { grid-template-columns: 1fr; } .ap-m { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ap-step { grid-template-columns: minmax(0, 1fr) 70px 48px; } .ap-step > span:last-child { grid-column: 1 / -1; } }

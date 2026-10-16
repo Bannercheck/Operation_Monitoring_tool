@@ -34,7 +34,7 @@ UTC = timezone.utc
 FIELDS = ("host", "env", "application", "role", "owner", "dc", "cluster", "site", "tag", "ip", "service")
 OPS = ("equals", "glob", "prefix", "cidr")
 NONE = ("\x00no-host-in-scope",)                     # a host filter that matches nothing
-ORIGINS = ("manual", "inventory", "promote", "agent", "import")
+ORIGINS = ("manual", "inventory", "promote", "agent", "import", "application")
 OWNED_TABLES = {"thresholds": "threshold_policies", "recipients": "recipients", "groups": "notify_groups", "rules": "notify_rules", "agents": "agents",
                 "sources": "sources", "flows": "biz_flows"}     # team-owned rows (team_id); datasets / actions are added by the services hook
 

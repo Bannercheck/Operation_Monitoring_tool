@@ -1,5 +1,5 @@
 import { NavLink, useLocation } from "react-router-dom";
-import { AlertTriangle, BellRing, BookOpen, Bot, Brain, Bug, ClipboardList, Database, Inbox as InboxIcon, FileText, Gauge, GitBranch, Layers, LayoutDashboard, LayoutGrid, MessageSquare, Network, Plug, Radar, Route, ScrollText, Server, Settings, Settings2, ShieldAlert, Siren, Smartphone, Sparkles, Ticket, UserCog, Users, Workflow } from "lucide-react";
+import { AlertTriangle, BellRing, BookOpen, Bot, Boxes, Brain, Bug, ClipboardList, Database, Inbox as InboxIcon, FileText, Gauge, GitBranch, Layers, LayoutDashboard, LayoutGrid, MessageSquare, Network, Plug, Radar, Route, ScrollText, Server, Settings, Settings2, ShieldAlert, Siren, Smartphone, Sparkles, Ticket, UserCog, Users, Workflow } from "lucide-react";
 import { useAuth } from "../auth";
 import { useT } from "../i18n";
 
@@ -12,6 +12,7 @@ export type Hub = { id: string; k: string; icon: any; tabs: NavTab[] };
 
 export const HUBS: Hub[] = [
   { id: "dash", k: "nav_dash", icon: LayoutGrid, tabs: [{ to: "/ops", k: "nav_home", icon: LayoutDashboard, perm: "page.ops" }] },
+  { id: "apps", k: "nav_apps", icon: Boxes, tabs: [{ to: "/apps", k: "nav_apps", icon: Boxes, perm: "page.apps" }] },
   { id: "services", k: "nav_services", icon: Layers, tabs: [
     { to: "/services", k: "nav_services", icon: Layers, perm: "page.apm" }, { to: "/flows", k: "nav_flows", icon: Route, perm: "page.apm" }] },
   { id: "traces", k: "nav_traces", icon: GitBranch, tabs: [{ to: "/traces", k: "nav_traces", icon: GitBranch, perm: "page.apm" }] },

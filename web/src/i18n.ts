@@ -1,5 +1,6 @@
 // UI strings, Turkish first. `t(key)` falls back to the key so a missing entry is visible, never a crash.
 import { createContext, useContext } from "react";
+import { APP_STRINGS } from "./i18n_apps";
 
 export type Lang = "tr" | "en";
 const S: Record<string, [string, string]> = {
@@ -680,6 +681,7 @@ const S: Record<string, [string, string]> = {
   gk_prof_hint: ["Bir dosyanın biçimi ve sütun adları tanınınca burada kayıtlı roller kendiliğinden uygulanır. Yüklemede verilen eşleme \"kullanıcı\" olarak kaydedilir ve otomatik tahmini ezer; burada düzelttiğiniz roller de sonraki yüklemelerde geçerlidir.", "When a file's format and column names are recognised, the roles stored here apply on their own. A mapping given at upload is stored as \"user\" and beats the automatic guess; roles corrected here hold for later uploads too."],
   gk_prof_keys: ["Sütunlar", "Columns"], gk_prof_roles: ["Roller", "Roles"], gk_prof_hits: ["kullanım", "uses"], gk_prof_source_user: ["kullanıcı", "user"], gk_prof_source_auto: ["otomatik", "auto"], gk_prof_none: ["Henüz öğrenilmiş eşleme yok; bir CSV / JSON yükleyin.", "No learned mapping yet; upload a CSV / JSON."],
 };
+Object.assign(S, APP_STRINGS);                       // the applications pages (i18n_apps.ts)
 
 export function tr(lang: Lang, key: string, kw: Record<string, any> = {}): string {
   const e = S[key];

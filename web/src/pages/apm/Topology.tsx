@@ -43,7 +43,7 @@ function layout(nodes: N[], edges: E[]) {
 
 const health = (er?: number | null) => (er === null || er === undefined ? "#64748b" : er >= 0.05 ? "#f87171" : er > 0 ? "#fbbf24" : "#34d399");
 
-function Graph({ nodes, edges, mode }: { nodes: N[]; edges: E[]; mode: "traffic" | "network" }) {
+export function Graph({ nodes, edges, mode }: { nodes: N[]; edges: E[]; mode: "traffic" | "network" }) {
   const { t } = useT(); const nav = useNavigate(); const sc = useScope();
   const [hover, setHover] = useState<string | null>(null);
   const { pos, width, height } = useMemo(() => layout(nodes, edges), [nodes, edges]);

@@ -32,7 +32,7 @@ def test_auto_v1_grants_nothing_that_executes(tmp_path):
     perms = {r["name"]: r["perms"] for r in roles.list()}
     assert {"page.auto", "act.case", "act.runbook"} <= perms["operator"] and not (perms["operator"] & POWER)
     assert "page.auto" in perms["viewer"] and not (perms["viewer"] & (POWER | {"act.case"}))
-    assert perms["noc"] == {"page.actions", "page.ops", "act.anomaly", "page.auto"}
+    assert perms["noc"] == {"page.actions", "page.ops", "act.anomaly", "page.auto", "page.apps"}     # + page.apps (apps_v1, view only)
     assert "page.auto" not in perms["auditor"]
     tr = set(json.loads(kb._exec("SELECT perms FROM team_roles WHERE id=1")[0]["perms"]))
     assert "page.auto" in tr and not (tr & POWER)

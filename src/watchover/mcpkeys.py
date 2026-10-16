@@ -22,7 +22,7 @@ from .access import Access, Membership
 
 UTC = timezone.utc
 PREFIX = "wom_"
-READ_PERMS = frozenset({"page.ops", "page.logs", "page.thr", "page.anom", "page.apm", "page.inv", "page.actions"})
+READ_PERMS = frozenset({"page.ops", "page.logs", "page.thr", "page.anom", "page.apm", "page.inv", "page.actions", "page.apps"})
 WRITE_PERMS = frozenset({"act.anomaly", "act.thresholds", "sys.notify"})
 TEAM_WRITE = frozenset({"act.anomaly", "act.thresholds"})
 AUDIT_DAYS = 90

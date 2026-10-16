@@ -80,9 +80,10 @@ function Editor({ init, onClose, onSaved }: { init: any; onClose: () => void; on
         {!p.id && <TeamPick perm="act.thresholds" value={p.team_id ?? null} onChange={(v) => setP({ ...p, team_id: v, channels: v != null ? chans.filter((c) => c !== "webhook").join(",") : p.channels })} />}
         <div className="grid k2">
           <Field label={t("thr_metric")}><select className="input" value={p.metric} onChange={set("metric")}>{Object.keys(meta.data?.metrics ?? UNIT).map((m) => <option key={m} value={m}>{t(`thr_m_${m}`)}</option>)}</select></Field>
-          <Field label={t("thr_scope")}><select className="input" value={p.scope} onChange={set("scope")}>{["host", "glob", "pool", "env", "all"].map((s) => <option key={s} value={s}>{t(`thr_scope_${s}`)}</option>)}</select></Field>
+          <Field label={t("thr_scope")}><select className="input" value={p.scope} onChange={set("scope")}>{["host", "glob", "application", "pool", "env", "all"].map((s) => <option key={s} value={s}>{t(`thr_scope_${s}`)}</option>)}</select></Field>
         </div>
-        {p.scope !== "all" && <Field label={t(`thr_value_${p.scope}`)} hint={t(`thr_hint_${p.scope}`)}><input className="input mono" value={p.scope_value} onChange={set("scope_value")} placeholder={p.scope === "glob" ? "prd-sap-*" : p.scope === "env" ? "prod" : p.scope === "pool" ? "prd-sap-app" : "prd-sap-app-01"} /></Field>}
+        {p.scope !== "all" && <Field label={t(`thr_value_${p.scope}`)} hint={t(`thr_hint_${p.scope}`)}><input className="input mono" list={p.scope === "application" ? "thr-apps" : undefined} value={p.scope_value} onChange={set("scope_value")} placeholder={p.scope === "glob" ? "prd-sap-*" : p.scope === "env" ? "prod" : p.scope === "pool" ? "prd-sap-app" : p.scope === "application" ? "SAP ERP" : "prd-sap-app-01"} />
+          <datalist id="thr-apps">{(meta.data?.applications ?? []).map((n: string) => <option key={n} value={n} />)}</datalist></Field>}
         <div className="grid k3">
           <Field label={`${t("thr_warn")} (${unit})`}><input className="input" type="number" value={p.warn ?? ""} onChange={set("warn")} /></Field>
           <Field label={`${t("thr_crit")} (${unit})`}><input className="input" type="number" value={p.crit ?? ""} onChange={set("crit")} /></Field>

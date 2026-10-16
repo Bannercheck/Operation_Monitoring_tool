@@ -697,6 +697,90 @@ class Rollup:
         return sorted(({"service": s, "lines": n, "errors": err.get(s, 0), "error_rate": round(err.get(s, 0) / n, 5) if n else 0, "hosts": len(hosts.get(s, ())),
                         "per_min": round(n / len(mins), 1), "p95_ms": _q(lat[s], 0.95) if s in lat else None} for s, n in tot.items()), key=lambda r: (-r["errors"], -r["lines"]))
 
+    def fold_groups(self, window, host_groups: dict, svc_groups, host_ok=None, step: int | None = None) -> dict:
+        """The counters folded into caller-defined groups in one pass (business applications, watchover.applications).
+
+        host_groups: host name -> group keys the host is a member of; svc_groups(service) -> group keys the service belongs to
+        (memoised per pass). A line counts once per group: through its host when the host is a member, else through its service
+        when host_ok(host) allows that host (a team's scope). Per group: lines, errors (ERROR+), latency histogram, per member host
+        [lines, errors], per service [lines, errors] (services of member hosts and matched services), non-member hosts reached
+        through a service, and with `step` the per-bucket [lines, errors] keyed by the bucket's first epoch second."""
+        mins = self._mins(window)
+        nb = len(BOUNDS) + 1
+        out: dict = {}
+
+        def grp(k):
+            d = out.get(k)
+            if d is None:
+                d = out[k] = {"lines": 0, "errors": 0, "hist": [0] * nb, "hosts": {}, "services": {}, "svc_hosts": {}, "series": {}}
+            return d
+        smemo: dict = {}
+
+        def sg(s):
+            r = smemo.get(s)
+            if r is None:
+                r = smemo[s] = tuple(svc_groups(s) or ()) if s and s != "-" else ()
+            return r
+        okmemo: dict = {}
+        with self.lock:
+            hg = {self.hid[h]: tuple(gs) for h, gs in host_groups.items() if gs and h in self.hid}
+            names = self.hosts
+
+            def allowed(h: int) -> bool:
+                r = okmemo.get(h)
+                if r is None:
+                    r = okmemo[h] = host_ok is None or bool(host_ok(names[h]))
+                return r
+            for m in mins:
+                b = (mins[0] + ((m - mins[0]) // step) * step) * 60 if step else None
+                for (h, sev), n in self.cnt.get(m, {}).items():
+                    gs = hg.get(h)
+                    if not gs:
+                        continue
+                    bad = SEV_RANK[sev] >= 3
+                    for k in gs:
+                        d = grp(k)
+                        d["lines"] += n
+                        x = d["hosts"].setdefault(names[h], [0, 0]); x[0] += n
+                        if bad:
+                            d["errors"] += n; x[1] += n
+                        if b is not None:
+                            y = d["series"].setdefault(b, [0, 0]); y[0] += n
+                            if bad:
+                                y[1] += n
+                errs = self.svc_err.get(m, {})
+                for (h, s), n in self.svc.get(m, {}).items():
+                    mine = hg.get(h, ())
+                    via = sg(s)
+                    if not mine and not via:
+                        continue
+                    e = errs.get((h, s), 0)
+                    for k in mine:
+                        x = grp(k)["services"].setdefault(s, [0, 0]); x[0] += n; x[1] += e
+                    if not via or not allowed(h):
+                        continue
+                    for k in via:
+                        if k in mine:
+                            continue
+                        d = grp(k)
+                        d["lines"] += n; d["errors"] += e
+                        x = d["services"].setdefault(s, [0, 0]); x[0] += n; x[1] += e
+                        x = d["svc_hosts"].setdefault(names[h], [0, 0]); x[0] += n; x[1] += e
+                        if b is not None:
+                            y = d["series"].setdefault(b, [0, 0]); y[0] += n; y[1] += e
+                for (hn, sv), hh in self.lat.get(m, {}).items():
+                    h = self.hid.get(hn)
+                    if h is None:
+                        continue
+                    ks = set(hg.get(h, ()))
+                    if allowed(h):
+                        ks.update(sg(sv))
+                    for k in ks:
+                        acc = grp(k)["hist"]
+                        for i, c in enumerate(hh):
+                            acc[i] += c
+        return out
+
     def host_counts(self, window_min: int) -> tuple[dict, dict]:
         """(host, env) -> [events, ERROR+] and (host, env) -> {service: ERROR+} over the last window_min minutes (the anomaly scan)."""
         per: dict[tuple[str, str], list[int]] = {}

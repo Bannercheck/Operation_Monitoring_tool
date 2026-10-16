@@ -11,7 +11,7 @@ import type { Range } from "../ops/util";
 type Tok = { s: number; e: number; k: "ws" | "f" | "op" | "p" | "q" | "n" | "v" | "w" };
 const OPS = new Set(["OR", "AND", "NOT", "VEYA", "VE", "DEĞİL", "||", "&&"]);
 const FIELD_RE = /^([A-Za-z_@][\w.\-@]*)(:|>=|<=|>|<)/;
-const BUILTIN = ["level", "service", "host", "env", "pool", "source", "agent", "kind", "origin", "trace", "session", "user", "client", "message", "raw", "line", "group", "duration_ms"];
+const BUILTIN = ["level", "service", "host", "env", "pool", "source", "agent", "kind", "origin", "trace", "session", "user", "client", "message", "raw", "line", "group", "duration_ms", "app"];
 const LEVEL_VALUES = ["error", "warn", "info", "debug", "critical"];
 
 export function tokenize(text: string): Tok[] {
@@ -67,10 +67,10 @@ export const QueryBar = forwardRef<QueryBarHandle, { value: string; onRun: (q: s
 
   // autocomplete
   const cur = useMemo(() => current(draft, caret), [draft, caret]);
-  const facetField = cur.field && ["service", "svc", "app", "host", "hostname", "env", "environment", "pool", "source", "file"].includes(cur.field) ? cur.field : null;
+  const facetField = cur.field && ["service", "svc", "host", "hostname", "env", "environment", "pool", "source", "file"].includes(cur.field) ? cur.field : null;
   const [vpart, setVpart] = useState("");
   useEffect(() => { const h = setTimeout(() => setVpart(cur.part), 200); return () => clearTimeout(h); }, [cur.part]);
-  const canon = (f: string) => ({ svc: "service", app: "service", hostname: "host", environment: "env", file: "source" } as Record<string, string>)[f] ?? f;
+  const canon = (f: string) => ({ svc: "service", hostname: "host", environment: "env", file: "source" } as Record<string, string>)[f] ?? f;
   const vals = useQuery({ queryKey: ["lg-ac", facetField, vpart, range], queryFn: () => lg("/facets", { ...rangeParams(range), fields: canon(facetField!), search: `${canon(facetField!)}:${vpart}`, limit: 10 }),
     enabled: !!facetField && acOn && focused, staleTime: 15000, retry: false });
   const sugg: Sugg[] = useMemo(() => {
@@ -78,6 +78,10 @@ export const QueryBar = forwardRef<QueryBarHandle, { value: string; onRun: (q: s
     if (cur.field) {
       const f = cur.field.toLowerCase(); const p = cur.part.toLowerCase();
       if (["level", "lvl", "severity", "sev"].includes(f)) return LEVEL_VALUES.filter((v) => v.startsWith(p) && v !== p).map((v) => ({ label: v, insert: `${cur.prefix}${cur.field}:${v} `, kind: t("lg_f_level") }));
+      if (["app", "application", "uygulama"].includes(f)) {          // application names (watchover.applications): app:<name> = its hosts and services
+        const av = ((fields.find((x: any) => x.name === "app")?.values ?? []) as string[]).filter((v) => v.toLowerCase().includes(p.replace(/"/g, "")) && v.toLowerCase() !== p);
+        return av.slice(0, 10).map((v) => ({ label: v, insert: `${cur.prefix}${cur.field}:${qv(v)} `, kind: t("lg_ac_app") }));
+      }
       if (facetField) { const fv = (vals.data?.facets?.[canon(facetField)]?.values ?? []) as any[];
         return fv.filter((x) => String(x.v).toLowerCase() !== p).map((x) => ({ label: String(x.v), insert: `${cur.prefix}${cur.field}:${qv(String(x.v))} `, kind: String(x.n) })); }
       return [];

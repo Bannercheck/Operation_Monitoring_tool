@@ -14,6 +14,7 @@ card link and saved searches carry this string. Standard library only.
 """
 from __future__ import annotations
 
+import hashlib
 import re
 from dataclasses import dataclass, field as dfield
 from typing import Callable, List, Optional
@@ -37,11 +38,11 @@ for _canon, _names in (("ERROR", ("err", "error", "hata")),
     for _n in _names:
         LEVEL_ALIASES[_n] = _canon
 
-ALIASES = {"lvl": "level", "severity": "level", "sev": "level", "svc": "service", "app": "service", "hostname": "host",
+ALIASES = {"lvl": "level", "severity": "level", "sev": "level", "svc": "service", "application": "app", "uygulama": "app", "hostname": "host",
            "environment": "env", "file": "source", "sender": "agent", "type": "kind", "component": "origin", "trace_id": "trace",
            "ses": "session", "ip": "client", "msg": "message", "line_no": "line", "latency_ms": "duration_ms", "elapsed_ms": "duration_ms"}
 BUILTIN = ("level", "service", "host", "env", "pool", "source", "agent", "kind", "origin", "trace", "session", "user", "client",
-           "message", "raw", "line", "group", "duration_ms")
+           "message", "raw", "line", "group", "duration_ms", "app")
 FACETS = ("level", "service", "host", "env", "pool", "source")     # answerable from the per-minute facet cube
 NUMERIC = ("line", "duration_ms")
 TEXT_FIELDS = ("message", "raw")
@@ -89,6 +90,7 @@ WARNINGS = {
                             'Only host, environment, pool and level (error/other) can be filtered in this range; "{leaf}" was not applied.'),
     "scan_needed": ("Serbest metin ya da öznitelik araması tarama gerektirir; sayılar tahmini olabilir.",
                     "Free text or attribute searches need a scan; counts may be estimates."),
+    "app_unknown": ('"{v}" adında bir uygulama yok; servis adı olarak arandı.', 'No application named "{v}"; searched as a service name.'),
 }
 
 
@@ -945,6 +947,7 @@ GETTERS = {
     "source": lambda l: l.src or "-", "agent": lambda l: l.agent, "kind": lambda l: l.kind, "origin": lambda l: l.org,
     "trace": lambda l: l.trace(), "session": lambda l: l.session(), "user": lambda l: l.user(), "client": lambda l: l.client(),
     "line": lambda l: l.ln, "group": lambda l: l.group(), "duration_ms": lambda l: l.duration(),
+    "app": lambda l: l.svc or "-",       # an app: clause that was not expanded (no application store): the old service alias
 }
 
 
@@ -967,7 +970,7 @@ def compile_key(node: Node, ctx) -> Callable[[str, str, str, str], bool]:
             lv = node.levels if node.op != "present" else frozenset(SEVS)
             return lambda sev, svc, src, host: sev in lv
         m = value_matcher(node)
-        if node.name == "service":
+        if node.name in ("service", "app"):
             return lambda sev, svc, src, host: m(svc)
         if node.name == "source":
             return lambda sev, svc, src, host: m(src)
@@ -1099,3 +1102,64 @@ def _item_spans(text: str, node: Node):
     if len(groups) != len(items):
         return None
     return [(g[0].pos, g[-1].pos + g[-1].len) for g in groups]
+
+
+# ---------------------------------------------------------------- applications (watchover.applications)
+def _vals(names, wild: bool) -> list:
+    out = []
+    for n in sorted(names):
+        w = frozenset(i for i, c in enumerate(n) if c in "*?") if wild else frozenset()
+        out.append(Val(n, w, False))
+    return out
+
+
+def expand_apps(node: Node, resolve) -> tuple:
+    """app:<name> -> its member hosts OR its member services, as `resolve(value, wild)` names them: (hosts, exact services, service
+    globs) of the visible applications matching the value, or None when there is none (then the clause keeps its old meaning, the
+    service name, with a warning). An application without members matches nothing. Returns (node, warnings, fingerprint): the
+    fingerprint changes when a membership does, so cached answers keyed by the query text are not reused across it."""
+    warns: list = []
+    fp: list = []
+
+    def leaf(f: Field) -> Node:
+        if f.op not in ("eq", "glob", "present"):
+            return f
+        vals = [Val("*", frozenset({0}))] if f.op == "present" else f.values
+        alts: list = []
+        for v in vals:
+            hit = resolve(v.text, v.has_wild) if resolve is not None else None
+            if hit is None:
+                alts.append(Field("service", "glob" if v.has_wild else "eq", [v], f.pos, f.len, f.typed, False))
+                if resolve is not None and f.op != "present":
+                    warns.append(warning("app_unknown", v=v.text))
+                continue
+            hosts, exact, globs = hit
+            fp.append("%s|%s|%s|%s" % (v.text, ",".join(sorted(hosts)), ",".join(sorted(exact)), ",".join(globs)))
+            parts: list = []
+            if hosts:
+                parts.append(Field("host", "eq", _vals(hosts, False), f.pos, f.len, f.typed, False))
+            svcs = _vals(exact, False) + _vals(globs, True)
+            if svcs:
+                parts.append(Field("service", "glob" if globs else "eq", svcs, f.pos, f.len, f.typed, False))
+            if not parts:
+                parts.append(Field("host", "eq", [Val(NO_APP_MATCH)], f.pos, f.len, f.typed, False))
+            alts.extend(parts)
+        return alts[0] if len(alts) == 1 else Or(alts)
+
+    def walk(n: Node) -> Node:
+        if isinstance(n, Field) and n.name == "app" and not n.attr:
+            return leaf(n)
+        if isinstance(n, And):
+            return And([walk(x) for x in n.items])
+        if isinstance(n, Or):
+            return Or([walk(x) for x in n.items])
+        if isinstance(n, Not):
+            return Not(walk(n.item))
+        return n
+    if not any(isinstance(x, Field) and x.name == "app" and not x.attr for x in _leaves(node)):
+        return node, [], ""
+    out = walk(node)
+    return out, warns, (hashlib.sha1("\n".join(fp).encode()).hexdigest()[:10] if fp else "")
+
+
+NO_APP_MATCH = "\x00no-application-member"

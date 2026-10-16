@@ -41,7 +41,7 @@ export function ago(t: (k: string, kw?: any) => string, now: number, ts: number)
 /** The permission each explorer page needs: "Keşfet" only shows when the page will open for this user (the routes themselves are
  *  not guarded, a page without its permission renders empty with 403s). */
 const PAGE_PERM: Record<string, string[]> = { inventory: ["page.inv"], anomalies: ["page.anom"], thresholds: ["page.thr"], services: ["page.apm"], traces: ["page.apm"],
-  exceptions: ["page.apm"], rum: ["page.rum"], logs: ["page.logs"], datasets: ["page.data"], map: ["page.map"], alerts: ["sys.notify", "act.alerts"] };
+  exceptions: ["page.apm"], rum: ["page.rum"], logs: ["page.logs"], datasets: ["page.data"], map: ["page.map"], alerts: ["sys.notify", "act.alerts"], apps: ["page.apps"] };
 export function useCanOpen() {
   const { can } = useAuth();
   return (to?: string) => { const need = to ? PAGE_PERM[to.split(/[/?#]/)[1] ?? ""] : undefined; return !need || need.some(can); };

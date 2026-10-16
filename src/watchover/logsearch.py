@@ -125,13 +125,16 @@ class Ctx:
 
 
 class Q:
-    """A parsed request query: AST, normalized text, plan, predicate (with the team scope ANDed in)."""
-    def __init__(self, text: str, ctx: Ctx, scope):
+    """A parsed request query: AST, normalized text, plan, predicate (with the team scope ANDed in). `apps(value, wild, scope)`
+    resolves app:<name> clauses to the application's member hosts / services as this scope may see them (logquery.expand_apps);
+    the normalized text keeps app:<name>, the plan and predicates run on the expansion."""
+    def __init__(self, text: str, ctx: Ctx, scope, apps=None):
         self.text = text or ""
         p = lq.parse(self.text)
-        self.node = p.node
         self.warnings = list(p.warnings)
-        self.norm = lq.normalize(self.node)
+        self.norm = lq.normalize(p.node)
+        self.node, aw, self.app_fp = lq.expand_apps(p.node, (lambda v, w: apps(v, w, scope)) if apps is not None else None)
+        self.warnings += aw
         self.plan = lq.plan(self.node)
         self.ctx = ctx
         self.scope = scope
@@ -145,9 +148,10 @@ class Q:
             self.warnings.append(lq.warning("scan_needed"))
 
     def scope_key(self) -> str:
+        fp = f"+{self.app_fp}" if getattr(self, "app_fp", "") else ""
         if self.scope is None:
-            return "*"
-        return hashlib.sha1("\n".join(sorted(self.scope.hosts)).encode()).hexdigest()[:10]
+            return "*" + fp
+        return hashlib.sha1("\n".join(sorted(self.scope.hosts)).encode()).hexdigest()[:10] + fp
 
     def key_pred(self, node=None):
         """Predicate over cube keys (facet-only), the scope included."""
@@ -163,6 +167,8 @@ class LogSearch:
         self.live, self.ranges, self.history, self.traces = live, ranges, history, traces
         self.kb = kb if kb is not None else live.db
         self.users = users
+        self.app_resolver = None                    # (value, wild, scope) -> (hosts, services, globs) | None: Applications.query_members
+        self.app_names = None                       # scope -> visible application names (autocomplete)
         self.sem = threading.BoundedSemaphore(2)
         self.lock = threading.Lock()
         self._cache: dict = {}
@@ -197,7 +203,7 @@ class LogSearch:
         return Ctx(self.live.rollup)
 
     def query(self, text: str, scope) -> Q:
-        q = Q(text, self.ctx(), scope)
+        q = Q(text, self.ctx(), scope, self.app_resolver)
         self._attr_warnings(q, scope)
         return q
 
@@ -1482,6 +1488,11 @@ class LogSearch:
         out += [{"name": f, "kind": "facet"} for f in ("service", "host", "env", "pool", "source")]
         out += [{"name": f, "kind": "number"} for f in ("duration_ms", "line")]
         out += [{"name": f, "kind": "field"} for f in ("agent", "kind", "origin", "trace", "session", "user", "client", "message", "raw", "group")]
+        if self.app_names is not None:                 # app:<name> -> the application's hosts and services (watchover.applications)
+            try:
+                out.append({"name": "app", "kind": "app", "values": self.app_names(scope)[:500]})
+            except Exception:  # noqa: BLE001
+                pass
         for a in self.live.rollup.attr_keys(None if scope is None else scope.allows)[:500]:
             out.append({"name": "@" + a["name"], "kind": "attr", "type": a["type"], "seen": a["seen"]})
         return {"fields": out, "operators": ["AND", "OR", "NOT", "-"]}

@@ -10,7 +10,7 @@ import { Card, Empty } from "../ui";
 const UNIT: Record<string, string> = { cpu: "%", memory: "%", disk: "%", gpu: "%", error_rate: "%", errors_per_min: "/dk", p95_ms: "ms", silent_min: "dk" };
 const METRICS = Object.keys(UNIT);
 const fmtV = (v: any, m: string) => (v == null ? "–" : `${Number(v).toLocaleString("tr-TR", { maximumFractionDigits: 1 })}${UNIT[m] === "%" ? "%" : ` ${UNIT[m]}`}`);
-type Scope = { scope: "host" | "pool" | "env"; value: string };
+type Scope = { scope: "host" | "pool" | "env" | "application"; value: string };
 
 /** "Alarm metrikleri" in the server detail: every alarm metric with its current value, the warn / critical levels in force and where
  *  they come from (this server, its pool, its environment, all servers, system defaults). "Düzenle" sets the levels right here, for
@@ -22,7 +22,8 @@ export function HostAlarms({ host, pool, env, th }: { host: string; pool?: strin
   const [edit, setEdit] = useState(false); const [sc, setSc] = useState<Scope>({ scope: "host", value: host });
   const [vals, setVals] = useState<Record<string, { warn: string; crit: string }>>({}); const [busy, setBusy] = useState(false); const [msg, setMsg] = useState("");
   const pol = useQuery({ queryKey: ["thr-policies"], queryFn: () => get("/thresholds"), enabled: edit });
-  const scopes: Scope[] = [{ scope: "host", value: host }, ...(pool ? [{ scope: "pool" as const, value: pool }] : []), ...(env ? [{ scope: "env" as const, value: env }] : [])];
+  const scopes: Scope[] = [{ scope: "host", value: host }, ...((th?.apps ?? []) as string[]).map((a) => ({ scope: "application" as const, value: a })),   // the host's applications
+    ...(pool ? [{ scope: "pool" as const, value: pool }] : []), ...(env ? [{ scope: "env" as const, value: env }] : [])];
   const scLabel = (s: Scope) => (s.scope === "host" ? t("ha_this_host") : `${t(`thr_scope_${s.scope}`)}: ${s.value}`);
   const at = (m: string) => (pol.data ?? []).find((p: any) => p.metric === m && p.scope === sc.scope && (p.scope_value || "") === sc.value);
   const open = () => {
@@ -70,7 +71,7 @@ export function HostAlarms({ host, pool, env, th }: { host: string; pool?: strin
   return <Card title={t("ha_title")} right={<button className="btn sm" onClick={() => setEdit(false)}>{t("cancel")}</button>}>
     <div className="stack" style={{ gap: 10 }}>
       <div className="row wrap" style={{ gap: 6, alignItems: "center" }}><span className="small dim">{t("ha_apply_to")}</span>
-        <div className="seg">{scopes.map((s) => <button key={s.scope} className={sc.scope === s.scope ? "on" : ""} onClick={() => setSc(s)}>{scLabel(s)}</button>)}</div></div>
+        <div className="seg">{scopes.map((s) => <button key={`${s.scope}:${s.value}`} className={sc.scope === s.scope && sc.value === s.value ? "on" : ""} onClick={() => setSc(s)}>{scLabel(s)}</button>)}</div></div>
       <div className="ha-grid">
         <span className="dim small">{t("ha_metric")}</span><span className="dim small">{t("thr_warn")}</span><span className="dim small">{t("thr_crit")}</span><span />
         {METRICS.map((m) => { const mine = at(m); return [

@@ -35,6 +35,8 @@ import Exceptions from "./pages/apm/Exceptions";
 import Thresholds from "./pages/Thresholds";
 import MyTeam from "./pages/MyTeam";
 import Logs from "./pages/Logs";
+import Apps from "./pages/apps/Apps";
+import AppDetail from "./pages/apps/AppDetail";
 
 export default function App() {
   const { user, ready, acceptToken, can } = useAuth();
@@ -52,6 +54,8 @@ export default function App() {
         <Route index element={<Navigate to="/ops" replace />} />
         <Route path="/ops" element={<Ops />} />
         <Route path="/logs" element={can("page.logs") ? <Logs /> : <Navigate to="/ops" replace />} />
+        <Route path="/apps" element={can("page.apps") ? <Apps /> : <Navigate to="/ops" replace />} />
+        <Route path="/apps/:id" element={can("page.apps") ? <AppDetail /> : <Navigate to="/ops" replace />} />
         <Route path="/anomalies" element={<Anomalies />} />
         <Route path="/datasets" element={<Datasets />} />
         <Route path="/datasets/:key" element={<DatasetDetail />} />

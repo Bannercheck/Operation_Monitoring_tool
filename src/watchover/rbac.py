@@ -134,6 +134,25 @@ BUILTIN["admin"]["perms"] = set(ALL)
 BUILTIN["operator"]["perms"] |= {"page.auto", "act.case", "act.runbook"}   # nothing that executes, approves, publishes or promotes
 BUILTIN["viewer"]["perms"].add("page.auto")
 
+# ---------------------------------------------------------------- business applications (watchover.applications; migration apps_v1)
+APP_DEF: dict[str, tuple] = {
+    "page.apps": ("Uygulamalar: sağlık, sunucular, servisler, loglar, izler (görüntüleme)", "Applications: health, hosts, services, logs, traces (view)"),
+    "act.apps": ("Uygulama tanımlama: ekleme, düzenleme, üyelik, keşif önerilerini kabul", "Define applications: create, edit, membership, accept discovery proposals"),
+}
+for _k, (_tr, _en) in APP_DEF.items():
+    PERMISSIONS[_k] = ("page" if _k.startswith("page.") else "act", _tr, _en)
+    FEATURES[_k] = ("apm", "view" if _k.startswith("page.") else "manage", True)
+REQUIRES["act.apps"] = "page.apps"
+for _t in TEMPLATE_ORDER:                                   # view only; act.apps is ticked by hand in a role (never granted implicitly)
+    TEAM_TEMPLATES[_t]["perms"].add("page.apps")
+APP_PERMS = frozenset(APP_DEF)
+ALL = frozenset(PERMISSIONS)
+TEAM_PERMS = frozenset(k for k, v in FEATURES.items() if v[2])
+NEW_PERMS = NEW_PERMS | APP_PERMS
+BUILTIN["admin"]["perms"] = set(ALL)
+BUILTIN["operator"]["perms"].add("page.apps")
+BUILTIN["viewer"]["perms"].add("page.apps")
+
 
 class Roles:
     def __init__(self, kb):
@@ -150,6 +169,7 @@ class Roles:
         self._split_v1()
         self._logs_v1()
         self._auto_v1()
+        self._apps_v1()
 
     # ---------------------------------------------------------------- one-shot steps (a marker each, so a later edit is never undone)
     def meta(self, key: str) -> str | None:
@@ -203,13 +223,13 @@ class Roles:
         sets policy is granted implicitly to an existing role. Once."""
         if self.meta("auto_v1"):
             return
-        op_old = BUILTIN["operator"]["perms"] - AUTO_PERMS
+        op_old = BUILTIN["operator"]["perms"] - AUTO_PERMS - APP_PERMS
         for r in self.kb._exec("SELECT name, perms FROM roles"):
             if r["name"] == "admin":
                 continue
             p = set(json.loads(r["perms"] or "[]"))
             add = {"page.auto"} if "page.actions" in p else set()
-            if r["name"] == "operator" and p - AUTO_PERMS == op_old:
+            if r["name"] == "operator" and p - AUTO_PERMS - APP_PERMS == op_old:
                 add |= {"page.auto", "act.case", "act.runbook"}
             if add - p:
                 self.kb._exec("UPDATE roles SET perms=? WHERE name=?", (json.dumps(sorted(p | add)), r["name"]))
@@ -221,6 +241,27 @@ class Roles:
         except Exception:  # noqa: BLE001 - no team roles yet
             pass
         self.set_meta("auto_v1")
+        self.version += 1
+
+    def _apps_v1(self) -> None:
+        """Applications (watchover.applications): every stored role and team role that sees the live operations or APM gets page.apps
+        (view only). act.apps is never granted implicitly: an administrator ticks it per role. Once."""
+        if self.meta("apps_v1"):
+            return
+        for r in self.kb._exec("SELECT name, perms FROM roles"):
+            if r["name"] == "admin":
+                continue
+            p = set(json.loads(r["perms"] or "[]"))
+            if ("page.ops" in p or "page.apm" in p) and "page.apps" not in p:
+                self.kb._exec("UPDATE roles SET perms=? WHERE name=?", (json.dumps(sorted(p | {"page.apps"})), r["name"]))
+        try:
+            for r in self.kb._exec("SELECT id, perms FROM team_roles"):
+                p = set(json.loads(r["perms"] or "[]"))
+                if ("page.ops" in p or "page.apm" in p) and "page.apps" not in p:
+                    self.kb._exec("UPDATE team_roles SET perms=? WHERE id=?", (json.dumps(sorted(p | {"page.apps"})), r["id"]))
+        except Exception:  # noqa: BLE001 - no team roles yet
+            pass
+        self.set_meta("apps_v1")
         self.version += 1
 
     def ensure_member(self) -> None:

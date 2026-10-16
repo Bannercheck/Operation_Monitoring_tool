@@ -89,7 +89,8 @@ def test_templates_on_creation_and_copy(app):
     assert [r["key"] for r in t["roles"]] == ["manager", "operator", "viewer"]
     for r in t["roles"]:
         assert set(r["perms"]) == rbac.TEAM_TEMPLATES[r["key"]]["perms"] and r["template"] == r["key"]
-    logs = getattr(rbac, "LOG_PERMS", frozenset()) | getattr(rbac, "AUTO_PERMS", frozenset())   # the log explorer and the action agent add their own keys
+    logs = (getattr(rbac, "LOG_PERMS", frozenset()) | getattr(rbac, "AUTO_PERMS", frozenset())   # the log explorer, the action agent and the
+            | getattr(rbac, "APP_PERMS", frozenset()))                                            # applications add their own keys
     assert [len(rbac.TEAM_TEMPLATES[k]["perms"] - logs) for k in ("manager", "operator", "viewer")] == [25, 22, 13]
     auto = getattr(rbac, "AUTO_PERMS", frozenset())                  # product owner: act.* keys are ticked by hand, never by a template
     assert all(not ((set(r["perms"]) & auto) - {"page.auto"}) for r in t["roles"])

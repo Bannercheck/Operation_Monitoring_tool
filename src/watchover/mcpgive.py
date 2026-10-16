@@ -23,7 +23,7 @@ from . import __version__
 PROTOCOLS = ("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")
 MAX_OUT = 200_000                     # characters of JSON per answer; longer lists are cut and marked "truncated"
 INSTRUCTIONS = ("Watchover: operational noise -> signals -> explained incidents -> tracked actions. Read tools cover logs (query "
-                "language, time range), dashboards, host detail, thresholds, anomalies, integrations, traces, business flows, inventory "
+                "language, time range), applications, dashboards, host detail, thresholds, anomalies, integrations, traces, business flows, inventory "
                 "and actions, limited to this key's team / account scope. Personal data is masked. Start with whoami.")
 
 
@@ -284,7 +284,7 @@ def ack_anomaly(svc, ident, **a):
 
 
 def set_threshold(svc, ident, **a):
-    """A threshold policy (the same as Eşikler › new policy): scope host / pool / env / all, warn and / or crit."""
+    """A threshold policy (the same as Eşikler › new policy): scope host / glob / application / pool / env / all, warn and / or crit."""
     from .api.routers import thresholds as T
     scope, value = str(a.get("scope") or "host"), str(a.get("scope_value") or "")
     if scope == "host":
@@ -297,6 +297,39 @@ def set_threshold(svc, ident, **a):
                       warn=a.get("warn"), crit=a.get("crit"), for_min=_clamp(a.get("for_min"), 1, 1440, 3), channels="email", targets="",
                       note=(f"MCP key: {ident.name}. " + str(a.get("note") or ""))[:500], team_id=a.get("team_id"))
     return _route(T.create, "page.thr", ident, svc, body=body)
+
+
+def list_applications(svc, ident, **a):
+    """Business applications with their health (the Uygulamalar list), as this key's scope sees them."""
+    from .api.routers import apps as R
+    out = _route(R.list_apps, "page.apps", ident, svc, minutes=_clamp(a.get("minutes"), 5, 60, 60), team_id=None, env=str(a.get("env") or ""),
+                 criticality=str(a.get("criticality") or ""), q=str(a.get("q") or ""))
+    keep = ("id", "name", "description", "team", "criticality", "tags", "slo_availability", "slo_p95_ms", "envs", "health")
+    return {"window_min": out["window_min"], "applications": [{k: r.get(k) for k in keep} for r in out["apps"]]}
+
+
+def application_health(svc, ident, **a):
+    """One application's health, member hosts, services and open problems; `app` is its name or id."""
+    from .api.routers import apps as R
+    ref = str(a.get("app") or "").strip()
+    if ref.isdigit():
+        aid = int(ref)
+    else:
+        hit = svc.apps.by_name(ref)
+        if hit is None:
+            raise ToolError("not_found", f"application not found: {ref[:80]}")
+        aid = hit["id"]
+    try:
+        d = _route(R.app_detail, "page.apps", ident, svc, aid=aid, minutes=_clamp(a.get("minutes"), 5, 60, 60))
+    except ToolError as e:
+        if e.code == "not_found":                           # another team's application answers like a missing one
+            raise ToolError("not_found", f"application not found: {ref[:80]}")
+        raise
+    keep = ("id", "name", "description", "team", "criticality", "tags", "slo_availability", "slo_p95_ms", "envs", "health", "hosts", "service_hosts",
+            "services", "namespaces", "rum_apps", "flows", "log_query")
+    out = {k: d.get(k) for k in keep}
+    out["services"] = (out["services"] or [])[:50]
+    return out
 
 
 S, I, N, B = "string", "integer", "number", "boolean"
@@ -360,10 +393,20 @@ TOOLS: list = [
     Tool("ack_anomaly", "act.anomaly", True, "Anomaliyi onayla / kapat (yazma)", "Acknowledge / resolve an anomaly (write)",
          "Set an anomaly's status (ack by default) with a note. Needs a key with the write permission.",
          {"id": P(I, "Anomaly id"), "status": P(S, "ack (default), resolved, ignored or open"), "note": P(S, "Note"), "owner": P(S, "Owner")}, ("id",), ack_anomaly),
+    Tool("list_applications", "page.apps", False, "Uygulamalar ve sağlık durumları", "Applications and their health",
+         "Business applications (hosts, services, OTel namespaces, RUM apps, business flows grouped) with health over the last minutes: "
+         "status, request / error rate, p95, SLO, hosts reporting / silent, open alerts, worst host / service. Use app:<name> in log_search "
+         "to read an application's lines.",
+         {"minutes": P(I, "Window in minutes (5-60, default 60)", minimum=5, maximum=60), "q": P(S, "Text in the name, description or tags"),
+          "env": P(S, "Only applications with hosts in this environment"), "criticality": P(S, "critical, high, normal or low")}, (), list_applications),
+    Tool("application_health", "page.apps", False, "Uygulama sağlığı (sunucular, servisler, sorunlar)", "Application health (hosts, services, problems)",
+         "One application by name or id: health, its member hosts (state, threshold level), hosts reached through its services, services with log "
+         "and trace numbers, namespaces, RUM apps, business flows and the log query that selects it.",
+         {"app": P(S, "Application name or id"), "minutes": P(I, "Window in minutes (5-60, default 60)", minimum=5, maximum=60)}, ("app",), application_health),
     Tool("set_threshold", "page.thr", True, "Eşik politikası tanımla (yazma)", "Set a threshold policy (write)",
          "Create a threshold policy (the team's when the key is a team's). Needs a key with the write permission and act.thresholds / sys.notify.",
          {"metric": P(S, "Metric (cpu, mem, disk, ...)"), "warn": P(N, "Warning level"), "crit": P(N, "Critical level"),
-          "scope": P(S, "host (default), pool, env or all"), "scope_value": P(S, "The host / pool / env"), "for_min": P(I, "Minutes beyond the level before alerting"),
+          "scope": P(S, "host (default), glob, application, pool, env or all"), "scope_value": P(S, "The host / pattern / application name / pool / env"), "for_min": P(I, "Minutes beyond the level before alerting"),
           "name": P(S, "Policy name"), "note": P(S, "Note"), "team_id": P(I, "Owning team (installation keys)")}, ("metric",), set_threshold),
 ]
 BY_NAME = {t.name: t for t in TOOLS}

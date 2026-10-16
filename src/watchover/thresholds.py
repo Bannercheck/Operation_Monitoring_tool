@@ -1,10 +1,16 @@
 """Per-server threshold policies and their alerts.
 
-A policy says: for these servers (one host, a name pattern, a pool, an environment, or everyone), this metric has a warning and a
-critical level, it must stay beyond the level for N minutes before anyone is told, and the alert goes to these people / groups over
-these channels (e-mail, SMS, webhook: Teams, Slack or any JSON endpoint). When several policies match a server, the most specific one
-wins for that metric: host > host pattern > pool > environment > all; the global System › Settings thresholds (thr_cpu …) are the
-fallback for CPU / memory / disk / GPU.
+A policy says: for these servers (one host, a name pattern, a business application, a pool, an environment, or everyone), this
+metric has a warning and a critical level, it must stay beyond the level for N minutes before anyone is told, and the alert goes to
+these people / groups over these channels (e-mail, SMS, webhook: Teams, Slack or any JSON endpoint). When several policies match a
+server, the most specific one wins for that metric: host > host pattern > application > pool > environment > all (a team's own
+policy first, see _rank); the global System › Settings thresholds (thr_cpu …) are the fallback for CPU / memory / disk / GPU.
+
+Application scope (watchover.applications): the policy covers the application's member hosts (explicit, inventory application value,
+pool). It sits below host and host pattern (a named server is more specific than the group it serves) and above pool and
+environment (an application is the business unit, a pool only a technical one). A host that serves several applications gets the
+strictest of their application policies (the lowest level wins a tie), so a shared server meets every application's demand.
+Alerts name the applications of the server.
 
 Metrics, all "higher is worse":
   cpu, memory, disk, gpu   latest agent reading, %          error_rate   ERROR+ share of the server's lines, last 5 min, %
@@ -31,8 +37,8 @@ METRICS = {
     "errors_per_min": {"unit": "/min", "label": "Hata/dk / Errors/min"}, "p95_ms": {"unit": "ms", "label": "p95 gecikme / latency"},
     "silent_min": {"unit": "min", "label": "Sessizlik / Silence"},
 }
-SCOPES = ("host", "glob", "pool", "env", "all")
-SPECIFICITY = {"host": 5, "glob": 4, "pool": 3, "env": 2, "all": 1, "global": 0}
+SCOPES = ("host", "glob", "application", "pool", "env", "all")
+SPECIFICITY = {"host": 6, "glob": 5, "application": 4, "pool": 3, "env": 2, "all": 1, "global": 0}
 CHANNELS = ("email", "sms", "webhook")
 WINDOW_MIN = 5
 HYSTERESIS = 0.95
@@ -62,6 +68,7 @@ class Thresholds:
             pass
         self._cache: tuple[float, list[dict]] = (0.0, [])
         self.team_hosts_fn = None                      # team id -> its hosts (set by access.wire): a team's policy covers only them
+        self.apps_of_fn = None                         # host -> names of its applications (set by Services; watchover.applications)
 
     # ---------------------------------------------------------------- policies
     def list(self) -> list[dict]:
@@ -153,7 +160,17 @@ class Thresholds:
             return (pool if pool is not None else self._pool(host)).lower() == v
         if p["scope"] == "env":
             return (env or "unknown").lower() == v
+        if p["scope"] == "application":
+            return v in {a.lower() for a in self.apps_of(host)}
         return False
+
+    def apps_of(self, host: str) -> list:
+        if self.apps_of_fn is None or not host:
+            return []
+        try:
+            return list(self.apps_of_fn(host) or [])
+        except Exception:  # noqa: BLE001
+            return []
 
     def effective(self, host: str, env: str = "", pool: str | None = None) -> dict[str, dict]:
         """metric -> the winning policy for this server (or the global fallback), with where it came from."""
@@ -174,7 +191,13 @@ class Thresholds:
 
     @staticmethod
     def _rank(p: dict) -> tuple:
-        return (1 if p.get("team_id") is not None else 0, SPECIFICITY[p["scope"]], p.get("id") or 0)
+        """Higher wins: the owning team's policy, then specificity, then (application scope only: a host in several applications)
+        the stricter level, then the newest."""
+        strict = 0.0
+        if p["scope"] == "application":
+            lv = p.get("warn") if p.get("warn") is not None else p.get("crit")
+            strict = -float(lv) if lv is not None else 0.0
+        return (1 if p.get("team_id") is not None else 0, SPECIFICITY[p["scope"]], strict, p.get("id") or 0)
 
     def limit_for(self, host: str, metric: str, env: str = "") -> float | None:
         """The level a reading is compared with for the operations screen's breach list: the warning level, else the critical one."""
@@ -308,15 +331,18 @@ class Thresholds:
         val = f"{v:.0f}{unit}" if unit in ("%", "ms") else f"{v:g} {unit}"
         lim = f"{limit:.0f}{unit}" if limit is not None and unit in ("%", "ms") else f"{limit:g} {unit}" if limit is not None else "-"
         sev = {"crit": "critical", "warn": "medium", "resolved": "low"}[lvl]
+        apps = self.apps_of(host)
+        tag = f" [{', '.join(apps[:3])}{'…' if len(apps) > 3 else ''}]" if apps else ""
+        app_line = f" Uygulama / Application: {', '.join(apps)}." if apps else ""
         if lvl == "resolved":
-            title = f"Düzeldi / Resolved · {host} {metric} {val}"
-            body = f"{host} ({env or '-'}): {metric} {val}, back under {lim}. Policy: {p['name']}."
+            title = f"Düzeldi / Resolved · {host}{tag} {metric} {val}"
+            body = f"{host} ({env or '-'}): {metric} {val}, back under {lim}. Policy: {p['name']}.{app_line}"
         else:
-            title = f"{'KRİTİK / CRITICAL' if lvl == 'crit' else 'Uyarı / Warning'} · {host} {metric} {val} (≥ {lim})"
+            title = f"{'KRİTİK / CRITICAL' if lvl == 'crit' else 'Uyarı / Warning'} · {host}{tag} {metric} {val} (≥ {lim})"
             lasting = f" for {p.get('for_min')} min" if p.get("for_min") else ""
             level_name = "critical" if lvl == "crit" else "warning"
             body = (f"{host} ({env or '-'}, pool {self._pool(host) or '-'}): {metric} is {val}, at or above the {level_name} level {lim}{lasting}. "
-                    f"Policy: {p['name']} ({p['scope']} {p.get('scope_value') or ''}).")
+                    f"Policy: {p['name']} ({p['scope']} {p.get('scope_value') or ''}).{app_line}")
         if self.notifier is None:
             return {"skipped": "no notifier", "title": title}
         rule = {"id": None, "severity": sev, "channels": p.get("channels") or "email", "targets": p.get("targets") or "", "cooldown_min": 0, "team_id": p.get("team_id")}
@@ -332,7 +358,8 @@ class Thresholds:
             unit = METRICS[metric]["unit"]
             self.anomalies._upsert("metric", f"threshold:{env or 'unknown'}:{host}:{metric}", env=env or "unknown", host=host, metric=metric,
                                    title=f"{host}: {metric} {v:.0f}{'' if unit == '/min' else unit} ≥ {limit:.0f}" + ("" if unit == "/min" else unit),
-                                   detail=f"{metric} is {v:g} {unit} on {host}; {'critical' if lvl == 'crit' else 'warning'} level {limit:g} {unit} (policy: {p['name']})",
+                                   detail=f"{metric} is {v:g} {unit} on {host}; {'critical' if lvl == 'crit' else 'warning'} level {limit:g} {unit} (policy: {p['name']})"
+                                          + (f"; application: {', '.join(self.apps_of(host))}" if self.apps_of(host) else ""),
                                    observed=v, baseline=float(limit or 0), spread=0.0, score=5.0 if lvl == "crit" else 3.5, series=[v])
         except Exception:  # noqa: BLE001
             pass
@@ -364,7 +391,7 @@ class Thresholds:
                 ms[m] = {"value": d.get(m), "warn": p.get("warn") if p else None, "crit": p.get("crit") if p else None,
                          "source": ({"scope": p["scope"], "value": p.get("scope_value") or "", "policy": p.get("id"), "name": p.get("name"), "team_id": p.get("team_id")} if p else None),
                          "level": (st["level"] if st else "ok") if p else None}
-            rows.append({"host": host, "env": d.get("env", ""), "pool": d.get("pool", ""), "metrics": ms,
+            rows.append({"host": host, "env": d.get("env", ""), "pool": d.get("pool", ""), "apps": self.apps_of(host), "metrics": ms,
                          "worst": max((x["level"] or "ok" for x in ms.values()), key=lambda lv: {"ok": 0, "warn": 1, "crit": 2}.get(lv, 0))})
         return rows
 

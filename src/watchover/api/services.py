@@ -79,6 +79,11 @@ class Services:
                     self.bizflows.save(wo_demo.DEMO_FLOW["name"], wo_demo.DEMO_FLOW["key_regex"], [dict(s) for s in wo_demo.DEMO_FLOW["steps"]])
                 except Exception:  # noqa: BLE001
                     pass
+            try:                                              # sample applications over the demo hosts (watchover.applications)
+                fid = next((f["id"] for f in self.bizflows.list() if f["name"] == wo_demo.DEMO_FLOW["name"]), None)
+                self.apps.seed_demo(fid)
+            except Exception:  # noqa: BLE001
+                pass
         apps = {a["name"]: a for a in self.rum.apps()}
         for name, platform in wo_demo.DEMO_RUM_APPS:
             if name not in apps:
@@ -129,6 +134,12 @@ class Services:
         if ts is not None:
             try:
                 ts.observe(events)
+            except Exception:  # noqa: BLE001
+                pass
+        apps = getattr(self, "apps", None)                   # OTel service.namespace -> services (application discovery and membership)
+        if apps is not None:
+            try:
+                apps.observe(events)
             except Exception:  # noqa: BLE001
                 pass
         lw = getattr(self, "logwatch", None)                 # alerts from a log query: stream counters
@@ -210,6 +221,11 @@ class Services:
         self.thresholds = Thresholds(self.kb, self.live, self.notifier, self.anomalies, globals_fn=wo_anomaly.threshold_settings)
         self.live.threshold_fn = self.thresholds.limit_for   # the operations screen's breach list and the anomaly scan use the same levels
         self.anomalies.limit_fn = self.thresholds.limit_for
+        from ..applications import Applications              # business applications: health, membership, app:<name>, application thresholds
+        self.apps = Applications(self.kb, self)
+        self.thresholds.apps_of_fn = self.apps.apps_of_host
+        self.apps.on_change = lambda: setattr(self.thresholds, "_cache", (0.0, []))
+        self.logs.app_resolver = self.apps.query_members; self.logs.app_names = self.apps.names
         self.poller = Poller(self.sources, self.live)
         self.receiver = None
         self.spool_consumer = None
