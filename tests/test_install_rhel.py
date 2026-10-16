@@ -402,3 +402,20 @@ def test_red_hat_cdn_is_probed_with_its_own_ca_and_entitlement(rhel):
     assert "Erişim: cdn.redhat.com" in out and "Erişilemiyor: cdn.redhat.com" not in out, out[-2000:]
     tls = [l for l in calls(rhel).splitlines() if l.startswith("curl-tls https://cdn.redhat.com")]
     assert tls and "redhat-uep.pem" in tls[0] and "--cert" in tls[0] and "--key" in tls[0]
+
+
+def test_ram_is_the_installed_amount_not_memtotal(rhel):
+    """A 4096 MB VM (Parallels on Apple Silicon, RHEL 9.8) reads ~3.3 GiB in MemTotal: the kernel and kdump's crashkernel keep the
+    rest. It was refused as "3 GB"; the installed amount comes from /proc/iomem, else MemTotal is rounded up (seen on a real run)."""
+    r = rhel[1]
+    (r / "proc/meminfo").write_text("MemTotal:        3460000 kB\n")                # ~3.3 GiB usable
+    res = run(rhel, "--check")
+    assert "En az 4 GB RAM" not in res.stdout and "4 GB RAM (kullanılabilir 3.3 GB)" in res.stdout, res.stdout[-1500:]
+    (r / "proc/meminfo").write_text("MemTotal:        2900000 kB\n")                # less usable than that: /proc/iomem tells
+    (r / "proc/iomem").write_text("00000000-3fffffff : reserved\n40000000-13fffffff : System RAM\n  40210000-41b3ffff : Kernel code\n"
+                                  "  dc000000-efffffff : Crash kernel\n")
+    res = run(rhel, "--check")
+    assert "En az 4 GB RAM" not in res.stdout and "4 GB RAM (kullanılabilir 2.8 GB)" in res.stdout, res.stdout[-1500:]
+    (r / "proc/iomem").unlink(); (r / "proc/meminfo").write_text("MemTotal:        1700000 kB\n")   # a 2 GB machine: still refused
+    res = run(rhel, "--check")
+    assert res.returncode == 1 and "En az 4 GB RAM gerekir (bu sunucu: 2 GB)" in res.stdout

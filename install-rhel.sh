@@ -100,7 +100,16 @@ osv() { { sed -n "s/^$1=//p" "$R/etc/os-release" 2>/dev/null || true; } | head -
 OS_ID=$(osv ID); OS_VER=$(osv VERSION_ID); OS_NAME=$(osv PRETTY_NAME)
 ARCH="${WATCHOVER_TEST_ARCH:-$(uname -m)}"
 NCPU=$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc)
-MEM_KB=$(awk '/^MemTotal:/ {print $2}' "$R/proc/meminfo" 2>/dev/null || true); MEM_KB=${MEM_KB:-0}; MEM_GB=$(( (MEM_KB + 524288) / 1048576 ))
+MEM_KB=$(awk '/^MemTotal:/ {print $2}' "$R/proc/meminfo" 2>/dev/null || true); MEM_KB=${MEM_KB:-0}
+# Installed RAM, not MemTotal: the kernel, kdump's crashkernel and the firmware keep part of it out of MemTotal (a 4096 MB VM reads
+# about 3.2-3.6 GiB there and was refused as "3 GB"). /proc/iomem (root) lists all of it; without it MemTotal is rounded up.
+PHYS_KB=0
+if [ -r "$R/proc/iomem" ]; then
+  while IFS=- read -r a rest; do b=${rest%% *}; PHYS_KB=$(( PHYS_KB + (16#$b - 16#$a + 1) / 1024 )); done \
+    < <(grep -E '^[0-9a-fA-F]+-[0-9a-fA-F]+ : System RAM$' "$R/proc/iomem" 2>/dev/null || true)
+fi
+MEM_GB=$(( (MEM_KB + 1048575) / 1048576 )); _p=$(( (PHYS_KB + 524288) / 1048576 )); [ "$_p" -le "$MEM_GB" ] || MEM_GB=$_p
+MEM_USE=$(awk -v k="$MEM_KB" 'BEGIN { printf "%.1f", k / 1048576 }')
 VIRT=$(systemd-detect-virt 2>/dev/null || true); [ "$VIRT" != none ] || VIRT=""
 SRC_VER=$(ver_of "$SRC"); [ -n "$SRC_VER" ] || die "Bu klasörde Watchover yok (pyproject.toml): betiği açılan sürüm klasörünün içinden çalıştırın"
 OLD_VER=""; [ "$SRC" = "$DEST" ] || OLD_VER=$(ver_of "$DEST")
@@ -118,7 +127,7 @@ case "$OS_ID" in
   *) OS_LABEL="${OS_NAME:-bilinmiyor}" ;;
 esac
 printf '\n\033[1mWatchover v%s · RHEL 9 kurulumu (Podman)\033[0m   %s\n' "$SRC_VER" "$(date '+%F %T')"
-say "Sunucu: $OS_LABEL · $ARCH · $NCPU CPU · $MEM_GB GB RAM${VIRT:+ · sanal makine ($VIRT)}"
+say "Sunucu: $OS_LABEL · $ARCH · $NCPU CPU · $MEM_GB GB RAM (kullanılabilir $MEM_USE GB)${VIRT:+ · sanal makine ($VIRT)}"
 
 # ---------------------------------------------------------------------------------------------------------------- proxy
 envfile_get() { { sed -n "s/^[[:space:]]*\(export[[:space:]]\{1,\}\)\{0,1\}$1=//p" "$R/etc/environment" 2>/dev/null || true; } | tail -1 | sed "s/^[\"']//; s/[\"']\$//"; }
