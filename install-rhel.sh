@@ -542,12 +542,19 @@ firewall_setup() {   # firewalld: open what fw_wanted lists, close Watchover's p
   [ -n "$z" ] || z=$(firewall-cmd --get-default-zone 2>/dev/null || echo public)
   for p in "${want[@]}"; do
     firewall-cmd --permanent --zone="$z" --query-port="$p/tcp" >/dev/null 2>&1 || firewall-cmd --permanent --zone="$z" --add-port="$p/tcp" >/dev/null 2>&1 || note "firewalld: $p/tcp açılamadı"
+    firewall-cmd --zone="$z" --query-port="$p/tcp" >/dev/null 2>&1 || firewall-cmd --zone="$z" --add-port="$p/tcp" >/dev/null 2>&1 || true   # now too, without a reload
   done
   for p in "$UI_PORT" "$LIVE_PORT"; do   # published no more (edge on / plain ingest off): close what an earlier setup opened
     case " ${want[*]} " in *" $p "*) continue ;; esac
     if firewall-cmd --permanent --zone="$z" --query-port="$p/tcp" >/dev/null 2>&1; then firewall-cmd --permanent --zone="$z" --remove-port="$p/tcp" >/dev/null 2>&1 && ok "Güvenlik duvarı: $p/tcp kapatıldı"; fi
+    firewall-cmd --zone="$z" --remove-port="$p/tcp" >/dev/null 2>&1 || true
   done
-  firewall-cmd --reload >/dev/null 2>&1 || true; eset WATCHOVER_FW_ZONE "$z"
+  # No 'firewall-cmd --reload': it drops what netavark added at runtime (the containers' subnet in the trusted zone), and the
+  # containers could no longer resolve each other's names (aardvark-dns on the bridge gateway; RHEL 9.8: edge unhealthy, "failed
+  # to resolve host 'postgres'"). A reload by an administrator later: netavark-firewalld-reload.service puts the rules back.
+  if systemctl cat netavark-firewalld-reload.service >/dev/null 2>&1; then systemctl enable --now netavark-firewalld-reload.service >/dev/null 2>&1 || true; fi
+  podman network reload --all >/dev/null 2>&1 || true          # an install that an earlier version reloaded: repaired now
+  eset WATCHOVER_FW_ZONE "$z"
   FW="$z bölgesi: $(printf '%s/tcp\n' "${want[@]}" | paste -sd, - | sed 's/,/, /g')"; ok "Güvenlik duvarı ($FW)"
 }
 firewall_setup

@@ -2,6 +2,11 @@
 
 Numaralandırma: büyük sürüm **v1, v2** (ürün sahibinin kararı), küçük güncelleme **v1.1, v1.2** (her devreye alınan özellik adımı), düzeltme **v1.1.1**. Her sürüm `python -m watchover.release <major|minor|patch> "özet"` ile açılır; Sistem › Güncelleme sayfası bu dosyayı gösterir, anlık görüntüler sürüm numarasını taşır.
 
+## v1.58.2 · 2026-10-19 · düzeltme
+
+- RHEL: firewall reload konteyner ad çözümlemesini bozmuyor; keyd sağlık kontrolü
+
+
 ## v1.58.1 · 2026-10-19 · düzeltme
 
 - Apple M4 VM'de RHEL 9: OpenSSL SVE2 koruması; .env açıklama temizliği, edge açılıyor

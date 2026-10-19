@@ -440,6 +440,13 @@ exit 0
 """
 
 
+def test_keyd_has_its_own_healthcheck():
+    """keyd runs from the dashboard image, whose HEALTHCHECK asks :8501: keyd was always "unhealthy" (RHEL 9.8 VM)."""
+    c = (ROOT / "docker-compose.yml").read_text()
+    keyd = c[c.index("\n  keyd:"):c.index("\n  receiver:")] if c.index("\n  keyd:") < c.index("\n  receiver:") else c[c.index("\n  keyd:"):]
+    assert "healthcheck:" in keyd and "8650" in keyd.split("healthcheck:", 1)[1].split("volumes:", 1)[0]
+
+
 def test_doctor_checks_and_repairs(stage):
     d, env = stage
     (d / "bin" / "docker").write_text("#!/usr/bin/env bash\n" + DOCTOR_DOCKER)
@@ -455,6 +462,7 @@ def test_doctor_checks_and_repairs(stage):
     r = run(stage, "doctor", "--check")
     assert r.returncode == 0, r.stdout
     assert f"watchover.local resolves to {ip} (this machine)" in r.stdout and "all good: https://watchover.local" in r.stdout
+    assert "container names resolve (postgres" in r.stdout
     r = run(stage, "help-me")
     assert "doctor [--check]" in r.stdout and "unbundle FILE" in r.stdout                  # usage lists every command
     subprocess.run(["bash", str(d / "watchover.sh"), "edge", "off"], cwd=d, env=env, capture_output=True, text=True, timeout=60)

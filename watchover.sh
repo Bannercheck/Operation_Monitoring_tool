@@ -256,8 +256,8 @@ fw_ports() {
   for p in "$@"; do
     case "$p" in 127.*|localhost:*|"") continue ;; esac
     firewall-cmd --permanent --zone="$z" "--$op-port=${p##*:}/tcp" >/dev/null 2>&1 && opened="$opened ${p##*:}/tcp"
+    firewall-cmd --zone="$z" "--$op-port=${p##*:}/tcp" >/dev/null 2>&1 || true      # now too: a --reload would drop netavark's runtime rules
   done
-  firewall-cmd --reload >/dev/null 2>&1 || true
   [ -z "$opened" ] || say "firewalld ($z): $([ "$op" = add ] && echo opened || echo closed)$opened"
 }
 # compose volume name (project prefix) for a volume declared in docker-compose.yml
@@ -402,6 +402,16 @@ doctor() {
     else no "container $svc is not running ($(echo "$st" | awk -v s="$svc" '$1 == s { $1 = ""; print; f = 1 } END { if (!f) print "missing" }' | sed 's/^ //'))"
          hint "./watchover.sh logs $svc   shows why"; fi
   done
+  # 1b. container names resolve: with Podman a 'firewall-cmd --reload' drops netavark's runtime rule and aardvark-dns (the bridge
+  # gateway) becomes unreachable: the edge turns unhealthy, 'failed to resolve host postgres'
+  names_ok() { $COMPOSE exec -T dashboard python -c "import socket; socket.getaddrinfo('postgres', 5432)" >/dev/null 2>&1; }
+  if svc_up dashboard; then
+    if names_ok; then ok "container names resolve (postgres, receiver, watchover)"
+    elif [ "$ENGINE" = podman ] && [ $fix = 1 ] && podman network reload --all >/dev/null 2>&1 && names_ok; then
+      ok "container names did not resolve (firewall reloaded?): repaired with podman network reload --all"
+    else no "container names do not resolve inside the container network"
+         hint "sudo podman network reload --all   (after a firewall-cmd --reload); for good: sudo systemctl enable --now netavark-firewalld-reload.service"; fi
+  fi
   if [ "$(env_get WATCHOVER_EDGE)" != "1" ]; then
     hint "the edge is off: the address is http://$ip:$(env_get WATCHOVER_UI_PORT || echo 8501)   (for https://watchover.local: ./watchover.sh edge on watchover.local)"
     return $bad

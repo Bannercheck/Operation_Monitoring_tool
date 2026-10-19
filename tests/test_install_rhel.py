@@ -178,6 +178,8 @@ def test_fresh_install_then_rerun_is_idempotent(rhel):
     assert f"WorkingDirectory={dest}" in (units / "watchover-stack.service").read_text() and "OnCalendar=*-*-* 02:15:00" in (units / "watchover-backup.timer").read_text()
     # firewalld: only what is published (443, 80 redirect, 8600 agents); 8501 is not
     assert set((state / "fw").read_text().split()) == {"443/tcp", "80/tcp", "8600/tcp"}
+    # no firewall-cmd --reload (it dropped netavark's runtime rule: container names stopped resolving on RHEL 9.8); repaired once
+    assert "firewall-cmd --reload" not in log and "podman network reload --all" in log and "--zone=public --add-port=443/tcp" in log
     # the local LLM goes to the background (32 GB: the 3B chat model), the install never waits for it
     assert "systemd-run --unit=watchover-llm-setup" in log and "llm on" in log
     assert "GET /healthz" in out and "X-Forwarded-Proto" in out and "ssh -L 8443:localhost:443 kullanici@10.20.30.40" in out
