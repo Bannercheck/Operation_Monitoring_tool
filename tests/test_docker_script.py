@@ -105,6 +105,23 @@ def test_edge_on_off(stage):
     assert r.returncode == 1 and "usage" in r.stderr
 
 
+def test_env_comment_on_an_empty_value_is_cleaned(stage):
+    """An older .env.docker.example had "WATCHOVER_EDGE_TRUSTED=   # load balancers ... (./watchover.sh edge lb)": Docker Compose
+    reads that comment as the value, nginx got "/" as a trusted proxy and would not start. Every write_env cleans such lines."""
+    d, _ = stage
+    run(stage, "install")
+    env = (d / ".env").read_text()
+    (d / ".env").write_text(env.replace("WATCHOVER_EDGE_TRUSTED=\n", "WATCHOVER_EDGE_TRUSTED=           # load balancers / CIDRs (./watchover.sh edge lb)\n")
+                            + "WATCHOVER_X=  # a comment\nWATCHOVER_Y=value  # kept\n")
+    assert run(stage, "start").returncode == 0
+    env = (d / ".env").read_text()
+    assert "WATCHOVER_EDGE_TRUSTED=\n" in env and "WATCHOVER_X=\n" in env and "WATCHOVER_Y=value  # kept" in env
+    assert oct((d / ".env").stat().st_mode)[-3:] == "600"
+    assert all(not l.split("=", 1)[1].lstrip().startswith("#") for l in (ROOT / ".env.docker.example").read_text().splitlines()
+               if l and not l.startswith("#") and "=" in l)
+    assert run(stage, "edge", "lb", "/").returncode != 0 and run(stage, "edge", "lb", "10.0.0").returncode != 0
+
+
 def _ossl(*a, **k):
     return subprocess.run(["openssl", *[str(x) for x in a]], capture_output=True, text=True, check=k.get("check", True))
 

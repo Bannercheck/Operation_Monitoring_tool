@@ -684,7 +684,7 @@ Bazı LB'ler havuz üyesinin kendi VIP'ine çıkmasına izin vermez; son madde s
 
 **Gerçek istemci adresi.** TLS'i sonlandırıp yeniden şifreleyen LB `X-Forwarded-For` ekler: giriş kayıtlarında ve loglarda kullanıcının adresi görünür (önerilen). TCP geçişinde (SNAT ile) herkes LB'nin adresinden gelir: Watchover güvenilir LB adresini "adres başına hatalı giriş" yavaşlatmasına sokmaz (yoksa birkaç hatalı parola bütün şirketi 15 dakika dışarıda bırakırdı); hesap başına kilit sürer, kayıtlarda LB adresi görünür.
 
-**Sanal makinede deneme.** Parallels / VMware "Shared / NAT" ağında VM yalnız kendi Mac'inizden görünür. Aynı ağdaki başka makinelerden açmak için ağ ayarını "Bridged" yapın (VM ağdan IP alır), sonra `sudo watchover edge on` (yeni IP sertifikaya eklenir) ve `https://<VM IP>`.
+**Sanal makinede deneme.** Apple M4'lü Mac'te RHEL 9 VM'inde çekirdek işlemciyi yanlış bildirir (`sve2` var, `sve` yok); Watchover bunu kendisi algılayıp OpenSSL'i buna göre ayarlar (v1.58.1). Bir konteyner yine 132 ile duruyorsa: `sudo bash scripts/cpu-check.sh` hangi kütüphanenin çöktüğünü gösterir. VM'in penceresinde kopyala-yapıştır çalışmaz; Mac'in Terminal'inden `ssh kullanici@<VM IP>` ile bağlanın. Parallels / VMware "Shared / NAT" ağında VM yalnız kendi Mac'inizden görünür. Aynı ağdaki başka makinelerden açmak için ağ ayarını "Bridged" yapın (VM ağdan IP alır), sonra `sudo watchover edge on` (yeni IP sertifikaya eklenir) ve `https://<VM IP>`.
 
 ## 8b. Parser kapsaması: hangi loglar anlaşılır
 

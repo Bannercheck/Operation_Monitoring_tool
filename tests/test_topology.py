@@ -29,8 +29,11 @@ def test_sharepoint_uls():
 
 def test_keycloak_sso_journey(tmp_path, monkeypatch):
     monkeypatch.setenv("WATCHOVER_PSEUDO_KEY", "k")
-    kc = ("2026-10-14 10:00:02,345 INFO  [org.keycloak.events] (executor-thread-1) type=LOGIN, realmId=turkcell, clientId=ik-portal, userId=8f1d2c3b-aaaa, ipAddress=10.1.2.3, username=ayse.yilmaz, sessionId=5a6b7c8d-1111\n"
-          "2026-10-14 10:03:02,345 INFO  [org.keycloak.events] (executor-thread-1) type=CODE_TO_TOKEN, realmId=turkcell, clientId=crm, userId=8f1d2c3b-aaaa, sessionId=5a6b7c8d-1111\n")
+    from datetime import datetime, timedelta
+    t0 = datetime.now() - timedelta(minutes=10)                                 # within the spans' retention (72 h) whatever the day
+    t1 = t0 + timedelta(minutes=3)
+    kc = (f"{t0:%Y-%m-%d %H:%M:%S},345 INFO  [org.keycloak.events] (executor-thread-1) type=LOGIN, realmId=turkcell, clientId=ik-portal, userId=8f1d2c3b-aaaa, ipAddress=10.1.2.3, username=ayse.yilmaz, sessionId=5a6b7c8d-1111\n"
+          f"{t1:%Y-%m-%d %H:%M:%S},345 INFO  [org.keycloak.events] (executor-thread-1) type=CODE_TO_TOKEN, realmId=turkcell, clientId=crm, userId=8f1d2c3b-aaaa, sessionId=5a6b7c8d-1111\n")
     obs, _ = ingest_bytes("keycloak.log", kc.encode())
     sp = [span_of(o) for o in obs]
     assert [s["operation"] for s in sp] == ["sso login → ik-portal", "sso code_to_token → crm"]

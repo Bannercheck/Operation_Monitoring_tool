@@ -176,6 +176,8 @@ services:
     image: nginx:1.28-alpine
     container_name: watchover-edge
     restart: unless-stopped
+    entrypoint: ["/bin/sh", "/watchover-start.sh"]  # OPENSSL_armcap on a CPU whose kernel reports SVE2 without SVE, then the image's entrypoint
+    command: ["nginx", "-g", "daemon off;"]
     ports:
       - "${WATCHOVER_EDGE_HTTPS_PORT:-443}:${WATCHOVER_EDGE_HTTPS_PORT:-443}"   # the only ports colleagues reach; UI / API and /ingest go through here
       - "${WATCHOVER_EDGE_HTTP_PORT:-80}:${WATCHOVER_EDGE_HTTP_PORT:-80}"       # redirect to https, and /healthz for a load balancer
@@ -190,6 +192,7 @@ services:
     volumes:
       - ./docker/nginx/watchover.conf.template:/etc/nginx/templates/watchover.conf.template:ro,z
       - ./docker/nginx/40-watchover-edge.sh:/docker-entrypoint.d/40-watchover-edge.sh:ro,z
+      - ./docker/nginx/watchover-start.sh:/watchover-start.sh:ro,z
       - ./certs:/certs:ro,z
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:$${WATCHOVER_EDGE_HTTP_PORT}/healthz || exit 1"]

@@ -53,9 +53,10 @@ def test_trusted_proxies_are_validated(tmp_path):
     script = script.replace("/etc/resolv.conf", str(resolv))
     run = lambda trusted: subprocess.run(["sh", "-c", script], env={"PATH": "/usr/bin:/bin", "WATCHOVER_EDGE_TRUSTED": trusted},   # noqa: E731
                                          capture_output=True, text=True, check=True)
-    run("10.0.0.5/32 bad;include_x 2001:db8::/32")
+    run("10.0.0.5/32 bad;include_x 2001:db8::/32 / (./watchover.sh edge lb) 10.0.0 ::")
     inc = (tmp_path / "realip.inc").read_text()
     assert "set_real_ip_from 10.0.0.5/32;" in inc and "set_real_ip_from 2001:db8::/32;" in inc and "bad" not in inc and "real_ip_recursive on;" in inc
+    assert inc.count("set_real_ip_from") == 3 and "set_real_ip_from /;" not in inc and "edge" not in inc   # "/" stopped nginx (RHEL VM)
     assert (tmp_path / "resolver.inc").read_text().startswith("resolver 10.89.0.1  valid=10s")     # Podman's gateway DNS; link-local skipped
     run("")
     assert (tmp_path / "realip.inc").read_text() == ""                                            # no load balancer: nothing believed

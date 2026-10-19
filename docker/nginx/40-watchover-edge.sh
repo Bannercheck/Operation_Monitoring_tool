@@ -15,7 +15,9 @@ ok=""
 for c in ${WATCHOVER_EDGE_TRUSTED:-}; do
   case "$c" in
     *[!0-9a-fA-F.:/]*|"") echo "watchover-edge: ignoring trusted proxy '$c' (not an address / CIDR)" >&2 ;;
-    *) printf 'set_real_ip_from %s;\n' "$c" >> "$out"; ok="$ok $c" ;;
+    *) if printf '%s' "$c" | grep -Eq '^([0-9]{1,3}\.){3}[0-9]{1,3}(/[0-9]{1,2})?$|^[0-9a-fA-F]{0,4}(:[0-9a-fA-F]{0,4}){2,7}(/[0-9]{1,3})?$'; then
+         printf 'set_real_ip_from %s;\n' "$c" >> "$out"; ok="$ok $c"
+       else echo "watchover-edge: ignoring trusted proxy '$c' (not an address / CIDR)" >&2; fi ;;   # "/" passed the old check: nginx refused to start
   esac
 done
 if [ -n "$ok" ]; then

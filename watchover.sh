@@ -154,6 +154,10 @@ write_env() {
     cp .env.docker.example "$ENV_FILE"
     say ".env written from .env.docker.example"
   fi
+  # "KEY=   # comment" (older .env.docker.example): Compose reads the comment as KEY's value; nginx refused such a trusted-proxy list
+  if grep -qE '^[A-Za-z_][A-Za-z0-9_]*=[[:space:]]+#' "$ENV_FILE" 2>/dev/null; then
+    t=$(sed -E 's/^([A-Za-z_][A-Za-z0-9_]*)=[[:space:]]+#.*$/\1=/' "$ENV_FILE") && printf '%s\n' "$t" > "$ENV_FILE"
+  fi
   env_set WATCHOVER_IMAGE watchover
   env_set WATCHOVER_TAG "$(version)"
   env_set GIT_REV "$(git_rev)"
@@ -604,6 +608,7 @@ lb_request() {
               ./watchover.sh edge check                          (DNS, certificate, this server, through the LB)
 REQ
 }
+valid_cidr() { printf '%s' "$1" | grep -Eq '^([0-9]{1,3}\.){3}[0-9]{1,3}(/[0-9]{1,2})?$|^[0-9a-fA-F]{0,4}(:[0-9a-fA-F]{0,4}){2,7}(/[0-9]{1,3})?$'; }
 pem_certs() {   # every certificate in FILE as PEM: PEM, DER (.cer) or PKCS#7 (.p7b, PEM or DER), as the company CA hands them out
   if grep -q 'BEGIN CERTIFICATE' "$1" 2>/dev/null; then sed -n '/-----BEGIN CERTIFICATE-----/,/-----END CERTIFICATE-----/p' "$1"
   elif grep -q 'BEGIN PKCS7' "$1" 2>/dev/null; then openssl pkcs7 -in "$1" -print_certs 2>/dev/null | sed -n '/-----BEGIN CERTIFICATE-----/,/-----END CERTIFICATE-----/p'
@@ -925,7 +930,7 @@ case "${1:-}" in
       lb)   # the load balancer(s) in front: only from these addresses is X-Forwarded-For believed (the client address in logs / sign-in records)
         shift 2; [ $# -gt 0 ] || { say "trusted load balancers: $(env_get WATCHOVER_EDGE_TRUSTED || true)"; say "usage: ./watchover.sh edge lb 10.0.0.5/32 [10.0.1.0/24 ...] | off"; exit 0; }
         if [ "$1" = off ]; then env_set WATCHOVER_EDGE_TRUSTED ""; else
-          for c in "$@"; do case "$c" in *[!0-9a-fA-F.:/]*|"") die "not an address / CIDR: $c" ;; esac; done
+          for c in "$@"; do valid_cidr "$c" || die "not an address / CIDR: $c"; done
           env_set WATCHOVER_EDGE_TRUSTED "$*"; fi
         $COMPOSE $(profiles) up -d --no-deps --force-recreate edge dashboard      # the dashboard too: it never throttles sign-ins by an LB's address
         say "trusted load balancers: ${*}   (health check for the load balancer: GET https://<this server>/healthz, or http://…/healthz on port $(env_get WATCHOVER_EDGE_HTTP_PORT || echo 80))" ;;
@@ -934,7 +939,7 @@ case "${1:-}" in
         [ -n "$name" ] || die "usage: ./watchover.sh edge public NAME [LB address/CIDR ...]   e.g. edge public watchover.sirket.com.tr 10.20.0.10/32"
         case "$name" in *[!A-Za-z0-9.-]*|.*|*.|*..*|-*) die "not a host name: $name" ;; esac
         shift 3
-        for c in "$@"; do case "$c" in *[!0-9a-fA-F.:/]*|"") die "not an address / CIDR: $c" ;; esac; done
+        for c in "$@"; do valid_cidr "$c" || die "not an address / CIDR: $c"; done
         hosts="$name"; for h in $(env_get WATCHOVER_EDGE_HOSTS | tr ',' ' '); do [ "$h" = "$name" ] || hosts="$hosts,$h"; done
         env_set WATCHOVER_PUBLIC_URL "https://$name"            # sign-in callbacks and the web / mobile sensor snippet use it
         [ $# -eq 0 ] || env_set WATCHOVER_EDGE_TRUSTED "$*"
