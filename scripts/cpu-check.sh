@@ -35,8 +35,10 @@ t "watchover.api, OPENBLAS ARMV8" -e OPENBLAS_CORETYPE=ARMV8 "$IMG" -c "import w
 t "cryptography, via watchover"      "$IMG" -c "import watchover, os, cryptography.hazmat.bindings._rust; print('ok, OPENSSL_armcap=' + os.environ.get('OPENSSL_armcap', '-'))"
 [ -z "$CAP" ] || t "cryptography, OPENSSL_armcap=$CAP" -e OPENSSL_armcap="$CAP" "$IMG" -c "import cryptography.hazmat.bindings._rust; print('ok')"
 EDGE_IMG=$($ENGINE inspect watchover-edge --format '{{.ImageName}}' 2>/dev/null || true)
-if [ -n "$EDGE_IMG" ]; then
+if [ -n "$EDGE_IMG" ] && $ENGINE run --rm --entrypoint sh "$EDGE_IMG" -c 'command -v openssl' >/dev/null 2>&1; then   # nginx:alpine has no openssl CLI
   echo "== the edge's OpenSSL ($EDGE_IMG)"
   run_as openssl "openssl (TLS ciphers)" "$EDGE_IMG" speed -seconds 1 -evp chacha20-poly1305
   [ -z "$CAP" ] || run_as openssl "openssl, OPENSSL_armcap=$CAP" -e OPENSSL_armcap="$CAP" "$EDGE_IMG" speed -seconds 1 -evp chacha20-poly1305
 fi
+[ -z "$EDGE_IMG" ] || $ENGINE run --rm --entrypoint sh "$EDGE_IMG" -c 'command -v openssl' >/dev/null 2>&1 \
+  || echo "== the edge ($EDGE_IMG) has no openssl command to try; its start applies OPENSSL_armcap=${CAP:-(none needed)} itself"
