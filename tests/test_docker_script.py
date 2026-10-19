@@ -25,7 +25,7 @@ def stage(tmp_path):
     for f in ("watchover.sh", "docker-compose.yml", "docker-compose.edge.yml", "docker-compose.loghot.yml", "docker-compose.logcold.yml",
               ".env.docker.example", "pyproject.toml"):
         shutil.copy(ROOT / f, tmp_path / f)
-    (tmp_path / "scripts").mkdir(exist_ok=True); shutil.copy(ROOT / "scripts" / "edge-cert.sh", tmp_path / "scripts" / "edge-cert.sh")
+    (tmp_path / "scripts").mkdir(exist_ok=True); shutil.copy(ROOT / "scripts" / "edge-cert.sh", tmp_path / "scripts" / "edge-cert.sh"); shutil.copy(ROOT / "scripts" / "lb-config.sh", tmp_path / "scripts" / "lb-config.sh")
     (tmp_path / "bin").mkdir(); fake = tmp_path / "bin" / "docker"; fake.write_text(FAKE); fake.chmod(0o755)
     env = dict(os.environ, PATH=f"{tmp_path / 'bin'}:{os.environ['PATH']}", FAKE_LOG=str(tmp_path / "calls.log"), WATCHOVER_VERIFY_TRIES="1")
     return tmp_path, env
@@ -50,7 +50,7 @@ def test_install_writes_env_builds_and_starts(stage):
     # sizing follows the machine Docker reports (10 CPUs, 16 GB here) in shares: the dashboard most CPUs, the LLM and the trainer a part
     for k, v in {"WATCHOVER_SIZING": "auto", "WATCHOVER_CPUS": "8", "WATCHOVER_MEMORY": "4g", "WATCHOVER_RECEIVER_CPUS": "2", "WATCHOVER_PARSE_WORKERS": "3",
                  "WATCHOVER_PG_CPUS": "2", "WATCHOVER_PG_MEMORY": "2g", "WATCHOVER_PG_SHARED_BUFFERS": "512MB", "WATCHOVER_PG_CACHE": "8GB",
-                 "WATCHOVER_LLM_CPUS": "3", "WATCHOVER_LLM_THREADS": "3", "WATCHOVER_LLM_MEMORY": "4g", "WATCHOVER_TRAIN_CPUS": "5", "WATCHOVER_TRAIN_MEMORY": "4g",
+                 "WATCHOVER_LLM_CPUS": "5", "WATCHOVER_LLM_THREADS": "5", "WATCHOVER_LLM_MEMORY": "4g", "WATCHOVER_TRAIN_CPUS": "5", "WATCHOVER_TRAIN_MEMORY": "4g",
                  "WATCHOVER_LLM_KEEPALIVE": "30m", "WATCHOVER_SPOOL_MAX_MB": "2048"}.items():
         assert f"{k}={v}\n" in env, (k, v)
     calls = (d / "calls.log").read_text()
@@ -103,6 +103,26 @@ def test_edge_on_off(stage):
     assert r.returncode == 0 and "WATCHOVER_EDGE=0" in env and "COMPOSE_FILE=" not in env and "WATCHOVER_UI_PORT=8501" in env
     r = run(stage, "edge")
     assert r.returncode == 1 and "usage" in r.stderr
+
+
+def test_edge_lbconf_prints_the_load_balancer_configuration(stage):
+    """edge lbconf: F5 BIG-IP / NetScaler / HAProxy snippets for the public name with this server's address and ports: the
+    health check on /healthz (its JSON is {"ok":true,...}), X-Forwarded-For, TLS to the server, 300 s idle (v1.59)."""
+    d, _ = stage
+    run(stage, "install")
+    assert run(stage, "edge", "lbconf").returncode != 0                                    # no public name yet
+    run(stage, "edge", "public", "watchover.sirket.test", "10.20.0.10/32")
+    r = run(stage, "edge", "lbconf", "all", "10.20.0.100")
+    out = r.stdout
+    assert r.returncode == 0, r.stderr
+    for part in ("F5 BIG-IP", "NetScaler", "HAProxy", "destination 10.20.0.100:443", "insert-xforwarded-for enabled", 'recv "\\"ok\\": *true"',
+                 '-recv "\\"ok\\":true"', "-cip ENABLED X-Forwarded-For", "option forwardfor", "option httpchk GET /healthz", "idle-timeout 300",
+                 "sni str(watchover.sirket.test)", "_sys_https_redirect"):
+        assert part in out, part
+    assert ":443" in out and "watchover_pool" in out
+    assert "edge lbconf f5|netscaler|haproxy" in run(stage, "edge", "public", "watchover.sirket.test").stdout
+    bad = subprocess.run(["sh", str(ROOT / "scripts" / "lb-config.sh"), "f5", "a;reboot", "10.0.0.1"], capture_output=True, text=True)
+    assert bad.returncode == 2 and subprocess.run(["sh", str(ROOT / "scripts" / "lb-config.sh"), "cisco", "a.b", "10.0.0.1"]).returncode == 2
 
 
 def test_env_comment_on_an_empty_value_is_cleaned(stage):
@@ -192,6 +212,32 @@ def test_llm_on_off(stage):
     assert run(stage, "llm").returncode == 1
 
 
+def test_llm_on_picks_the_chat_model_by_measured_speed(stage):
+    """llm on measures the bundled Ollama (watchover.llmbench auto) and writes the model this machine carries: the 14B gets a
+    16 GB memory share; a model chosen by hand is never replaced; WATCHOVER_LLM_AUTO=0 turns it off (v1.59)."""
+    d, env = stage
+    fake = d / "bin" / "docker"
+    fake.write_text(fake.read_text().replace("*MemTotal*) echo 17179869184 ;;", "*MemTotal*) echo 68719476736 ;;").replace('echo "docker $*" >> "$FAKE_LOG"\n',
+        'echo "docker $*" >> "$FAKE_LOG"\n[[ "$*" == *"watchover.llmbench auto"* ]] && { echo "CHAT=${FAKE_CHAT:-qwen2.5:14b-instruct}"; '
+        'echo "SUMMARY=7b 12.1 tok/s, 14b 6.2 tok/s"; echo "NOTE=measured"; exit 0; }\n', 1))
+    run(stage, "install")
+    r = run(stage, "llm", "on")
+    assert r.returncode == 0, r.stderr
+    e = (d / ".env").read_text(); calls = (d / "calls.log").read_text()
+    assert "LLM_MODEL=qwen2.5:14b-instruct" in e and "WATCHOVER_LLM_MEMORY=16g" in e and "WATCHOVER_LLM_BENCH=7b 12.1 tok/s, 14b 6.2 tok/s (" in e
+    assert "python -m watchover.llmbench auto --mem-gb 64 --threads 5 --min-tps 5 --floor-tps 2.5" in calls and "local LLM: qwen2.5:14b-instruct" in r.stdout
+    assert "up -d --no-deps ollama dashboard" in calls
+    run(stage, "llm", "use", "watchover-ops")                                   # chosen by hand: auto leaves it
+    r = subprocess.run(["bash", str(d / "watchover.sh"), "llm", "auto"], cwd=d, env=dict(env, FAKE_CHAT="qwen2.5:7b-instruct"), capture_output=True, text=True, timeout=60)
+    assert "chosen by you: not changed" in r.stdout and "LLM_MODEL=watchover-ops" in (d / ".env").read_text()
+    run(stage, "llm", "use", "qwen2.5:14b-instruct")
+    r = subprocess.run(["bash", str(d / "watchover.sh"), "llm", "auto"], cwd=d, env=dict(env, FAKE_CHAT="qwen2.5:7b-instruct"), capture_output=True, text=True, timeout=60)
+    e = (d / ".env").read_text()
+    assert "LLM_MODEL=qwen2.5:7b-instruct" in e and "WATCHOVER_LLM_MEMORY=10g" in e                # back to the 7B: the share follows
+    (d / ".env").write_text(e + "WATCHOVER_LLM_AUTO=0\n")
+    assert "llm auto off" in run(stage, "llm", "on").stdout
+
+
 def test_llm_export_and_import(stage):
     d, _ = stage
     run(stage, "install"); run(stage, "llm", "on")
@@ -222,7 +268,7 @@ def test_llm_on_keeps_existing_connection(stage):
 def test_manual_sizing_is_kept(stage):
     d, _ = stage
     run(stage, "install")
-    env = (d / ".env").read_text().replace("WATCHOVER_SIZING=auto", "WATCHOVER_SIZING=manual").replace("WATCHOVER_LLM_CPUS=3", "WATCHOVER_LLM_CPUS=2")
+    env = (d / ".env").read_text().replace("WATCHOVER_SIZING=auto", "WATCHOVER_SIZING=manual").replace("WATCHOVER_LLM_CPUS=5", "WATCHOVER_LLM_CPUS=2")
     (d / ".env").write_text(env)
     assert run(stage, "start").returncode == 0
     assert "WATCHOVER_LLM_CPUS=2\n" in (d / ".env").read_text() and "WATCHOVER_SIZING=manual" in (d / ".env").read_text()
@@ -236,7 +282,7 @@ def test_profile_cpu8_fixes_the_caps_and_keeps_the_llm_connection(stage):
     r = run(stage, "profile", "cpu8")
     assert r.returncode == 0, r.stderr
     e = (d / ".env").read_text()
-    for kv in ("WATCHOVER_SIZING=manual", "WATCHOVER_CPUS=6", "WATCHOVER_MEMORY=16g", "WATCHOVER_LLM_CPUS=3", "WATCHOVER_LLM_THREADS=3",
+    for kv in ("WATCHOVER_SIZING=manual", "WATCHOVER_CPUS=6", "WATCHOVER_MEMORY=16g", "WATCHOVER_LLM_CPUS=4", "WATCHOVER_LLM_THREADS=4",
                "WATCHOVER_PARSE_WORKERS=3", "WATCHOVER_PG_SHARED_BUFFERS=2GB", "WATCHOVER_TRAIN_CPUS=4", "WATCHOVER_LLM_KEEPALIVE=24h"):
         assert kv + "\n" in e, kv
     assert "LLM_BASE_URL=http://gpu-box:11434" in e and "LLM_MODEL=qwen2.5:14b" in e          # a configured connection is never touched

@@ -37,6 +37,7 @@ services:
       WATCHOVER_GO_PARSE: ${WATCHOVER_GO_PARSE:-1}  # 1: the receiver parses allow-listed formats in Go (v=2 records); 0: this container parses everything; shadow: compare only
       WATCHOVER_INTERNAL_PORT: "8601"               # enrolment (proxied by the receiver) and this machine's own agent
       WATCHOVER_CORS: ${WATCHOVER_CORS:-}
+      WATCHOVER_LLM_THREADS: ${WATCHOVER_LLM_THREADS:-}   # num_thread for the bundled Ollama (its CPU share; it would count the host's cores)
       WATCHOVER_PUBLIC_URL: ${WATCHOVER_PUBLIC_URL:-}   # the address colleagues open (./watchover.sh edge public NAME): sign-in callbacks, RUM snippet
       WATCHOVER_KEYD: ${WATCHOVER_KEYD:-tcp://keyd:8650}   # the action agent's key service (mutual TLS); its keys are never on /data
       WATCHOVER_KEYD_TLS: /secrets/keyd             # client certificate written by keyd on its first start

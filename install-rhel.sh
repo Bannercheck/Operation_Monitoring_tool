@@ -607,7 +607,7 @@ llm_start() {   # MODELS: ./watchover.sh llm on as a transient systemd unit (sur
     systemd-run --unit=watchover-llm-setup --description="Watchover local LLM setup" --collect -p Nice=10 -p WorkingDirectory="$DEST" \
       --setenv=WATCHOVER_ENGINE=podman /bin/bash -c "$cmd" >/dev/null 2>&1 || { setsid nohup bash -c "export WATCHOVER_ENGINE=podman; $cmd" >/dev/null 2>&1 & }
   else setsid nohup bash -c "export WATCHOVER_ENGINE=podman; $cmd" >/dev/null 2>&1 & fi
-  LLM_STATE="arka planda kuruluyor: $models (izlemek: tail -f $LLMLOG); bitince panel bir kez yeniden başlar"
+  LLM_STATE="arka planda kuruluyor: $models (izlemek: tail -f $LLMLOG); sonra hız ölçülüp sohbet modeli seçilir (14B / 7B / 3B), panel bir kez yeniden başlar"
 }
 llm_decide
 

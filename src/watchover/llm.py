@@ -13,6 +13,7 @@ narrative stays.
 from __future__ import annotations
 
 import json
+import os
 import re
 import ssl
 import threading
@@ -167,6 +168,9 @@ def ollama_version(cfg: LLMConfig) -> tuple:
         return ()
 
 
+BUNDLED_OLLAMA = "http://ollama:11434"     # the CPU Ollama of ./watchover.sh llm on (compose network)
+
+
 def _chat_raw(cfg: LLMConfig, messages: list[dict], temperature: float, max_tokens: int, fmt=None, seed=None,
               options: dict | None = None) -> tuple[str, dict]:
     """-> (answer text, token usage as reported by the provider). `fmt`: a JSON schema (dict) or "json" — Ollama `format`,
@@ -177,6 +181,9 @@ def _chat_raw(cfg: LLMConfig, messages: list[dict], temperature: float, max_toke
     turns = [m for m in messages if m["role"] != "system"]
     if k == "ollama":
         opts = {"temperature": temperature, "num_predict": max_tokens, **(options or {})}
+        th = os.environ.get("WATCHOVER_LLM_THREADS", "")
+        if th.isdigit() and int(th) > 0 and cfg.root.rstrip("/") == BUNDLED_OLLAMA:
+            opts.setdefault("num_thread", int(th))   # the bundled Ollama counts the host's cores, not its CPU share: oversubscribed, slower
         if seed is not None:
             opts["seed"] = int(seed)
         body = {"model": cfg.model, "messages": messages, "stream": False, "options": opts}

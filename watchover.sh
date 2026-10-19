@@ -38,6 +38,8 @@
 #   ./watchover.sh bundle [FILE]    everything an air-gapped server needs in one .tar: all images, downloaded Ollama models, training weights, source
 #   ./watchover.sh unbundle FILE    on the air-gapped server: load the images and model volumes, mark the install offline (no builds, no pulls)
 #   ./watchover.sh llm prepare      cache the training base weights (done by 'bundle' automatically) so the trainer never needs internet
+#   ./watchover.sh llm auto|bench   measure the bundled LLM here and pick the chat model (14B when this machine carries 5+ tokens/s, else
+#                                   7B; 3B under 2.5): llm on does it after the downloads | tokens/s of one model (llm bench qwen2.5:7b-instruct)
 #   ./watchover.sh profile [NAME]   sizing: auto (default: measured from this machine on every start), cpu8 / cpu16 (fixed numbers); no NAME shows it
 #   ./watchover.sh shell            a shell inside the dashboard container
 #   ./watchover.sh updater on|off|status   in-app updates (Sistem › Güncelleme): upload a zip / bundle, apply, roll back. A separate
@@ -134,7 +136,8 @@ size_env() {
   pw=$(clamp $((ncpu * 3 / 8)) 1 6);         spool=$([ "$mem_gb" -ge 32 ] && echo 4096 || echo 2048)
   pcpu=$(clamp $((ncpu / 4)) 1 4);           pmem=$(clamp $((mem_gb / 8)) 2 16)
   psb=$((pmem * 1024 / 4));                  pcache=$(clamp $((mem_gb / 2)) 1 256)
-  lcpu=$(clamp $((ncpu * 3 / 8)) 1 8);       lmem=$(clamp $((mem_gb * 16 / 100)) 4 16)
+  lcpu=$(clamp $((ncpu / 2)) 1 8);           lmem=$(clamp $((mem_gb * 16 / 100)) 4 16)   # half the CPUs (4 CPUs: 2, not 1: a 7B crawled)
+  case "$(env_get LLM_MODEL)" in *14b*) [ "$mem_gb" -lt 48 ] || [ "$lmem" -ge 16 ] || lmem=16 ;; esac   # llm auto chose the 14B: weights ~9 GB + context + embeddings
   tcpu=$(clamp $((ncpu / 2)) 1 8);           tmem=$(clamp $((mem_gb / 5)) 4 16)
   keep=$([ "$mem_gb" -ge 32 ] && echo 24h || echo 30m)
   env_set WATCHOVER_SIZING auto
@@ -614,6 +617,7 @@ lb_request() {
               idle timeout 300 s or more (live log tail, long reports); no session persistence needed
     Firewall  VPN user subnets -> VIP:443;  the LB's self / SNAT addresses -> $ip:$p and $ip:$hp
               agents on monitored servers -> VIP:443 (https://$name) or $ip:8600 directly
+    Config    ./watchover.sh edge lbconf f5|netscaler|haproxy [VIP]   (ready-to-review snippets with these values)
     Then      ./watchover.sh edge lb <the LB's SNAT addresses>   (if not given yet: real client addresses in logs)
               ./watchover.sh edge check                          (DNS, certificate, this server, through the LB)
 REQ
@@ -652,6 +656,32 @@ edge_company() {   # the certificate the company CA issued for 'edge csr': the l
   rm -f certs/.ca/issued; rm -rf "$tmp"
   env_set WATCHOVER_EDGE_TLS company
   say "company certificate installed: $(openssl x509 -in certs/watchover.crt -noout -subject | sed 's/^subject= *//'), $(openssl x509 -in certs/watchover.crt -noout -enddate | sed 's/notAfter=/valid until /')"
+}
+# The chat model of the bundled Ollama by measured speed (src/watchover/llmbench.py): 7B measured, the 14B downloaded and measured
+# only when this machine can carry it (60 GB+ RAM, predicted >= WATCHOVER_LLM_MIN_TPS tokens/s, 15 GB free), the 3B under the floor.
+# Never for a connection or a model you configured yourself (LLM page settings win over .env in any case); WATCHOVER_LLM_AUTO=0: off.
+llm_auto() {
+  local cur mem_b mem_gb store free nopull="" out chat sum th mt ft
+  [ "${WATCHOVER_LLM_AUTO:-$(env_get WATCHOVER_LLM_AUTO)}" != 0 ] || { say "llm auto off (WATCHOVER_LLM_AUTO=0): LLM_MODEL stays $(env_get LLM_MODEL)"; return 0; }
+  case "$(env_get LLM_BASE_URL)" in ""|http://ollama:11434) ;; *) say "LLM connection $(env_get LLM_BASE_URL) is yours: not measured"; return 0 ;; esac
+  cur=$(env_get LLM_MODEL)
+  case "$cur" in ""|qwen2.5:14b-instruct|qwen2.5:7b-instruct|qwen2.5:3b-instruct) ;; *) say "LLM_MODEL=$cur was chosen by you: not changed (llm bench $cur measures it)"; return 0 ;; esac
+  mem_b=$(docker info --format '{{.MemTotal}}' 2>/dev/null | tr -dc '0-9'); mem_gb=$(( (${mem_b:-0} + 536870912) / 1073741824 ))
+  store=$(if [ "$ENGINE" = podman ]; then podman info --format '{{.Store.GraphRoot}}' 2>/dev/null; else docker info --format '{{.DockerRootDir}}' 2>/dev/null; fi)
+  free=$(df -Pk "${store:-/}" 2>/dev/null | awk 'NR == 2 { print int($4 / 1048576) }'); [ "${free:-0}" -ge 15 ] || nopull="--no-pull"
+  th=$(env_get WATCHOVER_LLM_THREADS); mt=$(env_get WATCHOVER_LLM_MIN_TPS); ft=$(env_get WATCHOVER_LLM_FLOOR_TPS)
+  say "measuring the local LLM on this machine ($mem_gb GB RAM, ${th:-?} LLM threads): the 7B first, the 14B only if this machine can carry it"
+  out=$($COMPOSE exec -T dashboard python -m watchover.llmbench auto --mem-gb "$mem_gb" --threads "${th:-0}" \
+        --min-tps "${mt:-5}" --floor-tps "${ft:-2.5}" $nopull --shell 2>/dev/null || true)
+  chat=$(printf '%s\n' "$out" | sed -n 's/^CHAT=//p' | head -1); sum=$(printf '%s\n' "$out" | sed -n 's/^SUMMARY=//p' | head -1)
+  printf '%s\n' "$out" | sed -n 's/^NOTE=/      /p'
+  [ -z "$nopull" ] || say "      14B not downloaded: ${free:-?} GB free on the container store (needs 15)"
+  [ -n "$chat" ] || { say "the LLM speed could not be measured (Ollama not answering?): LLM_MODEL stays ${cur:-qwen2.5:7b-instruct}"; return 0; }
+  env_set WATCHOVER_LLM_BENCH "$sum ($(date +%Y-%m-%d))"
+  [ "$chat" = "$cur" ] || env_set LLM_MODEL "$chat"
+  if [ "$(env_get WATCHOVER_SIZING)" = auto ]; then size_env >/dev/null; fi        # the 14B needs a larger memory share
+  [ "$chat" = "$cur" ] && [ "$chat" != qwen2.5:14b-instruct ] || $COMPOSE $(profiles) up -d --no-deps ollama dashboard >/dev/null 2>&1 || true
+  say "local LLM: $chat (measured here: $sum; again: ./watchover.sh llm auto)"
 }
 up() {   # inside the updater its own container is left alone (its profile is not active, so it is not an orphan either)
   $COMPOSE $(profiles) up -d --remove-orphans
@@ -871,7 +901,12 @@ case "${1:-}" in
           say "pulling $m (CPU inference; the 7B model is a few GB, first time is slow)"; $COMPOSE exec -T ollama ollama pull "$m" || say "could not pull $m (check internet / disk)"
         done
         $COMPOSE exec -T ollama ollama list || true
-        say "bundled Ollama on (chat/review: qwen2.5:7b, fast: 3b, embeddings: bge-m3). Models to download: .env WATCHOVER_LLM_MODELS" ;;
+        llm_auto
+        say "bundled Ollama on (chat: $(env_get LLM_MODEL), embeddings: bge-m3; speed here: $(env_get WATCHOVER_LLM_BENCH || true)). Models to download: .env WATCHOVER_LLM_MODELS" ;;
+      auto)   # measure again and pick the chat model this machine carries (14B / 7B / 3B); a model you chose yourself stays
+        WATCHOVER_LLM_AUTO=1 llm_auto ;;
+      bench)  # tokens/s of one model on this machine (generation and prompt reading), with the LLM container's CPU share
+        $COMPOSE exec -T dashboard python -m watchover.llmbench bench --model "${3:-$(env_get LLM_MODEL)}" --threads "$(env_get WATCHOVER_LLM_THREADS)" ;;
       use)   # switch the dashboard's chat model (any model your configured Ollama serves, e.g. watchover-ops); nothing else changes
         [ -n "${3:-}" ] || die "usage: ./watchover.sh llm use <model>"
         env_set LLM_MODEL "$3"; $COMPOSE $(profiles) up -d --no-deps dashboard; say "LLM_MODEL=$3 (switch back any time with llm use <model> or in LLM › Connection)" ;;
@@ -896,7 +931,7 @@ case "${1:-}" in
         $COMPOSE --profile llm stop trainer ollama; $COMPOSE --profile llm rm -f trainer ollama; env_set WATCHOVER_LLM 0
         [ "$(env_get LLM_BASE_URL)" = "http://ollama:11434" ] && env_set LLM_BASE_URL ""      # only undo what 'llm on' set itself
         say "bundled Ollama off (downloaded models kept in the watchover-ollama volume; other LLM connections untouched)" ;;
-      *) die "usage: ./watchover.sh llm on|off|use <model>|pull <model>|list|prepare [base]|export [file]|import <dir> [name]" ;; esac ;;
+      *) die "usage: ./watchover.sh llm on|off|auto|bench [model]|use <model>|pull <model>|list|prepare [base]|export [file]|import <dir> [name]" ;; esac ;;
   legacy)
     need_docker; case "${2:-}" in
       on)  env_set WATCHOVER_LEGACY 1; up; say "legacy Streamlit interface on: http://$(host_ip):$(env_get WATCHOVER_LEGACY_PORT || echo 8502)" ;;
@@ -986,6 +1021,10 @@ DNS.$i = $h"; fi
         [ -z "${4:-}" ] || [ -f "$4" ] || die "no such file: $4"
         edge_company "$3" "${4:-}"
         if [ "$(env_get WATCHOVER_EDGE)" = 1 ]; then $COMPOSE $(profiles) up -d --no-deps --force-recreate edge receiver; say "edge restarted with it: $(edge_url)"; fi ;;
+      lbconf)   # the load balancer's configuration for the public name with this server's values (F5 BIG-IP, NetScaler, HAProxy)
+        name=$(public_name); [ -n "$name" ] || die "no public name yet: ./watchover.sh edge public NAME first"
+        p=$(env_get WATCHOVER_EDGE_HTTPS_PORT); hp=$(env_get WATCHOVER_EDGE_HTTP_PORT)
+        sh scripts/lb-config.sh "${3:-all}" "$name" "$(host_ip)" "${p:-443}" "${hp:-80}" "${4:-<VIP>}" ;;
       check)   # is https://NAME ready for colleagues: in DNS, on the certificate, answering here and through the load balancer
         name="${3:-$(public_name)}"; [ -n "$name" ] || die "usage: ./watchover.sh edge check [NAME]"
         p=$(env_get WATCHOVER_EDGE_HTTPS_PORT); p=${p:-443}; fails=0
@@ -1007,7 +1046,7 @@ DNS.$i = $h"; fi
         [ -n "$(env_get WATCHOVER_EDGE_TRUSTED)" ] && okl "trusted load balancers: $(env_get WATCHOVER_EDGE_TRUSTED)" \
           || notel "no load balancer trusted yet: ./watchover.sh edge lb <its SNAT addresses> (real client addresses in logs)"
         [ "$fails" = 0 ] && say "ready: colleagues on the company network open https://$name" || { say "$fails problem(s) above"; exit 1; } ;;
-      *) die "usage: ./watchover.sh edge on [name[,name2,ip]] | off | cert | lb CIDR... | public NAME [LB CIDR...] | csr [NAME] | company ISSUED [CHAIN] | check [NAME]     e.g.  edge on watchover.local" ;; esac ;;
+      *) die "usage: ./watchover.sh edge on [name[,name2,ip]] | off | cert | lb CIDR... | public NAME [LB CIDR...] | csr [NAME] | company ISSUED [CHAIN] | lbconf [f5|netscaler|haproxy|all] [VIP] | check [NAME]     e.g.  edge on watchover.local" ;; esac ;;
   api)     say "the API now runs inside the dashboard container: http://$(host_ip):$(env_get WATCHOVER_UI_PORT || echo 8501)/api/docs" ;;
   backup)   # --no-logs: without the raw logs under /data/logs (the nightly timer's choice: they are large); on disks of their own they are never in it
     need_docker; keep="${WATCHOVER_BACKUP_KEEP:-$(env_get WATCHOVER_BACKUP_KEEP)}"; keep="${keep:-14}"; logs=1; out=""
@@ -1040,9 +1079,9 @@ DNS.$i = $h"; fi
       cpu8|cpu16)
         write_env; pname="$2"
         if [ "$pname" = cpu8 ]; then
-          set -- 6 16g 2 2g 3 4096 2 8g 2GB 32GB 3 3 10g 4 4 12g
+          set -- 6 16g 2 2g 3 4096 2 8g 2GB 32GB 4 4 10g 4 4 12g     # LLM: half the CPUs (v1.59)
         else
-          set -- 10 24g 4 2g 6 6144 4 12g 4GB 48GB 6 6 12g 8 8 16g
+          set -- 10 24g 4 2g 6 6144 4 12g 4GB 48GB 8 8 16g 8 8 16g
         fi
         env_set WATCHOVER_SIZING manual
         env_set WATCHOVER_CPUS "$1"; env_set WATCHOVER_MEMORY "$2"; env_set WATCHOVER_RECEIVER_CPUS "$3"; env_set WATCHOVER_RECEIVER_MEMORY "$4"
