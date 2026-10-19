@@ -46,7 +46,7 @@ def test_users(tmp_path):
     ev = us.events(5)
     assert ev[0]["event"] == "login" and not ev[0]["ok"] and ev[0]["detail"] == "locked" and any(e["detail"] == "bad password" for e in ev)
     sso = us.sso_login("jane@corp.com", "Jane", allowed_domains="corp.com", provider="google")
-    assert sso["provider"] == "google" and sso["role"] == "operator" and us.login("jane@corp.com", "") is None
+    assert sso["provider"] == "google" and sso["role"] == "viewer" and us.login("jane@corp.com", "") is None   # least privilege (v1.58.5)
     assert us.sso_login("eve@other.com", allowed_domains="corp.com") is None
     assert us.sso_login("bob@corp.com", auto_create=False) is None
     with pytest.raises(ValueError):

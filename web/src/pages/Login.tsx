@@ -15,7 +15,7 @@ export default function Login() {
   const options = useQuery({ queryKey: ["auth-options"], queryFn: () => get<{ register: boolean; verify: boolean }>("/auth/options") });
   const { acceptToken } = useAuth();
   const providers = useQuery({ queryKey: ["providers"], queryFn: () => get<{ name: string; label: string; configured: boolean }[]>("/auth/providers") });
-  useEffect(() => { const m = /error=([^&]+)/.exec(window.location.search); if (m) setErr(decodeURIComponent(m[1])); }, []);
+  useEffect(() => { const m = /error=([^&]+)/.exec(window.location.search); if (m) { const e = decodeURIComponent(m[1]); setErr(e === "pending_approval" ? t("reg_wait_admin") : e); } }, []);   // SSO: a gmail.com account waits for approval
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setErr(null); setInfo(""); setBusy(true);
     try {

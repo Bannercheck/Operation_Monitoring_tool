@@ -213,7 +213,7 @@ def test_oidc_flow_with_stubbed_provider(client, monkeypatch):
     assert cb.status_code == 302 and cb.headers["location"].startswith("/ops#sso=") and seen["code"] == "abc" and seen["code_verifier"]
     tok = cb.headers["location"].split("#sso=", 1)[1]
     me = client.get("/api/auth/me", headers={"Authorization": f"Bearer {tok}"}).json()
-    assert me["email"] == "sso.user@example.com" and me["role"] == "operator"
+    assert me["email"] == "sso.user@example.com" and me["role"] == "viewer"                  # a new SSO account: least privilege (v1.58.5)
     assert client.get("/api/auth/oidc/google/callback?code=abc&state=bad.state.x", follow_redirects=False).status_code == 401
     wo_settings.save({"auth_google": False, "google_client_id": "", "google_client_secret": ""})
 

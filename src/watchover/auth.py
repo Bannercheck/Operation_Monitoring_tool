@@ -49,6 +49,9 @@ GOOGLE_METADATA = "https://accounts.google.com/.well-known/openid-configuration"
 
 COMMON_PASSWORDS = {"watchover12", "password12", "1234567890", "qwerty1234", "qwertyuiop1", "1q2w3e4r5t", "abcdef1234", "abc1234567",
                     "asdfghjkl1", "zaq12wsx34", "parola1234", "sifre12345", "admin12345", "welcome123", "letmein123"}
+PUBLIC_MAIL_DOMAINS = frozenset({"gmail.com", "googlemail.com", "outlook.com", "outlook.com.tr", "hotmail.com", "hotmail.com.tr", "live.com",
+                                 "msn.com", "yahoo.com", "yahoo.com.tr", "icloud.com", "me.com", "yandex.com", "yandex.com.tr", "yandex.ru",
+                                 "proton.me", "protonmail.com", "aol.com", "gmx.com", "gmx.de", "mail.ru", "windowslive.com"})   # anyone opens these
 COMMON_WORDS = ("password", "parola", "sifre", "şifre", "admin", "watchover", "welcome", "qwerty", "test", "changeme", "default")   # + digits only
 
 
@@ -294,25 +297,46 @@ class Users:
         self._event(email, "login", True)
         return ({k: u[k] for k in ("id", "email", "name", "role", "provider")} | {"must_change": bool(u.get("must_change"))}, "ok")
 
-    def sso_login(self, email: str, name: str = "", allowed_domains: str = "", auto_create: bool = True, provider: str = "oidc") -> dict | None:
-        """An identity the provider vouched for: create on first sight (if allowed), refuse disabled accounts."""
+    def sso_login(self, email: str, name: str = "", allowed_domains: str = "", auto_create: bool = True, provider: str = "oidc",
+                  verified: bool = True) -> dict | None:
+        return self.sso_check(email, name, allowed_domains, auto_create, provider, verified)[0]
+
+    def sso_check(self, email: str, name: str = "", allowed_domains: str = "", auto_create: bool = True, provider: str = "oidc",
+                  verified: bool = True) -> tuple:
+        """An identity the provider vouched for -> (user or None, ok | unverified | builtin | not_allowed | pending | disabled).
+        A new account gets the least privilege (viewer; an administrator raises it). One from a public mail service (gmail.com,
+        outlook.com, ...) waits for an administrator's approval: anyone can open such an address. An address the provider did not
+        verify is refused, and the built-in administrator signs in with its password only."""
         email = email.strip().lower()
+        if not verified:
+            self._event(email, "sso", False, f"{provider}: e-mail not verified by the provider")
+            return None, "unverified"
+        if email == INITIAL_EMAIL:
+            self._event(email, "sso", False, "the built-in administrator signs in with its password only")
+            return None, "builtin"
         u = self.get(email)
         if not u:
             if not auto_create:
                 self._event(email, "sso", False, "no account and self-registration off")
-                return None
+                return None, "not_allowed"
+            public = email.rsplit("@", 1)[-1] in PUBLIC_MAIL_DOMAINS
             try:
-                u = self.register(email, "", name, allowed_domains, provider=provider)
+                u = self.register(email, "", name, allowed_domains, provider=provider, role="viewer", status="pending" if public else "active")
             except ValueError as e:
                 self._event(email, "sso", False, str(e))
-                return None
+                return None, "not_allowed"
+            if public:
+                self._event(email, "sso", False, f"{provider}: new account from a public mail service, waiting for an administrator's approval")
+                return None, "pending"
+        if u["status"] == "pending":
+            self._event(email, "sso", False, "waiting for an administrator's approval")
+            return None, "pending"
         if u["status"] != "active":
             self._event(email, "sso", False, "disabled")
-            return None
+            return None, "disabled"
         self.kb._exec("UPDATE users SET last_login=? WHERE id=?", (datetime.now(UTC).isoformat(timespec="seconds"), u["id"]))
         self._event(email, "sso", True, provider)
-        return {k: u[k] for k in ("id", "email", "name", "role", "provider")}
+        return {k: u[k] for k in ("id", "email", "name", "role", "provider")}, "ok"
 
     def set_role(self, uid: int, role: str, valid: set[str] | list[str] | None = None) -> None:
         if role not in (valid if valid is not None else ROLES):

@@ -254,8 +254,11 @@ def _provider(name: str, cfg: dict) -> dict | None:
     if not p or not cfg.get(p["flag"]) or not cfg.get(p["id"]) or not cfg.get(p["secret"]):
         return None
     issuer = p["issuer"] or cfg.get("oidc_issuer", "")
-    if name == "microsoft":
-        issuer = issuer.format(tenant=cfg.get("ms_tenant") or "common")
+    if name == "microsoft":                                   # only the company's own tenant: with "common" any Entra tenant could sign in
+        tenant = (cfg.get("ms_tenant") or "").strip()            # and name any e-mail address it likes (nOAuth)
+        if tenant.lower() in ("", "common", "organizations", "consumers"):
+            return None
+        issuer = issuer.format(tenant=tenant)
     if not issuer:
         return None
     return {"name": name, "label": (cfg.get("oidc_label") or p["label"]) if name == "oidc" else p["label"], "issuer": issuer.rstrip("/"),
@@ -356,9 +359,14 @@ def _finish(name: str, request: Request, code: str, state: str, error: str, svc)
         res = svc.act.stepup.verify_oidc({"id": acct["id"], "email": acct["email"]} if acct else {"id": 0, "email": claims["su"]},
                                          {"email": email, "auth_time": idc.get("auth_time")})
         return RedirectResponse(f"{_safe_next(claims.get('next') or '/')}#stepup={'ok' if res['ok'] else 'failed'}", status_code=302)
-    u = svc.users.sso_login(email, ident.get("name", ""), cfg.get("auth_domains", ""), bool(cfg.get("auth_self_register", True)), provider=name)
+    ev = ident.get("email_verified")                         # Google: always sent; an address the provider did not verify is not proof
+    verified = ev is None or ev is True or str(ev).lower() == "true"
+    u, why = svc.users.sso_check(email, ident.get("name", ""), cfg.get("auth_domains", ""), bool(cfg.get("auth_self_register", True)),
+                                 provider=name, verified=verified)
     if not u:
-        return RedirectResponse(f"/login?error={urllib.parse.quote('account not allowed')}", status_code=302)
+        msg = {"pending": "pending_approval", "unverified": "e-mail not verified by the provider",
+               "builtin": "the built-in administrator signs in with its password"}.get(why, "account not allowed")
+        return RedirectResponse(f"/login?error={urllib.parse.quote(msg)}", status_code=302)
     return RedirectResponse(f"{_safe_next(claims.get('next') or '/')}#sso={access_token(u)}", status_code=302)
 
 
