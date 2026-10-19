@@ -39,7 +39,7 @@ def test_administrators_need_step_up(c):
     assert d["code"] == "act_stepup_required" and d["methods"] == ["password"] and d["tr"] and d["en"]
     assert c.post("/api/auth/stepup", json={}, headers=h).json() == {"method": "password", "weak": True}
     r = c.post("/api/auth/stepup/verify", json={"password": "wrong"}, headers=h)
-    assert r.status_code == 401 and r.json()["detail"]["code"] == "act_stepup_failed"
+    assert r.status_code == 403 and r.json()["detail"]["code"] == "act_stepup_failed"      # not 401: a wrong password keeps the session
     assert c.put("/api/act/policy", json={"act_mode": "guided"}, headers=h).status_code == 428
     ok = c.post("/api/auth/stepup/verify", json={"password": ADMIN[1]}, headers=h).json()
     assert ok["ok"] and ok["method"] == "password" and ok["weak"] is True and ok["valid_until"]

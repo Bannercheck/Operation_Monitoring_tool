@@ -39,7 +39,14 @@ export function Modal({ title, onClose, children, wide }: { title: ReactNode; on
 }
 
 export const Empty = ({ children }: { children?: ReactNode }) => { const { t } = useT(); return <div className="empty">{children ?? t("none")}</div>; };
-export const Err = ({ e }: { e: any }) => (e ? <div className="err">{String(e?.message ?? e)}</div> : null);
+/** An API error: a structured detail ({tr, en, ...}, sent as JSON text) in the interface's language, anything else as it came. */
+export const Err = ({ e }: { e: any }) => {
+  const { lang } = useT();
+  if (!e) return null;
+  let msg = String(e?.message ?? e);
+  try { const j = JSON.parse(msg); if (j && typeof j === "object" && (j.tr || j.en)) msg = String((lang === "en" ? j.en : j.tr) || j.tr || j.en); } catch { /* plain text */ }
+  return <div className="err">{msg}</div>;
+};
 
 export function Tabs<T extends string>({ tabs, value, onChange }: { tabs: { k: T; label: ReactNode }[]; value: T; onChange: (k: T) => void }) {
   return <div className="tabs">{tabs.map((x) => <button key={x.k} className={x.k === value ? "on" : ""} onClick={() => onChange(x.k)}>{x.label}</button>)}</div>;

@@ -66,6 +66,17 @@ def password_policy(password: str) -> str:
     return ""
 
 
+def policy_detail(why: str) -> dict:
+    """A password_policy reason as an API error detail in both languages (the English sentence alone read like "wrong password")."""
+    if why.startswith("password must be at least"):
+        tr = f"Parola en az {MIN_PASSWORD} karakter olmalı"
+    elif why == "password must contain letters and digits":
+        tr = "Parola harf ve rakam içermeli"
+    else:
+        tr = "Bu parola çok yaygın: 'watchover2026', 'admin12345', 'parola1234' gibi kelime + rakam parolalar kabul edilmez"
+    return {"code": "pw_policy", "tr": tr, "en": why}
+
+
 def settings_home():
     from . import settings as _s
     return _s.home()

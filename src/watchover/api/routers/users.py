@@ -101,7 +101,7 @@ def set_password(uid: int, body: PasswordIn, user=Depends(require("page.users"))
         raise HTTPException(403, "only an administrator may reset an administrator's password")
     why = wo_auth.password_policy(body.password)
     if why:
-        raise HTTPException(400, why)
+        raise HTTPException(400, wo_auth.policy_detail(why))
     svc.users.change_password(uid, body.password); return {"ok": True}
 
 

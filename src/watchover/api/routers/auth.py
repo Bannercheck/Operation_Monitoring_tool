@@ -161,11 +161,11 @@ def me(user: dict = Depends(current_user), svc=Depends(services)):
 
 @router.post("/password")
 def change_password(body: PasswordIn, user: dict = Depends(current_user), svc=Depends(services)):
-    if not svc.users.login(user["email"], body.current):
-        raise HTTPException(401, "current password is wrong")
+    if not svc.users.login(user["email"], body.current):   # 400, not 401: the session is fine, a 401 signed the user out
+        raise HTTPException(400, {"code": "pw_current_wrong", "tr": "Mevcut parola yanlış", "en": "The current password is wrong"})
     why = wo_auth.password_policy(body.new)
     if why:
-        raise HTTPException(400, why)
+        raise HTTPException(400, wo_auth.policy_detail(why))
     svc.users.change_password(int(user["id"]), body.new)          # ends the account's other sessions
     return {"ok": True, "token": access_token(svc.users.get(user["email"]))}
 
@@ -409,6 +409,6 @@ def stepup_verify(body: StepUpVerifyIn, user: dict = Depends(current_user), svc=
     except StepUpError as e:
         raise HTTPException(e.status, e.detail())
     if not res["ok"]:
-        raise HTTPException(401, {"code": "act_stepup_failed", "tr": "Doğrulama başarısız", "en": "Verification failed",
+        raise HTTPException(403, {"code": "act_stepup_failed", "tr": "Doğrulama başarısız", "en": "Verification failed",   # 403: the session stays
                                   "attempts_left": res.get("attempts_left")})
     return res

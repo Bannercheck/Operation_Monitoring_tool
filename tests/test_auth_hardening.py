@@ -106,6 +106,19 @@ def test_logout_and_password_change_end_sessions(c):
     assert c.get("/api/auth/me", headers={"Authorization": "Bearer " + r.json()["token"]}).status_code == 200
 
 
+def test_wrong_current_password_or_weak_new_one_keeps_the_session(c):
+    """A wrong current password was a 401, and the interface signs out on 401: the first sign-in's forced change on the RHEL VM
+    then looked like "wrong password". Now 400 with a Turkish / English detail, the session stays; a weak new password says why."""
+    h = {"Authorization": "Bearer " + login(c, "op@corp.com").json()["token"]}
+    r = c.post("/api/auth/password", json={"current": "not-the-password-1", "new": "Yeni-Parola-2027"}, headers=h)
+    assert r.status_code == 400 and r.json()["detail"]["code"] == "pw_current_wrong" and r.json()["detail"]["tr"] == "Mevcut parola yanlış"
+    assert c.get("/api/auth/me", headers=h).status_code == 200
+    r = c.post("/api/auth/password", json={"current": PW, "new": "Watchover2026"}, headers=h)
+    assert r.status_code == 400 and r.json()["detail"]["code"] == "pw_policy" and "yaygın" in r.json()["detail"]["tr"]
+    assert r.json()["detail"]["en"] == "password is too common" and c.get("/api/auth/me", headers=h).status_code == 200
+    assert login(c, "op@corp.com").status_code == 200                                # the password did not change
+
+
 def test_token_is_bound_to_the_account_not_the_email(c):
     tok = login(c, "op@corp.com").json()["token"]
     u = c.svc.users.get("op@corp.com")
