@@ -119,6 +119,26 @@ def test_wrong_current_password_or_weak_new_one_keeps_the_session(c):
     assert login(c, "op@corp.com").status_code == 200                                # the password did not change
 
 
+def test_first_change_needs_no_current_password_right_after_sign_in(c, monkeypatch):
+    """The forced first change asked for the initial password a second time and kept saying "Mevcut parola yanlış" on the RHEL
+    VM: a sign-in under 15 minutes old stands in for it now. Older sign-ins and every ordinary change still need it."""
+    from watchover.api.routers import auth as rauth
+    from watchover.auth import INITIAL_EMAIL, INITIAL_PASSWORD
+    c.svc.kb._exec("UPDATE users SET must_change=1 WHERE email=?", (INITIAL_EMAIL,))
+    h = {"Authorization": "Bearer " + login(c, INITIAL_EMAIL, INITIAL_PASSWORD).json()["token"]}
+    monkeypatch.setattr(rauth, "FIRST_CHANGE_MINUTES", 0)                         # the sign-in is too old now
+    r = c.post("/api/auth/password", json={"new": "Ilk-Yonetici-Parola-9"}, headers=h)
+    assert r.status_code == 400 and r.json()["detail"]["code"] == "pw_current_required"
+    monkeypatch.setattr(rauth, "FIRST_CHANGE_MINUTES", 15)
+    r = c.post("/api/auth/password", json={"new": "Ilk-Yonetici-Parola-9"}, headers=h)
+    assert r.status_code == 200 and not c.svc.users.get(INITIAL_EMAIL)["must_change"]
+    assert login(c, INITIAL_EMAIL, "Ilk-Yonetici-Parola-9").status_code == 200
+    h2 = {"Authorization": "Bearer " + r.json()["token"]}                          # an ordinary change: the current one is required
+    assert c.post("/api/auth/password", json={"new": "Ikinci-Parola-2028"}, headers=h2).json()["detail"]["code"] == "pw_current_required"
+    hop = {"Authorization": "Bearer " + login(c, "op@corp.com").json()["token"]}
+    assert c.post("/api/auth/password", json={"new": "Yeni-Parola-2027"}, headers=hop).json()["detail"]["code"] == "pw_current_required"
+
+
 def test_token_is_bound_to_the_account_not_the_email(c):
     tok = login(c, "op@corp.com").json()["token"]
     u = c.svc.users.get("op@corp.com")

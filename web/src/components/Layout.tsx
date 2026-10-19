@@ -52,7 +52,7 @@ export default function Layout() {
         <Outlet />
       </main>
       {can("page.assist") && <ChatWidget />}
-      {pw && <ChangePassword onDone={async () => { setPw(false); await reload(); }} />}
+      {pw && <ChangePassword first={!!user?.must_change} onDone={async () => { setPw(false); await reload(); }} />}
     </div>
   );
 }
@@ -76,15 +76,26 @@ function ScopeBadge() {
   </span>;
 }
 
-function ChangePassword({ onDone }: { onDone: () => void }) {
+/** The forced first change asks only for the new password, twice: the initial one was typed at sign-in a moment ago (the server
+ *  accepts that for 15 minutes; later, or for any other change, it asks for the current password and the field appears). */
+function ChangePassword({ onDone, first }: { onDone: () => void; first?: boolean }) {
   const { t } = useT();
-  const [cur, setCur] = useState(""); const [nw, setNw] = useState(""); const [err, setErr] = useState<any>(null);
-  const submit = async (e: React.FormEvent) => { e.preventDefault(); setErr(null); try { const r: any = await rotateToken(async () => { const x: any = await post("/auth/password", { current: cur, new: nw }); if (x?.token) setToken(x.token); return x; }); if (r?.token) onDone(); } catch (x) { setErr(x); } };   // a new password ends the old sessions: keep the new token
+  const [cur, setCur] = useState(""); const [nw, setNw] = useState(""); const [nw2, setNw2] = useState(""); const [err, setErr] = useState<any>(null);
+  const [askCur, setAskCur] = useState(!first);
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault(); setErr(null);
+    if (nw !== nw2) { setErr(t("pw_mismatch")); return; }
+    try {
+      const r: any = await rotateToken(async () => { const x: any = await post("/auth/password", askCur ? { current: cur, new: nw } : { new: nw }); if (x?.token) setToken(x.token); return x; });   // a new password ends the old sessions: keep the new token
+      if (r?.token) onDone();
+    } catch (x: any) { if (String(x?.message ?? "").includes("pw_current_required")) setAskCur(true); setErr(x); }
+  };
   return (
     <Modal title={t("pw_change_title")} onClose={() => {}}>
       <form className="stack" onSubmit={submit}><p className="muted">{t("pw_change_lead")}</p>
-        <Field label={t("pw_current")}><input className="input" type="password" value={cur} onChange={(e) => setCur(e.target.value)} required autoComplete="current-password" /><div className="dim small">{t("pw_current_hint")}</div></Field>
+        {askCur && <Field label={t("pw_current")}><input className="input" type="password" value={cur} onChange={(e) => setCur(e.target.value)} required autoComplete="current-password" /><div className="dim small">{t("pw_current_hint")}</div></Field>}
         <Field label={t("pw_new")}><input className="input" type="password" value={nw} onChange={(e) => setNw(e.target.value)} required minLength={10} autoComplete="new-password" /><div className="dim small">{t("pw_rules")}</div></Field>
+        <Field label={t("pw_new2")}><input className="input" type="password" value={nw2} onChange={(e) => setNw2(e.target.value)} required minLength={10} autoComplete="new-password" /></Field>
         <Err e={err} /><div className="row"><Btn kind="primary" type="submit">{t("save")}</Btn></div></form>
     </Modal>
   );

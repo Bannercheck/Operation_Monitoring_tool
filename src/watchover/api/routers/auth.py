@@ -36,8 +36,11 @@ class MfaIn(BaseModel):
 
 
 class PasswordIn(BaseModel):
-    current: str
+    current: str = ""                 # not needed for the first change right after signing in with the initial password
     new: str
+
+
+FIRST_CHANGE_MINUTES = 15             # a must_change account's sign-in this recent stands in for the current password
 
 
 class RegisterIn(BaseModel):
@@ -160,9 +163,20 @@ def me(user: dict = Depends(current_user), svc=Depends(services)):
 
 
 @router.post("/password")
-def change_password(body: PasswordIn, user: dict = Depends(current_user), svc=Depends(services)):
-    if not svc.users.login(user["email"], body.current):   # 400, not 401: the session is fine, a 401 signed the user out
-        raise HTTPException(400, {"code": "pw_current_wrong", "tr": "Mevcut parola yanlış", "en": "The current password is wrong"})
+def change_password(body: PasswordIn, request: Request, user: dict = Depends(current_user), svc=Depends(services)):
+    """The forced first change (must_change) needs no current password while the sign-in that showed it is under
+    FIRST_CHANGE_MINUTES old: the initial password was typed seconds ago, and asking for it again failed on the RHEL VM (a second
+    copy-paste, a browser filling the field with another saved password). Every other change asks for it."""
+    first = False
+    if user.get("must_change"):
+        claims = verify(request.headers.get("authorization", "")[7:].strip())
+        iat_ms = int(claims.get("iatms") or int(claims.get("iat") or 0) * 1000)
+        first = time.time() * 1000 - iat_ms <= FIRST_CHANGE_MINUTES * 60_000
+    if not first:
+        if not body.current:
+            raise HTTPException(400, {"code": "pw_current_required", "tr": "Mevcut parolayı da girin", "en": "Enter the current password too"})
+        if not svc.users.login(user["email"], body.current):   # 400, not 401: the session is fine, a 401 signed the user out
+            raise HTTPException(400, {"code": "pw_current_wrong", "tr": "Mevcut parola yanlış", "en": "The current password is wrong"})
     why = wo_auth.password_policy(body.new)
     if why:
         raise HTTPException(400, wo_auth.policy_detail(why))
