@@ -69,7 +69,7 @@ export function Graph({ nodes, edges, mode }: { nodes: N[]; edges: E[]; mode: "t
       return <g key={n.id} transform={`translate(${p.x},${p.y})`} opacity={near(n.id) ? 1 : 0.2} onMouseEnter={() => setHover(n.id)} onMouseLeave={() => setHover(null)} onClick={click} style={{ cursor: "pointer" }}>
         {n.kind === "db" ? <><rect x={-24} y={-20} width={48} height={40} rx={10} fill="#1e1b4b" stroke={col} strokeWidth={2} /><text y={6} textAnchor="middle" fontSize={16}>🛢</text></>
           : n.kind === "app" ? <><rect x={-20} y={-24} width={40} height={48} rx={9} fill="#0c1e36" stroke={col} strokeWidth={2} /><text y={6} textAnchor="middle" fontSize={16}>📱</text></>
-          : n.kind === "host" ? <><rect x={-26} y={-18} width={52} height={36} rx={6} fill="#0b1220" stroke={n.agent ? "#2dd4bf" : "#64748b"} strokeWidth={2} strokeDasharray={n.agent ? undefined : "4 3"} /><text y={6} textAnchor="middle" fontSize={15}>🖥</text></>
+          : n.kind === "host" ? <><rect x={-26} y={-18} width={52} height={36} rx={6} fill="var(--bg2)" stroke={n.agent ? "var(--accent)" : "var(--dim)"} strokeWidth={2} strokeDasharray={n.agent ? undefined : "4 3"} /><text y={6} textAnchor="middle" fontSize={15}>🖥</text></>
           : <><circle r={r} fill={svcColor(n.id)} fillOpacity={0.18} stroke={col} strokeWidth={3} /><circle r={4} fill={col} /></>}
         <text y={(n.kind === "service" ? r : 26) + 16} textAnchor="middle" className="topo-nl">{n.id.length > 26 ? n.id.slice(0, 25) + "…" : n.id}</text>
         {n.kind === "service" && n.calls ? <text y={(r) + 30} textAnchor="middle" className="topo-ns">{rate(n.rps)}/s · P95 {fmtMs(n.p95_ms)}{n.error_rate ? ` · ${pct(n.error_rate, 1)}` : ""}</text> : null}

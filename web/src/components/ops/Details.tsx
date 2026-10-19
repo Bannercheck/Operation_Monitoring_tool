@@ -12,7 +12,7 @@ const SEV = ["CRITICAL", "ERROR", "WARN", "INFO", "DEBUG"] as const;
 const SEV_COLOR: Record<string, string> = { CRITICAL: "#f87171", ERROR: "#fb923c", WARN: "#fbbf24", INFO: "#60a5fa", DEBUG: "#64748b" };
 const THR: Record<string, number> = { cpu: 85, gpu: 95, memory: 90, disk: 90 };
 const PALETTE = ["#2dd4bf", "#60a5fa", "#a78bfa", "#fbbf24", "#f87171", "#34d399", "#fb923c", "#8b98ad"];
-const TIP = { contentStyle: { background: "#0b1220", border: "1px solid #334155", borderRadius: 10 } };
+const TIP = { contentStyle: { background: "var(--bg2)", border: "1px solid var(--line2)", borderRadius: 10, color: "var(--fg)" } };
 /** services come as {name: n} or as [[name, n], …] depending on the endpoint */
 function topServices(v: any, n = 8): [string, number][] {
   const pairs: [string, number][] = Array.isArray(v) ? v.map((x: any) => (Array.isArray(x) ? [x[0], x[1]] : [x.service ?? x.name, x.n ?? x.count ?? x.events])) : Object.entries(v ?? {}) as any;

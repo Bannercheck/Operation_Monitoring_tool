@@ -5,7 +5,7 @@ import { useT } from "../../i18n";
 
 /** Shared bits of the APM pages: the scope (live feed or an uploaded dataset, time range, environment) kept in the URL so a
  *  link to a service or a trace opens the same view, number formatting and a stable colour per service. */
-export const TIP = { contentStyle: { background: "#0b1220", border: "1px solid #334155", borderRadius: 10, fontSize: 12 } };
+export const TIP = { contentStyle: { background: "var(--bg2)", border: "1px solid var(--line2)", borderRadius: 10, fontSize: 12, color: "var(--fg)" } };
 export const RANGES = [15, 60, 360, 1440, 10080];
 const PAL = ["#2dd4bf", "#60a5fa", "#a78bfa", "#fbbf24", "#93c5fd", "#34d399", "#fb923c", "#22d3ee", "#c084fc", "#facc15", "#4ade80", "#5eead4"];   // no red: red means failure
 
