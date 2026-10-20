@@ -53,3 +53,4 @@ data/.api.key
 # the built-in administrator's first password (random per installation; never in git)
 initial-admin-password
 initial-admin-password.tmp
+.lbtest/

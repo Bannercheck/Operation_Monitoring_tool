@@ -125,6 +125,42 @@ def test_edge_lbconf_prints_the_load_balancer_configuration(stage):
     assert bad.returncode == 2 and subprocess.run(["sh", str(ROOT / "scripts" / "lb-config.sh"), "cisco", "a.b", "10.0.0.1"]).returncode == 2
 
 
+def test_edge_lbtest_rehearses_the_load_balancer(stage):
+    """edge lbtest: an HAProxy container from 'edge lbconf haproxy' joins the edge's network on 9443 / 9080, is trusted for the
+    test, and the checks run: healthz through it, http -> https, the client's address (not the LB's) in the edge's log with a
+    forged X-Forwarded-For ignored; stop removes it and restores the trusted list (v1.59.2)."""
+    d, env = stage
+    fake = d / "bin" / "docker"
+    fake.write_text(fake.read_text().replace('echo "docker $*" >> "$FAKE_LOG"\n', 'echo "docker $*" >> "$FAKE_LOG"\n'
+        '[[ "$*" == "inspect watchover-edge"* ]] && { echo "watchover_default "; exit 0; }\n'
+        '[[ "$*" == "inspect watchover-lbtest"* ]] && { echo "10.89.0.50 "; exit 0; }\n'
+        '[[ "$*" == "logs --tail 300 watchover-edge"* ]] && { echo "${FAKE_SEEN:-10.89.0.1} - - [x] \\"GET /api/health?lbtest=tok1 HTTP/1.1\\" 200"; exit 0; }\n', 1))
+    _tools(d, ["curl"], 'echo "curl $*" >> "$FAKE_LOG"; case "$*" in *%{redirect_url}*) printf "301 https://watchover.sirket.test/" ;; *http_code*) printf 200 ;; esac\n')
+    run(stage, "install")
+    run(stage, "edge", "public", "watchover.sirket.test", "10.20.0.10/32")
+    e = dict(env, WATCHOVER_LBTEST_TOKEN="tok1", WATCHOVER_LBTEST_WAIT="1")
+    r = subprocess.run(["bash", str(d / "watchover.sh"), "edge", "lbtest"], cwd=d, env=e, capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stdout + r.stderr
+    calls = (d / "calls.log").read_text()
+    assert "run -d --name watchover-lbtest --user 0 --network watchover_default -p 9443:9443 -p 9080:9080" in calls
+    cfg = (d / ".lbtest" / "haproxy.cfg").read_text()
+    assert "bind *:9443 ssl crt /etc/haproxy/certs/watchover.sirket.test.pem" in cfg and "server watchover1 edge:443 ssl verify required" in cfg
+    assert "resolvers podman init-addr last,libc,none check check-sni watchover.sirket.test" in cfg and "option forwardfor" in cfg
+    assert oct((d / ".lbtest" / "front.pem").stat().st_mode)[-3:] == "600"
+    assert "WATCHOVER_EDGE_TRUSTED=10.20.0.10/32 10.89.0.50/32" in (d / ".env").read_text()
+    for part in ("/healthz through the LB -> 200", "http on the LB -> 301 https://", "the edge logs the client (10.89.0.1), not the LB (10.89.0.50)",
+                 "the load balancer path works"):
+        assert part in r.stdout, part
+    r = subprocess.run(["bash", str(d / "watchover.sh"), "edge", "lbtest"], cwd=d, env=dict(e, FAKE_SEEN="203.0.113.66"), capture_output=True, text=True, timeout=60)
+    assert r.returncode == 1 and "a forged X-Forwarded-For was believed" in r.stdout
+    r = subprocess.run(["bash", str(d / "watchover.sh"), "edge", "lbtest"], cwd=d, env=dict(e, FAKE_SEEN="10.89.0.50"), capture_output=True, text=True, timeout=60)
+    assert r.returncode == 1 and "X-Forwarded-For was not used" in r.stdout
+    assert "WATCHOVER_EDGE_TRUSTED=10.20.0.10/32 10.89.0.50/32\n" in (d / ".env").read_text()           # not added twice
+    r = run(stage, "edge", "lbtest", "stop")
+    assert r.returncode == 0 and "WATCHOVER_EDGE_TRUSTED=10.20.0.10/32\n" in (d / ".env").read_text() and not (d / ".lbtest").exists()
+    assert "rm -f watchover-lbtest" in (d / "calls.log").read_text()
+
+
 def test_env_comment_on_an_empty_value_is_cleaned(stage):
     """An older .env.docker.example had "WATCHOVER_EDGE_TRUSTED=   # load balancers ... (./watchover.sh edge lb)": Docker Compose
     reads that comment as the value, nginx got "/" as a trusted proxy and would not start. Every write_env cleans such lines."""

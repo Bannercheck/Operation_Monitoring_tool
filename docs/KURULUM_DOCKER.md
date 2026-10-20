@@ -670,6 +670,8 @@ Ad sertifikanın ilk adı olur (sunucu adı ve IP de kalır), SSO geri dönüş 
 
 **LB yapılandırması hazır gelir (v1.59).** `sudo watchover edge lbconf f5 <VIP>` (ya da `netscaler`, `haproxy`, `all`) bu sunucunun adı, IP'si ve portlarıyla gözden geçirilmeye hazır parçaları yazdırır: `/healthz` sağlık kontrolü (yanıt `{"ok":true,...}`), TLS'i LB'de şirket sertifikasıyla açıp sunucuya yeniden şifreleme, `X-Forwarded-For`, 300 sn boşta zaman aşımı, websocket, 80 → 443 yönlendirme; F5'te ayrıca TCP geçişi (passthrough) seçeneği. Uygulandıktan sonra `sudo watchover edge lb <LB'nin SNAT / self IP'leri>`.
 
+**LB provası (v1.59.2).** Gerçek LB tanımlanmadan önce aynı yolu sunucunun kendisinde denemek için `sudo watchover edge lbtest`: `edge lbconf haproxy` yapılandırmasından bir HAProxy konteyneri edge'in önüne 9443 / 9080'de kurulur, sınama için güvenilir yapılır ve gerçek LB'nin geçmesi gerekenler denetlenir: LB üzerinden `/healthz` → 200 (LB'ye ve LB'den sunucuya giden iki TLS bağlantısı da doğrulanır), http → https, edge'in logunda LB'nin değil istemcinin adresi, istemcinin uydurduğu `X-Forwarded-For` yok sayılır. Bir dizüstünden `https://<ad>:9443` ile de açılır (9443 yalnız prova süresince açık). Kaldırmak: `sudo watchover edge lbtest stop` (güvenilir LB listesi eski haline döner).
+
 **3. Sertifika: herkesin tarayıcısında uyarısız.** Kurulumun kendi CA'sı yalnız kök sertifikasını yükleyen makinelerde güvenilir olur; "VPN'deki herkes" için şirket CA'sından sertifika alın. Şirket bilgisayarları o köke zaten güvenir.
 
 ```bash

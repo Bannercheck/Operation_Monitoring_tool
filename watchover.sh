@@ -24,6 +24,7 @@
 #   ./watchover.sh edge public NAME [LB CIDR...]   one address for the company network: NAME on the load balancer (VPN + firewall
 #                                   decide who reaches it); prints what the network team sets up. edge csr [NAME] / edge company ISSUED
 #                                   [CHAIN]: a certificate from the company CA (no root to install on anyone's machine); edge check [NAME]
+#   ./watchover.sh edge lbtest [stop]   rehearse the load balancer on this server (a test HAProxy on 9443 / 9080 + the checks)
 #   ./watchover.sh doctor [--check] the address does not open? checks containers, the edge, the name (Bonjour) and repairs what it can
 #   ./watchover.sh backup [--keep N] [--no-logs]  PostgreSQL dump + data volume (--no-logs: without /data/logs) + .env
 #                                   -> ./backups/watchover-YYYYMMDD-HHMM.tgz (WATCHOVER_BACKUP_DIR; oldest beyond N=14 removed)
@@ -683,6 +684,74 @@ llm_auto() {
   [ "$chat" = "$cur" ] && [ "$chat" != qwen2.5:14b-instruct ] || $COMPOSE $(profiles) up -d --no-deps ollama dashboard >/dev/null 2>&1 || true
   say "local LLM: $chat (measured here: $sum; again: ./watchover.sh llm auto)"
 }
+# A rehearsal of the load balancer on this server (./watchover.sh edge lbtest [stop]): an HAProxy container built from
+# 'edge lbconf haproxy' stands in front of the edge on 9443 / 9080, joins the edge's container network and is trusted for the
+# test; then the checks the real LB (F5 ...) must pass: /healthz through it with both TLS legs verified, http -> https, the
+# client's address reaching the edge instead of the LB's, a forged X-Forwarded-For ignored. 'stop' removes it and restores
+# the trusted list. Nothing of the real setup changes.
+LBTEST_IMG="${WATCHOVER_LBTEST_IMAGE:-docker.io/library/haproxy:2.9-alpine}"
+edge_lbtest() {
+  local d=.lbtest name net lbip ca port old code red tok line seen z fails=0
+  okl() { printf '  \033[32m✓\033[0m %s\n' "$*"; }; badl() { printf '  \033[31m✗\033[0m %s\n' "$*"; fails=$((fails + 1)); }
+  if [ "${1:-start}" = stop ]; then
+    $ENGINE rm -f watchover-lbtest >/dev/null 2>&1 || true
+    if [ -f "$d/trusted.before" ]; then
+      env_set WATCHOVER_EDGE_TRUSTED "$(cat "$d/trusted.before")"; $COMPOSE $(profiles) up -d --no-deps --force-recreate edge dashboard >/dev/null 2>&1 || true
+    fi
+    if [ -f "$d/fw" ]; then firewall-cmd --zone="$(cat "$d/fw")" --remove-port=9443/tcp >/dev/null 2>&1 || true; fi
+    rm -rf "${d:?}"; say "test load balancer removed; trusted load balancers: $(env_get WATCHOVER_EDGE_TRUSTED || true)"; return 0
+  fi
+  [ "$(env_get WATCHOVER_EDGE)" = 1 ] || die "the edge is off: ./watchover.sh edge public NAME first"
+  name=$(public_name); [ -n "$name" ] || die "no public name yet: ./watchover.sh edge public NAME first"
+  ca=certs/watchover-root.crt; [ "$(env_get WATCHOVER_EDGE_TLS)" != company ] || ca=certs/watchover-ca.crt
+  [ -f "$ca" ] && [ -f certs/watchover.crt ] && [ -f certs/watchover.key ] || die "no certificate / CA in ./certs ($ca): ./watchover.sh edge public $name"
+  port=$(env_get WATCHOVER_EDGE_HTTPS_PORT); port=${port:-443}
+  net=$($ENGINE inspect watchover-edge --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null | awk '{print $1}' || true)
+  [ -n "$net" ] || die "the edge container is not running: ./watchover.sh doctor"
+  $ENGINE rm -f watchover-lbtest >/dev/null 2>&1 || true
+  mkdir -p "$d"; chmod 700 "$d"
+  [ -f "$d/trusted.before" ] || env_get WATCHOVER_EDGE_TRUSTED > "$d/trusted.before"
+  ( umask 077; cat certs/watchover.crt certs/watchover.key > "$d/front.pem" )
+  { printf 'global\n    log stdout format raw local0\nresolvers podman\n    parse-resolv-conf\n    hold valid 5s\n'
+    printf 'defaults\n    mode http\n    log global\n    option httplog\n    timeout connect 5s\n    timeout client 300s\n    timeout server 300s\n'
+    WATCHOVER_LB_HTTPS_PORT=9443 WATCHOVER_LB_HTTP_PORT=9080 sh scripts/lb-config.sh haproxy "$name" edge "$port" 80 '*' \
+      | sed 's/ check check-sni / resolvers podman init-addr last,libc,none check check-sni /'
+  } > "$d/haproxy.cfg"
+  say "test load balancer (HAProxy, the 'edge lbconf haproxy' configuration) in front of the edge: https://$name:9443"
+  $ENGINE run -d --name watchover-lbtest --user 0 --network "$net" -p 9443:9443 -p 9080:9080 \
+    -v "$PWD/$d/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro,z" -v "$PWD/$d/front.pem:/etc/haproxy/certs/$name.pem:ro,z" \
+    -v "$PWD/$ca:/etc/haproxy/watchover-root.crt:ro,z" "$LBTEST_IMG" >/dev/null || die "the test load balancer did not start: $ENGINE logs watchover-lbtest"
+  lbip=$($ENGINE inspect watchover-lbtest --format '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' 2>/dev/null | awk '{print $1}' || true)
+  [ -n "$lbip" ] || die "no address for the test load balancer: $ENGINE logs watchover-lbtest"
+  old=$(cat "$d/trusted.before")
+  case " $old " in *" $lbip/32 "*) ;; *)
+    say "trusting it for the test ($lbip/32, as 'edge lb' does for the real one): the edge and the dashboard restart"
+    env_set WATCHOVER_EDGE_TRUSTED "$(echo $old "$lbip/32")"; $COMPOSE $(profiles) up -d --no-deps --force-recreate edge dashboard >/dev/null ;; esac
+  for _ in $(seq 1 "${WATCHOVER_LBTEST_WAIT:-45}"); do
+    code=$(curl -s --noproxy '*' -o /dev/null -w '%{http_code}' --max-time 5 --cacert "$ca" --resolve "$name:9443:127.0.0.1" "https://$name:9443/healthz" 2>/dev/null || true)
+    [ "$code" = 200 ] && break; sleep 2
+  done
+  say "checks (what the real load balancer must pass)"
+  [ "$code" = 200 ] && okl "https://$name:9443/healthz through the LB -> 200 (TLS to the LB and from the LB to the edge both verified, SNI $name)" \
+    || badl "https://$name:9443/healthz through the LB -> HTTP ${code:-000} ($ENGINE logs watchover-lbtest)"
+  red=$(curl -s --noproxy '*' -o /dev/null -w '%{http_code} %{redirect_url}' --max-time 10 -H "Host: $name" http://127.0.0.1:9080/ 2>/dev/null || true)
+  case "$red" in "301 https://"*) okl "http on the LB -> $red" ;; *) badl "http on the LB did not redirect to https: ${red:-no answer}" ;; esac
+  tok="${WATCHOVER_LBTEST_TOKEN:-$(rand 6)}"
+  curl -s --noproxy '*' -o /dev/null --max-time 10 --cacert "$ca" --resolve "$name:9443:127.0.0.1" -H "X-Forwarded-For: 203.0.113.66" \
+    "https://$name:9443/api/health?lbtest=$tok" >/dev/null 2>&1 || true
+  sleep 1
+  line=$($ENGINE logs --tail 300 watchover-edge 2>&1 | grep "lbtest=$tok" | tail -1 || true); seen=$(printf '%s' "$line" | awk '{print $1}')
+  if [ -z "$seen" ]; then badl "the edge did not log the test request ($ENGINE logs watchover-edge)"
+  elif [ "$seen" = 203.0.113.66 ]; then badl "a forged X-Forwarded-For was believed ($seen)"
+  elif [ "$seen" = "$lbip" ]; then badl "the edge logged the LB's own address ($lbip): its X-Forwarded-For was not used (edge lb)"
+  else okl "the edge logs the client ($seen), not the LB ($lbip); the forged X-Forwarded-For 203.0.113.66 was ignored"; fi
+  if [ "$(id -u)" = 0 ] && command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
+    z=$(env_get WATCHOVER_FW_ZONE); z=${z:-$(firewall-cmd --get-default-zone 2>/dev/null || echo public)}
+    firewall-cmd --zone="$z" --add-port=9443/tcp >/dev/null 2>&1 && echo "$z" > "$d/fw"      # until 'lbtest stop' or a reboot
+  fi
+  say "from a laptop: https://$name:9443 (hosts entry: $name -> $(host_ip)); remove the rehearsal: ./watchover.sh edge lbtest stop"
+  [ "$fails" = 0 ] && say "the load balancer path works: the F5 configuration (edge lbconf f5) does the same" || { say "$fails check(s) failed"; return 1; }
+}
 up() {   # inside the updater its own container is left alone (its profile is not active, so it is not an orphan either)
   $COMPOSE $(profiles) up -d --remove-orphans
   in_updater && return 0
@@ -1025,6 +1094,8 @@ DNS.$i = $h"; fi
         name=$(public_name); [ -n "$name" ] || die "no public name yet: ./watchover.sh edge public NAME first"
         p=$(env_get WATCHOVER_EDGE_HTTPS_PORT); hp=$(env_get WATCHOVER_EDGE_HTTP_PORT)
         sh scripts/lb-config.sh "${3:-all}" "$name" "$(host_ip)" "${p:-443}" "${hp:-80}" "${4:-<VIP>}" ;;
+      lbtest)   # rehearse the load balancer here: a test HAProxy in front of the edge (9443 / 9080) and the checks the real LB must pass
+        edge_lbtest "${3:-start}" ;;
       check)   # is https://NAME ready for colleagues: in DNS, on the certificate, answering here and through the load balancer
         name="${3:-$(public_name)}"; [ -n "$name" ] || die "usage: ./watchover.sh edge check [NAME]"
         p=$(env_get WATCHOVER_EDGE_HTTPS_PORT); p=${p:-443}; fails=0
@@ -1046,7 +1117,7 @@ DNS.$i = $h"; fi
         [ -n "$(env_get WATCHOVER_EDGE_TRUSTED)" ] && okl "trusted load balancers: $(env_get WATCHOVER_EDGE_TRUSTED)" \
           || notel "no load balancer trusted yet: ./watchover.sh edge lb <its SNAT addresses> (real client addresses in logs)"
         [ "$fails" = 0 ] && say "ready: colleagues on the company network open https://$name" || { say "$fails problem(s) above"; exit 1; } ;;
-      *) die "usage: ./watchover.sh edge on [name[,name2,ip]] | off | cert | lb CIDR... | public NAME [LB CIDR...] | csr [NAME] | company ISSUED [CHAIN] | lbconf [f5|netscaler|haproxy|all] [VIP] | check [NAME]     e.g.  edge on watchover.local" ;; esac ;;
+      *) die "usage: ./watchover.sh edge on [name[,name2,ip]] | off | cert | lb CIDR... | public NAME [LB CIDR...] | csr [NAME] | company ISSUED [CHAIN] | lbconf [f5|netscaler|haproxy|all] [VIP] | lbtest [stop] | check [NAME]     e.g.  edge on watchover.local" ;; esac ;;
   api)     say "the API now runs inside the dashboard container: http://$(host_ip):$(env_get WATCHOVER_UI_PORT || echo 8501)/api/docs" ;;
   backup)   # --no-logs: without the raw logs under /data/logs (the nightly timer's choice: they are large); on disks of their own they are never in it
     need_docker; keep="${WATCHOVER_BACKUP_KEEP:-$(env_get WATCHOVER_BACKUP_KEEP)}"; keep="${keep:-14}"; logs=1; out=""
