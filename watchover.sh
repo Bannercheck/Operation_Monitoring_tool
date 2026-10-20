@@ -25,6 +25,7 @@
 #                                   decide who reaches it); prints what the network team sets up. edge csr [NAME] / edge company ISSUED
 #                                   [CHAIN]: a certificate from the company CA (no root to install on anyone's machine); edge check [NAME]
 #   ./watchover.sh edge lbtest [stop]   rehearse the load balancer on this server (a test HAProxy on 9443 / 9080 + the checks)
+#   ./watchover.sh edge tls 1.2|1.3     TLS 1.2 + 1.3 (default) or TLS 1.3 only on the edge; edge check shows what is accepted
 #   ./watchover.sh doctor [--check] the address does not open? checks containers, the edge, the name (Bonjour) and repairs what it can
 #   ./watchover.sh backup [--keep N] [--no-logs]  PostgreSQL dump + data volume (--no-logs: without /data/logs) + .env
 #                                   -> ./backups/watchover-YYYYMMDD-HHMM.tgz (WATCHOVER_BACKUP_DIR; oldest beyond N=14 removed)
@@ -1094,6 +1095,13 @@ DNS.$i = $h"; fi
         name=$(public_name); [ -n "$name" ] || die "no public name yet: ./watchover.sh edge public NAME first"
         p=$(env_get WATCHOVER_EDGE_HTTPS_PORT); hp=$(env_get WATCHOVER_EDGE_HTTP_PORT)
         sh scripts/lb-config.sh "${3:-all}" "$name" "$(host_ip)" "${p:-443}" "${hp:-80}" "${4:-<VIP>}" ;;
+      tls)   # the TLS versions the edge speaks: 1.2 = TLS 1.2 + 1.3 (default; older load balancers and clients), 1.3 = TLS 1.3 only
+        v="${3:-}"; [ -n "$v" ] || { say "TLS: $( [ "$(env_get WATCHOVER_EDGE_TLS_MIN)" = 1.3 ] && echo '1.3 only' || echo '1.2 + 1.3')"; say "usage: ./watchover.sh edge tls 1.2|1.3"; exit 0; }
+        case "$v" in 1.2|1.3) ;; *) die "usage: ./watchover.sh edge tls 1.2|1.3   (1.2 = TLS 1.2 + 1.3, 1.3 = TLS 1.3 only)" ;; esac
+        env_set WATCHOVER_EDGE_TLS_MIN "$v"
+        [ "$(env_get WATCHOVER_EDGE)" = 1 ] && $COMPOSE $(profiles) up -d --no-deps --force-recreate edge >/dev/null
+        [ "$v" = 1.3 ] && say "TLS 1.3 only. The load balancer's server-side profile must speak TLS 1.3 too (F5 BIG-IP: server-ssl without no-tlsv1.3), else its health check fails: ./watchover.sh edge lbtest" \
+          || say "TLS 1.2 + 1.3 (TLS 1.2 with forward-secret AEAD suites only)" ;;
       lbtest)   # rehearse the load balancer here: a test HAProxy in front of the edge (9443 / 9080) and the checks the real LB must pass
         edge_lbtest "${3:-start}" ;;
       check)   # is https://NAME ready for colleagues: in DNS, on the certificate, answering here and through the load balancer
@@ -1106,6 +1114,13 @@ DNS.$i = $h"; fi
         else badl "the certificate does not name $name: ./watchover.sh edge public $name (own CA) or edge csr $name (company CA)"; fi
         code=$(curl -sk --noproxy '*' -o /dev/null -w '%{http_code}' --max-time 8 --resolve "$name:$p:127.0.0.1" "https://$name:$p/healthz" 2>/dev/null || true); code=${code:-000}
         [ "$code" = 200 ] && okl "this server answers https://$name:$p/healthz" || badl "this server: https://$name:$p/healthz -> HTTP $code (./watchover.sh doctor)"
+        if command -v openssl >/dev/null 2>&1; then   # the versions this server speaks: 1.3 always, 1.2 unless edge tls 1.3, never 1.0 / 1.1
+          tls_ok() { echo | openssl s_client -connect "127.0.0.1:$p" -servername "$name" "$@" 2>/dev/null | grep -q '^ *Protocol *: *TLSv1\.[0-9]\|^New, TLSv1\.[0-9]'; }
+          tls_ok -tls1_3 && okl "TLS 1.3 accepted" || badl "TLS 1.3 not accepted on :$p"
+          if [ "$(env_get WATCHOVER_EDGE_TLS_MIN)" = 1.3 ]; then tls_ok -tls1_2 && badl "TLS 1.2 still accepted although edge tls 1.3 is set (recreate: ./watchover.sh edge tls 1.3)" || okl "TLS 1.2 refused (edge tls 1.3)"
+          else tls_ok -tls1_2 && okl "TLS 1.2 accepted (strong suites only; TLS 1.3 only: ./watchover.sh edge tls 1.3)" || badl "TLS 1.2 not accepted on :$p"; fi
+          for v in tls1 tls1_1; do tls_ok "-$v" && badl "an old protocol ($v) is accepted on :$p" || true; done
+        fi
         addr=$({ getent hosts "$name" 2>/dev/null || true; } | awk '{print $1; exit}')
         if [ -z "$addr" ]; then badl "DNS: $name does not resolve (yet): an A record pointing to the load balancer's VIP"
         else
@@ -1117,7 +1132,7 @@ DNS.$i = $h"; fi
         [ -n "$(env_get WATCHOVER_EDGE_TRUSTED)" ] && okl "trusted load balancers: $(env_get WATCHOVER_EDGE_TRUSTED)" \
           || notel "no load balancer trusted yet: ./watchover.sh edge lb <its SNAT addresses> (real client addresses in logs)"
         [ "$fails" = 0 ] && say "ready: colleagues on the company network open https://$name" || { say "$fails problem(s) above"; exit 1; } ;;
-      *) die "usage: ./watchover.sh edge on [name[,name2,ip]] | off | cert | lb CIDR... | public NAME [LB CIDR...] | csr [NAME] | company ISSUED [CHAIN] | lbconf [f5|netscaler|haproxy|all] [VIP] | lbtest [stop] | check [NAME]     e.g.  edge on watchover.local" ;; esac ;;
+      *) die "usage: ./watchover.sh edge on [name[,name2,ip]] | off | cert | lb CIDR... | public NAME [LB CIDR...] | csr [NAME] | company ISSUED [CHAIN] | lbconf [f5|netscaler|haproxy|all] [VIP] | lbtest [stop] | tls 1.2|1.3 | check [NAME]     e.g.  edge on watchover.local" ;; esac ;;
   api)     say "the API now runs inside the dashboard container: http://$(host_ip):$(env_get WATCHOVER_UI_PORT || echo 8501)/api/docs" ;;
   backup)   # --no-logs: without the raw logs under /data/logs (the nightly timer's choice: they are large); on disks of their own they are never in it
     need_docker; keep="${WATCHOVER_BACKUP_KEEP:-$(env_get WATCHOVER_BACKUP_KEEP)}"; keep="${keep:-14}"; logs=1; out=""

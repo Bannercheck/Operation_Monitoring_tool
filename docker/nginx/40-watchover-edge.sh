@@ -4,9 +4,16 @@
 #  - realip.inc: the trusted load balancers from WATCHOVER_EDGE_TRUSTED ("10.0.0.5/32 10.0.1.0/24", ./watchover.sh edge lb). Only
 #    from those addresses is X-Forwarded-For believed; with none set, the client address is the connecting one and a forged
 #    header changes nothing.
+#  - tls.inc: the TLS versions: 1.2 and 1.3 (default), or 1.3 only with WATCHOVER_EDGE_TLS_MIN=1.3 (./watchover.sh edge tls 1.3)
 #  - the image's own default.conf goes (it would claim port 80 a second time).
 set -eu
 rm -f /etc/nginx/conf.d/default.conf
+case "${WATCHOVER_EDGE_TLS_MIN:-1.2}" in
+  1.3) printf 'ssl_protocols TLSv1.3;\n' > /etc/nginx/conf.d/tls.inc; echo "watchover-edge: TLS 1.3 only" ;;
+  1.2|"") printf 'ssl_protocols TLSv1.2 TLSv1.3;\n' > /etc/nginx/conf.d/tls.inc ;;
+  *) echo "watchover-edge: WATCHOVER_EDGE_TLS_MIN is 1.2 or 1.3, not '${WATCHOVER_EDGE_TLS_MIN}': using 1.2" >&2
+     printf 'ssl_protocols TLSv1.2 TLSv1.3;\n' > /etc/nginx/conf.d/tls.inc ;;
+esac
 ns=$(awk '$1 == "nameserver" && $2 !~ /%/ { if ($2 ~ /:/) printf "[%s] ", $2; else printf "%s ", $2 }' /etc/resolv.conf 2>/dev/null || true)
 printf 'resolver %s valid=10s ipv6=off;\nresolver_timeout 3s;\n' "${ns:-127.0.0.11}" > /etc/nginx/conf.d/resolver.inc
 out=/etc/nginx/conf.d/realip.inc

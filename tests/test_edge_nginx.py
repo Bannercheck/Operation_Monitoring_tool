@@ -62,8 +62,27 @@ def test_trusted_proxies_are_validated(tmp_path):
     assert (tmp_path / "realip.inc").read_text() == ""                                            # no load balancer: nothing believed
 
 
-@pytest.mark.skipif(not shutil.which("nginx"), reason="nginx not installed")
-def test_filled_template_passes_nginx_t(tmp_path):
+def _incs(tmp_path, tls_min=""):
+    """The .inc files the container's start script writes, written into tmp_path."""
+    script = ENTRY.read_text(encoding="utf-8").replace("/etc/nginx/conf.d", str(tmp_path))
+    resolv = tmp_path / "resolv.conf"; resolv.write_text("nameserver 127.0.0.11\n")
+    env = {"PATH": "/usr/bin:/bin", "WATCHOVER_EDGE_TLS_MIN": tls_min}
+    return subprocess.run(["sh", "-c", script.replace("/etc/resolv.conf", str(resolv))], env=env, capture_output=True, text=True, check=True)
+
+
+def test_tls_versions_from_the_environment(tmp_path):
+    for v, want in (("", "ssl_protocols TLSv1.2 TLSv1.3;"), ("1.2", "ssl_protocols TLSv1.2 TLSv1.3;"), ("1.3", "ssl_protocols TLSv1.3;"),
+                    ("1.0;include /etc/passwd", "ssl_protocols TLSv1.2 TLSv1.3;")):
+        r = _incs(tmp_path, v)
+        assert (tmp_path / "tls.inc").read_text().strip() == want, v
+    assert "using 1.2" in r.stderr
+    t = TPL.read_text(encoding="utf-8")
+    assert "include /etc/nginx/conf.d/tls.inc;" in t and not re.search(r"^\s*ssl_protocols ", t, re.M)   # one place decides the versions
+    ciphers = re.search(r"ssl_ciphers (\S+);", t).group(1).split(":")
+    assert ciphers and all(c.startswith("ECDHE-") and ("GCM" in c or "CHACHA20" in c) for c in ciphers)   # forward-secret AEAD only
+
+
+def _edge_conf(tmp_path, tls_min=""):
     crt = tmp_path / "certs"
     subprocess.run(["sh", str(ROOT / "scripts" / "edge-cert.sh"), str(crt), "watchover.local,10.0.0.7"], check=True, capture_output=True)
     t = TPL.read_text(encoding="utf-8")
@@ -74,12 +93,45 @@ def test_filled_template_passes_nginx_t(tmp_path):
     out = subprocess.run(["nginx", "-v"], capture_output=True, text=True).stderr
     if tuple(int(x) for x in re.findall(r"nginx/(\d+)\.(\d+)", out)[0]) < (1, 25):
         t = t.replace("    http2 on;\n", "")                    # `http2 on` is 1.25.1+ (the image is 1.28)
-    (tmp_path / "realip.inc").write_text(""); (tmp_path / "resolver.inc").write_text("resolver 127.0.0.11;\n")
+    _incs(tmp_path, tls_min)
     (tmp_path / "w.conf").write_text(t)
     (tmp_path / "nginx.conf").write_text(f"pid {tmp_path}/n.pid; error_log {tmp_path}/e.log; events {{}}\n"
                                          f"http {{ access_log off; client_body_temp_path {tmp_path}; proxy_temp_path {tmp_path}; include {tmp_path}/w.conf; }}\n")
-    r = subprocess.run(["nginx", "-t", "-c", str(tmp_path / "nginx.conf")], capture_output=True, text=True)
+    return tmp_path / "nginx.conf"
+
+
+@pytest.mark.skipif(not shutil.which("nginx"), reason="nginx not installed")
+def test_filled_template_passes_nginx_t(tmp_path):
+    r = subprocess.run(["nginx", "-t", "-c", str(_edge_conf(tmp_path))], capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
+
+
+def _accepts(port: int, *flags: str) -> bool:
+    r = subprocess.run(["openssl", "s_client", "-connect", f"127.0.0.1:{port}", "-servername", "watchover.local", *flags],
+                       input="", capture_output=True, text=True, timeout=15)
+    return bool(re.search(r"^New, TLSv1\.\d", r.stdout, re.M))
+
+
+@pytest.mark.skipif(not (shutil.which("nginx") and shutil.which("openssl")), reason="nginx / openssl not installed")
+@pytest.mark.parametrize("tls_min", ["1.2", "1.3"])
+def test_edge_speaks_tls13_and_never_old_protocols(tmp_path, tls_min):
+    """A running edge: TLS 1.3 always; TLS 1.2 unless 1.3 only; TLS 1.0 / 1.1 and a CBC suite never."""
+    import time
+    conf = _edge_conf(tmp_path, tls_min)
+    p = subprocess.Popen(["nginx", "-c", str(conf), "-g", "daemon off;"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        for _ in range(50):
+            if (tmp_path / "n.pid").exists():
+                break
+            time.sleep(0.1)
+        time.sleep(0.3)
+        assert _accepts(18443, "-tls1_3")
+        assert _accepts(18443, "-tls1_2") is (tls_min == "1.2")
+        weak = ("-cipher", "DEFAULT@SECLEVEL=0")                  # the client would try them: the server is what refuses
+        assert not _accepts(18443, "-tls1_1", *weak) and not _accepts(18443, "-tls1", *weak)
+        assert not _accepts(18443, "-tls1_2", "-cipher", "ECDHE-RSA-AES128-SHA256:AES128-GCM-SHA256")   # CBC and RSA key exchange refused
+    finally:
+        p.terminate(); p.wait(timeout=10)
 
 
 @pytest.mark.skipif(not shutil.which("openssl"), reason="openssl not installed")

@@ -121,8 +121,26 @@ def test_edge_lbconf_prints_the_load_balancer_configuration(stage):
         assert part in out, part
     assert ":443" in out and "watchover_pool" in out
     assert "edge lbconf f5|netscaler|haproxy" in run(stage, "edge", "public", "watchover.sirket.test").stdout
+    for part in ("no-tlsv1 no-tlsv1.1", "TLS13-AES128-GCM-SHA256", "cipher-group watchover_tls", "-tls13 ENABLED -denySSLReneg ALL",
+                 "TLS1.3-AES256-GCM-SHA384", "ssl-min-ver TLSv1.2 ciphers ECDHE-", "ciphersuites TLS_AES_128_GCM_SHA256"):   # TLS 1.2 + 1.3 only (v1.59.5)
+        assert part in out, part
+    assert "$tls1" not in out and "CBC" not in out
     bad = subprocess.run(["sh", str(ROOT / "scripts" / "lb-config.sh"), "f5", "a;reboot", "10.0.0.1"], capture_output=True, text=True)
     assert bad.returncode == 2 and subprocess.run(["sh", str(ROOT / "scripts" / "lb-config.sh"), "cisco", "a.b", "10.0.0.1"]).returncode == 2
+
+
+def test_edge_tls_sets_the_versions(stage):
+    """edge tls 1.2|1.3: TLS 1.2 + 1.3 (default) or TLS 1.3 only on the edge, kept in .env (WATCHOVER_EDGE_TLS_MIN)."""
+    d, _ = stage
+    run(stage, "install")
+    assert "1.2 + 1.3" in run(stage, "edge", "tls").stdout
+    r = run(stage, "edge", "tls", "1.3")
+    assert r.returncode == 0 and "WATCHOVER_EDGE_TLS_MIN=1.3" in (d / ".env").read_text() and "TLS 1.3 only" in r.stdout
+    assert "1.3 only" in run(stage, "edge", "tls").stdout
+    assert run(stage, "edge", "tls", "1.0").returncode != 0 and "WATCHOVER_EDGE_TLS_MIN=1.3" in (d / ".env").read_text()
+    run(stage, "edge", "tls", "1.2")
+    assert "WATCHOVER_EDGE_TLS_MIN=1.2" in (d / ".env").read_text()
+    assert "WATCHOVER_EDGE_TLS_MIN: ${WATCHOVER_EDGE_TLS_MIN:-1.2}" in (ROOT / "docker-compose.yml").read_text()
 
 
 def test_edge_lbtest_rehearses_the_load_balancer(stage):
