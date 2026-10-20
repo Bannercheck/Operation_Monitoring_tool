@@ -1,4 +1,5 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Info } from "lucide-react";
 import { useT } from "../i18n";
 import { useTheme, type Theme } from "../theme";
 
@@ -25,6 +26,24 @@ export function Confirm({ children, onConfirm, kind = "danger", sm = true }: { c
   const [ask, setAsk] = useState(false);
   useEffect(() => { if (!ask) return; const id = setTimeout(() => setAsk(false), 4000); return () => clearTimeout(id); }, [ask]);
   return ask ? <Btn kind={kind} sm={sm} onClick={() => { setAsk(false); onConfirm(); }}>{t("confirm")} · {t("yes")}</Btn> : <Btn kind={kind} sm={sm} onClick={() => setAsk(true)}>{children}</Btn>;
+}
+
+/* the page description behind a small (i) next to the page title: shown only on click, closed by a second click, Esc or a click elsewhere */
+export function Hint({ text }: { text: ReactNode }) {
+  const { t } = useT();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", away); document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("mousedown", away); document.removeEventListener("keydown", esc); };
+  }, [open]);
+  return <span className="hint" ref={ref}>
+    <button type="button" className={`hint-b ${open ? "on" : ""}`} aria-label={t("hint_about")} title={t("hint_about")} aria-expanded={open} onClick={() => setOpen(!open)}><Info size={15} /></button>
+    {open && <span className="hint-pop" role="note">{text}</span>}
+  </span>;
 }
 
 export const Field = ({ label, children, hint }: { label: string; children: ReactNode; hint?: string }) => <div className="field"><label>{label}</label>{children}{hint && <span className="dim small">{hint}</span>}</div>;

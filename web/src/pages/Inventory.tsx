@@ -4,7 +4,7 @@ import { api, del, get, put } from "../api";
 import { useAuth } from "../auth";
 import { TeamPick } from "../components/TeamPick";
 import { useT } from "../i18n";
-import { Badge, Btn, Card, Chip, Confirm, Err, Field, Modal, Table, Tabs } from "../components/ui";
+import { Badge, Btn, Card, Chip, Confirm, Err, Field, Modal, Table, Tabs, Hint } from "../components/ui";
 import DiscoveredHosts from "../components/DiscoveredHosts";
 
 /** Inventory (CMDB-lite): the Streamlit page as a route of its own — hosts, full add / edit form, discovered hosts with criticality, CSV import / export. */
@@ -15,7 +15,7 @@ type Tab = "list" | "add" | "disc" | "csv";
 
 export default function InventoryPage() {
   const { t } = useT();
-  return <div className="stack"><div><h2>🗄 {t("inv_page")}</h2><div className="muted small">{t("inv_page_tag")}</div></div><InventoryPanel /></div>;
+  return <div className="stack"><div><h2>🗄 {t("inv_page")}<Hint text={t("inv_page_tag")} /></h2></div><InventoryPanel /></div>;
 }
 
 export function InventoryPanel() {

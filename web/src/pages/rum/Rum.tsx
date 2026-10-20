@@ -5,7 +5,7 @@ import { Smartphone } from "lucide-react";
 import { del, get, patch, post } from "../../api";
 import { useAuth } from "../../auth";
 import { useT } from "../../i18n";
-import { Btn, Card, Confirm, Empty, Err, Field, Kpi, Modal, Tabs } from "../../components/ui";
+import { Btn, Card, Confirm, Empty, Err, Field, Kpi, Modal, Tabs, Hint } from "../../components/ui";
 import { fmtMs, pct } from "../apm/common";
 import { ServerSessions } from "../../components/ops/Sessions";
 
@@ -25,7 +25,7 @@ export default function Rum() {
   const d = ov.data; const rows: any[] = d?.apps ?? [];
   const tot = rows.reduce((a, r) => ({ s: a.s + r.sessions, u: a.u + r.users, c: a.c + (r.crashed ?? 0), b: a.b + (r.bad ?? 0) }), { s: 0, u: 0, c: 0, b: 0 });
   return <div className="stack">
-    <div className="row between"><div><h2><Smartphone size={20} style={{ verticalAlign: -3 }} /> {t("rum_title")}</h2><span className="muted small">{t("rum_sub")}</span></div>
+    <div className="row between"><div><h2><Smartphone size={20} style={{ verticalAlign: -3 }} /> {t("rum_title")}<Hint text={t("rum_sub")} /></h2></div>
       <div className="row" style={{ gap: 8 }}>
         {!(tab === "sessions" && sp.get("src") === "server") && <select className="input" style={{ width: 170 }} value={app} onChange={(e) => set("app", e.target.value)}><option value="">{t("rum_all_apps")}</option>{(apps.data?.apps ?? []).map((a: any) => <option key={a.id} value={a.name}>{a.name}</option>)}</select>}
         <select className="input" style={{ width: 130 }} value={minutes} onChange={(e) => set("minutes", e.target.value === "1440" ? "" : e.target.value)}>{RANGES.map((m) => <option key={m} value={m}>{t("apm_last")} {m < 1440 ? `${m / 60} sa` : `${m / 1440} gün`}</option>)}</select>

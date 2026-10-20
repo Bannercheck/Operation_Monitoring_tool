@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { get, post } from "../api";
 import { useAuth } from "../auth";
 import { useT } from "../i18n";
-import { Badge, Btn, Card, Empty, Err, Kpi, Modal, Table, Tabs, fmtTs } from "../components/ui";
+import { Badge, Btn, Card, Empty, Err, Kpi, Modal, Table, Tabs, fmtTs, Hint } from "../components/ui";
 
 const SEV: Record<string, string> = { critical: "red", high: "red", medium: "amber", low: "blue" };
 
@@ -20,7 +20,7 @@ export default function Scan() {
   const scanAll = useMutation({ mutationFn: () => post("/scan/all", { probe }), onSuccess: inv });
   const editable = can("act.scan"); const s = stats.data; const data: any[] = rows.data ?? [];
   return <div className="stack">
-    <div className="row between"><div><h2>🛡 {t("scan_title")}</h2><span className="muted small">{t("scan_sub")}</span></div>
+    <div className="row between"><div><h2>🛡 {t("scan_title")}<Hint text={t("scan_sub")} /></h2></div>
       {editable && <div className="row">
         <label className="chip" title={t("scan_probe_hint")}><input type="checkbox" checked={probe} onChange={(e) => setProbe(e.target.checked)} /> {t("scan_probe")}</label>
         <Btn kind="primary" sm onClick={() => scanAll.mutate()} disabled={scanAll.isPending}>{scanAll.isPending ? `⏳ ${t("scan_running")}` : `🔍 ${t("scan_run_all")}`}</Btn></div>}</div>

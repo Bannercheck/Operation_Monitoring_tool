@@ -4,7 +4,7 @@ import { useSearchParams } from "react-router-dom";
 import { del, get, patch, post } from "../api";
 import { useAuth } from "../auth";
 import { useT } from "../i18n";
-import { Badge, Btn, Card, Chip, Confirm, Err, Field, Modal, Table, Tabs } from "../components/ui";
+import { Badge, Btn, Card, Chip, Confirm, Err, Field, Modal, Table, Tabs, Hint } from "../components/ui";
 
 /** Parser v2 step 3: grok library (built-in packs + user patterns), a test box, and the lines a dataset could not parse. */
 type Tab = "lib" | "test" | "unparsed" | "templates" | "profiles" | "base";
@@ -25,7 +25,7 @@ export function ParserPanel({ embedded = false }: { embedded?: boolean }) {
   const rows: any[] = (list.data ?? []).filter((r: any) => !q || r.name.toLowerCase().includes(q.toLowerCase()) || r.family.includes(q.toLowerCase()) || (r.description ?? "").toLowerCase().includes(q.toLowerCase()));
   const users = (list.data ?? []).filter((r: any) => !r.builtin).length;
   return <div className="stack">
-    {!embedded && <div><h2>🧩 {t("nav_parser")}</h2><div className="muted small">{t("gk_tag")}</div></div>}
+    {!embedded && <div><h2>🧩 {t("nav_parser")}<Hint text={t("gk_tag")} /></h2></div>}
     <div className="chips"><Chip color="#60a5fa">{(list.data ?? []).length - users} {t("gk_builtin")}</Chip><Chip color="#2dd4bf">{users} {t("gk_user")}</Chip></div>
     <div className="muted small">{t("gk_intro")}</div>
     <Tabs value={tab} onChange={setTab} tabs={[{ k: "lib", label: t("gk_tab_lib") }, { k: "test", label: t("gk_tab_test") }, { k: "unparsed", label: t("gk_tab_unparsed") }, { k: "templates", label: `🧠 ${t("gk_tab_templates")}` }, { k: "profiles", label: t("gk_tab_profiles") }, { k: "base", label: t("gk_tab_base") }]} />

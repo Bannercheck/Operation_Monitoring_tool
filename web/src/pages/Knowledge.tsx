@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, del, get, post } from "../api";
 import { useT } from "../i18n";
-import { Btn, Card, Confirm, Empty, Err, Field, Kpi, Table, Tabs, fmtTs } from "../components/ui";
+import { Btn, Card, Confirm, Empty, Err, Field, Kpi, Table, Tabs, fmtTs, Hint } from "../components/ui";
 
 const KINDS = ["", "pattern", "anomaly", "resolution", "feedback", "note", "doc", "chat"];
 
@@ -24,7 +24,7 @@ export default function Knowledge() {
   const upload = async (files: FileList | null) => { if (!files?.length) return; const fd = new FormData(); fd.append("file", files[0]); await api("/knowledge/docs/upload", { method: "POST", form: fd }); inv(); };
   const st = stats.data;
   return <div className="stack">
-    <div className="row between"><div><h2>🧠 {t("kb_title")}</h2><span className="muted small">{t("mem_sub")}</span></div>
+    <div className="row between"><div><h2>🧠 {t("kb_title")}<Hint text={t("mem_sub")} /></h2></div>
       <div className="row"><Btn sm onClick={() => learn.mutate()} disabled={learn.isPending}>⚡ {t("mem_learn_now")}</Btn><Btn sm onClick={() => reindex.mutate()} disabled={reindex.isPending || st?.reindex?.running}>{st?.reindex?.running ? `⏳ ${st.reindex.done} / ${st.reindex.done + st.reindex.remaining}` : `🔁 ${t("mem_reindex")}`}</Btn></div></div>
     {st && <div className="grid k4">
       <Kpi value={st.total ?? 0} label={t("mem_total")} sub={Object.entries(st.lessons ?? {}).map(([k, v]) => `${k} ${v}`).join(" · ") || "-"} />

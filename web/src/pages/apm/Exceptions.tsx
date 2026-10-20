@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Bug } from "lucide-react";
 import { get } from "../../api";
 import { useT } from "../../i18n";
-import { Card, Empty, Kpi, Spark } from "../../components/ui";
+import { Card, Empty, Kpi, Spark, Hint } from "../../components/ui";
 import { svcColor } from "./common";
 
 /** Exceptions: every error line of the live window grouped by what failed (exception class, ORA / SQL code, HTTP 5xx, timeout,
@@ -15,7 +15,7 @@ export default function Exceptions() {
   const rows = all.filter((r) => !qtext || `${r.type} ${r.service} ${r.sample}`.toLowerCase().includes(qtext.toLowerCase()));
   const total = all.reduce((a, r) => a + r.count, 0);
   return <div className="stack">
-    <div className="row between"><div><h2><Bug size={20} style={{ verticalAlign: -3 }} /> {t("ex_title")}</h2><span className="muted small">{t("ex_sub")}</span></div>
+    <div className="row between"><div><h2><Bug size={20} style={{ verticalAlign: -3 }} /> {t("ex_title")}<Hint text={t("ex_sub")} /></h2></div>
       <div className="row"><input placeholder={t("ex_filter")} value={qtext} onChange={(e) => setQ(e.target.value)} />
         <select value={minutes} onChange={(e) => setMinutes(+e.target.value)}>{[15, 60, 360, 1440].map((m) => <option key={m} value={m}>{m < 60 ? `${m} dk` : `${m / 60} sa`}</option>)}</select></div></div>
     <div className="grid k4">

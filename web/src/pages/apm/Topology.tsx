@@ -4,7 +4,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { Network } from "lucide-react";
 import { get } from "../../api";
 import { useT } from "../../i18n";
-import { Card, Empty, Kpi, Tabs } from "../../components/ui";
+import { Card, Empty, Kpi, Tabs, Hint } from "../../components/ui";
 import { FailureMap } from "../Map";
 import { ScopeBar, fmtMs, pct, rate, svcColor, useScope } from "./common";
 
@@ -86,7 +86,7 @@ export default function ServiceMap() {
   const s = q.data?.services; const n = q.data?.network;
   const setTab = (k: string) => { const x = new URLSearchParams(sp); if (k === "traffic") x.delete("view"); else x.set("view", k); setSp(x, { replace: true }); };
   return <div className="stack">
-    <div className="row between"><div><h2><Network size={20} style={{ verticalAlign: -3 }} /> {t("map_title")}</h2><span className="muted small">{t(`topo_sub_${tab}`)}</span></div>{(tab === "traffic" || tab === "network") && <ScopeBar />}</div>
+    <div className="row between"><div><h2><Network size={20} style={{ verticalAlign: -3 }} /> {t("map_title")}<Hint text={t(`topo_sub_${tab}`)} /></h2></div>{(tab === "traffic" || tab === "network") && <ScopeBar />}</div>
     <Tabs value={tab} onChange={setTab} tabs={[{ k: "traffic", label: t("topo_tab_traffic") }, { k: "network", label: t("topo_tab_network") }, { k: "errors", label: t("topo_tab_errors") }]} />
     {tab === "traffic" && <>
       <div className="grid k4">

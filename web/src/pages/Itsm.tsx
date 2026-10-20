@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { get, put } from "../api";
 import { useT } from "../i18n";
-import { Badge, Btn, Card, Empty, Err, Field, Table } from "../components/ui";
+import { Badge, Btn, Card, Empty, Err, Field, Table, Hint } from "../components/ui";
 
 export default function Itsm() {
   const { t } = useT(); const qc = useQueryClient();
@@ -16,7 +16,7 @@ export default function Itsm() {
   const set = (k: string) => (e: any) => setF({ ...f, [k]: e.target.value });
   const rows = tk.data?.tickets ?? [];
   return <div className="stack">
-    <div><h2>🎫 {t("itsm_title")}</h2><span className="muted small">{t("itsm_sub")}</span></div>
+    <div><h2>🎫 {t("itsm_title")}<Hint text={t("itsm_sub")} /></h2></div>
     <div className="grid k2" style={{ gridTemplateColumns: "1fr 2fr" }}>
       <Card title={t("itsm_system")}>{f && <div className="stack">
         <select className="input" value={f.system} onChange={set("system")}>{(cfg.data?.systems ?? []).map((s: string) => <option key={s} value={s}>{s === "demo" ? t("itsm_demo") : s}</option>)}</select>

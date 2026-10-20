@@ -4,7 +4,7 @@ import { Route as RouteIcon, Plus, Trash2, Wand2 } from "lucide-react";
 import { del, get, post, put } from "../../api";
 import { useAuth } from "../../auth";
 import { useT } from "../../i18n";
-import { Badge, Btn, Card, Empty, Err, Field, Kpi, Modal, Tabs } from "../../components/ui";
+import { Badge, Btn, Card, Empty, Err, Field, Kpi, Modal, Tabs, Hint } from "../../components/ui";
 import { RANGES, pct } from "./common";
 
 /** Business flows: one business key (order, request, application number) followed across every system that logs it. Steps are
@@ -24,7 +24,7 @@ export default function Flows() {
   const rm = useMutation({ mutationFn: (id: number) => del(`/flows/${id}`), onSuccess: () => { setSel(null); qc.invalidateQueries({ queryKey: ["flows"] }); } });
   const first = f?.funnel?.[0]?.reached || 1;
   return <div className="stack">
-    <div className="row between"><div><h2><RouteIcon size={20} style={{ verticalAlign: -3 }} /> {t("bf_title")}</h2><span className="muted small">{t("bf_sub")}</span></div>
+    <div className="row between"><div><h2><RouteIcon size={20} style={{ verticalAlign: -3 }} /> {t("bf_title")}<Hint text={t("bf_sub")} /></h2></div>
       <div className="row"><select value={minutes} onChange={(e) => setMinutes(+e.target.value)}>{RANGES.map((m) => <option key={m} value={m}>{m < 60 ? `${m} dk` : m < 1440 ? `${m / 60} sa` : `${m / 1440} gün`}</option>)}</select>
         {can("act.anomaly") && <Btn kind="primary" onClick={() => setEdit({ name: "", key_regex: "", steps: [{ name: "", match: "", service: "" }, { name: "", match: "", service: "" }], hash_keys: false, enabled: true })}><Plus size={14} /> {t("bf_new")}</Btn>}</div></div>
     {!flows.length ? <Card><Empty>{t("bf_empty")}</Empty></Card> : <>

@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { del, get, patch, post } from "../api";
 import { useAuth } from "../auth";
 import { useT } from "../i18n";
-import { Btn, Card, Chip, Confirm, Err, Field, Table, Tabs, fmtTs } from "../components/ui";
+import { Btn, Card, Chip, Confirm, Err, Field, Table, Tabs, fmtTs, Hint } from "../components/ui";
 import { McpSourcesPanel } from "./Mcp";
 
 /** Pull sources: Elasticsearch / OpenSearch, Grafana Loki, Splunk, Graylog, HTTP. Same page as the Streamlit "Kaynaklar": intro,
@@ -13,7 +13,7 @@ const EMPTY = { name: "", kind: "elasticsearch", url: "", selector: "", auth: "n
 
 export default function SourcesPage() {
   const { t } = useT(); const [tab, setTab] = useState<"logs" | "mcp">(new URLSearchParams(window.location.search).get("tab") === "mcp" ? "mcp" : "logs");
-  return <div className="stack"><div><h2>🔎 {t("src_page")}</h2><div className="muted small">{t("src_page_tag")}</div></div>
+  return <div className="stack"><div><h2>🔎 {t("src_page")}<Hint text={t("src_page_tag")} /></h2></div>
     <Tabs value={tab} onChange={setTab} tabs={[{ k: "logs", label: t("mcp_src_tab_logs") }, { k: "mcp", label: t("mcp_src_tab") }]} />
     {tab === "logs" ? <SourcesPanel /> : <McpSourcesPanel />}</div>;
 }

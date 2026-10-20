@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { get, put } from "../api";
 import { useT } from "../i18n";
-import { Badge, Btn, Card, Empty, Err, Field, Modal } from "../components/ui";
+import { Badge, Btn, Card, Empty, Err, Field, Modal, Hint } from "../components/ui";
 import { Badge as B } from "../components/ui";
 
 export default function Playbook() {
@@ -10,7 +10,7 @@ export default function Playbook() {
   const list = useQuery({ queryKey: ["playbook", q], queryFn: () => get(`/playbook?q=${encodeURIComponent(q)}`) });
   return (
     <div className="stack">
-      <div><h2>📚 {t("pb_title")}</h2><span className="muted small">{t("pb_sub")}</span></div>
+      <div><h2>📚 {t("pb_title")}<Hint text={t("pb_sub")} /></h2></div>
       <input className="input" placeholder={t("search")} value={q} onChange={(e) => setQ(e.target.value)} style={{ maxWidth: 420 }} />
       {!list.data?.length ? <Empty /> : list.data.map((e: any) => (
         <Card key={e.key} className="tight"><div className="svc" style={{ cursor: "pointer" }} onClick={() => setSel(e)}>

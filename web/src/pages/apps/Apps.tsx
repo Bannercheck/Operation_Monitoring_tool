@@ -4,7 +4,7 @@ import { Link, useLocation } from "react-router-dom";
 import { AlertTriangle, Boxes, Compass, Plus, Server } from "lucide-react";
 import { get, post } from "../../api";
 import { useT } from "../../i18n";
-import { Btn, Empty, Err, Kpi, Modal, Tabs } from "../../components/ui";
+import { Btn, Empty, Err, Kpi, Modal, Tabs, Hint } from "../../components/ui";
 import { SparkArea, ST } from "../../components/dash/kit";
 import { AppEditor, CritBadge, LV, StatusBadge, ms, num, pctOf, sloText } from "./common";
 
@@ -25,7 +25,7 @@ export default function Apps() {
   const n = (s: string) => all.filter((a) => (a.health?.status ?? "nodata") === s).length;
   return <div className="stack">
     <div className="row between">
-      <div><h2><Boxes size={20} style={{ verticalAlign: -3 }} /> {t("ap_title")}</h2><span className="muted small">{t("ap_sub")}</span></div>
+      <div><h2><Boxes size={20} style={{ verticalAlign: -3 }} /> {t("ap_title")}<Hint text={t("ap_sub")} /></h2></div>
       <div className="row" style={{ gap: 8 }}>
         <div className="seg">{[15, 60].map((m) => <button key={m} className={minutes === m ? "on" : ""} onClick={() => setMinutes(m)}>{m < 60 ? `${m} dk` : "1 sa"}</button>)}</div>
         <Btn sm onClick={() => setDisc(true)}><Compass size={14} /> {t("ap_discover")}</Btn>

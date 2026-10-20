@@ -4,7 +4,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { GitBranch } from "lucide-react";
 import { get } from "../../api";
 import { useT } from "../../i18n";
-import { Btn, Card, Empty } from "../../components/ui";
+import { Btn, Card, Empty, Hint } from "../../components/ui";
 import { LinkBadge, ScopeBar, fmtMs, svcColor, useScope } from "./common";
 
 /** Trace explorer (SigNoz "Traces"): search by service, operation, minimum duration, failures or any text / trace id; each row is
@@ -20,7 +20,7 @@ export default function Traces() {
   const max = Math.max(1, ...rows.map((r) => r.duration_ms));
   const apply = (e?: React.FormEvent) => { e?.preventDefault(); setApplied(f); const n = new URLSearchParams(sp); for (const [k, v] of Object.entries(f)) { if (v && v !== "recent") n.set(k, v === true ? "1" : String(v)); else n.delete(k); } setSp(n, { replace: true }); };
   return <div className="stack">
-    <div className="row between"><div><h2><GitBranch size={20} style={{ verticalAlign: -3 }} /> {t("apm_traces")}</h2><span className="muted small">{t("apm_traces_sub")}</span></div><ScopeBar /></div>
+    <div className="row between"><div><h2><GitBranch size={20} style={{ verticalAlign: -3 }} /> {t("apm_traces")}<Hint text={t("apm_traces_sub")} /></h2></div><ScopeBar /></div>
     <Card>
       <form className="row" style={{ gap: 8 }} onSubmit={apply}>
         <select className="input" style={{ width: 190 }} value={f.service} onChange={(e) => setF({ ...f, service: e.target.value })}><option value="">{t("apm_all_services")}</option>{(svcs.data?.services ?? []).map((s: any) => <option key={s.service} value={s.service}>{s.service}</option>)}</select>

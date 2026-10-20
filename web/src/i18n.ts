@@ -678,6 +678,7 @@ const S: Record<string, [string, string]> = {
   apm_tab_ops: ["Temel işlemler", "Key operations"], apm_tab_db: ["Veritabanı çağrıları", "Database calls"], apm_tab_ext: ["Dış çağrılar", "External calls"], apm_tab_slow: ["En yavaş izler", "Slowest traces"],
   apm_none: ["Bu kapsamda kayıt yok.", "Nothing in this scope."], apm_no_traces: ["Bu kapsamda saklanmış iz yok.", "No stored trace in this scope."],
   apm_col_start: ["Başlangıç", "Start"], apm_col_root: ["Kök işlem", "Root operation"], apm_col_dur: ["Süre", "Duration"], apm_col_spans: ["Adım", "Spans"], apm_col_services: ["Servisler", "Services"], apm_col_link: ["Bağ", "Link"],
+  hint_about: ["Bu sayfa ne işe yarar?", "What is this page for?"],
   apm_traces: ["İzler", "Traces"], apm_traces_sub: ["bir isteğin katmanlar arası yolculuğu; her adımın nasıl bağlandığı gösterilir", "a request's path across tiers; how each step was joined is shown"],
   apm_all_services: ["Tüm servisler", "All services"], apm_f_op: ["İşlem (tam ad)", "Operation (exact)"], apm_f_min: ["En az ms", "Min ms"], apm_f_q: ["Metin ya da trace id", "Text or trace id"], apm_f_err: ["Yalnız hatalı", "Errors only"],
   apm_o_recent: ["En yeni", "Newest"], apm_o_slow: ["En yavaş", "Slowest"], apm_search: ["Ara", "Search"], apm_session: ["Oturum", "Session"], apm_user: ["Kullanıcı (takma ad)", "User (pseudonym)"],

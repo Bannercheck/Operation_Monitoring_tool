@@ -4,7 +4,7 @@ import { Flame, Radar, Sparkles, VolumeX, Waves } from "lucide-react";
 import { get, post, put } from "../api";
 import { useAuth } from "../auth";
 import { useT } from "../i18n";
-import { Btn, Card, Empty, Err, Field, Kpi, Spark, fmtTs, hhmm } from "../components/ui";
+import { Btn, Card, Empty, Err, Field, Kpi, Spark, fmtTs, hhmm, Hint } from "../components/ui";
 import { LearnLine, SignalList, sigLabel, signedPct } from "../components/LearningBar";
 
 const ICON: Record<string, any> = { errors: Flame, rate: Waves, silence: VolumeX, pattern: Sparkles, metric: Radar };
@@ -27,7 +27,7 @@ export default function Anomalies() {
   const st = stats.data; const editable = can("act.anomaly");
   return (
     <div className="stack">
-      <div className="row between"><div><h2>🧭 {t("an_title")}</h2><span className="muted small">{t("an_sub")}</span></div>{editable && <Btn onClick={() => scan.mutate()} disabled={scan.isPending}>🔍 {t("an_scan_now")}</Btn>}</div>
+      <div className="row between"><div><h2>🧭 {t("an_title")}<Hint text={t("an_sub")} /></h2></div>{editable && <Btn onClick={() => scan.mutate()} disabled={scan.isPending}>🔍 {t("an_scan_now")}</Btn>}</div>
       <div className="grid k4">
         <Kpi value={st?.open ?? 0} label={t("an_open")} accent="#f87171" sub={Object.entries(st?.kinds ?? {}).map(([k, n]) => `${t("an_kind_" + k)} ${n}`).join(" · ") || "-"} />
         <Kpi value={st?.ack ?? 0} label={t("an_ack")} accent="#fbbf24" />

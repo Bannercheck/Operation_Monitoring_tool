@@ -4,7 +4,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { get } from "../../api";
 import { useT } from "../../i18n";
 import { Workflow } from "lucide-react";
-import { Card, Empty, Kpi, Tabs } from "../../components/ui";
+import { Card, Empty, Kpi, Tabs, Hint } from "../../components/ui";
 import { useAuth } from "../../auth";
 import { AppIntegrationsView } from "./AppIntegrations";
 import { CAT_COLOR, ConfLegend, type Sel, TechDrawer, TechLabel, confK, fmtTs, parseSel, sameSel, selStr, stackName } from "./IntegTech";
@@ -304,7 +304,7 @@ export default function Integrations() {
   const mode = can("page.apps") && sp.get("mode") === "app" ? "app" : "host";
   const setMode = (k: string) => { const n = new URLSearchParams(); if (sp.get("minutes")) n.set("minutes", sp.get("minutes")!); if (k === "app") n.set("mode", "app"); setSp(n, { replace: true }); };
   return <div className="stack">
-    <div className="row between" style={{ flexWrap: "wrap" }}><div><h2><Workflow size={20} style={{ verticalAlign: -3 }} /> {t("nav_integ")}</h2><span className="muted small">{t("topo_sub_integrations")}</span></div>
+    <div className="row between" style={{ flexWrap: "wrap" }}><div><h2><Workflow size={20} style={{ verticalAlign: -3 }} /> {t("nav_integ")}<Hint text={t("topo_sub_integrations")} /></h2></div>
       {can("page.apps") && <Tabs value={mode} onChange={setMode} tabs={[{ k: "host", label: `🖥 ${t("integ_by_host")}` }, { k: "app", label: `▣ ${t("integ_by_app")}` }]} />}</div>
     {mode === "app" ? <AppIntegrationsView /> : <IntegrationsView />}
   </div>;
