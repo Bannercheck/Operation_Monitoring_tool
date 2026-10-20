@@ -16,6 +16,7 @@ import { TailStatus } from "../components/logs/TailStatus";
 import { AlertDialog, SaveDialog, SavedMenu } from "../components/logs/Dialogs";
 import { errText, FACETS, fullN, lg, qs, rangeKey, rangeParams, roundEst, toErr, tsLocal, useLogsState, type LgErr } from "../components/logs/lib";
 import type { Range } from "../components/ops/util";
+import { Hint } from "../components/ui";
 
 /** Log explorer (docs/design/logs.md section 6): one query string drives the facet sidebar, the result count, the per-level
  *  histogram and the table; Live tail follows new lines as they arrive (pausing when you scroll or open a row); every row opens in
@@ -217,7 +218,7 @@ export default function Logs() {
 
   return <div className="lg">
     <div className="lg-top">
-      <h2>{t("lg_title")}</h2>
+      <h2>{t("lg_title")}<Hint text={t("pg_logs_sub")} howto="logs" /></h2>
       <span className="grow" />
       <TimeRange range={st.range} live={rel} setLast={st.setLast} setAbs={st.setAbs} />
     </div>

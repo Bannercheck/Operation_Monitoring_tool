@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { del, get, patch, post } from "../api";
 import { useT } from "../i18n";
-import { Badge, Btn, Card, Confirm, Err, Field, Modal, Table, hhmm } from "../components/ui";
+import { Badge, Btn, Card, Confirm, Err, Field, Modal, Table, hhmm, Hint } from "../components/ui";
 
 const STATUSES = ["open", "in_progress", "done", "suppressed"]; const PRIOS = ["P1", "P2", "P3", "P4"];
 
@@ -15,7 +15,7 @@ export default function Actions() {
   const rows = (list.data ?? []).slice().sort((a: any, b: any) => Number(a.status === "done") - Number(b.status === "done") || a.priority.localeCompare(b.priority));
   return (
     <div className="stack">
-      <div className="row between"><h2>{t("act_title")}</h2><Btn kind="primary" onClick={() => setAdd(true)}>{t("act_new")}</Btn></div>
+      <div className="row between"><h2>{t("act_title")}<Hint text={t("pg_actions_sub")} howto="actions" /></h2><Btn kind="primary" onClick={() => setAdd(true)}>{t("act_new")}</Btn></div>
       <Card><Table cols={[
         { k: "priority", label: t("act_priority"), render: (r) => <select className="input" style={{ width: 80, padding: "4px 8px" }} value={r.priority} onChange={(e) => upd.mutate({ id: r.id, body: { priority: e.target.value } })}>{PRIOS.map((p) => <option key={p}>{p}</option>)}</select> },
         { k: "title", label: t("act_title_f"), render: (r) => <div><b>{r.title}</b><div className="muted small">{r.recommendation?.slice(0, 140)}</div></div> },

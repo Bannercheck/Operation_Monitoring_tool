@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { del, get, patch, post, put } from "../api";
 import { useAuth } from "../auth";
 import { useT } from "../i18n";
-import { Badge, Btn, Card, Confirm, Err, Field, Modal, Table, Tabs, fmtTs } from "../components/ui";
+import { Badge, Btn, Card, Confirm, Err, Field, Modal, Table, Tabs, fmtTs, Hint } from "../components/ui";
 import { PermGrid, type Catalogue } from "../components/PermGrid";
 import { TeamsPanel } from "./Teams";
 
@@ -39,7 +39,7 @@ export default function Users() {
   };
   const rows = (users.data ?? []).filter((r: any) => !teamF || (r.teams ?? []).some((x: UTeam) => String(x.id) === teamF));
   return <div className="stack">
-    <div className="row between"><h2>👥 {t("us_title")}</h2><Btn kind="primary" onClick={() => setAdd(true)}>{t("us_add")}</Btn></div>
+    <div className="row between"><h2>👥 {t("us_title")}<Hint text={t("pg_users_sub")} howto="users" /></h2><Btn kind="primary" onClick={() => setAdd(true)}>{t("us_add")}</Btn></div>
     <Tabs value={tab} onChange={setTab} tabs={[{ k: "list", label: `${t("nav_users")} · ${users.data?.length ?? 0}` }, { k: "roles", label: t("us_global_roles") }, ...(can("page.teams") ? [{ k: "teams" as const, label: t("tm_tab") }] : []), { k: "events", label: t("us_events") }]} />
     {tab === "teams" && <TeamsPanel />}
     {tab === "list" && <Card right={anyTeam ? <select className="input" style={{ width: 200, padding: "4px 8px" }} value={teamF} onChange={(e) => setTeamF(e.target.value)}>

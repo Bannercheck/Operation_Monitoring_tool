@@ -4,7 +4,7 @@ import { del, get, post, put } from "../api";
 import { useT } from "../i18n";
 import { useAuth } from "../auth";
 import { TeamChip, TeamPick } from "../components/TeamPick";
-import { Btn, Card, Confirm, Err, Field, Table, Tabs, fmtTs } from "../components/ui";
+import { Btn, Card, Confirm, Err, Field, Table, Tabs, fmtTs, Hint } from "../components/ui";
 
 export default function Notify() {
   const { t } = useT(); const qc = useQueryClient(); const [tab, setTab] = useState<"recipients" | "rules" | "log" | "channels">("rules");
@@ -22,7 +22,7 @@ export default function Notify() {
   const rmRule = useMutation({ mutationFn: (id: number) => del(`/notify/rules/${id}`), onSuccess: inv });
   const evaluate = useMutation({ mutationFn: () => post("/notify/evaluate"), onSuccess: inv });
   return <div className="stack">
-    <div className="row between"><h2>🔔 {t("ntf_title")}</h2><div className="row"><TeamPick perm="act.alerts" value={team} onChange={setTeam} style={{ width: 200 }} />{install && <Btn onClick={() => evaluate.mutate()}>{t("ntf_evaluate")}</Btn>}</div></div>
+    <div className="row between"><h2>🔔 {t("ntf_title")}<Hint text={t("pg_notify_sub")} howto="notify" /></h2><div className="row"><TeamPick perm="act.alerts" value={team} onChange={setTeam} style={{ width: 200 }} />{install && <Btn onClick={() => evaluate.mutate()}>{t("ntf_evaluate")}</Btn>}</div></div>
     <Tabs value={tab} onChange={setTab} tabs={[{ k: "rules", label: `${t("ntf_rules")} · ${rules.data?.length ?? 0}` }, { k: "recipients", label: `${t("ntf_recipients")} · ${recipients.data?.length ?? 0}` }, { k: "log", label: t("ntf_log") }, ...(install ? [{ k: "channels" as const, label: t("ntf_channels_tab") }] : [])]} />
     {tab === "channels" && <Channels />}
     {tab === "recipients" && <div className="stack"><Card><div className="row"><input className="input" style={{ width: 160 }} placeholder={t("name")} value={rc.name} onChange={(e) => setRc({ ...rc, name: e.target.value })} /><input className="input" style={{ width: 220 }} placeholder={t("email")} value={rc.email} onChange={(e) => setRc({ ...rc, email: e.target.value })} />

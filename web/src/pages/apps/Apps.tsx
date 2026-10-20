@@ -25,7 +25,7 @@ export default function Apps() {
   const n = (s: string) => all.filter((a) => (a.health?.status ?? "nodata") === s).length;
   return <div className="stack">
     <div className="row between">
-      <div><h2><Boxes size={20} style={{ verticalAlign: -3 }} /> {t("ap_title")}<Hint text={t("ap_sub")} /></h2></div>
+      <div><h2><Boxes size={20} style={{ verticalAlign: -3 }} /> {t("ap_title")}<Hint text={t("ap_sub")} howto="apps" /></h2></div>
       <div className="row" style={{ gap: 8 }}>
         <div className="seg">{[15, 60].map((m) => <button key={m} className={minutes === m ? "on" : ""} onClick={() => setMinutes(m)}>{m < 60 ? `${m} dk` : "1 sa"}</button>)}</div>
         <Btn sm onClick={() => setDisc(true)}><Compass size={14} /> {t("ap_discover")}</Btn>

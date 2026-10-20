@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { get } from "../api";
 import { useAuth } from "../auth";
 import { useT } from "../i18n";
-import { Badge, Card, Empty, Table, Tabs, fmtTs } from "../components/ui";
+import { Badge, Card, Empty, Table, Tabs, fmtTs, Hint } from "../components/ui";
 import { actErr } from "../components/act/ActModeCard";
 
 /** İş kutusu (read-only, stage 1 of docs/design/action-agent.md §13.2): cases and open plain actions ordered by "needs a human
@@ -17,7 +17,7 @@ export default function Inbox() {
   const d = actErr(q.error);
   const st = useQuery({ queryKey: ["act-status"], queryFn: () => get("/act/status"), refetchInterval: 15000, retry: false });
   if (d.code === "act_disabled") return <div className="stack">
-    <h2>{t("au_inbox")}</h2>
+    <h2>{t("au_inbox")}<Hint text={t("pg_inbox_sub")} howto="inbox" /></h2>
     <Card><div className="stack small au-off">
       <b>{t("au_off_title")}</b><p className="muted" style={{ margin: 0 }}>{t("au_off_lead")}</p>
       {can("act.policy") && <Link className="btn primary sm" to="/system">{t("au_off_enable")}</Link>}
@@ -26,7 +26,7 @@ export default function Inbox() {
   const rows: any[] = q.data ?? [];
   const kills: any[] = (st.data as any)?.kill ?? [];
   return <div className="stack">
-    <div className="row between"><h2>{t("au_inbox")}</h2><span className="chip">{t("au_inbox_ro")}</span></div>
+    <div className="row between"><h2>{t("au_inbox")}<Hint text={t("pg_inbox_sub")} howto="inbox" /></h2><span className="chip">{t("au_inbox_ro")}</span></div>
     {kills.map((k) => <div key={`${k.id}-${k.scope}`} className="err au-kill" role="alert">{t("au_kill_banner", { scope: k.scope === "global" ? t("au_kill_global") : `${k.scope} ${k.ref || ""}`.trim(), by: k.by_ || "-", ts: fmtTs(k.ts), reason: k.reason || "-" })}</div>)}
     <Tabs value={tab} onChange={setTab} tabs={[{ k: "team", label: t("au_tab_team") }, { k: "mine", label: t("au_tab_mine") }, { k: "closed", label: t("au_tab_closed") }]} />
     <Card>{q.error && !d.code ? <div className="err">{String((q.error as any)?.message ?? q.error)}</div> : null}

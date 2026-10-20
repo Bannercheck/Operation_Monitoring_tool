@@ -5,7 +5,7 @@ import { MoreHorizontal } from "lucide-react";
 import { api, get, post } from "../api";
 import { useAuth } from "../auth";
 import { useT } from "../i18n";
-import { Modal } from "../components/ui";
+import { Modal, Hint } from "../components/ui";
 import { TimeRange } from "../components/ops/TimeRange";
 import { Timeline } from "../components/ops/Timeline";
 import { FleetViews } from "../components/ops/FleetViews";
@@ -111,7 +111,7 @@ export default function Ops() {
     <div ref={sentinel} style={{ height: 1, marginBottom: -15 }} />
     <div className={`ops-head ${stuck ? "stuck" : ""}`}>
       <div className="ops-title">
-        <h2>{t("ops_title")}</h2>
+        <h2>{t("ops_title")}<Hint text={t("pg_ops_sub")} howto="ops" /></h2>
         {health && <button className={`ops-health ${!s?.total ? "" : !items.length ? "ok" : crit ? "crit" : "warn"}`} onClick={() => { if (dp.d !== "overview") dp.setD("overview"); setTimeout(() => document.getElementById("ops-att")?.scrollIntoView({ behavior: "smooth", block: "center" }), 60); }}><i />{health}</button>}
       </div>
       <TimeRange range={st.range} live={st.live} setLast={st.setLast} setAbs={st.setAbs} />

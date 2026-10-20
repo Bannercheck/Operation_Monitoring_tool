@@ -1,7 +1,7 @@
 // UI strings of System › Depolama (raw-log places given by hand, the year-long archive, audits), Turkish first; merged by i18n.ts.
 export const STG_STRINGS: Record<string, [string, string]> = {
   stg_place: ["Yerleşim", "Placement"], stg_place_hot: ["Sıcak loglar", "Hot logs"], stg_place_cold: ["Arşiv", "Archive"],
-  stg_set_by_hand: ["elle verildi", "set by hand"], stg_unset: ["ayarlanmadı", "not set"], stg_pvc: ["PVC (Helm)", "PVC (Helm)"],
+  stg_set_by_hand: ["Elle verildi", "Set by hand"], stg_unset: ["Ayarlanmadı", "Not set"], stg_pvc: ["PVC (Helm)", "PVC (Helm)"],
   stg_unset_note: ["Yer seçilmedi: loglar veri biriminin içinde ({p}). Sunucu kendiliğinden disk seçmez; aşağıdan bir dizin verin.",
     "No place chosen: the logs are inside the data volume ({p}). The server never picks a disk itself; give a directory below."],
   stg_disk_of: ["Disk {t} · {f} boş", "Disk {t} · {f} free"],
@@ -10,7 +10,7 @@ export const STG_STRINGS: Record<string, [string, string]> = {
   stg_est_measured: [" (ölçüldü)", " (measured)"], stg_est_assumed: [" (varsayım: 7-8 B/satır)", " (assumed: 7-8 B/line)"],
   stg_est_none: ["Henüz ölçülmedi. Ölçek: arşivde satır başına ~7-8 bayt; 100 bin satır/dk ≈ günde 1,1 GB ≈ yılda 400 GB.",
     "Not measured yet. Scale: ~7-8 bytes per archived line; 100k lines/min ≈ 1.1 GB/day ≈ 400 GB/year."],
-  stg_est_vs: ["Ayrılan alan: {c}", "Space given: {c}"], stg_est_short: ["yetmez: ~{n} gün sığar", "not enough: ~{n} days fit"],
+  stg_est_vs: ["Ayrılan alan: {c}", "Space given: {c}"], stg_est_short: ["Yetmez: ~{n} gün sığar", "Not enough: ~{n} days fit"],
   stg_alerts: ["Uyarılar", "Alerts"],
   stg_a_cold_80: ["Arşiv diski %{p} dolu. Saklama süresindeki arşivler yer için asla silinmez: yer ekleyin.", "The archive disk is {p}% full. Archives within the retention are never deleted for space: add space."],
   stg_a_cold_90: ["Arşiv diski %{p} dolu — hemen yer ekleyin. Dolarsa arşivleme durur, günler sıcak diskte bekler.", "The archive disk is {p}% full — add space now. When full, archiving pauses and the days wait on the hot disk."],
@@ -52,7 +52,7 @@ export const STG_STRINGS: Record<string, [string, string]> = {
   stg_manifest: ["Manifesto: {n} kayıt · son seq {s} · {h}", "Manifest: {n} entries · last seq {s} · {h}"],
   stg_check_ok: ["Saatlik denetim: sorun yok ({t})", "Hourly check: no problem ({t})"], stg_check_bad: ["Saatlik denetim: {n} sorun ({t})", "Hourly check: {n} problems ({t})"],
   stg_last_verify: ["Son tam doğrulama: {t} · {r}", "Last full verification: {t} · {r}"], stg_never_verified: ["Henüz tam doğrulama yapılmadı.", "Never fully verified."],
-  stg_ok_word: ["sorunsuz", "OK"], stg_bad_word: ["SORUNLU", "PROBLEMS"],
+  stg_ok_word: ["Sorunsuz", "OK"], stg_bad_word: ["SORUNLU", "PROBLEMS"],
   stg_from: ["Başlangıç", "From"], stg_to: ["Bitiş", "To"],
   stg_verify: ["Arşivi doğrula", "Verify the archive"], stg_export: ["Denetçi için dışa aktar", "Export for auditors"], stg_search: ["Denetim araması", "Audit search"],
   stg_fmt_archive: ["Arşiv dosyaları + manifesto (.tar)", "Archive files + manifest (.tar)"], stg_fmt_ndjson: ["Satırlar (NDJSON, gzip)", "Lines (NDJSON, gzip)"],
@@ -60,7 +60,7 @@ export const STG_STRINGS: Record<string, [string, string]> = {
   stg_search_lead: ["Aylar süren aralıkları arka planda tarar (sıcak + arşiv, süre sınırı yok); sonuç indirilebilir NDJSON. Log gezgini ise istek başına 1,5 sn tarar.",
     "Scans ranges of months in the background (hot + archive, no time limit); the result is a downloadable NDJSON. The log explorer scans 1.5 s a request."],
   stg_jobs: ["Denetim işleri", "Audit jobs"], stg_job_verify: ["Doğrulama", "Verification"], stg_job_export: ["Dışa aktarım", "Export"], stg_job_search: ["Arama", "Search"],
-  stg_js_running: ["sürüyor", "running"], stg_js_done: ["bitti", "done"], stg_js_failed: ["başarısız", "failed"], stg_js_cancelled: ["iptal", "cancelled"], stg_js_interrupted: ["yarıda kaldı", "interrupted"],
+  stg_js_running: ["Sürüyor", "Running"], stg_js_done: ["Bitti", "Done"], stg_js_failed: ["Başarısız", "Failed"], stg_js_cancelled: ["İptal", "Cancelled"], stg_js_interrupted: ["Yarıda kaldı", "Interrupted"],
   stg_cancel: ["Durdur", "Stop"], stg_download: ["İndir", "Download"],
   stg_res_verify: ["{c} gün denetlendi · {p} sorun", "{c} days checked · {p} problems"], stg_res_export: ["{f} · {b} · sha256 {s}", "{f} · {b} · sha256 {s}"],
   stg_res_search: ["{m} eşleşme · {f} · sha256 {s}", "{m} matches · {f} · sha256 {s}"],
@@ -69,5 +69,5 @@ export const STG_STRINGS: Record<string, [string, string]> = {
   upd_job_storage: ["Depolama (log yerleri)", "Storage (log places)"],
   upd_step_prepare: ["Hazırlık", "Prepare"], upd_step_copy: ["Kopyalama + sha256", "Copy + sha256"], upd_step_cleanup: ["Eski kopyalar", "Old copies"],
   lg_cold_long: ["Uzun aralık: arşiv taraması burada durdu (istek başına 1,5 sn, {n} istek). Aylar süren denetim aramaları için:", "Long range: the archive scan stopped here (1.5 s a request, {n} requests). For audit searches over months:"],
-  lg_cold_bg: ["arka planda ara (Sistem › Depolama)", "search in the background (System › Storage)"],
+  lg_cold_bg: ["Arka planda ara (Sistem › Depolama)", "Search in the background (System › Storage)"],
 };

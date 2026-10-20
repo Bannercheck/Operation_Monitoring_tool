@@ -1,6 +1,7 @@
 // UI strings, Turkish first. `t(key)` falls back to the key so a missing entry is visible, never a crash.
 import { createContext, useContext } from "react";
 import { APP_STRINGS } from "./i18n_apps";
+import { HOWTO_STRINGS } from "./i18n_howto";
 import { UPD_STRINGS } from "./i18n_updates";
 import { AGU_STRINGS } from "./i18n_agentupd";
 import { SIM_STRINGS } from "./i18n_demo";
@@ -678,7 +679,7 @@ const S: Record<string, [string, string]> = {
   apm_tab_ops: ["Temel işlemler", "Key operations"], apm_tab_db: ["Veritabanı çağrıları", "Database calls"], apm_tab_ext: ["Dış çağrılar", "External calls"], apm_tab_slow: ["En yavaş izler", "Slowest traces"],
   apm_none: ["Bu kapsamda kayıt yok.", "Nothing in this scope."], apm_no_traces: ["Bu kapsamda saklanmış iz yok.", "No stored trace in this scope."],
   apm_col_start: ["Başlangıç", "Start"], apm_col_root: ["Kök işlem", "Root operation"], apm_col_dur: ["Süre", "Duration"], apm_col_spans: ["Adım", "Spans"], apm_col_services: ["Servisler", "Services"], apm_col_link: ["Bağ", "Link"],
-  hint_about: ["Bu sayfa ne işe yarar?", "What is this page for?"],
+  hint_about: ["Bu sayfa ne işe yarar, nasıl kullanılır?", "What is this page for, and how is it used?"], hint_howto: ["Nasıl kullanılır", "How to use it"],
   apm_traces: ["İzler", "Traces"], apm_traces_sub: ["Bir isteğin katmanlar arası yolculuğu; her adımın nasıl bağlandığı gösterilir", "A request's path across tiers; how each step was joined is shown"],
   apm_all_services: ["Tüm servisler", "All services"], apm_f_op: ["İşlem (tam ad)", "Operation (exact)"], apm_f_min: ["En az ms", "Min ms"], apm_f_q: ["Metin ya da trace id", "Text or trace id"], apm_f_err: ["Yalnız hatalı", "Errors only"],
   apm_o_recent: ["En yeni", "Newest"], apm_o_slow: ["En yavaş", "Slowest"], apm_search: ["Ara", "Search"], apm_session: ["Oturum", "Session"], apm_user: ["Kullanıcı (takma ad)", "User (pseudonym)"],
@@ -703,6 +704,7 @@ const S: Record<string, [string, string]> = {
   gk_prof_keys: ["Sütunlar", "Columns"], gk_prof_roles: ["Roller", "Roles"], gk_prof_hits: ["kullanım", "uses"], gk_prof_source_user: ["Kullanıcı", "User"], gk_prof_source_auto: ["Otomatik", "Auto"], gk_prof_none: ["Henüz öğrenilmiş eşleme yok; bir CSV / JSON yükleyin.", "No learned mapping yet; upload a CSV / JSON."],
 };
 Object.assign(S, APP_STRINGS);                       // the applications pages (i18n_apps.ts)
+Object.assign(S, HOWTO_STRINGS);                     // "how to use" steps behind each page title's (i) (i18n_howto.ts)
 Object.assign(S, UPD_STRINGS);                       // the in-app update card (i18n_updates.ts)
 Object.assign(S, AGU_STRINGS);                       // agent self-update and the verified install command (i18n_agentupd.ts)
 Object.assign(S, SIM_STRINGS);                       // the simulator switch and the demo purge (i18n_demo.ts)

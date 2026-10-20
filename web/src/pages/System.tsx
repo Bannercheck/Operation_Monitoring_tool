@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { del, get, post, put } from "../api";
 import { useAuth } from "../auth";
 import { useT } from "../i18n";
-import { Btn, Card, Collapsible, Confirm, Err, Field, Kpi, Table, Tabs, fmtTs } from "../components/ui";
+import { Btn, Card, Collapsible, Confirm, Err, Field, Kpi, Table, Tabs, fmtTs, Hint } from "../components/ui";
 import { StorageCard } from "../components/StorageCard";
 import { ActModeCard } from "../components/act/ActModeCard";
 import { ActActuatorsCard } from "../components/act/ActActuatorsCard";
@@ -30,17 +30,17 @@ export default function System() {
   const [sp, setSp] = useSearchParams(); const tab = (sp.get("tab") as "status" | "update" | "notify" | "readme") || "status";
   const setTab = (k: string) => setSp(k === "status" ? {} : { tab: k });
   const tabs = [{ k: "status", label: t("sys_tab_status") }, ...(can("sys.update") ? [{ k: "update", label: `⬆ ${t("sys_update")}` }] : []), ...(can("sys.notify") ? [{ k: "notify", label: `🔔 ${t("sys_tab_notify")}` }] : []), ...(can("page.readme") ? [{ k: "readme", label: `📖 ${t("sys_tab_readme")}` }] : [])];
-  if (tab === "update") return <div className="stack"><div className="row between"><h2>🛠 {t("sys_title")}</h2><span className="chip">Watchover v{v.version} · {v.git}</span></div><Tabs value={tab} onChange={setTab} tabs={tabs as any} />
+  if (tab === "update") return <div className="stack"><div className="row between"><h2>🛠 {t("sys_title")}<Hint text={t("pg_system_sub")} howto="system" /></h2><span className="chip">Watchover v{v.version} · {v.git}</span></div><Tabs value={tab} onChange={setTab} tabs={tabs as any} />
     {can("sys.update") && <UpdateCenter />}
     {su.form}
     {can("sys.update") && <Collapsible id="sys-snapshots" title={t("sys_snapshots")} right={<><Confirm kind="" onConfirm={() => restart.mutate()}>{t("sys_restart")}</Confirm><Btn sm kind="primary" onClick={() => snap.mutate()} disabled={snap.isPending}>📸 {t("sys_snap_new")}</Btn></>}>
       <Table cols={[{ k: "id", label: "ID", render: (r) => <b className="mono">{r.id}</b> }, { k: "version", label: t("sys_version"), render: (r) => `v${r.version} · ${r.git}` }, { k: "ts", label: t("time"), render: (r) => fmtTs(r.ts) }, { k: "reason", label: t("note") }, { k: "size", label: "MB", num: true, render: (r) => (r.size / 1e6).toFixed(1) }, { k: "dbs", label: t("sys_db"), render: (r) => (r.dbs ?? []).join(", ") },
         { k: "x", label: "", render: (r) => <div className="row"><Confirm kind="" onConfirm={() => rollback.mutate(r.id)}>↩ {t("sys_rollback")}</Confirm><Confirm onConfirm={() => rmSnap.mutate(r.id)}>{t("delete")}</Confirm></div> }]} rows={snaps.data ?? []} /><Err e={snap.error || rollback.error} />{(rollback.isSuccess || restart.isSuccess) && <div className="ok">{t("sys_restarting")}</div>}</Collapsible>}
   </div>;
-  if (tab === "notify") return <div className="stack"><div className="row between"><h2>🛠 {t("sys_title")}</h2></div><Tabs value={tab} onChange={setTab} tabs={tabs as any} /><Notify /></div>;
-  if (tab === "readme") return <div className="stack"><div className="row between"><h2>🛠 {t("sys_title")}</h2></div><Tabs value={tab} onChange={setTab} tabs={tabs as any} /><Readme /></div>;
+  if (tab === "notify") return <div className="stack"><div className="row between"><h2>🛠 {t("sys_title")}<Hint text={t("pg_system_sub")} howto="system" /></h2></div><Tabs value={tab} onChange={setTab} tabs={tabs as any} /><Notify /></div>;
+  if (tab === "readme") return <div className="stack"><div className="row between"><h2>🛠 {t("sys_title")}<Hint text={t("pg_system_sub")} howto="system" /></h2></div><Tabs value={tab} onChange={setTab} tabs={tabs as any} /><Readme /></div>;
   return <div className="stack">
-    <div className="row between"><h2>🛠 {t("sys_title")}</h2><span className="chip">Watchover v{v.version} · {v.git} · {v.docker ? "🐳" : v.platform}</span></div>
+    <div className="row between"><h2>🛠 {t("sys_title")}<Hint text={t("pg_system_sub")} howto="system" /></h2><span className="chip">Watchover v{v.version} · {v.git} · {v.docker ? "🐳" : v.platform}</span></div>
     <Tabs value={tab} onChange={setTab} tabs={tabs as any} />
     <div className="grid k4">
       <Kpi value={`v${v.version ?? "-"}`} label={t("sys_version")} sub={v.git} />

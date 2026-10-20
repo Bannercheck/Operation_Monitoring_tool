@@ -29,7 +29,7 @@ export default function Thresholds() {
   const nBad = (ov.data?.hosts ?? []).filter((h: any) => h.worst !== "ok").length;
   const setTab = (k: string) => { const n = new URLSearchParams(sp); n.set("tab", k); setSp(n, { replace: true }); };
   return <div className="stack">
-    <div className="row between"><div><h2><Gauge size={20} style={{ verticalAlign: -3 }} /> {t("thr_title")}<Hint text={t("thr_sub")} /></h2></div>
+    <div className="row between"><div><h2><Gauge size={20} style={{ verticalAlign: -3 }} /> {t("thr_title")}<Hint text={t("thr_sub")} howto="thresholds" /></h2></div>
       {editable && <Btn kind="primary" onClick={() => setEdit({ ...EMPTY })}><Plus size={14} /> {t("thr_new")}</Btn>}</div>
     <div className="seg">{([["hosts", `${t("thr_tab_hosts")} · ${ov.data?.hosts?.length ?? 0}`], ["policies", `${t("thr_tab_policies")} · ${pol.data?.length ?? 0}`], ["open", `${t("thr_tab_open")} · ${open.data?.length ?? 0}`]] as const).map(([k, l]) =>
       <button key={k} className={tab === k ? "on" : ""} onClick={() => setTab(k)}>{l}</button>)}</div>

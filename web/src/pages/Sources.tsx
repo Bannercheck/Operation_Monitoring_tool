@@ -13,7 +13,7 @@ const EMPTY = { name: "", kind: "elasticsearch", url: "", selector: "", auth: "n
 
 export default function SourcesPage() {
   const { t } = useT(); const [tab, setTab] = useState<"logs" | "mcp">(new URLSearchParams(window.location.search).get("tab") === "mcp" ? "mcp" : "logs");
-  return <div className="stack"><div><h2>🔎 {t("src_page")}<Hint text={t("src_page_tag")} /></h2></div>
+  return <div className="stack"><div><h2>🔎 {t("src_page")}<Hint text={t("src_page_tag")} howto="sources" /></h2></div>
     <Tabs value={tab} onChange={setTab} tabs={[{ k: "logs", label: t("mcp_src_tab_logs") }, { k: "mcp", label: t("mcp_src_tab") }]} />
     {tab === "logs" ? <SourcesPanel /> : <McpSourcesPanel />}</div>;
 }

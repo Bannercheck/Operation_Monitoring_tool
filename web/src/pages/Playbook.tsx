@@ -10,7 +10,7 @@ export default function Playbook() {
   const list = useQuery({ queryKey: ["playbook", q], queryFn: () => get(`/playbook?q=${encodeURIComponent(q)}`) });
   return (
     <div className="stack">
-      <div><h2>📚 {t("pb_title")}<Hint text={t("pb_sub")} /></h2></div>
+      <div><h2>📚 {t("pb_title")}<Hint text={t("pb_sub")} howto="playbook" /></h2></div>
       <input className="input" placeholder={t("search")} value={q} onChange={(e) => setQ(e.target.value)} style={{ maxWidth: 420 }} />
       {!list.data?.length ? <Empty /> : list.data.map((e: any) => (
         <Card key={e.key} className="tight"><div className="svc" style={{ cursor: "pointer" }} onClick={() => setSel(e)}>

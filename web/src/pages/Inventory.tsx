@@ -15,7 +15,7 @@ type Tab = "list" | "add" | "disc" | "csv";
 
 export default function InventoryPage() {
   const { t } = useT();
-  return <div className="stack"><div><h2>🗄 {t("inv_page")}<Hint text={t("inv_page_tag")} /></h2></div><InventoryPanel /></div>;
+  return <div className="stack"><div><h2>🗄 {t("inv_page")}<Hint text={t("inv_page_tag")} howto="inventory" /></h2></div><InventoryPanel /></div>;
 }
 
 export function InventoryPanel() {

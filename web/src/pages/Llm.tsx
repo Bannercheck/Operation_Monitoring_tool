@@ -19,7 +19,7 @@ export default function Llm() {
   const st = cfg.data?.stats ?? {};
   const set = (k: string) => (e: any) => setF({ ...f, [k]: e.target.value });
   return <div className="stack">
-    <div className="row between"><div><h2>🧠 {t("llm_title")}<Hint text={t("llm_sub")} /></h2></div>
+    <div className="row between"><div><h2>🧠 {t("llm_title")}<Hint text={t("llm_sub")} howto="llm" /></h2></div>
       <div className="row"><span className="chip"><span className="d" style={{ background: cfg.data?.enabled ? "#2dd4bf" : "#64748b" }} />{cfg.data?.kind} · {cfg.data?.llm_model || "—"}</span><span className="chip">{st.calls ?? 0} {t("llm_calls")}</span>
         <span className="chip">{t("llm_success")} {st.success != null ? `${Math.round(st.success * 100)}%` : "-"}</span><span className="chip">{t("llm_ground")} {st.grounding_rate != null ? `${Math.round(st.grounding_rate * 100)}%` : "-"}</span></div></div>
     <Tabs value={tab} onChange={setTab} tabs={[{ k: "conn", label: t("llm_tab_conn") }, { k: "models", label: t("llm_tab_models") }, ...(ro ? [] : [{ k: "quality" as const, label: t("llm_tab_quality") }]), { k: "parser", label: `🧩 ${t("llm_tab_parser")}` }]} />

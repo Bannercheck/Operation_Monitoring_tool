@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, del, get, patch, post, put } from "../api";
 import { useAuth } from "../auth";
 import { useT } from "../i18n";
-import { Badge, Btn, Card, Confirm, Empty, Err, Field, Modal, Table, Tabs, fmtTs } from "../components/ui";
+import { Badge, Btn, Card, Confirm, Empty, Err, Field, Modal, Table, Tabs, fmtTs, Hint } from "../components/ui";
 import DiscoveredHosts from "../components/DiscoveredHosts";
 import { TeamChip, TeamPick } from "../components/TeamPick";
 import { EnrollKeyCard } from "./Teams";
@@ -15,7 +15,7 @@ type Tab = "agents" | "discovered" | "mcp";
 
 export default function Connections() {
   const { t } = useT(); const [sp] = useSearchParams(); const [tab, setTab] = useState<Tab>((sp.get("tab") as Tab) || "agents");
-  return <div className="stack"><h2>🔌 {t("nav_conn")}</h2>
+  return <div className="stack"><h2>🔌 {t("nav_conn")}<Hint text={t("pg_connections_sub")} howto="connections" /></h2>
     <Tabs value={tab} onChange={setTab} tabs={[{ k: "agents", label: t("conn_agents") }, { k: "discovered", label: t("conn_discovered") }, { k: "mcp", label: t("mcp_tab") }]} />
     {tab === "agents" && <Agents />}{tab === "discovered" && <Discovered />}{tab === "mcp" && <McpKeysPanel />}</div>;
 }

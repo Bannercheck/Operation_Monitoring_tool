@@ -21,7 +21,7 @@ export default function Assist() {
   const rate = async (i: number, verdict: string) => { const m = hist[i]; const qq = hist[i - 1]?.content ?? ""; await post("/assist/rate", { question: qq, answer: m.content, verdict }); setHist((h) => h.map((x, n) => (n === i ? { ...x, rated: verdict } : x))); };
   const save = async (i: number) => { await post("/assist/save", { question: hist[i - 1]?.content ?? "", answer: hist[i].content }); };
   return <div className="stack">
-    <div className="row between"><div><h2>💬 {t("as_title")}<Hint text={t("as_sub")} /></h2></div>
+    <div className="row between"><div><h2>💬 {t("as_title")}<Hint text={t("as_sub")} howto="assist" /></h2></div>
       <div className="row"><span className="chip"><span className="d" style={{ background: llm.data?.enabled ? "#2dd4bf" : "#64748b" }} />LLM: {llm.data?.enabled ? llm.data.llm_model : "—"}</span>
         <select className="input" style={{ width: 220 }} value={dataset} onChange={(e) => setDataset(e.target.value)}><option value="">{t("as_dataset")}: {ds.data?.[0]?.name ?? "—"}</option>{(ds.data ?? []).map((x: any) => <option key={x.id} value={x.id}>{x.name}</option>)}<option value="live">{t("map_live")}</option></select>
         {hist.length > 0 && <Btn sm onClick={() => setHist([])}>{t("as_clear")}</Btn>}</div></div>

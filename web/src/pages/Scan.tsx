@@ -20,7 +20,7 @@ export default function Scan() {
   const scanAll = useMutation({ mutationFn: () => post("/scan/all", { probe }), onSuccess: inv });
   const editable = can("act.scan"); const s = stats.data; const data: any[] = rows.data ?? [];
   return <div className="stack">
-    <div className="row between"><div><h2>🛡 {t("scan_title")}<Hint text={t("scan_sub")} /></h2></div>
+    <div className="row between"><div><h2>🛡 {t("scan_title")}<Hint text={t("scan_sub")} howto="scan" /></h2></div>
       {editable && <div className="row">
         <label className="chip" title={t("scan_probe_hint")}><input type="checkbox" checked={probe} onChange={(e) => setProbe(e.target.checked)} /> {t("scan_probe")}</label>
         <Btn kind="primary" sm onClick={() => scanAll.mutate()} disabled={scanAll.isPending}>{scanAll.isPending ? `⏳ ${t("scan_running")}` : `🔍 ${t("scan_run_all")}`}</Btn></div>}</div>

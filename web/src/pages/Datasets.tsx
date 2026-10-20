@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api, del, get, post } from "../api";
 import { useT } from "../i18n";
-import { Badge, Btn, Card, Confirm, Empty, Err, Field, Modal, Table, fmtTs } from "../components/ui";
+import { Badge, Btn, Card, Confirm, Empty, Err, Field, Modal, Table, fmtTs, Hint } from "../components/ui";
 import { TeamChip, TeamPick } from "../components/TeamPick";
 
 export default function Datasets() {
@@ -30,7 +30,7 @@ export default function Datasets() {
   const remove = useMutation({ mutationFn: (k: string) => del(`/datasets/${k}`), onSuccess: () => qc.invalidateQueries({ queryKey: ["datasets"] }) });
   return (
     <div className="stack">
-      <div className="row between"><h2>{t("ds_title")}</h2><div className="row"><TeamPick perm="page.data" value={team} onChange={setTeam} style={{ width: 200 }} />{(list.data?.length ?? 0) >= 2 && <Btn onClick={() => setCmp([list.data[0].id, list.data[1].id])}>{t("ds_compare")}</Btn>}{demoMode && <Btn onClick={() => demo.mutate()} disabled={demo.isPending}>{t("ds_demo")}</Btn>}</div></div>
+      <div className="row between"><h2>{t("ds_title")}<Hint text={t("pg_datasets_sub")} howto="datasets" /></h2><div className="row"><TeamPick perm="page.data" value={team} onChange={setTeam} style={{ width: 200 }} />{(list.data?.length ?? 0) >= 2 && <Btn onClick={() => setCmp([list.data[0].id, list.data[1].id])}>{t("ds_compare")}</Btn>}{demoMode && <Btn onClick={() => demo.mutate()} disabled={demo.isPending}>{t("ds_demo")}</Btn>}</div></div>
       <Card title={t("ds_upload")}>
         <div className={`drop ${drag ? "on" : ""}`} onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)} onDrop={(e) => { e.preventDefault(); setDrag(false); upload(e.dataTransfer.files); }} onClick={() => fileRef.current?.click()}>
           📂 {t("ds_drop")}<input ref={fileRef} type="file" multiple style={{ display: "none" }} onChange={(e) => e.target.files && upload(e.target.files)} /></div>

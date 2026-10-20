@@ -28,11 +28,13 @@ export function Confirm({ children, onConfirm, kind = "danger", sm = true }: { c
   return ask ? <Btn kind={kind} sm={sm} onClick={() => { setAsk(false); onConfirm(); }}>{t("confirm")} · {t("yes")}</Btn> : <Btn kind={kind} sm={sm} onClick={() => setAsk(true)}>{children}</Btn>;
 }
 
-/* the page description behind a small (i) next to the page title: shown only on click, closed by a second click, Esc or a click elsewhere */
-export function Hint({ text }: { text: ReactNode }) {
+/* the page description and its "how to use" steps (i18n howto_<page>, one step per line) behind a small (i) next to the page title:
+   shown only on click, closed by a second click, Esc or a click elsewhere */
+export function Hint({ text, howto }: { text?: ReactNode; howto?: string }) {
   const { t } = useT();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLSpanElement>(null);
+  const steps = howto ? t(`howto_${howto}`).split("\n").filter((x) => x && x !== `howto_${howto}`) : [];
   useEffect(() => {
     if (!open) return;
     const away = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
@@ -42,7 +44,8 @@ export function Hint({ text }: { text: ReactNode }) {
   }, [open]);
   return <span className="hint" ref={ref}>
     <button type="button" className={`hint-b ${open ? "on" : ""}`} aria-label={t("hint_about")} title={t("hint_about")} aria-expanded={open} onClick={() => setOpen(!open)}><Info size={15} /></button>
-    {open && <span className="hint-pop" role="note">{text}</span>}
+    {open && <span className="hint-pop" role="note">{text && <span className="hint-t">{text}</span>}
+      {steps.length > 0 && <><b className="hint-h">{t("hint_howto")}</b><ol className="hint-ol">{steps.map((x, i) => <li key={i}>{x}</li>)}</ol></>}</span>}
   </span>;
 }
 

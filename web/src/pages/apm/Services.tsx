@@ -16,7 +16,7 @@ export default function Services() {
   const calls = rows.reduce((a, r) => a + r.calls, 0), errs = rows.reduce((a, r) => a + r.errors, 0);
   const worst = rows.reduce((a: any, r) => (!a || (r.p99_ms ?? 0) > (a.p99_ms ?? 0) ? r : a), null);
   return <div className="stack">
-    <div className="row between"><div><h2><Layers size={20} style={{ verticalAlign: -3 }} /> {t("apm_services")}<Hint text={t("apm_services_sub")} /></h2></div><ScopeBar envs={envs} /></div>
+    <div className="row between"><div><h2><Layers size={20} style={{ verticalAlign: -3 }} /> {t("apm_services")}<Hint text={t("apm_services_sub")} howto="services" /></h2></div><ScopeBar envs={envs} /></div>
     <div className="grid k4">
       <Kpi value={rows.length} label={t("apm_k_services")} sub={t("apm_k_services_sub")} />
       <Kpi value={rate(rows.reduce((a, r) => a + r.rps, 0))} label={t("apm_k_rps")} accent="#60a5fa" sub={`${calls.toLocaleString()} ${t("apm_calls")}`} />
