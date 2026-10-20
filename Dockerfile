@@ -6,7 +6,7 @@
 # may be read-only (writes go to /data, the log volumes and /tmp). Docker keeps running it as UID 10001.
 # Base images are fully qualified (docker.io/library/…): podman build on RHEL (short-name-mode=enforcing) never stops to ask.
 # stage 1: the React interface (web/) -> web/dist, served by the API container
-FROM docker.io/library/node:20-alpine AS web
+FROM docker.io/library/node:22-alpine AS web
 WORKDIR /web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci --no-audit --no-fund
@@ -15,7 +15,7 @@ RUN npm run build
 
 # stage 2: the Go host agent (wo-agent), built exactly as Dockerfile.receiver builds it. keyd (same image) hashes and signs these
 # binaries for the agents' self-update; the dashboard copies them into the receiver's spool, so what is served is what was signed.
-FROM docker.io/library/golang:1.24-alpine AS goagent
+FROM docker.io/library/golang:1.26.9-alpine AS goagent
 WORKDIR /build/goagent
 COPY goagent/ ./
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /out/wo-agent-linux-amd64 . \

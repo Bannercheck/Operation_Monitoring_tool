@@ -172,7 +172,7 @@ def test_fresh_install_then_rerun_is_idempotent(rhel):
     pw = envval(dest, "POSTGRES_PASSWORD"); assert pw and pw != "change-me"
     assert "watchover01.firma.local, watchover01, 10.20.30.40" in envval(dest, "WATCHOVER_EDGE_HOSTS") and "10.88.0.1" not in envval(dest, "WATCHOVER_EDGE_HOSTS")
     # images by podman build, the edge on with its CA exported, updater, units for boot and the nightly backup
-    assert f"podman build --format docker -f Dockerfile -t docker.io/library/watchover:{VER}" in log and "watchover-updater:1" in log
+    assert f"podman build --format docker -f Dockerfile -t docker.io/library/watchover:{VER}" in log and "watchover-updater:2" in log
     assert (dest / "certs/watchover-root.crt").exists()
     units = r / "etc/systemd/system"
     assert f"WorkingDirectory={dest}" in (units / "watchover-stack.service").read_text() and "OnCalendar=*-*-* 02:15:00" in (units / "watchover-backup.timer").read_text()

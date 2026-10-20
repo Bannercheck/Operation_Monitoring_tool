@@ -51,7 +51,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 ENV_FILE="${WATCHOVER_ENV_FILE:-.env}"      # the updater builds a release tree with the install folder's .env
-UPDATER_TAG=1                               # watchover-updater:1 carries tools only (its logic runs from this folder): bump when Dockerfile.updater changes
+UPDATER_TAG=2                               # watchover-updater:1 carries tools only (its logic runs from this folder): bump when Dockerfile.updater changes
 COMPOSE="docker compose"
 CMD="${1:-}"
 
@@ -690,7 +690,7 @@ llm_auto() {
 # test; then the checks the real LB (F5 ...) must pass: /healthz through it with both TLS legs verified, http -> https, the
 # client's address reaching the edge instead of the LB's, a forged X-Forwarded-For ignored. 'stop' removes it and restores
 # the trusted list. Nothing of the real setup changes.
-LBTEST_IMG="${WATCHOVER_LBTEST_IMAGE:-docker.io/library/haproxy:2.9-alpine}"
+LBTEST_IMG="${WATCHOVER_LBTEST_IMAGE:-docker.io/library/haproxy:3.2-alpine}"
 edge_lbtest() {
   local d=.lbtest name net lbip ca port old code red tok line seen z fails=0
   okl() { printf '  \033[32m✓\033[0m %s\n' "$*"; }; badl() { printf '  \033[31m✗\033[0m %s\n' "$*"; fails=$((fails + 1)); }
@@ -1231,7 +1231,7 @@ DNS.$i = $h"; fi
     tmp=$(mktemp -d); mkdir -p "$tmp/volumes" "$tmp/source"
     have_image "watchover-receiver:$(version)" || die "image watchover-receiver:$(version) is not built yet: ./watchover.sh update first"
     imgs="watchover:$(version) watchover-receiver:$(version) postgres:16-alpine"
-    for i in "watchover-trainer:$(version)" "watchover-updater:$UPDATER_TAG" nginx:1.28-alpine ollama/ollama:latest alpine:latest; do have_image "$i" && imgs="$imgs $i" || true; done
+    for i in "watchover-trainer:$(version)" "watchover-updater:$UPDATER_TAG" nginx:1.30-alpine ollama/ollama:latest alpine:latest; do have_image "$i" && imgs="$imgs $i" || true; done
     have_image alpine:latest || docker pull alpine:latest >/dev/null 2>&1 || true; have_image alpine:latest && case " $imgs " in *" alpine:latest "*) ;; *) imgs="$imgs alpine:latest" ;; esac
     if have_image "watchover-trainer:$(version)" && ! offline; then
       say "trainer image present: caching the training base weights so auto-learning works on the air-gapped server"
