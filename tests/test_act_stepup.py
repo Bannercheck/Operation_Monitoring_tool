@@ -100,7 +100,7 @@ def test_oidc_old_auth_time_refused(c):
     assert check_oidc({"email": "ayse@corp.com", "auth_time": now - 600}, "ayse@corp.com", 120, at=now) == (False, "auth_time_old")
     assert check_oidc({"email": "ayse@corp.com"}, "ayse@corp.com", 120, at=now) == (False, "no_auth_time")
     assert check_oidc({"email": "eve@corp.com", "auth_time": now}, "ayse@corp.com", 120, at=now) == (False, "other_account")
-    c.svc.users.sso_login("sso@corp.com", "SSO", "", True, provider="oidc")
+    c.svc.users.sso_login("sso@corp.com", "SSO", "corp.com", True, provider="oidc")
     user = {"id": c.svc.users.get("sso@corp.com")["id"], "email": "sso@corp.com"}
     su = c.svc.act.stepup
     assert su.methods(user) == []                                  # provider not configured: nothing to step up with
@@ -124,7 +124,7 @@ def test_oidc_start_adds_prompt_login(c, monkeypatch):
     from watchover.api.routers import auth as auth_router
     monkeypatch.setattr(auth_router, "_provider", lambda name, cfg: {"issuer": "https://idp", "client_id": "cid", "client_secret": "s"})
     monkeypatch.setattr(auth_router, "_discover", lambda issuer: {"authorization_endpoint": "https://idp/auth"})
-    c.svc.users.sso_login("sso2@corp.com", "SSO", "", True, provider="oidc")
+    c.svc.users.sso_login("sso2@corp.com", "SSO", "corp.com", True, provider="oidc")
     c.svc.act.stepup.sso_ok = lambda provider: True
     tok = auth_router.access_token(c.svc.users.get("sso2@corp.com"))
     h = {"Authorization": f"Bearer {tok}"}

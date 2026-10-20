@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import hmac
 import ipaddress
 import json
 import os
@@ -52,18 +53,39 @@ class RegisterIn(BaseModel):
 class VerifyIn(BaseModel):
     email: str
     code: str
+    password: str = ""                # the password given at registration: only its holder activates the account
 
 
 def _send_otp(users, u: dict) -> tuple[bool, str]:
     cfg = notify_channels().get("email", {})
     if not cfg.get("host"):
         return False, "smtp not configured"
+    if users.otp_throttled(int(u["id"])):
+        return False, "throttled"
     code = users.otp_issue(int(u["id"]))
     try:
         wo_notify.send_email(cfg, [u["email"]], "[Watchover] sign-in code", f"Your Watchover sign-in code: {code} (valid {wo_auth.OTP_MINUTES} minutes)")
         return True, ""
     except Exception as e:  # noqa: BLE001
         return False, f"{type(e).__name__}: {str(e)[:120]}"
+
+
+_RATE: dict = {}                      # (bucket, client address) -> times of its requests: registration and its verification
+_RATE_LOCK = threading.Lock()
+
+
+def _rate_limited(bucket: str, ip: str, limit: int = 10, window_s: int = 900) -> bool:
+    """True when this address made `limit` requests of this kind within window_s (counts this one)."""
+    if _lb_without_client(ip):
+        return False
+    now = time.time()
+    with _RATE_LOCK:
+        q = [t for t in _RATE.get((bucket, ip), ()) if now - t < window_s] + [now]
+        _RATE[(bucket, ip)] = q[-limit * 2:]
+        if len(_RATE) > 10000:
+            for k in list(_RATE)[:5000]:
+                _RATE.pop(k, None)
+        return len(q) > limit
 
 
 _FAILS: dict = {}                     # client address -> times of its failed sign-ins (all accounts together)
@@ -135,6 +157,8 @@ def login(body: LoginIn, request: Request, svc=Depends(services)):
         raise HTTPException(401, "wrong e-mail or password")
     if mfa_active(u):
         ok, err = _send_otp(us, u)
+        if not ok and err == "throttled":
+            raise HTTPException(429, "too many sign-in codes, try again later")
         if not ok:
             us._event(u["email"], "mfa", False, f"code not sent, sign-in refused: {err}"[:200])
             raise HTTPException(503, "the sign-in code could not be sent; try again or ask an administrator")
@@ -193,17 +217,23 @@ def options():
 
 
 @router.post("/register", status_code=202)
-def register(body: RegisterIn, svc=Depends(services)):
+def register(body: RegisterIn, request: Request, svc=Depends(services)):
     """Local account with the least privilege (viewer); an administrator raises the role later on the Users page.
-    With SMTP a verification code goes to the e-mail and /auth/verify activates the account; without SMTP it is active at once and signed in."""
+    With SMTP a verification code goes to the e-mail and /auth/verify (code + the same password) proves the address; the account
+    then starts at once only from an explicitly allowed company domain (Users.domain_trusted), otherwise it waits for an
+    administrator's approval like an account registered without SMTP. A repeated registration of a pending account replaces its
+    password: whoever registered first never keeps a password on an address someone else proves."""
     cfg = wo_settings.load()
     if not cfg.get("auth_self_register", True):
         raise HTTPException(403, "self-registration is off")
+    if _rate_limited("register", request.client.host if request.client else "-"):
+        raise HTTPException(429, "too many registrations from this address, try again later")
     us = svc.users
     ex = us.get(body.email.strip().lower())
     smtp = bool(notify_channels().get("email", {}).get("host"))
-    if ex and ex["status"] == "pending":
-        u = ex
+    if ex and ex["status"] == "pending" and ex.get("provider") == "local":
+        us.set_pending_password(int(ex["id"]), body.password, body.name)
+        u = us.get(ex["email"])
     elif ex:
         raise HTTPException(409, "an account with this e-mail already exists")
     else:
@@ -212,20 +242,31 @@ def register(body: RegisterIn, svc=Depends(services)):
         us._event(u["email"], "register", True, "waiting for an administrator's approval (no SMTP)")
         return {"pending": True, "approval": True}
     ok, why = _send_otp(us, u)
+    if not ok and why == "throttled":
+        raise HTTPException(429, "too many codes for this address, try again later")
     if not ok:
         raise HTTPException(502, why)
     return {"pending": True, "minutes": wo_auth.OTP_MINUTES}
 
 
 @router.post("/verify")
-def verify_registration(body: VerifyIn, svc=Depends(services)):
+def verify_registration(body: VerifyIn, request: Request, svc=Depends(services)):
+    if _rate_limited("verify", request.client.host if request.client else "-", limit=20):
+        raise HTTPException(429, "too many attempts from this address, try again later")
     us = svc.users
     u = us.get(body.email.strip().lower())
-    if not u or u["status"] != "pending":
+    if not u or u["status"] != "pending" or u.get("provider") != "local":
         raise HTTPException(404, "no pending registration")
+    if not us.pending_password_ok(int(u["id"]), body.password):   # counts like a wrong code: the code alone never activates it
+        us._event(str(u["id"]), "mfa", False, "registration verify: wrong password")
+        raise HTTPException(401, "wrong code or password")
     ok, left = us.otp_verify(int(u["id"]), body.code)
     if not ok:
         raise HTTPException(401, f"wrong code, {left} attempts left")
+    cfg = wo_settings.load()
+    if not us.domain_trusted(u["email"], cfg.get("auth_domains", "")):
+        us._event(u["email"], "register", True, "e-mail verified, waiting for an administrator's approval")
+        return {"pending": True, "approval": True, "verified": True}
     us.activate(int(u["id"]))
     u = us.get(u["email"])
     return {"token": access_token(u), "user": {k: u[k] for k in ("id", "email", "name", "role")}}
@@ -314,13 +355,21 @@ def oidc_start(name: str, request: Request, next: str = "/", stepup: str = ""):
     verifier = secrets.token_urlsafe(48)
     challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
     nonce = secrets.token_urlsafe(16)
-    state = issue({"typ": "oidc", "p": name, "v": verifier, "n": nonce, "next": _safe_next(next),
+    bind = secrets.token_urlsafe(24)                          # login CSRF: the callback must come back to this browser (cookie)
+    state = issue({"typ": "oidc", "p": name, "v": verifier, "n": nonce, "next": _safe_next(next), "b": hashlib.sha256(bind.encode()).hexdigest(),
                    **({"su": su.get("email", "")} if su else {})}, 10)
     q = {"response_type": "code", "client_id": p["client_id"], "redirect_uri": _redirect_uri(request, name), "state": state, "nonce": nonce}
     q.update({"scope": "openid email profile", "code_challenge": challenge, "code_challenge_method": "S256"})
     if su:
         q.update({"prompt": "login", "max_age": "0"})
-    return RedirectResponse(disc["authorization_endpoint"] + "?" + urllib.parse.urlencode(q), status_code=302)
+    resp = RedirectResponse(disc["authorization_endpoint"] + "?" + urllib.parse.urlencode(q), status_code=302)
+    secure = (wo_settings.public_url() or str(request.base_url)).startswith("https://")
+    resp.set_cookie(OIDC_COOKIE, bind, max_age=600, httponly=True, secure=secure, path="/api/auth/oidc",
+                    samesite="none" if secure else "lax")      # none (+Secure): a provider that posts the code back still sends it
+    return resp
+
+
+OIDC_COOKIE = "wo_oidc"
 
 
 def _finish(name: str, request: Request, code: str, state: str, error: str, svc):
@@ -330,6 +379,9 @@ def _finish(name: str, request: Request, code: str, state: str, error: str, svc)
     claims = verify(state)
     if claims.get("typ") != "oidc" or claims.get("p") != name:
         raise HTTPException(400, "bad state")
+    bind = request.cookies.get(OIDC_COOKIE, "")
+    if not bind or not claims.get("b") or not hmac.compare_digest(hashlib.sha256(bind.encode()).hexdigest(), str(claims["b"])):
+        return RedirectResponse(f"/login?error={urllib.parse.quote('sign-in started in another browser: start again here')}", status_code=302)
     cfg = wo_settings.load()
     p = _provider(name, cfg)
     if not p:
@@ -360,11 +412,13 @@ def _finish(name: str, request: Request, code: str, state: str, error: str, svc)
                                          {"email": email, "auth_time": idc.get("auth_time")})
         return RedirectResponse(f"{_safe_next(claims.get('next') or '/')}#stepup={'ok' if res['ok'] else 'failed'}", status_code=302)
     ev = ident.get("email_verified")                         # Google: always sent; an address the provider did not verify is not proof
-    verified = ev is None or ev is True or str(ev).lower() == "true"
+    explicit = ev is True or str(ev).lower() == "true"
+    verified = ev is None or explicit
+    sub = str(ident.get("sub") or ident.get("oid") or "")
     u, why = svc.users.sso_check(email, ident.get("name", ""), cfg.get("auth_domains", ""), bool(cfg.get("auth_self_register", True)),
-                                 provider=name, verified=verified)
+                                 provider=name, verified=verified, subject=f"{name}:{sub}" if sub else "", explicit=explicit)
     if not u:
-        msg = {"pending": "pending_approval", "unverified": "e-mail not verified by the provider",
+        msg = {"pending": "pending_approval", "unverified": "e-mail not verified by the provider", "mismatch": "another identity is bound to this account",
                "builtin": "the built-in administrator signs in with its password"}.get(why, "account not allowed")
         return RedirectResponse(f"/login?error={urllib.parse.quote(msg)}", status_code=302)
     return RedirectResponse(f"{_safe_next(claims.get('next') or '/')}#sso={access_token(u)}", status_code=302)
@@ -405,6 +459,8 @@ def stepup_start(body: StepUpIn, user: dict = Depends(current_user), svc=Depends
     m = body.method if body.method in methods else methods[0]
     if m == "otp":
         ok, why = _send_otp(svc.users, svc.users.get(user["email"]))
+        if not ok and why == "throttled":
+            raise HTTPException(429, {"code": "act_stepup_throttled", "tr": "Çok fazla kod istendi; biraz sonra deneyin", "en": "Too many codes requested; try again later"})
         if not ok:
             raise HTTPException(503, {"code": "act_stepup_unavailable", "tr": "Doğrulama kodu gönderilemedi", "en": "The code could not be sent",
                                       "reason": why[:120]})

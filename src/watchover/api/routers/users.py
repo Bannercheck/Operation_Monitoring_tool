@@ -37,6 +37,39 @@ class RoleIn(BaseModel):
     description: str = ""
 
 
+def _held(svc, user) -> set:
+    return set(svc.roles.perms(user["role"]))
+
+
+def _guard_role(svc, user, role: str) -> None:
+    """A delegated user manager (page.users, not admin) hands out only roles whose permissions they hold themselves."""
+    if user["role"] == "admin" or not role:
+        return
+    if role == "admin":
+        raise HTTPException(403, "only an administrator may create or manage administrator accounts")
+    extra = set(svc.roles.perms(role)) - _held(svc, user)
+    if extra:
+        raise HTTPException(403, f"you cannot give a role with permissions you do not hold: {', '.join(sorted(extra)[:8])}")
+
+
+def _guard_target(svc, user, target: dict) -> None:
+    """...and manages (role, status, password, delete) only accounts whose role they could have given."""
+    if user["role"] == "admin":
+        return
+    if target.get("role") == "admin":
+        raise HTTPException(403, "only an administrator may manage administrator accounts")
+    extra = set(svc.roles.perms(target.get("role") or "")) - _held(svc, user)
+    if extra:
+        raise HTTPException(403, f"this account holds permissions you do not hold: {', '.join(sorted(extra)[:8])}")
+
+
+def _target(svc, uid: int) -> dict:
+    t = next((u for u in svc.users.list() if int(u["id"]) == uid), None)
+    if t is None:
+        raise KeyError(uid)
+    return t
+
+
 @router.get("/users")
 def list_users(user=Depends(require("sys.users" if "sys.users" in wo_rbac.PERMISSIONS else "page.users")), svc=Depends(services)):
     """Accounts, each with its team memberships ({"id", "name", "role_label"})."""
@@ -58,8 +91,7 @@ def add_user(body: UserIn, user=Depends(require("page.users")), svc=Depends(serv
             svc.teams.role(body.team_id, body.team_role_id)
         svc.roles.ensure_member()
     role = body.role or ("member" if body.team_id is not None else "operator")
-    if user["role"] != "admin" and role == "admin":
-        raise HTTPException(403, "only an administrator may create administrator accounts")
+    _guard_role(svc, user, role)
     u = svc.users.register(body.email, body.password, body.name)
     svc.users.activate(int(u["id"]))
     if role in svc.roles.names():
@@ -72,14 +104,13 @@ def add_user(body: UserIn, user=Depends(require("page.users")), svc=Depends(serv
 
 @router.patch("/users/{uid}")
 def update_user(uid: int, body: UserPatch, user=Depends(require("page.users")), svc=Depends(services)):
-    target = next((u for u in svc.users.list() if int(u["id"]) == uid), None)
-    if target is None:
-        raise KeyError(uid)
-    is_admin = user["role"] == "admin"
+    target = _target(svc, uid)
     if int(user["id"]) == uid and (body.role is not None or body.status is not None):
         raise HTTPException(403, "you cannot change your own role or status")   # no self-escalation / self-lockout
-    if not is_admin and (target.get("role") == "admin" or body.role == "admin"):
-        raise HTTPException(403, "only an administrator may manage administrator accounts")
+    if int(user["id"]) != uid:
+        _guard_target(svc, user, target)
+    if body.role is not None:
+        _guard_role(svc, user, body.role)
     if body.role is not None:
         svc.users.set_role(uid, body.role, svc.roles.names())
     if body.status is not None:
@@ -94,11 +125,9 @@ def update_user(uid: int, body: UserPatch, user=Depends(require("page.users")), 
 
 @router.post("/users/{uid}/password")
 def set_password(uid: int, body: PasswordIn, user=Depends(require("page.users")), svc=Depends(services)):
-    target = next((u for u in svc.users.list() if int(u["id"]) == uid), None)
-    if target is None:
-        raise KeyError(uid)
-    if user["role"] != "admin" and target.get("role") == "admin" and int(user["id"]) != uid:
-        raise HTTPException(403, "only an administrator may reset an administrator's password")
+    target = _target(svc, uid)
+    if int(user["id"]) != uid:
+        _guard_target(svc, user, target)
     why = wo_auth.password_policy(body.password)
     if why:
         raise HTTPException(400, wo_auth.policy_detail(why))
@@ -107,16 +136,16 @@ def set_password(uid: int, body: PasswordIn, user=Depends(require("page.users"))
 
 @router.post("/users/{uid}/unlock")
 def unlock(uid: int, user=Depends(require("page.users")), svc=Depends(services)):
-    rows = [u for u in svc.users.list() if int(u["id"]) == uid]
-    if not rows:
-        raise KeyError(uid)
-    svc.users.unlock(rows[0]["email"]); return {"ok": True}
+    target = _target(svc, uid)
+    _guard_target(svc, user, target)
+    svc.users.unlock(target["email"]); return {"ok": True}
 
 
 @router.delete("/users/{uid}")
 def delete_user(uid: int, user=Depends(require("page.users")), svc=Depends(services)):
     if int(user["id"]) == uid:
         raise ValueError("you cannot delete your own account")
+    _guard_target(svc, user, _target(svc, uid))
     svc.users.delete(uid); return {"ok": True}
 
 
@@ -147,9 +176,13 @@ def save_role(name: str, body: RoleIn, user=Depends(require("page.users")), svc=
 
 @router.post("/roles/{name}/reset")
 def reset_role(name: str, user=Depends(require("page.users")), svc=Depends(services)):
+    if user["role"] != "admin":                              # the shipped permissions may exceed the caller's (and undo an admin's cut)
+        raise HTTPException(403, "only an administrator may reset a role to its shipped permissions")
     svc.roles.reset(name); return svc.roles.get(name)
 
 
 @router.delete("/roles/{name}")
 def delete_role(name: str, user=Depends(require("page.users")), svc=Depends(services)):
+    if user["role"] != "admin":
+        _guard_role(svc, user, name)
     svc.roles.delete(name); return {"ok": True}

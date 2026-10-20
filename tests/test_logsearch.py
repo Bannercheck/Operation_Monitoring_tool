@@ -306,6 +306,7 @@ def test_budget_partial_scan_never_says_no_logs_and_quiet_host_found(tmp_path, m
         if b % 20 == 5:
             st._accept([ob(t0, host="prd-batch-12", sev="ERROR", msg=f"quiet {b}")], "prd-batch-12", "prod", "", None)
     monkeypatch.setattr(ls_mod, "BUDGET_LINES", 60)
+    monkeypatch.setattr(ls_mod, "BUDGET_MS", 60_000)                       # the line budget is under test: a loaded CI box must not hit the clock first
     s, e = now - timedelta(minutes=8), now + timedelta(seconds=1)
     r = ls.search("zzzz-not-there", start=s.isoformat(), end=e.isoformat())
     assert r["lines"] == [] and r["scan"]["complete"] is False and r["scan"]["stopped_by"] == "budget_lines" and r["next"] and r["total"].get("at_least")

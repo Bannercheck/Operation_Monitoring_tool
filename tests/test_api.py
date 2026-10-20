@@ -195,7 +195,7 @@ def test_oidc_flow_with_stubbed_provider(client, monkeypatch):
     assert r.status_code == 200 and "google_client_secret" in r.json()["changed"]
     got = client.get("/api/system/auth", headers=h).json()
     assert got["google_client_secret"] == "•••" and got["google_client_id"] == "cid" and got["callbacks"]["microsoft"].endswith("/microsoft/callback")
-    client.put("/api/system/auth", json={"google_client_secret": "•••", "auth_domains": ""}, headers=h)             # the mask keeps the stored secret
+    client.put("/api/system/auth", json={"google_client_secret": "•••", "auth_domains": "example.com"}, headers=h)  # the mask keeps the stored secret
     assert wo_settings.load()["google_client_secret"] == "csecret"
     assert [p["name"] for p in client.get("/api/auth/providers").json() if p["configured"]] == ["google"]
     monkeypatch.setattr(a, "_discover", lambda issuer: {"authorization_endpoint": "https://idp.example/auth", "token_endpoint": "https://idp.example/token", "userinfo_endpoint": "https://idp.example/userinfo"})
@@ -208,7 +208,12 @@ def test_oidc_flow_with_stubbed_provider(client, monkeypatch):
         def json(self): return self._d
     seen = {}
     monkeypatch.setattr(a.httpx, "post", lambda url, data, timeout: seen.update(data) or R(200, {"access_token": "at", "id_token": ""}))
-    monkeypatch.setattr(a.httpx, "get", lambda url, headers, timeout: R(200, {"email": "sso.user@example.com", "name": "SSO User"}))
+    monkeypatch.setattr(a.httpx, "get", lambda url, headers, timeout: R(200, {"email": "sso.user@example.com", "name": "SSO User", "sub": "g-1", "email_verified": True}))
+    bind = client.cookies.get("wo_oidc")
+    client.cookies.delete("wo_oidc")                          # login CSRF: a callback opened in another browser (no cookie) is refused
+    cb = client.get(f"/api/auth/oidc/google/callback?code=abc&state={state}", follow_redirects=False)
+    assert cb.status_code == 302 and "another%20browser" in cb.headers["location"]
+    client.cookies.set("wo_oidc", bind, path="/api/auth/oidc")
     cb = client.get(f"/api/auth/oidc/google/callback?code=abc&state={state}", follow_redirects=False)
     assert cb.status_code == 302 and cb.headers["location"].startswith("/ops#sso=") and seen["code"] == "abc" and seen["code_verifier"]
     tok = cb.headers["location"].split("#sso=", 1)[1]

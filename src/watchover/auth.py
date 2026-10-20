@@ -25,6 +25,8 @@ SCRYPT = {"n": 2 ** 15, "r": 8, "p": 2}
 LOCK_FAILURES, LOCK_MINUTES = 5, 15
 REMEMBER_DAYS, REMEMBER_COOKIE = 30, "wo_remember"
 OTP_MINUTES, OTP_ATTEMPTS = 5, 5
+OTP_LOCK_FAILURES, OTP_LOCK_MINUTES = 10, 60        # wrong codes per account across re-issued codes, then no code is accepted for an hour
+OTP_ISSUE_MAX, OTP_ISSUE_MINUTES = 5, 15            # codes issued per account (sign-in, registration, step-up) in that window
 INITIAL_EMAIL = "admin@watchover.local"           # built-in administrator; its password must be changed at first sign-in
 # No password is written in the code: each installation gets a random one at its first start (only its scrypt hash is stored)
 # and the plaintext waits, readable by the operator only, in <WATCHOVER_HOME>/initial-admin-password until it is changed
@@ -172,6 +174,10 @@ class Users:
             kb._exec("ALTER TABLE users ADD COLUMN sessions_after BIGINT DEFAULT 0")   # tokens issued before this (epoch ms) are void
         except Exception:  # noqa: BLE001
             pass
+        try:
+            kb._exec("ALTER TABLE users ADD COLUMN sso_id TEXT DEFAULT ''")             # provider:subject bound at the first SSO sign-in
+        except Exception:  # noqa: BLE001
+            pass
         kb._exec(f"CREATE TABLE IF NOT EXISTS otp_codes (id {pk}, user_id INTEGER NOT NULL UNIQUE, code_hash TEXT NOT NULL, created_at TEXT, expires_at TEXT, attempts INTEGER DEFAULT 0)")
         kb._exec(f"CREATE TABLE IF NOT EXISTS remember_tokens (id {pk}, user_id INTEGER NOT NULL, token_hash TEXT NOT NULL UNIQUE, created_at TEXT, expires_at TEXT, agent TEXT DEFAULT '')")
         kb._exec(f"CREATE TABLE IF NOT EXISTS auth_events (id {pk}, ts TEXT, email TEXT, event TEXT, ok INTEGER, detail TEXT DEFAULT '')")
@@ -244,6 +250,29 @@ class Users:
         self._event(email, "login", True, "unlocked by an administrator")
 
     # ---- lifecycle
+    @staticmethod
+    def domain_trusted(email: str, allowed_domains: str) -> bool:
+        """A new account from this address may start without an administrator: only when its domain is listed explicitly in
+        Sistem › Giriş sağlayıcıları › İzinli e-posta alanları (the company's own) and is not a public mail service. With no list,
+        anyone who can receive mail could open an account that sees every host, so every new account waits for approval."""
+        dom = email.strip().lower().rsplit("@", 1)[-1]
+        listed = {d.strip().lower().lstrip("@") for d in (allowed_domains or "").split(",") if d.strip()}
+        return dom in listed and dom not in PUBLIC_MAIL_DOMAINS
+
+    def set_pending_password(self, uid: int, password: str, name: str = "") -> None:
+        """A repeated self-registration of a still-pending account: the latest registrant's password replaces the earlier one
+        (whoever registered first must not keep a password on an address someone else proves), and /auth/verify asks for it."""
+        why = password_policy(password)
+        if why:
+            raise ValueError(why)
+        self.kb._exec("UPDATE users SET pw_hash=?, name=CASE WHEN ?<>'' THEN ? ELSE name END WHERE id=? AND status='pending' AND provider='local'",
+                      (_hash(password), name.strip()[:80], name.strip()[:80], uid))
+
+    def pending_password_ok(self, uid: int, password: str) -> bool:
+        rows = self.kb._exec("SELECT pw_hash FROM users WHERE id=? AND status='pending'", (uid,))
+        h = rows[0]["pw_hash"] if rows else ""
+        return bool(h) and _verify(password, h)[0]
+
     def activate(self, uid: int) -> None:
         self.kb._exec("UPDATE users SET status='active' WHERE id=? AND status='pending'", (uid,))
         self._event(str(uid), "verify", True, "e-mail verified")
@@ -298,15 +327,18 @@ class Users:
         return ({k: u[k] for k in ("id", "email", "name", "role", "provider")} | {"must_change": bool(u.get("must_change"))}, "ok")
 
     def sso_login(self, email: str, name: str = "", allowed_domains: str = "", auto_create: bool = True, provider: str = "oidc",
-                  verified: bool = True) -> dict | None:
-        return self.sso_check(email, name, allowed_domains, auto_create, provider, verified)[0]
+                  verified: bool = True, subject: str = "", explicit: bool = False) -> dict | None:
+        return self.sso_check(email, name, allowed_domains, auto_create, provider, verified, subject, explicit)[0]
 
     def sso_check(self, email: str, name: str = "", allowed_domains: str = "", auto_create: bool = True, provider: str = "oidc",
-                  verified: bool = True) -> tuple:
-        """An identity the provider vouched for -> (user or None, ok | unverified | builtin | not_allowed | pending | disabled).
-        A new account gets the least privilege (viewer; an administrator raises it). One from a public mail service (gmail.com,
-        outlook.com, ...) waits for an administrator's approval: anyone can open such an address. An address the provider did not
-        verify is refused, and the built-in administrator signs in with its password only."""
+                  verified: bool = True, subject: str = "", explicit: bool = False) -> tuple:
+        """An identity the provider vouched for -> (user or None, ok | unverified | builtin | not_allowed | pending | disabled | mismatch).
+        subject is "<provider>:<sub>": bound to the account at its first SSO sign-in, after which only that identity signs in to it
+        (an e-mail claim alone never takes over an account). A new account gets the least privilege (viewer) and starts at once only
+        from an explicitly allowed company domain (domain_trusted); any other waits for an administrator's approval. An existing
+        local account with a password is linked only when the provider stated the address verified (explicit email_verified: true);
+        a still-pending local registration is taken over by the verified identity and its password dropped. The built-in
+        administrator signs in with its password only."""
         email = email.strip().lower()
         if not verified:
             self._event(email, "sso", False, f"{provider}: e-mail not verified by the provider")
@@ -319,15 +351,31 @@ class Users:
             if not auto_create:
                 self._event(email, "sso", False, "no account and self-registration off")
                 return None, "not_allowed"
-            public = email.rsplit("@", 1)[-1] in PUBLIC_MAIL_DOMAINS
+            trusted = self.domain_trusted(email, allowed_domains)
             try:
-                u = self.register(email, "", name, allowed_domains, provider=provider, role="viewer", status="pending" if public else "active")
+                u = self.register(email, "", name, allowed_domains, provider=provider, role="viewer", status="active" if trusted else "pending")
             except ValueError as e:
                 self._event(email, "sso", False, str(e))
                 return None, "not_allowed"
-            if public:
-                self._event(email, "sso", False, f"{provider}: new account from a public mail service, waiting for an administrator's approval")
+            if subject:
+                self.kb._exec("UPDATE users SET sso_id=? WHERE id=?", (subject[:300], u["id"]))
+            if not trusted:
+                self._event(email, "sso", False, f"{provider}: new account, waiting for an administrator's approval (domain not in the allowed list)")
                 return None, "pending"
+            u = self.get(email)
+        bound = (u.get("sso_id") or "")
+        if bound and subject and not hmac.compare_digest(bound, subject[:300]):
+            self._event(email, "sso", False, f"{provider}: another identity is bound to this account")
+            return None, "mismatch"
+        if not bound and subject:
+            if u["provider"] == "local" and u["status"] == "pending":     # an unproven registration: the verified identity takes it
+                self.kb._exec("UPDATE users SET pw_hash='', provider=? WHERE id=?", (provider, u["id"]))
+                self._event(email, "sso", True, f"{provider}: pending local registration taken over, its password dropped")
+            elif u["provider"] == "local" and u.get("pw_hash") and not explicit:
+                self._event(email, "sso", False, f"{provider}: links to a password account only with email_verified=true")
+                return None, "not_allowed"
+            self.kb._exec("UPDATE users SET sso_id=? WHERE id=?", (subject[:300], u["id"]))
+            u = self.get(email)
         if u["status"] == "pending":
             self._event(email, "sso", False, "waiting for an administrator's approval")
             return None, "pending"
@@ -365,9 +413,23 @@ class Users:
         return int((rows[0]["sessions_after"] if rows else 0) or 0)
 
     # ---- e-mail MFA: a 6-digit one-time code, 5 minutes, 5 attempts, only its hash stored; administrators are exempt by policy
+    def _otp_count(self, uid: int, event: str, ok: int, minutes: int) -> int:
+        since = (datetime.now(UTC) - timedelta(minutes=minutes)).isoformat(timespec="seconds")
+        rows = self.kb._exec("SELECT COUNT(*) AS n FROM auth_events WHERE email=? AND event=? AND ok=? AND ts>=?", (str(uid), event, ok, since))
+        return int(rows[0]["n"]) if rows else 0
+
+    def otp_locked(self, uid: int) -> bool:
+        """Too many wrong codes for this account across re-issued codes (a new code does not reset the count)."""
+        return self._otp_count(uid, "mfa", 0, OTP_LOCK_MINUTES) >= OTP_LOCK_FAILURES
+
+    def otp_throttled(self, uid: int) -> bool:
+        """No new code: too many issued lately, or the account's codes are locked."""
+        return self.otp_locked(uid) or self._otp_count(uid, "otp_issue", 1, OTP_ISSUE_MINUTES) >= OTP_ISSUE_MAX
+
     def otp_issue(self, uid: int) -> str:
         code = f"{secrets.randbelow(1_000_000):06d}"
         now = datetime.now(UTC)
+        self._event(str(uid), "otp_issue", True)
         self.kb._exec("DELETE FROM otp_codes WHERE user_id=?", (uid,))
         self.kb._exec("INSERT INTO otp_codes (user_id, code_hash, created_at, expires_at, attempts) VALUES (?,?,?,?,0)",
                       (uid, hashlib.sha256(f"{uid}:{code}".encode()).hexdigest(), now.isoformat(timespec="seconds"), (now + timedelta(minutes=OTP_MINUTES)).isoformat(timespec="seconds")))
@@ -375,6 +437,9 @@ class Users:
 
     def otp_verify(self, uid: int, code: str) -> tuple[bool, int]:
         """(ok, attempts_left). A wrong code counts; after OTP_ATTEMPTS or after expiry the code is void and a new one is needed."""
+        if self.otp_locked(uid):
+            self.kb._exec("DELETE FROM otp_codes WHERE user_id=?", (uid,))
+            return False, 0
         rows = self.kb._exec("SELECT * FROM otp_codes WHERE user_id=?", (uid,))
         if not rows:
             return False, 0

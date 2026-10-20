@@ -20,10 +20,10 @@ export default function Login() {
     e.preventDefault(); setErr(null); setInfo(""); setBusy(true);
     try {
       if (mode === "register") { if (pw !== pw2) throw new Error(t("reg_mismatch")); const r = await api<any>("/auth/register", { method: "POST", body: { email, password: pw, name }, auth: false }); if (r.token) { await acceptToken(r.token); return; } if (r.approval) { setInfo(t("reg_wait_approval")); setMode("login"); return; } setInfo(t("reg_sent", { m: r.minutes })); setMode("verify"); }
-      else if (mode === "verify") { const r = await api<any>("/auth/verify", { method: "POST", body: { email, code }, auth: false }); await acceptToken(r.token); }
+      else if (mode === "verify") { const r = await api<any>("/auth/verify", { method: "POST", body: { email, code, password: pw }, auth: false }); if (r.approval) { setInfo(t("reg_verified_wait")); setMode("login"); setCode(""); return; } await acceptToken(r.token); }
       else if (challenge) await mfa(challenge, code); else { const r = await login(email, pw); if (r.mfa) setChallenge(r.mfa); }
     }
-    catch (x: any) { const m = String(x?.message || ""); setErr(m.includes("pending_approval") ? t("reg_wait_admin") : m.includes("too many failed") ? t("login_throttled") : m.includes("could not be sent") ? t("login_mfa_send") : m.includes("already exists") ? t("reg_exists") : m.includes("at least") ? t("reg_pw_short") : m.includes("letters and digits") ? t("reg_pw_weak") : m.includes("domain is not allowed") ? t("reg_domain") : m || t("login_failed")); } finally { setBusy(false); }
+    catch (x: any) { const m = String(x?.message || ""); setErr(m.includes("pending_approval") ? t("reg_wait_admin") : m.includes("too many") ? t("login_throttled") : m.includes("could not be sent") ? t("login_mfa_send") : m.includes("already exists") ? t("reg_exists") : m.includes("at least") ? t("reg_pw_short") : m.includes("letters and digits") ? t("reg_pw_weak") : m.includes("domain is not allowed") ? t("reg_domain") : m || t("login_failed")); } finally { setBusy(false); }
   };
   return (
     <div className="login-bg"><div className="login">
