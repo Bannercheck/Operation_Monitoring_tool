@@ -122,6 +122,13 @@ class Services:
         if act is not None:
             act.from_anomaly(row)
 
+    def _source_rows(self, src, rows) -> None:
+        """A source's new rows after they went in as log lines: an SAP PO source also writes its messages' traces and
+        integration-map edges (sap_po.feed)."""
+        if getattr(src, "kind", "") == "sap-po" and rows:
+            from .. import sap_po
+            sap_po.feed(rows, sap_po.po_host(src.url), src.env, self.traces, self.flows)
+
     def _on_ingest(self, events) -> None:
         """Every accepted live batch: service-level history rollups, then spans / RED metrics (each best effort on its own)."""
         try:
@@ -245,7 +252,7 @@ class Services:
         self.thresholds.apps_of_fn = self.apps.apps_of_host
         self.apps.on_change = lambda: setattr(self.thresholds, "_cache", (0.0, []))
         self.logs.app_resolver = self.apps.query_members; self.logs.app_names = self.apps.names
-        self.poller = Poller(self.sources, self.live)
+        self.poller = Poller(self.sources, self.live, on_rows=self._source_rows)
         self.receiver = None
         self.spool_consumer = None
         self.selfmon = None

@@ -48,6 +48,12 @@ KINDS: dict[str, dict] = {
              "auth": ("none", "basic", "apikey", "bearer"), "path_hint": "https://api.example.com/v1/events?since=-5m",
              "needs": "Any endpoint that returns a JSON list or plain log text (Datadog, Sumo, Papertrail exports, in-house APIs).",
              "logs": "JSON records (fields guessed: ts / time, level, host, service, message) or raw text lines through the format detector."},
+    "sap-po": {"label": "SAP PO / PI", "icon": "🔁", "port": 50000, "selector": "max messages per poll (optional)", "selector_ex": "1000",
+               "auth": ("basic",), "path_hint": "https://sappo.example.com:50001",
+               "needs": "The PO Java stack's base URL (ICM http/https port) and a technical user with read-only Adapter Engine message "
+                        "monitoring (display role; no change rights). Only message headers are read, never payloads.",
+               "logs": "Every message the Adapter Engine handled: interface, sender and receiver system, adapter, status, duration, error "
+                       "label. Each becomes a log line, a trace (sender → SAP PO → receiver) and integration-map edges."},
 }
 KIND_ALIASES = {"opensearch": "elasticsearch"}
 TS_KEYS = ("@timestamp", "timestamp", "ts", "time", "_time", "date", "event_time")
@@ -286,8 +292,24 @@ def fetch_http(src: Source, since: datetime, limit: int) -> tuple[list[dict], st
     return rows, max(last, since).isoformat()
 
 
+def fetch_sap_po(src: Source, since: datetime, limit: int) -> tuple[list[dict], str]:
+    """SAP PO Adapter Engine message monitoring (getMessageList): one row per message header (sap_po.rows_of)."""
+    from . import sap_po
+    until = datetime.now(UTC)
+    base = src.url.rstrip("/")
+    url = base if "AdapterMessageMonitoring" in base else base + sap_po.SOAP_PATH
+    try:
+        cap = max(1, min(int(src.selector or 1000), 5000))
+    except ValueError:
+        cap = 1000
+    data = _call(src, url, "POST", sap_po.request_xml(since, until, min(cap, max(limit, 1) * 10)),
+                 extra={"Content-Type": "text/xml; charset=utf-8", "SOAPAction": '"getMessageList"'})
+    msgs = sap_po.parse_messages(data)
+    return sap_po.rows_of(msgs, sap_po.po_host(src.url)), until.isoformat()
+
+
 FETCHERS: dict[str, Callable] = {"elasticsearch": fetch_elasticsearch, "opensearch": fetch_elasticsearch, "loki": fetch_loki,
-                                 "splunk": fetch_splunk, "graylog": fetch_graylog, "http": fetch_http}
+                                 "splunk": fetch_splunk, "graylog": fetch_graylog, "http": fetch_http, "sap-po": fetch_sap_po}
 
 
 def fetch(src: Source, since: datetime | None = None, limit: int = 500) -> tuple[list[dict], str]:

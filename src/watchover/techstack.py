@@ -62,7 +62,7 @@ TECH: dict[str, dict] = {
     "celery": _t("Celery", "app", "worker", "python"), "spring-boot": _t("Spring Boot", "app", "framework", "java", "http"),
     "aspnet": _t("ASP.NET", "app", "framework", "dotnet", "http"), "aspnetcore": _t("ASP.NET Core", "app", "framework", "dotnet", "http", api=True),
     "express": _t("Express", "app", "framework", "node", "http", api=True), "nestjs": _t("NestJS", "app", "framework", "node", "http", api=True),
-    "sap-java": _t("SAP NetWeaver Java", "app", "server", "java", "http sap-http sap-https"), "keycloak": _t("Keycloak", "identity", "dir", "java", "http"),
+    "sap-java": _t("SAP NetWeaver Java", "app", "server", "java", "http sap-http sap-https"), "sap-po": _t("SAP PO / PI", "app", "server", "java", "sap-http sap-https"), "keycloak": _t("Keycloak", "identity", "dir", "java", "http"),
     "oracle-ebs": _t("Oracle E-Business Suite", "app", "app"), "sap-app": _t("SAP", "app", "app"), "dynamics": _t("Microsoft Dynamics", "app", "app"),
     "oracle-db": _t("Oracle Database", "db", "db", "", "oracle"), "sqlserver": _t("SQL Server", "db", "db", "", "sqlserver"),
     "postgres": _t("PostgreSQL", "db", "db", "", "postgres"), "mysql": _t("MySQL", "db", "db", "", "mysql"), "mariadb": _t("MariaDB", "db", "db", "", "mysql"),

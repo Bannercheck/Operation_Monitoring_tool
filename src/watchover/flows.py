@@ -17,12 +17,13 @@ PORTS = {22: "ssh", 25: "smtp", 53: "dns", 80: "http", 88: "kerberos", 110: "pop
          3201: "sap-dialog", 3300: "sap-rfc", 3301: "sap-rfc", 3306: "mysql", 3389: "rdp", 3600: "sap-ms", 4222: "nats", 5000: "http", 5432: "postgres",
          5601: "kibana", 5672: "amqp", 6379: "redis", 6443: "kubernetes", 7001: "weblogic", 8000: "http", 8080: "http", 8443: "https", 8600: "watchover",
          9000: "http", 9042: "cassandra", 9092: "kafka", 9200: "elasticsearch", 9300: "elasticsearch", 11211: "memcached", 15672: "rabbitmq",
-         27017: "mongodb", 30015: "hana", 30013: "hana", 30041: "hana", 50000: "sap-http", 50001: "sap-https", 1414: "ibm-mq"}
+         27017: "mongodb", 30015: "hana", 30013: "hana", 30041: "hana", 50000: "sap-http", 50001: "sap-https", 1414: "ibm-mq",
+         0: "jdbc"}                                       # 0: an edge without a telling port (SAP PO's JDBC adapter: the database kind is unknown)
 DB_PORTS = {1433, 1521, 1522, 3306, 5432, 6379, 9042, 27017, 30013, 30015, 30041, 11211}
 PROXY_PROCS = {"nginx", "httpd", "apache2", "haproxy", "envoy", "traefik", "caddy"}
 
 
-CATEGORY = {"postgres": "db", "oracle": "db", "mysql": "db", "sqlserver": "db", "hana": "db", "mongodb": "db", "redis": "cache", "memcached": "cache",
+CATEGORY = {"jdbc": "db", "postgres": "db", "oracle": "db", "mysql": "db", "sqlserver": "db", "hana": "db", "mongodb": "db", "redis": "cache", "memcached": "cache",
             "cassandra": "db", "kafka": "messaging", "amqp": "messaging", "rabbitmq": "messaging", "ibm-mq": "messaging", "nats": "messaging",
             "zookeeper": "messaging", "http": "api", "https": "api", "weblogic": "api", "sap-http": "sap", "sap-https": "sap", "sap-dialog": "sap",
             "sap-rfc": "sap", "sap-ms": "sap", "ldap": "identity", "ldaps": "identity", "kerberos": "identity", "smtp": "mail", "smtps": "mail",

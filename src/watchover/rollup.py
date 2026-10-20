@@ -59,11 +59,11 @@ TRACED = 32                        # record mask bit: a line of the session had 
 # t a trace / request id or a duration, P a session already resolved and pseudonymised (stored batches)
 SES_ROLES = {**dict.fromkeys(("session", "session_id", "sessionid", "jsessionid", "session.id", "sid", "phpsessid", "asp.net_sessionid"), "s"),
              "session_state": "S", "clientid": "k", "client_id": "k",
-             **dict.fromkeys(("user", "user_id", "userid", "username", "user.name", "uid", "cs-username", "usr"), "u"),
+             **dict.fromkeys(("user", "user_id", "userid", "username", "user.name", "uid", "cs-username", "usr", "sap.user"), "u"),   # sap.user: S/4 / NW users
              **dict.fromkeys(("client_ip", "clientip", "remote_addr", "remote_ip", "c-ip", "src_ip", "source_ip", "client.ip"), "c"),
              "client": "a", "x_forwarded_for": "x", "x-forwarded-for": "x", "rum.session": "r", "rum.user_ref": "R", "_ses": "P",
              **dict.fromkeys(("traceparent", "trace_id", "traceid", "trace.id", "request_id", "requestid", "x-request-id", "correlation_id", "duration_ms",
-                              "elapsed_ms", "latency_ms", "response_time_ms", "time-taken", "time_taken", "request_time", "duration"), "t")}
+                              "elapsed_ms", "latency_ms", "response_time_ms", "time-taken", "time_taken", "request_time", "duration", "po.msg_id"), "t")}   # po.msg_id: the sap-po source writes the trace
 _KROLE: dict[str, str] = {}        # attribute name as sent -> role ("" none): one lower() per distinct name, not per line
 _SC: dict[int, tuple] = {}         # hash(raw values) -> session_of answer
 _SC_KEY: list = [None]             # the pseudonym key _SC was filled with (a new key, as in tests, empties it)

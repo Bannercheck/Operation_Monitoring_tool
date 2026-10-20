@@ -46,6 +46,11 @@ BAD_HOST = re.compile(r"^\[.*\]$|:$|\s|^-$")
 LOCAL_AHEAD = timedelta(minutes=15)                  # a stamp this far ahead of its arrival is a local clock without an offset (_accept)
 
 
+def _po_tag(o: Observation) -> None:
+    from .sap_po import tag_log
+    tag_log(o)
+
+
 class LiveStore:
     """Thread-safe ring buffer of recent observations + append-only JSONL spool on disk."""
 
@@ -480,6 +485,11 @@ class LiveStore:
                 try:
                     if self.enricher(o):
                         self.matched += 1
+                except Exception:  # noqa: BLE001
+                    pass
+            if "sap.format" in o.attributes:                 # SAP PO's own Java log: a PO message id joins the line to that message's trace
+                try:
+                    _po_tag(o)
                 except Exception:  # noqa: BLE001
                     pass
             if env:                                          # the registered environment wins over guessing from host names
