@@ -9,7 +9,7 @@ import { InstallCmds, useIngestBase } from "../../components/InstallCmd";
 import { AppEditor, CRITS, ChipInput, Toggles } from "./common";
 
 type Way = "agent" | "otel" | "rum" | "platform";
-const WAYS: { k: Way; icon: any }[] = [{ k: "agent", icon: Cpu }, { k: "otel", icon: Radio }, { k: "rum", icon: Smartphone }, { k: "platform", icon: Database }];
+const WAYS: { k: Way; icon: any }[] = [{ k: "agent", icon: Cpu }, { k: "rum", icon: Smartphone }, { k: "platform", icon: Database }, { k: "otel", icon: Radio }];   // Watchover's own agent first; OpenTelemetry only as an optional door
 
 /** The OpenTelemetry service.namespace (and agent name part) for an application name: Turkish letters folded, lower case, a-z0-9-. */
 export const slugOf = (s: string) => s.toLocaleLowerCase("tr").replace(/[çğıöşü]/g, (c) => ({ ç: "c", ğ: "g", ı: "i", ö: "o", ş: "s", ü: "u" } as any)[c])

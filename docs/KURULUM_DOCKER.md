@@ -407,6 +407,8 @@ Panel yalnızca paketi denetler, birime koyar ve "uygula / geri dön" isteği ya
 - Reddedilenler: boyut sınırını aşan (`WATCHOVER_UPDATE_MAX_MB`, varsayılan 8192), mutlak yol / `..` (zip-slip), sembolik bağ, aygıt dosyası, aynı adlı iki dosya, olağan dışı sıkıştırma oranı, eksik zorunlu dosya (`watchover.sh`, `docker-compose.yml`, `Dockerfile`, `pyproject.toml`, `src/watchover/__init__.py`), sürüm bilgileri birbirini tutmayan ve **uygulama içi güncelleyiciyi içermeyen** (bu özellikten önceki bir sürümün) paketi — böyle bir sürüm arayüzden geri alınamazdı; onu elle kurun.
 - Ekranda `çalışan → yeni` sürüm, sürüm notları (CHANGELOG), SHA-256 ve imza durumu görünür. Sürüm düşürme serbesttir, belirgin bir uyarıyla.
 
+**İmzasız paket varsayılan olarak reddedilir (v1.60.2).** Güncelleyici motor soketine sahip tek konteynerdir (sunucuda root'a eşdeğer); paneli ele geçiren biri ona istediği kodu veremesin diye imzasız paket artık kurulmaz. İki yol: (1) aşağıdaki gibi bir yayın anahtarı tanımlayıp paketleri imzalayın (önerilir); (2) bilerek imzasız güncelleme istiyorsanız kurulum klasörünün `.env` dosyasına `WATCHOVER_UPDATE_UNSIGNED=1` yazın (bu dosya root'undur, panel değiştiremez). `git pull` + `./install-rhel.sh` ile yapılan güncelleme bundan etkilenmez. Anahtar tanımlıyken Docker'sız kurulumun eski zip / git yükleme uçları da kapanır: yalnız imzalı güncelleme kurulur.
+
 **İmza (önerilir).** Anahtar tanımlıysa imzasız ya da yanlış imzalı paket reddedilir:
 
 ```bash

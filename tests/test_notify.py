@@ -117,7 +117,8 @@ def test_turkish_gateways_number_format_and_rejection(monkeypatch):
     def fake_open(req, timeout=0):
         seen["url"], seen["body"], seen["ctype"] = req.full_url, req.data, req.headers.get("Content-type")
         return R(seen.pop("reply", b"ok"))
-    monkeypatch.setattr(wo_notify.urllib.request, "urlopen", fake_open)
+    from watchover import connectors
+    monkeypatch.setattr(connectors, "open_url", lambda req, timeout=0, context=None, allow_private=False: fake_open(req, timeout))   # guarded opener (v1.60.2)
     # fixed preset: the catalogue URL wins over cfg, the number is written as digits, Netgsm's 200-with-error-code is a rejection
     cfg = {"preset": "netgsm", "url": "http://evil", "user": "850", "password": "p w", "from": "WATCHOVER"}
     seen["reply"] = b"00 1234567"

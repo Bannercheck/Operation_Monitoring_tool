@@ -541,11 +541,12 @@ def search(key: str, q: str = "", regex: bool = False, severity: Optional[str] =
     terms = _parse_query(q)
     sev = {x.strip().upper() for x in (severity or "").split(",") if x.strip()}
     compiled: dict = {}
-    if regex:                                                # precompile once, refuse catastrophic patterns (ReDoS) -> treated as literal
+    if regex:                                                # precompile once; a typed pattern runs with a time limit (ReDoS: 400)
+        from ... import saferx
         for _neg, _field, term in terms:
             if term not in compiled:
                 try:
-                    grok.guard_regex(term); compiled[term] = re.compile(term)
+                    grok.guard_regex(term); compiled[term] = saferx.compile(term, budget_s=3.0)
                 except (re.error, grok.UnsafePattern):
                     compiled[term] = None
     out, total = [], 0

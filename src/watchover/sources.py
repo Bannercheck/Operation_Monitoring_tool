@@ -8,7 +8,7 @@ same window, and a rolling hash set drops the occasional duplicate at the bounda
 """
 from __future__ import annotations
 
-from .connectors import guard_url
+from .connectors import open_url, read_capped
 
 import base64
 import hashlib
@@ -112,9 +112,8 @@ def _headers(src: Source, extra: dict | None = None) -> dict:
 
 def _call(src: Source, url: str, method: str = "GET", body: bytes | None = None, extra: dict | None = None, timeout: int = 30) -> bytes:
     req = urllib.request.Request(url, data=body, method=method, headers=_headers(src, extra))
-    guard_url(url, allow_private=True)                     # admin-configured source may live on the company network; scheme + metadata still blocked
-    with urllib.request.urlopen(req, timeout=timeout, context=_ctx(src.verify_tls)) as r:
-        return r.read()
+    with open_url(req, timeout, _ctx(src.verify_tls), allow_private=True) as r:   # company network allowed; scheme + metadata blocked, no redirects
+        return read_capped(r)
 
 
 def _pick(d: dict, keys: tuple) -> object:
@@ -338,6 +337,10 @@ class SourceStore:
     def update(self, sid: int, **fields) -> None:
         if not fields:
             return
+        cur = self.get(sid)
+        if cur is not None and "url" in fields and fields["url"] != cur.url:   # a re-pointed source never carries the stored credentials along
+            fields.setdefault("secret", "")
+            fields.setdefault("headers", "")
         from . import vault
         if "secret" in fields:
             fields["secret"] = vault.encrypt(fields["secret"] or "")

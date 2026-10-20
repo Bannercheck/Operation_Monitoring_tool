@@ -17,13 +17,17 @@ Keys are business identifiers, not people; when they could identify a person (an
 from __future__ import annotations
 
 import json
+import logging
 import re
 import statistics
 import threading
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 
+from . import saferx
 from .privacy import pseudonym, scrub
+
+log = logging.getLogger(__name__)
 
 UTC = timezone.utc
 
@@ -36,6 +40,9 @@ def _failed_at(steps: dict, n: int) -> int:
     fail = steps[FAIL]["ts"]
     before = [i for i, r in steps.items() if i >= 0 and r["ts"] <= fail]
     return min(n - 1, (max(before) + 1) if before else 0)
+
+
+FLOW_BUDGET_S = 1.0                    # regex time one flow may spend per 30 s window before it is switched off (ReDoS)
 
 
 class BizFlows:
@@ -69,7 +76,10 @@ class BizFlows:
 
     @staticmethod
     def _check(key_regex: str, steps: list) -> list[dict]:
-        rx = re.compile(key_regex, re.I)
+        from . import grok
+        for p in [key_regex] + [str(s.get("match", "")) for s in steps or []]:
+            grok.guard_regex(p)                              # shape check here; every match also runs with a time limit (saferx)
+        rx = saferx.compile(key_regex, re.I)
         if rx.groups < 1:
             raise ValueError("the key pattern needs one capturing group: (...) around the identifier")
         clean = []
@@ -77,7 +87,7 @@ class BizFlows:
             name, match = str(s.get("name", "")).strip()[:60], str(s.get("match", "")).strip()[:300]
             if not name or not match:
                 raise ValueError("every step needs a name and a match pattern")
-            re.compile(match, re.I)
+            saferx.compile(match, re.I)
             clean.append({"name": name, "match": match, "service": str(s.get("service", "")).strip()[:80]})
         if len(clean) < 2:
             raise ValueError("a flow needs at least two steps")
@@ -111,8 +121,9 @@ class BizFlows:
                 if not f["enabled"]:
                     continue
                 try:
-                    comp.append((f, re.compile(f["key_regex"], re.I), [(i, re.compile(s["match"], re.I), s.get("service", "")) for i, s in enumerate(f["steps"])]))
-                except re.error:
+                    comp.append((f, saferx.compile(f["key_regex"], re.I, budget_s=FLOW_BUDGET_S),       # budget per 30 s window (recompiled)
+                                 [(i, saferx.compile(s["match"], re.I, budget_s=FLOW_BUDGET_S), s.get("service", "")) for i, s in enumerate(f["steps"])]))
+                except (re.error, ValueError):
                     continue
             self._compiled = (time.time(), comp)
         return self._compiled[1]
@@ -123,14 +134,19 @@ class BizFlows:
         flows = self._flows()
         if not flows:
             return 0
-        rows = []
+        rows, off = [], set()
         for o in events:
             msg = o.message or ""
             if not msg:
                 continue
             dm = 1 if is_demo(o) else 0                      # simulator lines feed a flow's funnel as demo rows only
             for f, krx, steps in flows:
-                m = krx.search(msg)
+                if f["id"] in off:
+                    continue
+                try:
+                    m = krx.search(msg)
+                except saferx.PatternTimeout:
+                    off.add(f["id"]); continue
                 if not m:
                     continue
                 key = m.group(1)
@@ -144,12 +160,20 @@ class BizFlows:
                 for i, srx, svc in steps:
                     if svc and o.service != svc:
                         continue
-                    if srx.search(msg):
+                    try:
+                        hit = srx.search(msg)
+                    except saferx.PatternTimeout:
+                        off.add(f["id"]); break
+                    if hit:
                         rows.append((f["id"], key, i, ts, o.service or "", o.host or "", err, scrub(msg)[:240], dm))
                         break
                 else:
                     if err:     # an error carrying the key that is no step of its own: the failure that blocks the next step
                         rows.append((f["id"], key, FAIL, ts, o.service or "", o.host or "", 1, scrub(msg)[:240], dm))
+        for fid in off:                                      # a pattern too slow for live logs: off, and said why (no restart loop)
+            self.kb._exec("UPDATE biz_flows SET enabled=0 WHERE id=?", (fid,))
+            log.warning("business flow %s switched off: its pattern is too slow for live logs (catastrophic backtracking)", fid)
+            self._compiled = None
         if rows:
             sql = ("INSERT INTO biz_events (flow_id, bkey, step, ts, service, host, error, message, demo) VALUES (?,?,?,?,?,?,?,?,?)"
                    + self.kb.upsert_suffix("flow_id, bkey, step", "error=CASE WHEN excluded.error > biz_events.error THEN excluded.error ELSE biz_events.error END, "
@@ -249,7 +273,9 @@ class BizFlows:
     def suggest(key_regex: str, observations) -> list[dict]:
         """Message templates that carry a key, ordered by where they usually sit in a key's path (median rank), with counts."""
         from .analysis import template_of
-        rx = re.compile(key_regex, re.I)
+        from . import grok
+        grok.guard_regex(key_regex)
+        rx = saferx.compile(key_regex, re.I, budget_s=3.0)      # one request: a slow pattern is refused (400), not run for minutes
         if rx.groups < 1:
             raise ValueError("the key pattern needs one capturing group")
         per_key: dict[str, list] = defaultdict(list)

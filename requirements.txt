@@ -3,6 +3,7 @@
 streamlit>=1.35
 pandas>=1.5
 python-dateutil>=2.8
+regex>=2024.11.6                      # user-typed patterns run with a time limit (saferx.py)
 psycopg[binary]>=3.1                  # PostgreSQL sürücüsü (DATABASE_URL); yoksa gömülü SQLite kullanılır
 
 # Geliştirme / test

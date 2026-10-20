@@ -90,7 +90,8 @@ def zip_tree(tree: Path, out: Path, prefix: str = "hackathon/", comment: bytes =
 def env(tmp_path, monkeypatch):
     """An install folder at v1.53.0 (captured), a spool, a fake engine on PATH."""
     install = make_tree(tmp_path / "install", "1.53.0", extra={"scripts/old.sh": "echo old\n"})
-    (install / ".env").write_text("WATCHOVER_ENGINE=docker\nWATCHOVER_TAG=1.53.0\nWATCHOVER_IMAGE=watchover\nPOSTGRES_PASSWORD=s3cr3t-pw\nWATCHOVER_UPDATER=1\nWATCHOVER_BACKUP_DIR=\n")
+    (install / ".env").write_text("WATCHOVER_ENGINE=docker\nWATCHOVER_TAG=1.53.0\nWATCHOVER_IMAGE=watchover\nPOSTGRES_PASSWORD=s3cr3t-pw\nWATCHOVER_UPDATER=1\nWATCHOVER_BACKUP_DIR=\n"
+                                  "WATCHOVER_UPDATE_UNSIGNED=1\n")     # these tests apply unsigned packages on purpose (v1.60.2: refused by default)
     (install / "backups").mkdir()
     (install / "backups" / "nightly.tgz").write_text("keep me")
     (install / "certs").mkdir()
@@ -387,6 +388,16 @@ def test_bundle_apply_loads_images(env):
     assert st["status"] == "done" and "bundle" in [s for s in st["steps"] if s["name"] == "build"][0]["msg"], st
     calls = (fake / "calls.log").read_text()
     assert "docker load" in calls and "compose build" not in calls and "WATCHOVER_OFFLINE=1" in (up.install / ".env").read_text()
+
+
+def test_unsigned_packages_are_refused_unless_allowed(env):
+    """Security review (v1.60.2): whoever controls the dashboard container must not hand the root-equivalent updater any code."""
+    up, fake, tmp = env
+    envf = up.install / ".env"
+    envf.write_text(envf.read_text().replace("WATCHOVER_UPDATE_UNSIGNED=1\n", ""))
+    pkg = zip_tree(make_tree(tmp / "r154u", "1.54.0"), tmp / "pu.zip")
+    st = request(up, pkg, "20261016-120500-uuuuuu")
+    assert st["status"] == "failed" and st["error"]["code"] == "signature_required" and U.read_version(up.install) == "1.53.0"
 
 
 def test_requests_are_checked_and_signatures_enforced(env):

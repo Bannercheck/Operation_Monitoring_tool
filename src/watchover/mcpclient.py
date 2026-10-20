@@ -35,7 +35,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 from urllib.parse import urljoin, urlparse
 
-from .connectors import dig, guard_url, parse_headers
+from .connectors import dig, open_url, parse_headers
 
 UTC = timezone.utc
 PROTOCOL = "2025-06-18"
@@ -109,10 +109,9 @@ class Client:
         return left
 
     def _open(self, url: str, method: str, body: Optional[bytes], headers: dict):
-        guard_url(url, allow_private=self.allow_private)
         req = urllib.request.Request(url, data=body, method=method, headers=headers)
         try:
-            return urllib.request.urlopen(req, timeout=max(0.5, self._left()), context=self.ctx)
+            return open_url(req, max(0.5, self._left()), self.ctx, allow_private=self.allow_private)
         except urllib.error.HTTPError as e:
             try:
                 detail = e.read(400).decode("utf-8", "replace")
@@ -497,6 +496,11 @@ class McpSources:
     def update_source(self, sid: int, d: dict) -> dict:
         from . import vault
         v = self.clean_source(d, partial=True)
+        cur = self.source(sid, secret=True)
+        if "url" in v and v["url"] != cur.get("url"):           # re-pointed: the stored bearer token / headers do not follow (security review)
+            v.setdefault("secret", "")
+            if "headers" in cur:
+                v.setdefault("headers", "")
         if "secret" in v:
             v["secret"] = vault.encrypt(v["secret"])
         if "name" in v and any(s["name"].lower() == v["name"].lower() and s["id"] != sid for s in self.sources()):

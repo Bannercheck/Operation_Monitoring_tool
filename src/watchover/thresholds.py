@@ -455,5 +455,6 @@ def post_webhook(url: str, kind: str, severity: str, title: str, body: str, secr
     import urllib.request
     data = json.dumps(webhook_payload(kind, severity, title, body), ensure_ascii=False).encode()
     req = urllib.request.Request(url, data=data, method="POST", headers={"Content-Type": "application/json", **({"Authorization": f"Bearer {secret}"} if secret else {})})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
+    from .connectors import open_url
+    with open_url(req, timeout, allow_private=True) as r:      # company endpoints (Teams relay, internal hooks) allowed; metadata blocked, no redirects
         return f"HTTP {r.status}"

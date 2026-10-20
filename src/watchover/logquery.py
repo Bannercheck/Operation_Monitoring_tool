@@ -817,16 +817,33 @@ def _char_rx(c: str) -> str:
     return re.escape(c)
 
 
+MAX_GLOB_STARS = 6                    # star runs in one value: each is a backtracking point, *?*?*?…! over a long token took seconds
+
+
 def _glob_rx(v: Val, whole: bool, free: bool = False):
-    """Folded glob: whole-value (fullmatch on a folded value) or free text (search, a wildcard never crosses whitespace)."""
-    parts = []
+    """Folded glob: whole-value (fullmatch on a folded value) or free text (search, a wildcard never crosses whitespace). A run of
+    wildcards becomes one quantifier (*?*? -> X{2,}) and a value holds at most MAX_GLOB_STARS star runs, so a typed query cannot
+    make the scan backtrack catastrophically (security review, v1.60.2)."""
+    any_c = r"\S" if free else "."
+    parts, run, stars = [], None, 0
+
+    def close():
+        nonlocal run, stars
+        if run is not None:
+            n, star = run
+            parts.append(any_c + ("{%d,}" % n if n and star else "*" if star else "{%d}" % n if n > 1 else ""))
+            stars += 1 if star else 0
+            run = None
     for i, c in enumerate(v.text):
         if i in v.wild:
-            parts.append((r"\S*" if free else ".*") if c == "*" else (r"\S" if free else "."))
-        elif whole:
-            parts.append(re.escape(fold(c)))
+            n, star = run or (0, False)
+            run = (n + (c == "?"), star or c == "*")
         else:
-            parts.append(_char_rx(c))
+            close()
+            parts.append(re.escape(fold(c)) if whole else _char_rx(c))
+    close()
+    if stars > MAX_GLOB_STARS:
+        raise ValueError(f"too many wildcards in one value (at most {MAX_GLOB_STARS} '*')")
     body = "".join(parts)
     return re.compile(("^" + body + "$") if whole else body, re.I | re.S)
 

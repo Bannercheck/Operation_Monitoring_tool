@@ -140,7 +140,8 @@ def send_sms(cfg: dict, to: str, text: str) -> str:
     elif auth == "bearer" and (cfg.get("token") or cfg.get("password")):
         headers["Authorization"] = f"Bearer {cfg.get('token') or cfg.get('password')}"
     req = urllib.request.Request(url, data=body if method != "GET" else None, method=method, headers=headers)
-    with urllib.request.urlopen(req, timeout=20) as r:
+    from .connectors import open_url
+    with open_url(req, 20, allow_private=True) as r:
         out = r.read().decode("utf-8", "replace")[:300]
     if preset.get("fail") and re.search(preset["fail"], out):
         raise RuntimeError(f"gateway rejected the message: {out[:80]}")

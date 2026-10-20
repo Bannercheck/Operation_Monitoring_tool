@@ -72,8 +72,11 @@ def iter_bytes(name: str, data: bytes, _budget: "_Budget | None" = None) -> Iter
                 if f is not None:
                     yield from iter_bytes(m.name, f.read(), budget)
         return
-    if lower.endswith(".gz"):
-        raw = gzip.decompress(data)
+    if lower.endswith(".gz"):                               # inflated within the limit: a 10 MB .gz of zeros is 10 GB in memory otherwise
+        with gzip.GzipFile(fileobj=io.BytesIO(data)) as gz:
+            raw = gz.read(min(MAX_MEMBER_BYTES, MAX_TOTAL_BYTES - budget.total) + 1)
+        if len(raw) > MAX_MEMBER_BYTES or budget.total + len(raw) > MAX_TOTAL_BYTES:
+            raise ArchiveTooBig(f"{name}: expands past the limit")
         budget.take(len(raw))
         yield from iter_bytes(name[:-3], raw, budget)
         return

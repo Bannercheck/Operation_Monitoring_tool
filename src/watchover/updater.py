@@ -163,6 +163,17 @@ class Updater:
                 "auto_rollback": dash.get("auto_rollback", True) is not False,
                 "max_bytes": num("-", "WATCHOVER_UPDATE_MAX_MB", 8192, 16, 1 << 20) * 1048576}
 
+    def unsigned_allowed(self) -> bool:
+        """Unsigned packages only with WATCHOVER_UPDATE_UNSIGNED=1 in the install folder's .env (root's file, not the dashboard's):
+        whoever controls the dashboard container could otherwise hand this root-equivalent container any code (security review)."""
+        try:
+            for ln in (self.install / ".env").read_text(encoding="utf-8").splitlines():
+                if ln.strip().startswith("WATCHOVER_UPDATE_UNSIGNED="):
+                    return ln.split("=", 1)[1].split("#", 1)[0].strip().strip('"') == "1"
+        except OSError:
+            pass
+        return False
+
     def pubkey(self) -> Optional[bytes]:
         try:
             return U.configured_pubkey(self.install, env={})
@@ -420,6 +431,9 @@ class Updater:
         if pkg is None or pdir.is_symlink():
             raise StepError("package_missing", f"inbox/{req['id']}")
         info = U.inspect(pkg, sig=req.get("sig", ""), pubkey=self.pubkey(), current=cur, max_bytes=cfg["max_bytes"])
+        if info["signature"]["status"] != "ok" and not self.unsigned_allowed():
+            raise StepError("signature_required", "unsigned package refused: put the release key in update-pubkey.pem and upload the .sig, "
+                                                  "or allow unsigned updates with WATCHOVER_UPDATE_UNSIGNED=1 in .env")
         new = info["version"]
         job.s["to"], job.s["package"] = new, {k: info[k] for k in ("kind", "sha256", "size", "git") if k in info}
         if new == cur:

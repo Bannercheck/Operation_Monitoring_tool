@@ -50,6 +50,10 @@ def get_llm(user=Depends(require("page.llm")), svc=Depends(services)):
 @router.put("")
 def put_llm(body: LlmIn, user=Depends(require_install("page.llm")), svc=Depends(services)):
     vals = {k: v for k, v in body.model_dump().items() if v is not None and not (k == "llm_key" and v == MASK)}
+    cur = wo_settings.load()
+    moved = any(k in vals and str(vals[k] or "") != str(cur.get(k) or "") for k in ("llm_base", "llm_provider"))
+    if moved and "llm_key" not in vals:                       # never send the stored key to a newly pointed endpoint (security review)
+        vals["llm_key"] = ""
     wo_settings.save(vals)
     svc.refresh_llm()
     return _view(svc)

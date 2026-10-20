@@ -428,6 +428,7 @@ async def deploy(file: UploadFile = File(...), user=Depends(require("sys.update"
     """Classic installs: unpack a release zip over the code folder (a snapshot is taken first), then restart. Docker updates the image instead."""
     if wo_admin.in_docker():
         raise ValueError("in Docker the update is the image: ./watchover.sh update")
+    _no_unsigned_path()
     stepup(svc, user)
     wo_admin.snapshot("before zip deploy", kb=svc.kb); wo_admin.prune_versions(12)
     ok, msg = wo_admin.apply_zip(await file.read())
@@ -442,6 +443,7 @@ async def deploy(file: UploadFile = File(...), user=Depends(require("sys.update"
 def git_update(branch: str = "", user=Depends(require("sys.update")), svc=Depends(services)):
     if wo_admin.in_docker():
         raise ValueError("in Docker the update is the image: ./watchover.sh update")
+    _no_unsigned_path()
     stepup(svc, user)
     wo_admin.snapshot("before git update", kb=svc.kb); wo_admin.prune_versions(12)
     ok, msg = wo_admin.git_update(branch=branch)
@@ -504,6 +506,13 @@ def _spool() -> Path:
 
 def _pkg_error(e: wo_updates.PackageError, status: int = 422) -> HTTPException:
     return err(status, f"upd_{e.code}", e.detail or e.code, e.detail or e.code)      # the page translates the code
+
+
+def _no_unsigned_path() -> None:
+    """With a signing key configured the zip / git paths (no signature check) are closed: only the signed update applies."""
+    if _pubkey():
+        raise err(409, "upd_signed_only", "İmza anahtarı tanımlı: yalnız imzalı güncelleme (Sistem › Güncelleme) kurulabilir",
+                  "A signing key is configured: only a signed update (System › Update) can be installed")
 
 
 def _pubkey():

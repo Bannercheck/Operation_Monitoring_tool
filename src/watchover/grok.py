@@ -149,9 +149,12 @@ def compile_pattern(pattern: str, extra: dict[str, str] | None = None, trusted: 
     rx = _cache.get(key)
     if rx is None:
         expanded = expand(pattern, extra)
-        if not trusted:
+        if not trusted:                                      # a user's pattern: shape check, then a per-match time limit (saferx)
             guard_regex(expanded)
-        rx = re.compile(expanded)
+            from . import saferx
+            rx = saferx.compile(expanded, budget_s=float("inf"))
+        else:
+            rx = re.compile(expanded)
         if len(_cache) > 512:
             _cache.clear()
         _cache[key] = rx

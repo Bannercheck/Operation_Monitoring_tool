@@ -115,7 +115,8 @@ def _http(url: str, body: dict | None, headers: dict, timeout: int, method: str 
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json", **headers}, method=method or ("POST" if data else "GET"))
     try:
-        with urllib.request.urlopen(req, timeout=timeout, context=_CTX) as r:
+        from .connectors import open_url
+        with open_url(req, timeout, _CTX, allow_private=True) as r:   # the bundled / company LLM may be internal; metadata blocked, no redirects
             return json.loads(r.read() or b"{}")
     except urllib.error.HTTPError as e:
         detail = e.read().decode("utf-8", "replace")[:300]

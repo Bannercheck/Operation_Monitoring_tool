@@ -22,12 +22,20 @@ class BlockedURL(ValueError):
     """A requested URL is not allowed (bad scheme, or resolves to a private / loopback / link-local address)."""
 
 
-def guard_url(url: str, allow_private: bool = False) -> None:
-    """Reject SSRF-prone URLs. Always: only http/https (no file:/gopher:/ftp:), and never link-local
-    (169.254.0.0/16 cloud metadata), multicast, reserved or unspecified addresses. When `allow_private` is False
-    (the default, for ad-hoc/user-supplied URLs) loopback and RFC1918 private ranges are blocked too; admin-configured
-    data sources that legitimately live on the company network (internal Elasticsearch, Grafana, ITSM) pass
-    `allow_private=True`. Every resolved address of the host is checked, so a name pointing at an internal IP is caught."""
+# cloud metadata services that are not link-local (Alibaba 100.100.100.200, AWS over IPv6) and the shared-address space a
+# carrier-grade NAT uses (100.64.0.0/10: neither "private" nor "link-local" to Python)
+_METADATA = (ipaddress.ip_network("100.100.100.200/32"), ipaddress.ip_network("fd00:ec2::254/128"))
+_SHARED = ipaddress.ip_network("100.64.0.0/10")
+MAX_RESPONSE = 256 * 1024 * 1024
+
+
+def guard_url(url: str, allow_private: bool = False) -> list:
+    """Reject SSRF-prone URLs and return the addresses checked. Always: only http/https (no file:/gopher:/ftp:), and never
+    link-local (169.254.0.0/16 cloud metadata), other metadata addresses, multicast, reserved or unspecified addresses. When
+    `allow_private` is False (the default, for ad-hoc/user-supplied URLs) loopback, RFC1918 private and 100.64.0.0/10 are blocked
+    too; admin-configured data sources that legitimately live on the company network (internal Elasticsearch, Grafana, ITSM) pass
+    `allow_private=True`. Every resolved address of the host is checked, so a name pointing at an internal IP is caught; open_url
+    then connects to that checked address (no second lookup: DNS rebinding) and follows no redirect."""
     p = urlparse(url)
     if p.scheme not in ("http", "https"):
         raise BlockedURL(f"scheme not allowed: {p.scheme or '(none)'} (only http/https)")
@@ -38,20 +46,72 @@ def guard_url(url: str, allow_private: bool = False) -> None:
         infos = socket.getaddrinfo(host, p.port or (443 if p.scheme == "https" else 80), proto=socket.IPPROTO_TCP)
     except socket.gaierror as e:
         raise BlockedURL(f"cannot resolve host: {host}") from e
+    out = []
     for info in infos:
         ip = ipaddress.ip_address(info[4][0])
-        if ip.is_link_local or ip.is_multicast or ip.is_reserved or ip.is_unspecified:
+        if ip.is_link_local or ip.is_multicast or ip.is_reserved or ip.is_unspecified or any(ip in n for n in _METADATA):
             raise BlockedURL(f"host resolves to a blocked address: {ip}")
-        if not allow_private and (ip.is_loopback or ip.is_private):
+        if not allow_private and (ip.is_loopback or ip.is_private or (ip.version == 4 and ip in _SHARED)):
             raise BlockedURL(f"host resolves to a private/loopback address: {ip} (not allowed for ad-hoc fetch)")
+        out.append(str(ip))
+    return out
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """A redirect would leave the checked address (and carry the caller's credentials along): refused."""
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise BlockedURL(f"the server answered {code} redirect to {str(newurl)[:200]}: not followed, use the final address")
+
+
+def _pinned(ip: str, ctx):
+    import http.client
+
+    class PinHTTP(http.client.HTTPConnection):
+        def connect(self):
+            self.sock = socket.create_connection((ip, self.port), self.timeout, self.source_address)
+
+    class PinHTTPS(http.client.HTTPSConnection):
+        def connect(self):
+            raw = socket.create_connection((ip, self.port), self.timeout, self.source_address)
+            self.sock = self._context.wrap_socket(raw, server_hostname=self.host)   # SNI and the certificate check use the name
+
+    class H(urllib.request.HTTPHandler):
+        def http_open(self, req):
+            return self.do_open(PinHTTP, req)
+
+    class HS(urllib.request.HTTPSHandler):
+        def https_open(self, req):
+            return self.do_open(PinHTTPS, req, context=ctx or _CTX)
+    return [H(), HS()]
+
+
+def open_url(req: urllib.request.Request, timeout: float, context=None, allow_private: bool = False):
+    """urlopen for a URL someone typed or configured: guard_url, no redirects, and the connection goes to the address that was
+    checked. Through a configured outbound proxy (HTTPS_PROXY) the proxy resolves the name; the check and the redirect rule stay."""
+    ips = guard_url(req.full_url, allow_private=allow_private)
+    host = urlparse(req.full_url).hostname or ""
+    proxies = urllib.request.getproxies()
+    via_proxy = bool(proxies.get(urlparse(req.full_url).scheme)) and not urllib.request.proxy_bypass(host)
+    handlers: list = [_NoRedirect()]
+    if via_proxy:
+        handlers += [urllib.request.ProxyHandler(), urllib.request.HTTPSHandler(context=context or _CTX)]
+    else:
+        handlers += [urllib.request.ProxyHandler({})] + _pinned(ips[0], context)
+    return urllib.request.build_opener(*handlers).open(req, timeout=timeout)
+
+
+def read_capped(r, limit: int = MAX_RESPONSE) -> bytes:
+    data = r.read(limit + 1)
+    if len(data) > limit:
+        raise BlockedURL(f"response larger than {limit >> 20} MB")
+    return data
 
 
 def _request(url: str, method: str = "GET", headers: dict | None = None, body: bytes | None = None,
              timeout: int = 60, allow_private: bool = False) -> tuple[bytes, dict]:
-    guard_url(url, allow_private=allow_private)
     req = urllib.request.Request(url, data=body, method=method.upper(), headers=headers or {})
-    with urllib.request.urlopen(req, timeout=timeout, context=_CTX) as r:
-        return r.read(), {k.lower(): v for k, v in r.headers.items()}
+    with open_url(req, timeout, _CTX, allow_private) as r:
+        return read_capped(r), {k.lower(): v for k, v in r.headers.items()}
 
 
 def parse_headers(text: str) -> dict:
