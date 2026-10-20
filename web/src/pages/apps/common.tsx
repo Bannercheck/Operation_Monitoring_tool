@@ -57,7 +57,7 @@ export function ChipInput({ values, onChange, options = [], placeholder, id }: {
   </div>;
 }
 
-function Toggles({ items, on, onChange }: { items: { k: string; label: ReactNode }[]; on: string[]; onChange: (v: string[]) => void }) {
+export function Toggles({ items, on, onChange }: { items: { k: string; label: ReactNode }[]; on: string[]; onChange: (v: string[]) => void }) {
   const { t } = useT();
   if (!items.length) return <span className="dim small">{t("ap_none_avail")}</span>;
   return <div className="row" style={{ gap: 6 }}>{items.map((x) => <button type="button" key={x.k} className={`chip ${on.includes(x.k) ? "on" : ""}`}

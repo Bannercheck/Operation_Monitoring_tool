@@ -6,7 +6,8 @@ import { get, post } from "../../api";
 import { useT } from "../../i18n";
 import { Btn, Empty, Err, Kpi, Modal, Tabs, Hint } from "../../components/ui";
 import { SparkArea, ST } from "../../components/dash/kit";
-import { AppEditor, CritBadge, LV, StatusBadge, ms, num, pctOf, sloText } from "./common";
+import { CritBadge, LV, StatusBadge, ms, num, pctOf, sloText } from "./common";
+import { AppWizard } from "./AppWizard";
 
 /** "Uygulamalar": every business application the reader may see as a card with its health (status and why, request rate, error rate,
  *  p95, SLO, hosts reporting, open alerts, a traffic sparkline), filters by team / environment / criticality / text, discovery of new
@@ -54,7 +55,7 @@ export default function Apps() {
       <Btn sm onClick={() => setDisc(true)}><Compass size={14} /> {t("ap_discover")}</Btn>{list.data?.can_create && <Btn sm kind="primary" onClick={() => setEdit(true)}><Plus size={14} /> {t("ap_new")}</Btn>}</div></Empty>
       : !rows.length ? <Empty>{t("ap_none_match")}</Empty>
       : <div className="ap-grid">{rows.map((a) => <AppCard key={a.id} a={a} lang={lang} />)}</div>}
-    {edit && <AppEditor onClose={() => setEdit(false)} />}
+    {edit && <AppWizard onClose={() => setEdit(false)} />}
     {disc && <Discovery apps={all} onClose={() => setDisc(false)} />}
   </div>;
 }
