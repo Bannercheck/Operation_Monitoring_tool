@@ -67,8 +67,10 @@ def install_identity(write: bool = False) -> Identity:
     return Identity(None, "MCP_API_KEY", "install", "all", acc, write)
 
 
-def team_identity(team: dict, key_id: Optional[int], name: str, write: bool) -> Identity:
+def team_identity(team: dict, key_id: Optional[int], name: str, write: bool, limit: Optional[frozenset] = None) -> Identity:
     perms = READ_PERMS | (TEAM_WRITE if write else frozenset())
+    if limit is not None:                                    # never more than its creator holds in that team (security review)
+        perms = frozenset(perms & limit) or frozenset({"-"})
     m = Membership(team_id=team["id"], team=team["name"], role_id=None, role_key="mcp", role_label="MCP", perms=frozenset(perms),
                    hosts=frozenset(team.get("matched") or ()), service_rules=tuple(x for x in team.get("rules") or () if x.get("field") == "service"))
     acc = Access(email=f"mcp-key-{key_id}@mcp", role="mcp", all=False, strict=True, global_perms=frozenset(), memberships=(m,))
@@ -214,7 +216,15 @@ def identify(svc, given: str) -> Optional[Identity]:
             team = svc.teams.get(int(row["team_id"]))
         except (KeyError, TypeError, ValueError):
             return None
-        ident = team_identity(team, row["id"], row["name"], write)
+        creator = svc.users.get(row.get("created_by") or "")
+        if not creator or creator.get("status") != "active":    # the creator left or was disabled: the key stops with them
+            return None
+        cacc = svc.access_of({"email": creator["email"], "role": creator.get("role", "")})
+        tid = int(row["team_id"])
+        if not cacc.manages(tid):                                # ... or no longer manages the team
+            return None
+        held = frozenset(p for p in READ_PERMS | TEAM_WRITE if cacc.can_in(tid, p) or cacc.install(p))
+        ident = team_identity(team, row["id"], row["name"], write, held)
     else:
         u = svc.users.get(row.get("email") or "")
         if not u or u.get("status") != "active":

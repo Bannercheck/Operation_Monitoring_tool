@@ -18,7 +18,7 @@ metadata:
   labels:
     app.kubernetes.io/name: watchover
     app.kubernetes.io/instance: watchover
-    app.kubernetes.io/version: "1.61.0"
+    app.kubernetes.io/version: "1.61.1"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: watchover
     helm.sh/chart: watchover-0.1.0
@@ -47,7 +47,7 @@ metadata:
   labels:
     app.kubernetes.io/name: watchover
     app.kubernetes.io/instance: watchover
-    app.kubernetes.io/version: "1.61.0"
+    app.kubernetes.io/version: "1.61.1"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: watchover
     helm.sh/chart: watchover-0.1.0
@@ -77,7 +77,7 @@ metadata:
   labels:
     app.kubernetes.io/name: watchover
     app.kubernetes.io/instance: watchover
-    app.kubernetes.io/version: "1.61.0"
+    app.kubernetes.io/version: "1.61.1"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: watchover
     helm.sh/chart: watchover-0.1.0
@@ -92,7 +92,7 @@ metadata:
   labels:
     app.kubernetes.io/name: watchover
     app.kubernetes.io/instance: watchover
-    app.kubernetes.io/version: "1.61.0"
+    app.kubernetes.io/version: "1.61.1"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: watchover
     helm.sh/chart: watchover-0.1.0
@@ -114,7 +114,7 @@ metadata:
   labels:
     app.kubernetes.io/name: watchover
     app.kubernetes.io/instance: watchover
-    app.kubernetes.io/version: "1.61.0"
+    app.kubernetes.io/version: "1.61.1"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: watchover
     helm.sh/chart: watchover-0.1.0
@@ -136,7 +136,7 @@ metadata:
   labels:
     app.kubernetes.io/name: watchover
     app.kubernetes.io/instance: watchover
-    app.kubernetes.io/version: "1.61.0"
+    app.kubernetes.io/version: "1.61.1"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: watchover
     helm.sh/chart: watchover-0.1.0
@@ -158,7 +158,7 @@ metadata:
   labels:
     app.kubernetes.io/name: watchover
     app.kubernetes.io/instance: watchover
-    app.kubernetes.io/version: "1.61.0"
+    app.kubernetes.io/version: "1.61.1"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: watchover
     helm.sh/chart: watchover-0.1.0
@@ -180,7 +180,7 @@ metadata:
   labels:
     app.kubernetes.io/name: watchover
     app.kubernetes.io/instance: watchover
-    app.kubernetes.io/version: "1.61.0"
+    app.kubernetes.io/version: "1.61.1"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: watchover
     helm.sh/chart: watchover-0.1.0
@@ -202,7 +202,7 @@ metadata:
   labels:
     app.kubernetes.io/name: watchover
     app.kubernetes.io/instance: watchover
-    app.kubernetes.io/version: "1.61.0"
+    app.kubernetes.io/version: "1.61.1"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: watchover
     helm.sh/chart: watchover-0.1.0
@@ -228,7 +228,7 @@ metadata:
   labels:
     app.kubernetes.io/name: watchover
     app.kubernetes.io/instance: watchover
-    app.kubernetes.io/version: "1.61.0"
+    app.kubernetes.io/version: "1.61.1"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: watchover
     helm.sh/chart: watchover-0.1.0
@@ -267,7 +267,7 @@ metadata:
   labels:
     app.kubernetes.io/name: watchover
     app.kubernetes.io/instance: watchover
-    app.kubernetes.io/version: "1.61.0"
+    app.kubernetes.io/version: "1.61.1"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: watchover
     helm.sh/chart: watchover-0.1.0
@@ -287,7 +287,7 @@ spec:
       labels:
         app.kubernetes.io/name: watchover
         app.kubernetes.io/instance: watchover
-        app.kubernetes.io/version: "1.61.0"
+        app.kubernetes.io/version: "1.61.1"
         app.kubernetes.io/managed-by: Helm
         app.kubernetes.io/part-of: watchover
         helm.sh/chart: watchover-0.1.0
@@ -305,7 +305,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: dashboard
-          image: image-registry.openshift-image-registry.svc:5000/watchover/watchover:1.61.0
+          image: image-registry.openshift-image-registry.svc:5000/watchover/watchover:1.61.1
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -385,7 +385,7 @@ spec:
             timeoutSeconds: 5
             failureThreshold: 6
         - name: keyd                              # watchover-keyd: only this container mounts the keys volume (I17)
-          image: image-registry.openshift-image-registry.svc:5000/watchover/watchover:1.61.0
+          image: image-registry.openshift-image-registry.svc:5000/watchover/watchover:1.61.1
           imagePullPolicy: IfNotPresent
           command: ["python", "-m", "watchover.act.keyd", "serve", "--dir", "/keys/store", "--unix", "/run/keyd/keyd.sock"]
           env:
@@ -420,7 +420,7 @@ spec:
             periodSeconds: 30
             timeoutSeconds: 5
         - name: receiver
-          image: image-registry.openshift-image-registry.svc:5000/watchover/watchover-receiver:1.61.0
+          image: image-registry.openshift-image-registry.svc:5000/watchover/watchover-receiver:1.61.1
           imagePullPolicy: IfNotPresent
           ports:
             - name: ingest
@@ -503,7 +503,7 @@ metadata:
   labels:
     app.kubernetes.io/name: watchover
     app.kubernetes.io/instance: watchover
-    app.kubernetes.io/version: "1.61.0"
+    app.kubernetes.io/version: "1.61.1"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: watchover
     helm.sh/chart: watchover-0.1.0
@@ -527,7 +527,7 @@ spec:
       labels:
         app.kubernetes.io/name: watchover
         app.kubernetes.io/instance: watchover
-        app.kubernetes.io/version: "1.61.0"
+        app.kubernetes.io/version: "1.61.1"
         app.kubernetes.io/managed-by: Helm
         app.kubernetes.io/part-of: watchover
         helm.sh/chart: watchover-0.1.0
@@ -610,7 +610,7 @@ spec:
         labels:
           app.kubernetes.io/name: watchover
           app.kubernetes.io/instance: watchover
-          app.kubernetes.io/version: "1.61.0"
+          app.kubernetes.io/version: "1.61.1"
           app.kubernetes.io/managed-by: Helm
           app.kubernetes.io/part-of: watchover
           helm.sh/chart: watchover-0.1.0
@@ -630,13 +630,14 @@ metadata:
   labels:
     app.kubernetes.io/name: watchover
     app.kubernetes.io/instance: watchover
-    app.kubernetes.io/version: "1.61.0"
+    app.kubernetes.io/version: "1.61.1"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: watchover
     helm.sh/chart: watchover-0.1.0
     app.kubernetes.io/component: app
   annotations:
     haproxy.router.openshift.io/timeout: "120s"
+    haproxy.router.openshift.io/set-forwarded-headers: replace   # the router writes X-Forwarded-For itself: a client's own value never reaches the sign-in throttle
 spec:
   host: "watchover.apps.example.com"
   to:
@@ -659,7 +660,7 @@ metadata:
   labels:
     app.kubernetes.io/name: watchover
     app.kubernetes.io/instance: watchover
-    app.kubernetes.io/version: "1.61.0"
+    app.kubernetes.io/version: "1.61.1"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: watchover
     helm.sh/chart: watchover-0.1.0
@@ -667,6 +668,7 @@ metadata:
     watchover.io/route: ingest
   annotations:
     haproxy.router.openshift.io/timeout: "60s"
+    haproxy.router.openshift.io/set-forwarded-headers: replace   # the router writes X-Forwarded-For itself: a client's own value never reaches the sign-in throttle
 spec:
   host: "watchover-ingest.apps.example.com"
   path: /ingest
@@ -690,7 +692,7 @@ metadata:
   labels:
     app.kubernetes.io/name: watchover
     app.kubernetes.io/instance: watchover
-    app.kubernetes.io/version: "1.61.0"
+    app.kubernetes.io/version: "1.61.1"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: watchover
     helm.sh/chart: watchover-0.1.0
@@ -698,6 +700,7 @@ metadata:
     watchover.io/route: ingest
   annotations:
     haproxy.router.openshift.io/timeout: "60s"
+    haproxy.router.openshift.io/set-forwarded-headers: replace   # the router writes X-Forwarded-For itself: a client's own value never reaches the sign-in throttle
 spec:
   host: "watchover-ingest.apps.example.com"
   path: /enroll
@@ -721,7 +724,7 @@ metadata:
   labels:
     app.kubernetes.io/name: watchover
     app.kubernetes.io/instance: watchover
-    app.kubernetes.io/version: "1.61.0"
+    app.kubernetes.io/version: "1.61.1"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: watchover
     helm.sh/chart: watchover-0.1.0
@@ -729,6 +732,7 @@ metadata:
     watchover.io/route: ingest
   annotations:
     haproxy.router.openshift.io/timeout: "60s"
+    haproxy.router.openshift.io/set-forwarded-headers: replace   # the router writes X-Forwarded-For itself: a client's own value never reaches the sign-in throttle
 spec:
   host: "watchover-ingest.apps.example.com"
   path: /agent.py
@@ -752,7 +756,7 @@ metadata:
   labels:
     app.kubernetes.io/name: watchover
     app.kubernetes.io/instance: watchover
-    app.kubernetes.io/version: "1.61.0"
+    app.kubernetes.io/version: "1.61.1"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: watchover
     helm.sh/chart: watchover-0.1.0
@@ -760,6 +764,7 @@ metadata:
     watchover.io/route: ingest
   annotations:
     haproxy.router.openshift.io/timeout: "60s"
+    haproxy.router.openshift.io/set-forwarded-headers: replace   # the router writes X-Forwarded-For itself: a client's own value never reaches the sign-in throttle
 spec:
   host: "watchover-ingest.apps.example.com"
   path: /agent/install.sh
@@ -783,7 +788,7 @@ metadata:
   labels:
     app.kubernetes.io/name: watchover
     app.kubernetes.io/instance: watchover
-    app.kubernetes.io/version: "1.61.0"
+    app.kubernetes.io/version: "1.61.1"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: watchover
     helm.sh/chart: watchover-0.1.0
@@ -791,6 +796,7 @@ metadata:
     watchover.io/route: ingest
   annotations:
     haproxy.router.openshift.io/timeout: "60s"
+    haproxy.router.openshift.io/set-forwarded-headers: replace   # the router writes X-Forwarded-For itself: a client's own value never reaches the sign-in throttle
 spec:
   host: "watchover-ingest.apps.example.com"
   path: /agent/manifest.json
@@ -814,7 +820,7 @@ metadata:
   labels:
     app.kubernetes.io/name: watchover
     app.kubernetes.io/instance: watchover
-    app.kubernetes.io/version: "1.61.0"
+    app.kubernetes.io/version: "1.61.1"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: watchover
     helm.sh/chart: watchover-0.1.0
@@ -822,6 +828,7 @@ metadata:
     watchover.io/route: ingest
   annotations:
     haproxy.router.openshift.io/timeout: "60s"
+    haproxy.router.openshift.io/set-forwarded-headers: replace   # the router writes X-Forwarded-For itself: a client's own value never reaches the sign-in throttle
 spec:
   host: "watchover-ingest.apps.example.com"
   path: /agent/boot.sh
@@ -845,7 +852,7 @@ metadata:
   labels:
     app.kubernetes.io/name: watchover
     app.kubernetes.io/instance: watchover
-    app.kubernetes.io/version: "1.61.0"
+    app.kubernetes.io/version: "1.61.1"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: watchover
     helm.sh/chart: watchover-0.1.0
@@ -853,6 +860,7 @@ metadata:
     watchover.io/route: ingest
   annotations:
     haproxy.router.openshift.io/timeout: "60s"
+    haproxy.router.openshift.io/set-forwarded-headers: replace   # the router writes X-Forwarded-For itself: a client's own value never reaches the sign-in throttle
 spec:
   host: "watchover-ingest.apps.example.com"
   path: /agent/ca.crt
@@ -876,7 +884,7 @@ metadata:
   labels:
     app.kubernetes.io/name: watchover
     app.kubernetes.io/instance: watchover
-    app.kubernetes.io/version: "1.61.0"
+    app.kubernetes.io/version: "1.61.1"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: watchover
     helm.sh/chart: watchover-0.1.0
@@ -884,6 +892,7 @@ metadata:
     watchover.io/route: ingest
   annotations:
     haproxy.router.openshift.io/timeout: "60s"
+    haproxy.router.openshift.io/set-forwarded-headers: replace   # the router writes X-Forwarded-For itself: a client's own value never reaches the sign-in throttle
 spec:
   host: "watchover-ingest.apps.example.com"
   path: /agent/update
@@ -907,7 +916,7 @@ metadata:
   labels:
     app.kubernetes.io/name: watchover
     app.kubernetes.io/instance: watchover
-    app.kubernetes.io/version: "1.61.0"
+    app.kubernetes.io/version: "1.61.1"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: watchover
     helm.sh/chart: watchover-0.1.0
@@ -915,6 +924,7 @@ metadata:
     watchover.io/route: ingest
   annotations:
     haproxy.router.openshift.io/timeout: "60s"
+    haproxy.router.openshift.io/set-forwarded-headers: replace   # the router writes X-Forwarded-For itself: a client's own value never reaches the sign-in throttle
 spec:
   host: "watchover-ingest.apps.example.com"
   path: /agent/wo-agent-
@@ -938,7 +948,7 @@ metadata:
   labels:
     app.kubernetes.io/name: watchover
     app.kubernetes.io/instance: watchover
-    app.kubernetes.io/version: "1.61.0"
+    app.kubernetes.io/version: "1.61.1"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: watchover
     helm.sh/chart: watchover-0.1.0
@@ -946,6 +956,7 @@ metadata:
     watchover.io/route: ingest
   annotations:
     haproxy.router.openshift.io/timeout: "60s"
+    haproxy.router.openshift.io/set-forwarded-headers: replace   # the router writes X-Forwarded-For itself: a client's own value never reaches the sign-in throttle
 spec:
   host: "watchover-ingest.apps.example.com"
   path: /agent/v1/
@@ -969,7 +980,7 @@ metadata:
   labels:
     app.kubernetes.io/name: watchover
     app.kubernetes.io/instance: watchover
-    app.kubernetes.io/version: "1.61.0"
+    app.kubernetes.io/version: "1.61.1"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: watchover
     helm.sh/chart: watchover-0.1.0
@@ -977,6 +988,7 @@ metadata:
     watchover.io/route: ingest
   annotations:
     haproxy.router.openshift.io/timeout: "60s"
+    haproxy.router.openshift.io/set-forwarded-headers: replace   # the router writes X-Forwarded-For itself: a client's own value never reaches the sign-in throttle
 spec:
   host: "watchover-ingest.apps.example.com"
   path: /mobile
@@ -1000,7 +1012,7 @@ metadata:
   labels:
     app.kubernetes.io/name: watchover
     app.kubernetes.io/instance: watchover
-    app.kubernetes.io/version: "1.61.0"
+    app.kubernetes.io/version: "1.61.1"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: watchover
     helm.sh/chart: watchover-0.1.0
@@ -1008,6 +1020,7 @@ metadata:
     watchover.io/route: ingest
   annotations:
     haproxy.router.openshift.io/timeout: "60s"
+    haproxy.router.openshift.io/set-forwarded-headers: replace   # the router writes X-Forwarded-For itself: a client's own value never reaches the sign-in throttle
 spec:
   host: "watchover-ingest.apps.example.com"
   path: /rum
@@ -1031,7 +1044,7 @@ metadata:
   labels:
     app.kubernetes.io/name: watchover
     app.kubernetes.io/instance: watchover
-    app.kubernetes.io/version: "1.61.0"
+    app.kubernetes.io/version: "1.61.1"
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/part-of: watchover
     helm.sh/chart: watchover-0.1.0
@@ -1039,6 +1052,7 @@ metadata:
     watchover.io/route: ingest
   annotations:
     haproxy.router.openshift.io/timeout: "60s"
+    haproxy.router.openshift.io/set-forwarded-headers: replace   # the router writes X-Forwarded-For itself: a client's own value never reaches the sign-in throttle
 spec:
   host: "watchover-ingest.apps.example.com"
   path: /rum.js

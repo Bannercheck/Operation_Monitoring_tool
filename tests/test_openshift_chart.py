@@ -132,6 +132,8 @@ def test_routes_edge_tls_and_ingest_paths(shape):
     assert INGEST_PATHS <= {r["spec"].get("path") for r in ingest}
     ui = [r for r in routes if r["spec"]["port"]["targetPort"] == "http"]
     assert len(ui) == 1 and not ui[0]["spec"].get("path")
+    # the router replaces X-Forwarded-For: with WATCHOVER_FORWARDED_ALLOW="*" a client's own value would beat the sign-in throttle
+    assert ui[0]["metadata"]["annotations"]["haproxy.router.openshift.io/set-forwarded-headers"] == "replace"
 
 
 @pytest.mark.skipif(not HELM, reason="helm not installed")

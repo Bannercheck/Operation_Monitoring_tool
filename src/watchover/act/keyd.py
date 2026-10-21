@@ -386,8 +386,10 @@ class KeyStore:
         return "d-" + fingerprint(self._pub("dispatch.key"))[7:15]
 
     def sign(self, purpose: str, body: bytes) -> dict:
-        """Other server-side signatures (hello answers): never `job` (sign_job) and never `anchor` (sign_anchor)."""
-        if purpose not in ("hello", "rotate", "req"):
+        """Other server-side signatures (hello answers): never `job` (sign_job), never `anchor` (sign_anchor) and never `rotate`:
+        a rotation is minted only by rotate_dispatch, which keeps the new private key here; signing "wo-rotate-v1\n" + any key
+        for a caller would let a compromised dashboard plant its own dispatch key on every actuator (security review)."""
+        if purpose not in ("hello", "req"):
             raise KeydError("purpose", f"keyd does not sign {purpose!r} here")
         with self._lock:
             sig = base64.b64encode(self._ed("dispatch.key").sign(f"wo-{purpose}-v1\n".encode() + body)).decode()

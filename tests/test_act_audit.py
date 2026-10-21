@@ -542,3 +542,16 @@ def test_api_two_holders_for_sinks_and_ack(c, tmp_path, monkeypatch):
     r = c.post("/api/act/kill", json={"scope": "global", "reason": "x"}, headers=a)
     assert r.status_code == 503 and r.json()["detail"]["code"] == "act_signing_unavailable"
     assert c.svc.kb.count("act_kill") == 0
+
+
+def test_keyd_never_signs_a_rotation_for_a_caller(tmp_path):
+    """Security review (v1.61.1): "wo-rotate-v1\\n" + key is minted only by rotate_dispatch (the new private key stays in keyd).
+    A dashboard asking sign("rotate", attacker key) must be refused, or every actuator would accept the attacker's dispatch key."""
+    from watchover.act.keyd import KeydError
+    ks = KeyStore(tmp_path / "k", durable=False)
+    ks.create()
+    with pytest.raises(KeydError):
+        ks.sign("rotate", b"ed25519:AAAA")
+    assert ks.sign("hello", b"x")["sig"]
+    r = ks.rotate_dispatch()
+    assert r.get("new") and r.get("sig")

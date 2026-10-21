@@ -429,6 +429,8 @@ def test_agent_py_migrates_itself_to_wo_agent_and_is_put_back_when_it_fails(buil
         out = (sb.run / "migrate.out").read_text()
         assert (sb.upd / "migrate.rc").read_text().strip() == "0", out
         assert "Migrating from agent.py" in out and "reached the receiver" in out and "Signed release 0.8.0 verified" in out
+        assert tok not in sb.log.read_text() and "--token-file" in sb.log.read_text()     # the token never on a command line (security review)
+        assert not list(sb.upd.glob("token-*"))                                        # the installer read the file once and removed it
         unit = (sb.unitdir / "watchover-agent.service").read_text()
         assert f'ExecStart="{sb.bin}" "ship"' in unit and not (sb.adir / "agent.py").exists() and not (sb.adir / ".migrate").exists()
         env = (sb.adir / "agent.env").read_text()

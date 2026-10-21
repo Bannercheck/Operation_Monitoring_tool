@@ -457,15 +457,24 @@ func TestTOFUPinsWhenNoneInstalled(t *testing.T) {
 	if res := r.f.result("J-test-0001"); res["reject_code"] != "key_unpinned" {
 		t.Fatalf("without a pin nothing runs: %v", res["reject_code"])
 	}
-	r.f.helloAns["keys"] = map[string]any{"dispatch": PubString(r.f.dispatch.Public().(ed25519.PublicKey)), "anchor": PubString(r.f.anchor.Public().(ed25519.PublicKey))}
-	r.cycle(t)
+	keys := map[string]any{"dispatch": PubString(r.f.dispatch.Public().(ed25519.PublicKey)), "anchor": PubString(r.f.anchor.Public().(ed25519.PublicKey))}
+	r.f.helloAns["keys"] = keys
+	r.cycle(t)                                                      // the rig talks plain http: a hello answer is never pinned (security review)
+	if len(r.a.DispatchKeys()) != 0 || r.a.pins()["source"] == "tofu" {
+		t.Fatalf("pinned over plain http: %v", r.a.pins())
+	}
+	url := r.a.Cfg.URL
+	r.a.Cfg.URL = "https://dashboard.example:8600"                 // over TLS the first answer is pinned
+	r.a.pinFirstUse(keys)
+	r.a.Cfg.URL = url
 	if len(r.a.DispatchKeys()) != 1 || r.a.pins()["source"] != "tofu" {
 		t.Fatalf("first-use pin: %v", r.a.pins())
 	}
 	// an existing pin is never replaced by a hello answer
 	_, other, _ := ed25519.GenerateKey(rand.Reader)
-	r.f.helloAns["keys"] = map[string]any{"dispatch": PubString(other.Public().(ed25519.PublicKey))}
-	r.cycle(t)
+	r.a.Cfg.URL = "https://dashboard.example:8600"
+	r.a.pinFirstUse(map[string]any{"dispatch": PubString(other.Public().(ed25519.PublicKey))})
+	r.a.Cfg.URL = url
 	if k := r.a.DispatchKeys(); len(k) != 1 || !k[0].Equal(r.f.dispatch.Public()) {
 		t.Fatalf("pin replaced")
 	}

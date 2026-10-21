@@ -375,7 +375,11 @@ class Migration:
         path.write_bytes(script); os.chmod(path, 0o700)
         (self.dir / "migrate.rc").unlink(missing_ok=True)
         fp = "SHA256:" + base64.b64encode(hashlib.sha256(pub).digest()).decode().rstrip("=")
-        args = ["--url", self.sender.url, "--token", self.sender.key or "", "--logs", os.environ.get("WATCHOVER_LOGS") or "auto",
+        tok = self.dir / f"token-{stamp}"                     # the token in a root-only file, not on the command line (ps, unit description)
+        fd = os.open(str(tok), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as f:
+            f.write(self.sender.key or "")
+        args = ["--url", self.sender.url, "--token-file", str(tok), "--logs", os.environ.get("WATCHOVER_LOGS") or "auto",
                 "--env", os.environ.get("AGENT_ENV", ""), "--interval", os.environ.get("WATCHOVER_INTERVAL", "10"), "--release-key", fp,
                 "--dir", str(Path(os.environ["WATCHOVER_SPOOL"]).parent if os.environ.get("WATCHOVER_SPOOL") else Path(__file__).resolve().parent),
                 "--gate", os.environ.get("WO_MIGRATE_GATE", "120")]

@@ -29,7 +29,7 @@ from typing import Any, Dict, List, Optional
 from .keyd import KeyStore, KeydError, fingerprint
 from .policy import act_demo
 
-PURPOSES = ("job", "result", "hello", "req", "anchor", "attest", "rotate")
+PURPOSES = ("job", "result", "hello", "req", "anchor", "attest")      # no "rotate": only rotate_dispatch mints one
 
 
 class SigningUnavailable(RuntimeError):

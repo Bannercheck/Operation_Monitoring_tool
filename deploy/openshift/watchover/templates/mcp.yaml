@@ -201,6 +201,7 @@ metadata:
     app.kubernetes.io/component: mcp
   annotations:
     haproxy.router.openshift.io/timeout: {{ .Values.mcp.route.timeout | quote }}
+    haproxy.router.openshift.io/set-forwarded-headers: replace   # the router writes X-Forwarded-For itself: a client's own value never reaches the sign-in throttle
     {{- with .Values.mcp.route.annotations }}
     {{- toYaml . | nindent 4 }}
     {{- end }}

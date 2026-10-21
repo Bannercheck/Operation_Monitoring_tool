@@ -230,6 +230,12 @@ func (a *Actuator) pins() map[string]any {
 // installer pins them in actions.d from the enrolment answer when the dashboard already had keys; a dormant install gets
 // them here, in the root-only state directory, so the actuator never writes into its own allowlist).
 func (a *Actuator) pinFirstUse(keys map[string]any) {
+	if strings.HasPrefix(strings.ToLower(a.Cfg.URL), "http://") { // over plain http the hello answer could be anyone's (security review)
+		if s, _ := keys["dispatch"].(string); s != "" && len(a.pinned("dispatch.pub")) == 0 {
+			a.Cfg.Logf("dispatch key not pinned over plain http: install with --dispatch-pub or use https")
+		}
+		return
+	}
 	changed := false
 	for _, k := range []string{"dispatch", "anchor"} {
 		s, _ := keys[k].(string)

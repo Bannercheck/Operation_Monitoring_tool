@@ -20,7 +20,8 @@
 #   --ca-sha256 <sha256>     https with the edge's own CA: /agent/ca.crt is accepted only with this sha256 and installed
 #   --gate SECONDS           after (re)starting wo-agent, wait this long for it to reach the receiver; an agent.py install
 #                            migrated in this run is put back when it does not (agent.py's self-migration uses it)
-#   --dispatch-pub / --anchor-pub "ed25519:…"   pin the dashboard's keys (else from the enrolment answer, else on first use)
+#   --dispatch-pub / --anchor-pub "ed25519:…"   pin the dashboard's keys (else from the enrolment answer over https, else on first use over https)
+#   --token-file FILE   the agent token from a file (read once, then removed) instead of --token on the command line
 #   --actions-packs linux-diag,linux-act   --actions-max-risk R0   --criticality normal|high|critical (high/critical: diagnose only)
 #   --ca /etc/pki/firma-root.pem   CA (PEM) to trust for an https receiver (both agents)
 set -euo pipefail
@@ -28,7 +29,9 @@ URL=""; TOKEN=""; LOGS=""; INTERVAL=10; ENV_=""; DIR=""; FLOWS=1; SERVICE=1; TES
 ATOKEN=""; ACT_ONLY=0; AGENT_SHA=""; DPUB=""; APUB=""; PACKS="linux-diag,linux-act"; MAXRISK="R0"; CRIT="normal"; CA=""; PYAGENT=0
 RELKEY=""; CASHA=""; GATE=0
 while [[ $# -gt 0 ]]; do case "$1" in
-  --url) URL="$2"; shift;; --token) TOKEN="$2"; shift;; --logs) LOGS="$2"; shift;; --interval) INTERVAL="$2"; shift;; --env) ENV_="$2"; shift;;
+  --url) URL="$2"; shift;; --token) TOKEN="$2"; shift;;
+  --token-file) TOKEN="$(head -c 512 "$2" 2>/dev/null | tr -d '\r\n')"; rm -f "$2"; shift;;   # read once, removed: not on the command line (ps)
+  --logs) LOGS="$2"; shift;; --interval) INTERVAL="$2"; shift;; --env) ENV_="$2"; shift;;
   --enroll-key) EKEY="$2"; shift;; --name) NAME="$2"; shift;; --site) SITE="$2"; shift;; --tags) TAGS="$2"; shift;;
   --actions-token) ATOKEN="$2"; shift;; --actions-only) ACT_ONLY=1;; --agent-sha256) AGENT_SHA="$2"; shift;;
   --dispatch-pub) DPUB="$2"; shift;; --anchor-pub) APUB="$2"; shift;; --actions-packs) PACKS="$2"; shift;;
@@ -314,8 +317,12 @@ PYEOF
   fi
   { read -r TOKEN; read -r _at; read -r _dp; read -r _ap; } <<<"$ENROLLED" || true
   [[ -z "$ATOKEN" ]] && ATOKEN="${_at:-}"
-  [[ -z "$DPUB" ]] && DPUB="${_dp:-}"
-  [[ -z "$APUB" ]] && APUB="${_ap:-}"
+  if [[ "$BASE" == https://* ]]; then             # keys from the enrolment answer only over TLS (security review): over plain http
+    [[ -z "$DPUB" ]] && DPUB="${_dp:-}"            # anyone on the path could swap in their own dispatch key and run actions here
+    [[ -z "$APUB" ]] && APUB="${_ap:-}"
+  elif [[ -n "${_dp:-}" && -z "$DPUB" ]]; then
+    log "plain http: the dashboard's action keys are not pinned from the answer; pass --dispatch-pub / --anchor-pub (Otomasyon › Anahtarlar) or install over https"
+  fi
   [[ -n "$TOKEN" ]] || die "self-enrolment answered without a token"
 fi
 # self-update (wo-agent update, a oneshot unit on a timer): Linux + systemd + root installs of wo-agent with a pinned release key

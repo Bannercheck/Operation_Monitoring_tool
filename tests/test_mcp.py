@@ -479,3 +479,24 @@ def test_assistant_calls_only_allowed_read_only_tools(app, fake):
     Fake.calls.clear()
     assert c.post("/api/assist/ask", json={"question": "billing"}, headers=login(c, "opb@corp.com")).status_code == 200 and Fake.calls == []
     assert c.post("/api/assist/ask", json={"question": "billing"}, headers=login(c, "mgra@corp.com")).status_code == 200 and Fake.calls == ["search_docs"]
+
+
+def test_a_team_key_ends_with_its_creator_and_never_exceeds_them(app):
+    """Security review (v1.61.1): a team key works only while its creator is active and still manages the team, and with no
+    more than the creator holds there."""
+    c = app
+    admin, ta, tb = teams(c)
+    mgr = login(c, "mgra@corp.com")
+    k = new_key(c, mgr, name="grafana-A", kind="team", team_id=ta["id"])
+    tok = k["token"]
+    err, who = tool(c, tok, "whoami")
+    assert not err and who["scope"] == "team:A"
+    u = c.svc.users.get("mgra@corp.com")
+    c.svc.users.set_status(u["id"], "disabled")
+    assert rpc(c, tok, "tools/list").status_code == 401                          # the creator is gone: so is the key
+    c.svc.users.set_status(u["id"], "active")
+    assert rpc(c, tok, "tools/list").status_code == 200
+    rid = next(r["id"] for r in ta["roles"] if r["key"] == "viewer")
+    assert c.put(f"/api/teams/{ta['id']}/members/mgra@corp.com", json={"role_id": rid}, headers=admin).status_code == 200
+    c.svc.teams.invalidate()
+    assert rpc(c, tok, "tools/list").status_code == 401                          # no longer manages the team

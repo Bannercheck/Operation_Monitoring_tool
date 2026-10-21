@@ -40,8 +40,10 @@ import (
 )
 
 const (
-	otlpMaxDecoded = 64 << 20 // a decompressed request
-	otlpChunk      = 5000     // items per spool record
+	otlpMaxDecoded = 8 << 20 // a decompressed request: an SDK batch is well under 2 MB; 63 MB of JSON once took 1.2 GB of heap
+	otlpChunk      = 5000    // items per spool record
+	otlpDecoders   = 2       // requests decoded at the same time (each may hold ~20x its size while decoding)
+	otlpWaitDecode = 3 * time.Second
 )
 
 type otlpStats struct{ requests, logs, points, spans, skipped, bad atomic.Int64 }
@@ -50,9 +52,12 @@ type otlpIn struct {
 	s       *server
 	metrics *otlp.Metrics
 	st      otlpStats
+	sem     chan struct{} // decode slots: a burst of large requests waits (then 503, the client retries) instead of OOM-killing the receiver
 }
 
-func newOTLP(s *server) *otlpIn { return &otlpIn{s: s, metrics: otlp.NewMetrics()} }
+func newOTLP(s *server) *otlpIn {
+	return &otlpIn{s: s, metrics: otlp.NewMetrics(), sem: make(chan struct{}, otlpDecoders)}
+}
 
 func (o *otlpIn) health(h map[string]any) {
 	h["otlp_requests"], h["otlp_log_records"], h["otlp_metric_points"] = o.st.requests.Load(), o.st.logs.Load(), o.st.points.Load()
@@ -181,6 +186,18 @@ func (o *otlpIn) spoolObs(base map[string]any, path string, obs []parse.Observat
 
 // process decodes one export request of the given signal and spools the result. It returns the items accepted.
 func (o *otlpIn) process(signal string, isJSON bool, body []byte, base map[string]any) (int, *otlpErr) {
+	if len(body) > otlpMaxDecoded {
+		return 0, refuse(http.StatusRequestEntityTooLarge, "body larger than %d MB: send smaller batches", otlpMaxDecoded>>20)
+	}
+	if o.sem != nil {
+		select {
+		case o.sem <- struct{}{}:
+			defer func() { <-o.sem }()
+		case <-time.After(otlpWaitDecode):
+			o.s.stats.busy.Add(1)
+			return 0, refuse(http.StatusServiceUnavailable, "busy decoding other batches: retry")
+		}
+	}
 	now := time.Now()
 	bad := func(err error) (int, *otlpErr) {
 		o.st.bad.Add(1)

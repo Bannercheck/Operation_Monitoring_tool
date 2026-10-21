@@ -212,3 +212,34 @@ func TestOTLPGRPC(t *testing.T) {
 		t.Fatalf("spooled %v", recs)
 	}
 }
+
+// Security review (v1.61.1): a small gzip that inflates to more than otlpMaxDecoded is refused before any decoding, and only
+// otlpDecoders requests decode at once (the rest wait, then get 503 to retry) — 63 MB of JSON once took 1.2 GB of heap.
+func TestOTLPDecompressionBombAndDecodeSlots(t *testing.T) {
+	st := &authState{Agents: map[string]agentRec{sha("wo_otel"): {ID: 3, Name: "otel-gw"}}}
+	s, ts, stop := setup(t, st, nil)
+	defer stop()
+	bomb := gz(append([]byte(`{"resourceLogs":[`), bytes.Repeat([]byte(" "), otlpMaxDecoded+1024)...))
+	if len(bomb) > 1<<20 {
+		t.Fatalf("test bomb too large: %d", len(bomb))
+	}
+	if r, b := otlpPost(t, ts.URL+"/v1/logs", "wo_otel", "application/json", "gzip", bomb); r.StatusCode != http.StatusRequestEntityTooLarge {
+		t.Fatalf("bomb: %d %q", r.StatusCode, b)
+	}
+	for i := 0; i < otlpDecoders; i++ { // every slot taken: the next request waits, then 503
+		s.otlp.sem <- struct{}{}
+	}
+	t0 := time.Now()
+	if r, _ := otlpPost(t, ts.URL+"/v1/logs", "wo_otel", "application/x-protobuf", "", otlpLogs()); r.StatusCode != http.StatusServiceUnavailable || r.Header.Get("Retry-After") == "" {
+		t.Fatalf("busy: %d", r.StatusCode)
+	}
+	if time.Since(t0) < otlpWaitDecode-200*time.Millisecond {
+		t.Fatalf("did not wait for a slot")
+	}
+	for i := 0; i < otlpDecoders; i++ {
+		<-s.otlp.sem
+	}
+	if r, _ := otlpPost(t, ts.URL+"/v1/logs", "wo_otel", "application/x-protobuf", "", otlpLogs()); r.StatusCode != 200 {
+		t.Fatalf("after: %d", r.StatusCode)
+	}
+}
