@@ -578,6 +578,7 @@ access_log /var/log/nginx/access.log watchover;
 <p>Bütün bunlar düz <code>docker compose</code> komutlarıdır; alışkın olanlar <code>docker compose ps</code>, <code>docker compose logs -f dashboard</code> ile aynı işleri yapabilir (Podman'da <code>sudo DOCKER_HOST=unix:///run/podman/podman.sock docker compose ps</code> ya da <code>sudo podman ps</code>).</p>
 <h2>3b. Uygulama içinden güncelleme ve geri dönüş (güncelleyici)</h2>
 <p>Sistem › <strong>Güncelleme ve sürümler</strong> kartından yeni sürüm zip'i (ya da çevrimdışı paket) yüklenir, uygulanır; bir şey ters giderse önceki sürüme ya da listeden seçilen bir sürüme dönülür. Sunucuda komut gerekmez.</p>
+<p>RHEL'de <code>git pull -q &amp;&amp; ./install-rhel.sh</code> ile yükseltmede eski sürümlerin imajları kendiliğinden silinir: bu klasörün sürümü, kurulu sürüm (geri dönüş) ve güncelleme kartının önceki sürümü kalır, birimlere (veritabanı, modeller, loglar) dokunulmaz. Konteyner deposunda 20 GB'tan az boş alan varsa ön kontrol silinecek imajları hesaba katar; silindikten sonra da yetmezse diski büyütmeniz gerekir.</p>
 <p><strong>İlk kez açmak.</strong> Bu özelliği getiren sürüme bir kez her zamanki yoldan geçin; başka adım yok:</p>
 <pre><code class="language-bash">cd ~/watchover-docker
 ./watchover.sh upgrade        # git ile kurulduysa

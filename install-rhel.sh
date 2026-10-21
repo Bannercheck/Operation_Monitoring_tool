@@ -30,7 +30,7 @@
 # path counts); WATCHOVER_TEST_ARCH.
 set -Eeuo pipefail
 umask 022
-ARGS=("$@"); CHECK=0; DEST=""; XHOST=""; NO_LLM=0; NO_UPDATER=0; NETCHECK=1
+ARGS=("$@"); CLEAN_IMAGES=0; CHECK=0; DEST=""; XHOST=""; NO_LLM=0; NO_UPDATER=0; NETCHECK=1
 while [ $# -gt 0 ]; do case "$1" in
   --check) CHECK=1 ;; --dir) DEST="${2:?--dir DIR}"; shift ;; --host) XHOST="${2:?--host NAME}"; shift ;;
   --no-llm) NO_LLM=1 ;; --no-updater) NO_UPDATER=1 ;; --skip-netcheck) NETCHECK=0 ;;
@@ -181,9 +181,30 @@ if [ "$MEM_GB" -lt 4 ]; then bad "En az 4 GB RAM gerekir (bu sunucu: $MEM_GB GB)
 if [ "$ARCH" = x86_64 ] && ! grep -qw avx2 "$R/proc/cpuinfo" 2>/dev/null; then note "İşlemcide AVX2 yok (sanal makinede CPU tipi 'host' değilse olur): yerel LLM çok yavaş çalışır"; fi
 if [ "$ARCH" = aarch64 ] && ! grep -qw asimd "$R/proc/cpuinfo" 2>/dev/null; then note "İşlemcide NEON (asimd) görünmüyor: yerel LLM çok yavaş çalışır"; fi
 sf=$(free_gb "$STORE"); sf=${sf:-0}
-if [ "$sf" -lt 20 ]; then bad "Konteyner deposunda ($(near "$STORE")) en az 20 GB boş alan gerekir (boş: $sf GB)"
+# Watchover images of releases nobody keeps any more (an upgrade with this script tags the new release and left the old ones):
+# not this folder's version, not the installed one (the way back), not the in-app updater's current / previous. Sizes overlap
+# (shared layers), so the reclaimable figure is an upper bound and the space is measured again after the removal.
+keep_vers() { printf '%s\n' "$SRC_VER" "$OLD_VER"; [ ! -f "$DEST/.releases/index.json" ] || grep -oE '"(current|previous)": *"[^"]*"' "$DEST/.releases/index.json" | sed -E 's/.*: *"v?([^"]*)"/\1/' || true; }
+old_images() {   # "repo:tag" per line
+  [ -z "$R" ] && have podman || return 0
+  local keep; keep=" $(keep_vers | sed 's/^v//' | tr '\n' ' ') "
+  podman images --format '{{.Repository}}:{{.Tag}}' 2>/dev/null | grep -E '/watchover(-receiver|-trainer)?:[0-9]+\.[0-9]+\.[0-9]+' | while IFS= read -r ref; do
+    case "$keep" in *" ${ref##*:} "*) ;; *) echo "$ref" ;; esac
+  done
+}
+OLD_IMGS=$(old_images || true); OLD_GB=0
+if [ -n "$OLD_IMGS" ]; then
+  OLD_GB=$(for i in $OLD_IMGS; do podman image inspect --format '{{.Size}}' "$i" 2>/dev/null || true; done | awk '{s += $1} END {printf "%d", s / 1073741824}')
+fi
+if [ "$sf" -lt 20 ] && [ -n "$OLD_IMGS" ] && [ $((sf + OLD_GB)) -ge 20 ]; then
+  note "Konteyner deposunda $sf GB boş: eski sürümlerin imajları silinecek ($(echo "$OLD_IMGS" | sed 's#.*/##; s#:.*##' | sort | uniq -c | awk '{printf "%s%s ×%s", (NR > 1 ? ", " : ""), $2, $1}'); en çok ~$OLD_GB GB; kurulu sürüm ve geri dönüş sürümü kalır)"
+  CLEAN_IMAGES=1
+elif [ "$sf" -lt 20 ]; then CLEAN_IMAGES=0; bad "Konteyner deposunda ($(near "$STORE")) en az 20 GB boş alan gerekir (boş: $sf GB$([ -z "$OLD_IMGS" ] || echo ", eski sürüm imajları silinse ~$((sf + OLD_GB)) GB")): diski büyütün ya da 'podman images' ile Watchover dışı imajları silin"
 elif [ "$sf" -lt 40 ]; then note "Konteyner deposunda $sf GB boş: 40 GB+ önerilir (imajlar, PostgreSQL, loglar; yerel LLM ~15 GB)"
 else ok "Konteyner deposu: $(near "$STORE"), $sf GB boş"; fi
+if [ -n "$OLD_IMGS" ] && [ "$CLEAN_IMAGES" = 0 ] && [ "$sf" -ge 20 ]; then
+  CLEAN_IMAGES=1; ok "Eski sürüm imajları silinecek: $(echo "$OLD_IMGS" | wc -l) imaj, en çok ~$OLD_GB GB (kurulu sürüm ve geri dönüş sürümü kalır)"
+fi
 df_=$(free_gb "$DEST"); [ "${df_:-0}" -ge 2 ] || bad "Kurulum klasörü için ($(near "$DEST")) en az 2 GB boş alan gerekir"
 fst=$(findmnt -no FSTYPE -T "$(near "$STORE")" 2>/dev/null || stat -f -c %T "$(near "$STORE")" 2>/dev/null || true)
 case "$fst" in
@@ -350,6 +371,15 @@ if [ "$CHECK" = 1 ]; then
   printf '  Plan: %s → %s · paketler: %s · Compose: %s · HTTPS: %s · %s\n' "v$SRC_VER" "$DEST" "$([ "$NEED_PKGS" = 1 ] && echo kurulacak || echo kurulu)" \
     "$COMPOSE_SRC" "$([ "$EDGE" = 1 ] && echo açık || echo kapalı)" "$([ "$OFFLINE" = 0 ] && echo internetli || echo 'kapalı ağ')"
   exit 0
+fi
+
+# ---------------------------------------------------------------------------------------------------------------- old images
+if [ "$CLEAN_IMAGES" = 1 ]; then   # only images; volumes (database, LLM models, logs) are never touched
+  n=0; for i in $OLD_IMGS; do podman image rm "$i" >/dev/null 2>&1 && n=$((n + 1)); done
+  podman image prune -f >/dev/null 2>&1 || true                       # the untagged layers they leave
+  sf=$(free_gb "$STORE"); sf=${sf:-0}
+  [ "$sf" -ge 20 ] || die "Eski imajlar silindi ($n) ama konteyner deposunda hâlâ $sf GB boş: en az 20 GB gerekir (diski büyütün)"
+  ok "Eski sürüm imajları silindi ($n imaj): konteyner deposunda $sf GB boş"
 fi
 
 # ---------------------------------------------------------------------------------------------------------------- proxy settings

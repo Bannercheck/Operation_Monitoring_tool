@@ -379,6 +379,8 @@ Bütün bunlar düz `docker compose` komutlarıdır; alışkın olanlar `docker 
 
 Sistem › **Güncelleme ve sürümler** kartından yeni sürüm zip'i (ya da çevrimdışı paket) yüklenir, uygulanır; bir şey ters giderse önceki sürüme ya da listeden seçilen bir sürüme dönülür. Sunucuda komut gerekmez.
 
+RHEL'de `git pull -q && ./install-rhel.sh` ile yükseltmede eski sürümlerin imajları kendiliğinden silinir: bu klasörün sürümü, kurulu sürüm (geri dönüş) ve güncelleme kartının önceki sürümü kalır, birimlere (veritabanı, modeller, loglar) dokunulmaz. Konteyner deposunda 20 GB'tan az boş alan varsa ön kontrol silinecek imajları hesaba katar; silindikten sonra da yetmezse diski büyütmeniz gerekir.
+
 **İlk kez açmak.** Bu özelliği getiren sürüme bir kez her zamanki yoldan geçin; başka adım yok:
 
 ```bash
