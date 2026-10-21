@@ -157,7 +157,7 @@ def test_fresh_install_then_rerun_is_idempotent(rhel):
     assert res.returncode == 0, out + res.stderr
     dest = r / "opt/watchover"; log = calls(rhel); state = Path(env["FAKE_STATE"])
     # preflight, then packages through rhel-prepare.sh (podman + only the Compose plugin of Docker's repository)
-    assert "İşletim sistemi: Red Hat Enterprise Linux 9.6 (Plow) (desteklenen: 9.6-9.8)" in out and "Erişim: pypi.org" in out and "Erişim: cdn.redhat.com" in out
+    assert "İşletim sistemi: Red Hat Enterprise Linux 9.6 (Plow) (desteklenen: 8.6+, 9, 10)" in out and "Erişim: pypi.org" in out and "Erişim: cdn.redhat.com" in out
     assert "dnf -y install podman container-selinux crun openssl" in log and "dnf -y install docker-compose-plugin" in log and "dnf -y install docker-ce" not in log
     # the release folder, the command wrapper, .env with production defaults and generated secrets (0600)
     assert (dest / "watchover.sh").exists() and (dest / ".install-files").exists() and oct((dest / ".env").stat().st_mode)[-3:] == "600"
@@ -282,27 +282,56 @@ def test_unreachable_host_is_named_and_nothing_changes(rhel):
     assert "registry.ollama.ai" in out and not (r / "opt/watchover").exists() and "dnf -y install" not in calls(rhel)
 
 
-def test_os_versions_9_6_to_9_8_older_9_warned_8_and_10_refused(rhel):
+def test_os_versions_8_6_up_to_10_and_older_refused(rhel):
+    """RHEL 8.6+, 9.x and 10.x (and the rebuilds) install; RHEL 7, 8.0-8.5 and other systems are refused before any change."""
     src, r, env = rhel
-    (r / "etc/os-release").write_text('ID=ubuntu\nVERSION_ID="24.04"\nPRETTY_NAME="Ubuntu 24.04 LTS"\n')
+    os_rel = lambda i, v, n: (r / "etc/os-release").write_text(f'ID="{i}"\nVERSION_ID="{v}"\nPRETTY_NAME="{n}"\n')   # noqa: E731
+    os_rel("ubuntu", "24.04", "Ubuntu 24.04 LTS")
     res = run(rhel)
-    assert res.returncode == 1 and "Bu kurulum RHEL 9 içindir" in res.stdout and "Ubuntu 24.04" in res.stdout and calls(rhel).count("dnf") == 0
-    (r / "etc/os-release").write_text('ID="rhel"\nVERSION_ID="8.10"\nPRETTY_NAME="Red Hat Enterprise Linux 8.10"\n')
+    assert res.returncode == 1 and "Bu kurulum Red Hat ailesi içindir" in res.stdout and "Ubuntu 24.04" in res.stdout and calls(rhel).count("dnf") == 0
+    os_rel("rhel", "7.9", "Red Hat Enterprise Linux Server 7.9 (Maipo)")
     res = run(rhel)
-    assert res.returncode == 1 and "Bu kurulum RHEL 9 içindir (9.6-9.8); bu sunucu Red Hat Enterprise Linux 8.10" in res.stdout
-    (r / "etc/os-release").write_text('ID="rhel"\nVERSION_ID="10.0"\nPRETTY_NAME="Red Hat Enterprise Linux 10.0"\n')
+    assert res.returncode == 1 and "RHEL 7 ve öncesinde Podman 4 ve cgroup v2 yok" in res.stdout
+    os_rel("rhel", "8.4", "Red Hat Enterprise Linux 8.4 (Ootpa)")
     res = run(rhel)
-    assert res.returncode == 1 and "RHEL 10 henüz desteklenmiyor" in res.stdout
-    (r / "etc/os-release").write_text('ID="rhel"\nVERSION_ID="9.8"\nPRETTY_NAME="Red Hat Enterprise Linux 9.8 (Plow)"\n')
-    res = run(rhel, "--check")
-    assert res.returncode == 0 and "Red Hat Enterprise Linux 9.8 (Plow) (desteklenen: 9.6-9.8)" in res.stdout
-    (r / "etc/os-release").write_text('ID="rocky"\nVERSION_ID="9.1"\nPRETTY_NAME="Rocky Linux 9.1 (Blue Onyx)"\n')
+    assert res.returncode == 1 and "RHEL 8'de en az 8.6 gerekir" in res.stdout
+    for i, v, n, want in (("rhel", "8.10", "Red Hat Enterprise Linux 8.10 (Ootpa)", "(Podman 4.x; desteklenen: 8.6+, 9, 10)"),
+                          ("rhel", "9.2", "Red Hat Enterprise Linux 9.2 (Plow)", "9.5+ Podman 5 getirir"),
+                          ("rhel", "9.8", "Red Hat Enterprise Linux 9.8 (Plow)", "(desteklenen: 8.6+, 9, 10)"),
+                          ("rhel", "10.0", "Red Hat Enterprise Linux 10.0 (Coughlan)", "(desteklenen: 8.6+, 9, 10)"),
+                          ("ol", "9.5", "Oracle Linux Server 9.5", "· RHEL 9 uyumlu"),
+                          ("almalinux", "10.0", "AlmaLinux 10.0 (Purple Lion)", "· RHEL 10 uyumlu")):
+        os_rel(i, v, n)
+        res = run(rhel, "--check")
+        assert res.returncode == 0 and n in res.stdout and want in res.stdout, res.stdout
+    os_rel("rocky", "9.1", "Rocky Linux 9.1 (Blue Onyx)")
     res = run(rhel, "--check", WATCHOVER_TEST_ARCH="aarch64", FAKE_VIRT="kvm")
     out = res.stdout
     assert res.returncode == 0, out
-    assert "Rocky Linux 9.1 (Blue Onyx) · RHEL 9 uyumlu" in out and "hedef RHEL 9.6-9.8 (Podman 5.x). Kurulum sürüyor; önce güncellemeniz önerilir: sudo dnf -y update" in out and "aarch64" in out
+    assert "Rocky Linux 9.1 (Blue Onyx) · RHEL 9 uyumlu" in out and "aarch64" in out
     assert "Sanal makinede çalışıyor (kvm)" in out and "NEON" in out and "--check: hiçbir şey değiştirilmedi" in out
     assert not (r / "opt/watchover").exists() and "dnf -y" not in calls(rhel)
+
+
+def test_rhel_8_with_podman_4_cgroup_v1_and_cni_dnsname(rhel):
+    """RHEL 8.10: Podman 4.9 on cgroup v1 with CNI networking and no netavark in the repositories: the dnsname plugin
+    (podman-plugins) resolves the container names, so the install goes on; a Podman older than 4.0 stops it."""
+    src, r, env = rhel
+    (r / "etc/os-release").write_text('ID="rhel"\nVERSION_ID="8.10"\nPRETTY_NAME="Red Hat Enterprise Linux 8.10 (Ootpa)"\n')
+    fake = Path(env["FAKE_BIN"])
+    (fake / "podman").write_text((fake / "podman").read_text().replace("5.2.2", "4.9.4"))
+    dnf = (fake / "dnf").read_text()
+    (fake / "dnf").write_text(dnf.replace('case " $* " in\n  *" repolist "', 'case " $* " in\n  *" netavark "*) echo "No match for argument: netavark"; exit 1 ;;\n  *" repolist "', 1))
+    (fake / "stat").write_text('#!/usr/bin/env bash\ncase "$*" in *"%T"*sys/fs/cgroup*) echo tmpfs ;; *) exec /usr/bin/stat "$@" ;; esac\n'); (fake / "stat").chmod(0o755)
+    res = run(rhel, FAKE_NB="cni")
+    out = res.stdout
+    assert res.returncode == 0, out[-3000:]
+    assert "cgroup v1 (RHEL 8 varsayılanı): root Podman 4.x ile çalışır" in out and "Podman 4.9.4: çalışır" in out
+    assert "konteyner adları dnsname eklentisiyle çözülür" in out and "podman-plugins" in (Path(env["FAKE_STATE"]) / "rpms").read_text()
+    assert not (r / "etc/containers/containers.conf.d/watchover-network.conf").exists()      # no switch to a netavark that is not there
+    (fake / "podman").write_text((fake / "podman").read_text().replace("4.9.4", "3.4.4"))
+    res = run(rhel, FAKE_NB="cni")
+    assert res.returncode == 1 and "en az 4.0 gerekir" in res.stdout
 
 
 def test_low_ram_skips_the_llm_and_a_big_server_gets_7b(rhel):

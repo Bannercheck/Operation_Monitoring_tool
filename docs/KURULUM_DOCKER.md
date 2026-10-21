@@ -4,7 +4,7 @@ Watchover şirket içindeki **tek bir sunucuda, tamamen Docker'da** çalışır.
 
 ## 0. RHEL 9: tek komutla kurulum (önerilen)
 
-Hedef sürümler **RHEL 9.6, 9.7 ve 9.8**; Rocky Linux ve AlmaLinux 9.6+ aynı şekilde kurulur (çıktıda "RHEL 9 uyumlu"). Daha eski 9.x'te uyarı verip devam eder (önce `sudo dnf -y update` önerilir), RHEL 8 ve 10'u açık bir mesajla reddeder. Motor rootful **Podman 5.x** (AppStream) + crun, netavark / aardvark-dns, container-selinux; SELinux Enforcing kalır. İşlemci x86_64 ya da aarch64.
+Desteklenen sürümler **RHEL 8.6+ (8.10 dahil), RHEL 9 (9.0-9.8) ve RHEL 10**; Rocky Linux, AlmaLinux, Oracle Linux ve CentOS Stream aynı şekilde kurulur (çıktıda "RHEL N uyumlu"). RHEL 7 ve 8.0-8.5 açık bir mesajla reddedilir (Podman 4 yok). Motor rootful **Podman** (RHEL 8 ve 9.0-9.4'te 4.x, 9.5+ ve 10'da 5.x; 4.0'dan eskisi reddedilir) + crun, container-selinux; konteyner adları netavark / aardvark-dns ile çözülür, RHEL 8'de netavark depoda yoksa CNI + dnsname eklentisi (`podman-plugins`) kullanılır. RHEL 8'in varsayılanı cgroup v1 de olur (root Podman 4.x). SELinux Enforcing kalır. İşlemci x86_64 ya da aarch64. Kurulumun test düzeneği her sürümün kararlarını sınar; gerçek sunucuda ilk denemesi RHEL 9.8 üzerinde yapıldı, RHEL 8 ve 10'da ilk gerçek kurulum `--check` ile başlatılmalıdır.
 
 ```bash
 unzip -q watchover-<sürüm>.zip && cd watchover-<sürüm>

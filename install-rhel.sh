@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Watchover on Red Hat Enterprise Linux 9.6-9.8 (Rocky Linux / AlmaLinux 9.6+ alike) with rootful Podman: one command, nothing to answer.
+# Watchover on Red Hat Enterprise Linux 8.6+, 9 or 10 (Rocky Linux / AlmaLinux / Oracle Linux / CentOS Stream alike) with rootful
+# Podman (4.0 or newer; RHEL 9.5+ / 10 bring 5.x): one command, nothing to answer.
 #
 #   sudo ./install-rhel.sh          (from the unzipped release folder; without the exec bit: sudo bash install-rhel.sh)
 #
 # In order; every step is safe to repeat: a second run repairs (units, firewall, containers), a run from a newer release folder
 # upgrades (a backup is taken first). Nothing is changed before the preflight has passed.
-#   1. preflight: RHEL 9.6-9.8 (older 9.x: a warning, 8 / 10: refused), CPU architecture (x86_64 / aarch64), CPU / RAM / disk
+#   1. preflight: RHEL 8.6+, 9.x or 10.x (Rocky / Alma / Oracle Linux / CentOS Stream alike; 7 and 8.0-8.5: refused), CPU architecture (x86_64 / aarch64), CPU / RAM / disk
 #      minimums, VM / AVX2 / cgroup v2 notes, SELinux, time sync, ports 80 / 443 / 8600 / 5433 free, package repositories (dnf
 #      repolist), every internet host the install needs (the failing ones are named for the firewall team), where Podman keeps its
 #      storage (local SSD expected, NFS / CIFS warned)
@@ -123,10 +124,10 @@ DEFIF=$(ip route show default 2>/dev/null | awk '{for (i = 1; i < NF; i++) if ($
 
 case "$OS_ID" in
   rhel) OS_LABEL="${OS_NAME:-RHEL $OS_VER}" ;;
-  rocky|almalinux) OS_LABEL="${OS_NAME:-$OS_ID $OS_VER} · RHEL 9 uyumlu" ;;
+  rocky|almalinux|ol|centos) OS_LABEL="${OS_NAME:-$OS_ID $OS_VER} · RHEL ${OS_VER%%.*} uyumlu" ;;
   *) OS_LABEL="${OS_NAME:-bilinmiyor}" ;;
 esac
-printf '\n\033[1mWatchover v%s · RHEL 9 kurulumu (Podman)\033[0m   %s\n' "$SRC_VER" "$(date '+%F %T')"
+printf '\n\033[1mWatchover v%s · RHEL kurulumu (Podman)\033[0m   %s\n' "$SRC_VER" "$(date '+%F %T')"
 say "Sunucu: $OS_LABEL · $ARCH · $NCPU CPU · $MEM_GB GB RAM (kullanılabilir $MEM_USE GB)${VIRT:+ · sanal makine ($VIRT)}"
 
 # ---------------------------------------------------------------------------------------------------------------- proxy
@@ -163,15 +164,17 @@ done
 
 # ---------------------------------------------------------------------------------------------------------------- preflight
 say "Ön kontrol"
+OS_MAJOR=${OS_VER%%.*}; case "$OS_MAJOR" in ""|*[!0-9]*) OS_MAJOR=0 ;; esac
 case "$OS_ID" in
-  rhel|rocky|almalinux)
-    major=${OS_VER%%.*}; minor=${OS_VER#*.}; [ "$minor" != "$OS_VER" ] || minor=0; case "$minor" in ""|*[!0-9]*) minor=0 ;; esac
-    if [ "$major" = 8 ]; then bad "Bu kurulum RHEL 9 içindir (9.6-9.8); bu sunucu $OS_LABEL. RHEL 8: docs/KURULUM_DOCKER.md bölüm 1b (Docker CE)"
-    elif [ "$major" != 9 ]; then bad "Bu kurulum RHEL 9 içindir (9.6-9.8); bu sunucu $OS_LABEL: RHEL $major henüz desteklenmiyor"
-    elif [ "$minor" -lt 6 ]; then note "$OS_LABEL: hedef RHEL 9.6-9.8 (Podman 5.x). Kurulum sürüyor; önce güncellemeniz önerilir: sudo dnf -y update && sudo reboot"
-    elif [ "$minor" -gt 8 ]; then ok "İşletim sistemi: $OS_LABEL (hedef sürümler 9.6-9.8; daha yenisi de denenir)"
-    else ok "İşletim sistemi: $OS_LABEL (desteklenen: 9.6-9.8)"; fi ;;
-  *) bad "Bu kurulum RHEL 9 içindir (Rocky Linux 9 / AlmaLinux 9 da olur); bu sunucu: $OS_LABEL" ;;
+  rhel|rocky|almalinux|ol|centos)
+    major=$OS_MAJOR; minor=${OS_VER#*.}; [ "$minor" != "$OS_VER" ] || minor=0; case "$minor" in ""|*[!0-9]*) minor=0 ;; esac
+    if [ "$major" -le 7 ]; then bad "$OS_LABEL desteklenmez: RHEL 7 ve öncesinde Podman 4 ve cgroup v2 yok (RHEL 7'nin desteği bitti). RHEL 8.6+, 9 ya da 10 kullanın"
+    elif [ "$major" = 8 ] && [ "$minor" -lt 6 ]; then bad "$OS_LABEL: RHEL 8'de en az 8.6 gerekir (Podman 4.x). Güncelleyin: sudo dnf -y update && sudo reboot"
+    elif [ "$major" = 8 ]; then ok "İşletim sistemi: $OS_LABEL (Podman 4.x; desteklenen: 8.6+, 9, 10)"
+    elif [ "$major" = 9 ] && [ "$minor" -lt 5 ]; then ok "İşletim sistemi: $OS_LABEL (Podman 4.x; desteklenen: 8.6+, 9, 10; 9.5+ Podman 5 getirir)"
+    elif [ "$major" -le 10 ]; then ok "İşletim sistemi: $OS_LABEL (desteklenen: 8.6+, 9, 10)"
+    else ok "İşletim sistemi: $OS_LABEL (desteklenen: 8.6+, 9, 10; daha yenisi de denenir)"; fi ;;
+  *) bad "Bu kurulum Red Hat ailesi içindir (RHEL 8.6+, 9, 10; Rocky, AlmaLinux, Oracle Linux, CentOS Stream da olur); bu sunucu: $OS_LABEL" ;;
 esac
 case "$ARCH" in x86_64|aarch64) ok "İşlemci mimarisi: $ARCH" ;; *) bad "İşlemci mimarisi $ARCH desteklenmiyor (x86_64 ya da aarch64)" ;; esac
 if [ "${#FATAL[@]}" -gt 0 ]; then printf '\n\033[1;31mKurulum yapılmadı (hiçbir şey değiştirilmedi).\033[0m\n  Ayrıntılı kayıt: %s\n' "$LOG"; exit 1; fi
@@ -215,7 +218,8 @@ esac
 se=$(getenforce 2>/dev/null || echo yok)
 case "$se" in Enforcing) ok "SELinux: Enforcing (öyle kalır)" ;; Permissive) note "SELinux Permissive: üretimde Enforcing önerilir (Watchover Enforcing ile çalışır)" ;; *) note "SELinux: $se" ;; esac
 cg=$(stat -fc %T "$R/sys/fs/cgroup" 2>/dev/null || true)
-[ -z "$cg" ] || [ "$cg" = cgroup2fs ] || note "cgroup v1 ($cg): Podman 5 cgroup v2 ister (RHEL 9 varsayılanı): sudo grubby --update-kernel=ALL --remove-args=systemd.unified_cgroup_hierarchy, sonra yeniden başlatın"
+if [ -n "$cg" ] && [ "$cg" != cgroup2fs ] && [ "$OS_MAJOR" = 8 ]; then ok "cgroup v1 (RHEL 8 varsayılanı): root Podman 4.x ile çalışır"; cg=cgroup2fs; fi
+[ -z "$cg" ] || [ "$cg" = cgroup2fs ] || note "cgroup v1 ($cg): Podman 5 cgroup v2 ister (RHEL 9 / 10 varsayılanı): sudo grubby --update-kernel=ALL --remove-args=systemd.unified_cgroup_hierarchy, sonra yeniden başlatın"
 case "$(timedatectl show -p NTPSynchronized --value 2>/dev/null || true)" in yes) ok "Saat eşitlenmiş (NTP)" ;; *) note "Saat henüz eşitlenmemiş: chronyd açılacak (zaman damgaları ve TLS için gerekli)" ;; esac
 
 # where the files go, what was there before
@@ -448,15 +452,19 @@ fi
 export WATCHOVER_COMPOSE_BIN; WATCHOVER_COMPOSE_BIN=$(compose_path)
 have openssl || quiet "openssl (edge sertifikası sunucuda üretilir)" dnf -y install openssl || die_tail "openssl kurulamadı: sudo dnf -y install openssl"
 pv=$(podman version --format '{{.Client.Version}}' 2>/dev/null || podman --version 2>/dev/null | awk '{print $NF}' || true)
-ver_ge "${pv:-0}" 5.0 || note "Podman $pv: RHEL 9.6+ Podman 5.x getirir (sudo dnf -y update)"
+ver_ge "${pv:-0}" 4.0 || die "Podman $pv: en az 4.0 gerekir (RHEL 8.6+ / 9 depolarında var: sudo dnf -y update podman)"
+ver_ge "${pv:-0}" 5.0 || note "Podman $pv: çalışır; Podman 5 daha hızlıdır (RHEL 9.5+ / 10 getirir)"
 nb=$(podman info --format '{{.Host.NetworkBackend}}' 2>/dev/null || true)
-if [ "$nb" = cni ]; then
+if [ "$nb" = cni ]; then   # RHEL 8's Podman 4 starts on CNI: netavark when it could be installed, else CNI with the dnsname plugin
   if running watchover; then note "Podman CNI ağında çalışıyor (netavark önerilir); mevcut kuruluma dokunulmadı"
-  elif [ -z "$(podman ps -aq 2>/dev/null)" ] && [ -z "$(podman images -q 2>/dev/null)" ]; then
+  elif ! rpm_ok netavark aardvark-dns && { rpm_ok podman-plugins || [ -x "$R/usr/libexec/cni/dnsname" ]; }; then
+    note "Podman CNI ağında: konteyner adları dnsname eklentisiyle çözülür (RHEL 8; netavark depoda yok)"
+  elif [ -z "$(podman ps -aq 2>/dev/null)" ] && [ -z "$(podman images -q 2>/dev/null)" ] && rpm_ok netavark aardvark-dns; then
     mkdir -p "$R/etc/containers/containers.conf.d"
     printf '# written by install-rhel.sh (Watchover): container names (postgres, receiver) resolve with netavark + aardvark-dns\n[network]\nnetwork_backend = "netavark"\n' > "$R/etc/containers/containers.conf.d/watchover-network.conf"
     podman system reset --force >/dev/null 2>&1 || true; systemctl restart podman.socket >/dev/null 2>&1 || true; nb=netavark
-  else die "Podman CNI ağ altyapısında ve sunucuda başka konteyner / imaj var: Watchover netavark ister. /etc/containers/containers.conf [network] network_backend=\"netavark\" + podman system reset (tüm Podman konteynerlerini siler)"; fi
+  elif ! rpm_ok netavark aardvark-dns; then die "Podman CNI ağında ve konteyner ad çözümü yok: sudo dnf -y install netavark aardvark-dns (RHEL 8: ya da podman-plugins), sonra bu betiği yeniden çalıştırın"
+  else die "Podman CNI ağ altyapısında ve sunucuda başka konteyner / imaj var: Watchover netavark ister (RHEL 8: podman-plugins da olur). /etc/containers/containers.conf [network] network_backend=\"netavark\" + podman system reset (tüm Podman konteynerlerini siler)"; fi
 fi
 ok "Podman ${pv:-?} (ağ: ${nb:-?}) · Compose $("$WATCHOVER_COMPOSE_BIN" version --short 2>/dev/null || echo ?) · podman.socket"
 

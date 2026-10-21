@@ -42,10 +42,10 @@ compose_found() {   # an explicit binary (WATCHOVER_COMPOSE_BIN, as in watchover
 STORE=/var/lib/docker; [ "$ENGINE" = podman ] && STORE=/var/lib/containers
 say "host: ${PRETTY_NAME:-unknown} · $(nproc 2>/dev/null || echo ?) CPU · $(awk '/MemTotal/ {printf "%d GB", $2/1024/1024}' /proc/meminfo 2>/dev/null) RAM · $(df -h /var/lib 2>/dev/null | awk 'NR==2 {print $4}') free under /var/lib · engine: $ENGINE"
 case "${ID:-}" in rhel|rocky|almalinux|centos|ol) ;; *) warn "this is not a RHEL family system (ID=${ID:-?}); the install steps assume dnf and the RHEL repositories" ;; esac
-[ "${VERSION_ID%%.*}" = "8" ] || [ "${VERSION_ID%%.*}" = "9" ] || warn "tested on RHEL 8 and 9, this is ${VERSION_ID:-?}"
+case "${VERSION_ID%%.*}" in 8|9|10) ;; *) warn "tested on RHEL 8, 9 and 10, this is ${VERSION_ID:-?}" ;; esac
 if [ "$ENGINE" = podman ]; then case "${VERSION_ID:-}" in
-  9.[6-9]*) ;; 9|9.*) warn "Podman is tested on RHEL 9.6-9.8 (Podman 5.x); this is ${VERSION_ID}: sudo dnf -y update first" ;;
-  8|8.*) warn "the Podman engine targets RHEL 9.6+; on RHEL 8 use --engine docker" ;; esac; fi
+  8.[0-5]|8.[0-5].*|8) warn "Podman 4.x needs RHEL 8.6 or newer; this is ${VERSION_ID}: sudo dnf -y update first" ;;
+  [0-7]|[0-7].*) warn "RHEL ${VERSION_ID} has no Podman 4: use RHEL 8.6+, 9 or 10" ;; esac; fi
 if [ "$CHECK" = 0 ] && [ "$(id -u)" != 0 ]; then echo "run with sudo (or use --check)" >&2; exit 1; fi
 avail_kb=$(df -k /var/lib 2>/dev/null | awk 'NR==2 {print $4}'); [ -n "$avail_kb" ] && [ "$avail_kb" -lt $((40 * 1024 * 1024)) ] && warn "/var/lib has less than 40 GB free: images, PostgreSQL and the live spool live in $STORE; mount a volume there (raw logs can go to disks of their own: WATCHOVER_LOG_HOT_PATH / WATCHOVER_LOG_COLD_PATH)"
 
@@ -74,7 +74,8 @@ else
     command -v dockerd >/dev/null 2>&1 && warn "Docker CE is installed too: watchover.sh picks Docker unless .env says WATCHOVER_ENGINE=podman"
     say "installing Podman from the RHEL repositories (podman, container-selinux; netavark + aardvark-dns: containers find each other by name)"
     run dnf -y install podman container-selinux crun openssl          # openssl: watchover.sh edge on issues the edge certificate on the host
-    run dnf -y install netavark aardvark-dns || warn "netavark / aardvark-dns not in the repositories: container name resolution needs them (RHEL 9 AppStream has both)"
+    run dnf -y install netavark aardvark-dns || { warn "netavark / aardvark-dns not in the repositories (older RHEL 8): container names resolve through CNI's dnsname plugin instead"
+      run dnf -y install podman-plugins || warn "podman-plugins (dnsname) not in the repositories either: container name resolution needs netavark + aardvark-dns or podman-plugins"; }
     if compose_found; then say "Compose v2 binary already present"; else
       say "installing only the Compose v2 plugin from download.docker.com (docker-compose-plugin: one binary, no Docker engine, no conflict with Podman)"
       run dnf -y install dnf-plugins-core
