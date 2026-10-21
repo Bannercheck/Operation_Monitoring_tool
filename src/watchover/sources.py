@@ -54,6 +54,12 @@ KINDS: dict[str, dict] = {
                         "monitoring (display role; no change rights). Only message headers are read, never payloads.",
                "logs": "Every message the Adapter Engine handled: interface, sender and receiver system, adapter, status, duration, error "
                        "label. Each becomes a log line, a trace (sender → SAP PO → receiver) and integration-map edges."},
+    "sap-s4": {"label": "SAP S/4HANA / ABAP", "icon": "🧾", "port": 44300, "selector": "long-running job threshold in minutes (optional)", "selector_ex": "60",
+               "auth": ("basic",), "path_hint": "https://s4app01.example.com:44300/sap/bc/soap/rfc?sap-client=100",
+               "needs": "The ABAP system's ICM https address with ?sap-client=NNN, the SICF service /sap/bc/soap/rfc active, and a technical user "
+                        "with S_RFC for RFC_READ_TABLE and display authorisation on TBTCO, SNAP_BEG, EDIDC and ARFCSSTATE only (no change rights).",
+               "logs": "Aborted and long-running background jobs (SM37), ABAP short dumps (ST22), IDocs in error (WE02) and stuck tRFC calls (SM58) "
+                       "as log lines; IDoc partners and RFC destinations as integration-map edges."},
 }
 KIND_ALIASES = {"opensearch": "elasticsearch"}
 TS_KEYS = ("@timestamp", "timestamp", "ts", "time", "_time", "date", "event_time")
@@ -308,8 +314,24 @@ def fetch_sap_po(src: Source, since: datetime, limit: int) -> tuple[list[dict], 
     return sap_po.rows_of(msgs, sap_po.po_host(src.url)), until.isoformat()
 
 
+def fetch_sap_s4(src: Source, since: datetime, limit: int) -> tuple[list[dict], str]:
+    """SAP S/4HANA / ABAP through SOAP-RFC (RFC_READ_TABLE): jobs, short dumps, IDocs, tRFC (sap_s4.fetch)."""
+    import os
+    from . import sap_po, sap_s4
+    until = datetime.now(UTC)
+    base = src.url.strip()
+    url = base if "/sap/bc/soap/rfc" in base else base.rstrip("/") + sap_s4.SOAP_RFC
+    try:
+        long_min = max(5, min(int(src.selector or 60), 24 * 60))
+    except ValueError:
+        long_min = 60
+    call = lambda xml: _call(src, url, "POST", xml, extra={"Content-Type": "text/xml; charset=utf-8", "SOAPAction": f'"{sap_s4.NS}"'}, timeout=60)  # noqa: E731
+    rows = sap_s4.fetch(call, sap_po.po_host(src.url), since, sap_s4._tz(os.environ.get("TZ", "")), long_job_min=long_min)
+    return rows, until.isoformat()
+
+
 FETCHERS: dict[str, Callable] = {"elasticsearch": fetch_elasticsearch, "opensearch": fetch_elasticsearch, "loki": fetch_loki,
-                                 "splunk": fetch_splunk, "graylog": fetch_graylog, "http": fetch_http, "sap-po": fetch_sap_po}
+                                 "splunk": fetch_splunk, "graylog": fetch_graylog, "http": fetch_http, "sap-po": fetch_sap_po, "sap-s4": fetch_sap_s4}
 
 
 def fetch(src: Source, since: datetime | None = None, limit: int = 500) -> tuple[list[dict], str]:
