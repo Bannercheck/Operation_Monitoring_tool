@@ -352,6 +352,44 @@ def test_sources_draft_test_and_dataset_from_source(client):
     client.delete(f"/api/sources/{sid}", headers=h)
 
 
+def test_a_source_is_edited_in_place(client, monkeypatch):
+    """Ayarlar › Veri kaynakları ✏️: a wrong password is fixed without deleting the source. An empty password field keeps the stored
+    one (in the save and in the test before it), a new address drops it, a fix clears the old error."""
+    import importlib.util
+    import pathlib
+    import threading
+    from http.server import ThreadingHTTPServer
+    for k in ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY"):
+        monkeypatch.delenv(k, raising=False)
+    spec = importlib.util.spec_from_file_location("sap_mock", pathlib.Path(__file__).parent.parent / "scripts" / "sap-mock.py")
+    mock = importlib.util.module_from_spec(spec); spec.loader.exec_module(mock)
+    import base64
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), mock.handler("S4", "Basic " + base64.b64encode(b"WO_MON:Test.1234").decode(), set()))
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        h = token(client); store = client.app.state.services.sources
+        url = f"http://127.0.0.1:{srv.server_address[1]}/sap/bc/soap/rfc?sap-client=100"
+        s = client.post("/api/sources", json={"name": "s4", "kind": "sap-s4", "url": url, "auth": "basic", "user": "WO_MON", "secret": "wrong",
+                                              "lookback_min": 30}, headers=h).json()
+        assert client.post(f"/api/sources/{s['id']}/test", headers=h).json()["ok"] is False             # 401 on every table
+        store.update(s["id"], last_err="HTTP Error 401: Unauthorized")
+        r = client.patch(f"/api/sources/{s['id']}", json={"name": "s4-prd", "interval": 60, "secret": ""}, headers=h).json()
+        assert r["name"] == "s4-prd" and r["secret"] == "•••" and store.get(s["id"]).secret == "wrong" and not r["last_err"]
+        draft = {"name": "s4-prd", "kind": "sap-s4", "url": url, "auth": "basic", "user": "WO_MON", "secret": "", "lookback_min": 30, "id": s["id"]}
+        assert client.post("/api/sources/test", json=draft, headers=h).json()["ok"] is False            # tried with the stored (wrong) one
+        assert client.post("/api/sources/test", json={**draft, "secret": "Test.1234"}, headers=h).json()["ok"] is True
+        client.patch(f"/api/sources/{s['id']}", json={"secret": "Test.1234"}, headers=h)
+        assert store.get(s["id"]).secret == "Test.1234" and client.post(f"/api/sources/{s['id']}/test", headers=h).json()["ok"] is True
+        other = "http://127.0.0.1:9/sap/bc/soap/rfc?sap-client=100"
+        assert client.post("/api/sources/test", json={**draft, "url": other}, headers=h).json()["ok"] is False
+        client.patch(f"/api/sources/{s['id']}", json={"url": other, "secret": ""}, headers=h)
+        assert store.get(s["id"]).secret == ""                                                       # a new address never carries it
+        assert client.patch(f"/api/sources/{s['id']}", json={"kind": "nope"}, headers=h).status_code == 422
+        client.delete(f"/api/sources/{s['id']}", headers=h)
+    finally:
+        srv.shutdown()
+
+
 def test_parser_coverage_endpoint(client):
     h = token(client)
     r = client.get("/api/system/coverage", headers=h)

@@ -129,3 +129,14 @@ def test_the_test_server_stand_in_speaks_both_protocols():
     kinds = {r.get("s4.kind") for r in rows}
     assert {"dump", "monitor"} <= kinds and any("flow.dir" in r for r in rows)
     assert any(r.get("s4.table") == "ARFCSSTATE" for r in rows)
+
+
+def test_nothing_readable_fails_the_poll():
+    """A wrong password (401 on every table) is a failing source with the reason, not four warning lines and a green status."""
+    def call(xml):
+        raise OSError("HTTP Error 401: Unauthorized")
+    try:
+        sap_s4.fetch(call, "s4app01", NOW - timedelta(minutes=5), TZ)
+        raise AssertionError("not raised")
+    except RuntimeError as e:
+        assert "401" in str(e) and "TBTCO" in str(e)

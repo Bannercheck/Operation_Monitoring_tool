@@ -19,7 +19,7 @@ export default function SourcesPage() {
 }
 
 export function SourcesPanel() {
-  const { t } = useT(); const { can } = useAuth(); const qc = useQueryClient(); const [msg, setMsg] = useState<any>(null); const [add, setAdd] = useState(false);
+  const { t } = useT(); const { can } = useAuth(); const qc = useQueryClient(); const [msg, setMsg] = useState<any>(null); const [add, setAdd] = useState(false); const [edit, setEdit] = useState<any>(null);
   const list = useQuery({ queryKey: ["sources"], queryFn: () => get("/sources"), refetchInterval: 10000 });
   const kinds = useQuery({ queryKey: ["source-kinds"], queryFn: () => get("/sources/kinds") });
   const inv = () => qc.invalidateQueries({ queryKey: ["sources"] });
@@ -35,8 +35,9 @@ export function SourcesPanel() {
       <div className="grid k3" style={{ marginTop: 10 }}>{Object.entries(K).map(([k, m]: any) => <div key={k} className="card cat"><div className="cat-t">{m.icon} {m.label} <span className="mono dim">:{m.port}</span></div>
         <div className="cat-b"><b>{t("src_needs")}</b><br />{t("src_needs_" + k)}</div><div className="cat-b"><b>{t("src_logs")}</b><br />{t("src_logs_" + k)}</div></div>)}</div>
       <div className="muted small" style={{ marginTop: 8 }}>{t("src_catalog_note")}</div></details>
-    {editable && !add && <div className="row"><Btn kind="primary" onClick={() => setAdd(true)}>➕ {t("src_add")}</Btn></div>}
-    {add && <NewSource kinds={K} onClose={() => { setAdd(false); inv(); }} />}
+    {editable && !add && !edit && <div className="row"><Btn kind="primary" onClick={() => setAdd(true)}>➕ {t("src_add")}</Btn></div>}
+    {add && <SourceForm kinds={K} onClose={() => { setAdd(false); inv(); }} />}
+    {edit && <SourceForm key={edit.id} kinds={K} edit={edit} onClose={() => { setEdit(null); inv(); }} />}
     {msg && <div className={msg.ok === false ? "err" : "ok"}>{msg.message ?? `${msg.events} ${t("ds_events")}`}</div>}
     {msg?.sample?.length > 0 && <Card><Table cols={["ts", "level", "host", "service", "msg"].map((k) => ({ k, label: k, render: (r: any) => <span className={k === "msg" ? "mono" : ""}>{String(r[k] ?? "")}</span> }))} rows={msg.sample.map((r: any, i: number) => ({ id: i, ...r }))} /></Card>}
     <Card title={t("src_list")}>{!rows.length ? <div className="muted small">{t("src_none")}</div> : <Table cols={[
@@ -46,26 +47,31 @@ export function SourcesPanel() {
       { k: "url", label: t("src_url"), render: (r) => <span className="mono small">{r.url.slice(0, 48)} <span className="dim">{r.selector.slice(0, 30)}</span></span> },
       { k: "interval", label: t("src_interval"), render: (r) => <span className="muted small">{r.interval}s · {r.env || "-"}{r.site ? ` · ${r.site}` : ""}</span> },
       { k: "last_ok", label: t("status"), render: (r) => <span className="muted small">{r.last_ok ? fmtTs(r.last_ok) : "-"} · {(r.events ?? 0).toLocaleString()} {t("ds_events")} · {r.polls ?? 0} {t("src_polls")}</span> },
-      { k: "x", label: "", render: (r) => editable ? <div className="row"><Btn sm title={t("src_toggle")} onClick={() => op.mutate({ id: r.id, op: "patch", body: { enabled: !r.enabled, last_err: "" } })}>{r.enabled ? "⏸" : "▶"}</Btn><Btn sm onClick={() => op.mutate({ id: r.id, op: "test" })}>🧪 {t("src_test")}</Btn><Btn sm onClick={() => op.mutate({ id: r.id, op: "poll" })}>{t("src_poll")}</Btn><Confirm onConfirm={() => op.mutate({ id: r.id, op: "delete" })}>🗑</Confirm></div> : null }]} rows={rows} />}</Card>
+      { k: "x", label: "", render: (r) => editable ? <div className="row"><Btn sm title={t("src_toggle")} onClick={() => op.mutate({ id: r.id, op: "patch", body: { enabled: !r.enabled, last_err: "" } })}>{r.enabled ? "⏸" : "▶"}</Btn><Btn sm title={t("src_edit")} onClick={() => { setAdd(false); setEdit(r); window.scrollTo({ top: 0, behavior: "smooth" }); }}>✏️</Btn><Btn sm onClick={() => op.mutate({ id: r.id, op: "test" })}>🧪 {t("src_test")}</Btn><Btn sm onClick={() => op.mutate({ id: r.id, op: "poll" })}>{t("src_poll")}</Btn><Confirm onConfirm={() => op.mutate({ id: r.id, op: "delete" })}>🗑</Confirm></div> : null }]} rows={rows} />}</Card>
     <Err e={op.error} />
   </div>;
 }
 
-function NewSource({ kinds, onClose }: { kinds: Record<string, any>; onClose: () => void }) {
-  const { t } = useT(); const [f, setF] = useState<any>(EMPTY); const [err, setErr] = useState<any>(null); const [res, setRes] = useState<any>(null); const [busy, setBusy] = useState(false);
+/** Add a source, or edit one (`edit` = its row): the same form, filled in; an empty password keeps the stored one while the address
+ *  stays the same (a new address needs it typed again, the server drops the old one); only changed fields are sent. */
+function SourceForm({ kinds, onClose, edit }: { kinds: Record<string, any>; onClose: () => void; edit?: any }) {
+  const init = edit ? Object.fromEntries(Object.keys(EMPTY).map((k) => [k, k === "secret" ? "" : edit[k] ?? (EMPTY as any)[k]])) : EMPTY;
+  const { t } = useT(); const [f, setF] = useState<any>(init); const [err, setErr] = useState<any>(null); const [res, setRes] = useState<any>(null); const [busy, setBusy] = useState(false);
   const k = kinds[f.kind] ?? {}; const set = (key: string) => (e: any) => setF({ ...f, [key]: e.target.type === "checkbox" ? e.target.checked : e.target.value });
   const body = () => ({ ...f, interval: Number(f.interval), lookback_min: Number(f.lookback_min) });
-  const test = async () => { setErr(null); setBusy(true); try { setRes(await post("/sources/test", body())); } catch (x) { setErr(x); } finally { setBusy(false); } };
-  const save = async (e: React.FormEvent) => { e.preventDefault(); setErr(null); try { await post("/sources", body()); onClose(); } catch (x) { setErr(x); } };
+  const changed = () => Object.fromEntries(Object.entries(body()).filter(([k, v]) => k === "secret" ? v !== "" : v !== (init as any)[k] && String(v) !== String((init as any)[k])));
+  const moved = !!edit && f.url !== edit.url; const kept = !!edit && edit.secret && !moved && !f.secret;
+  const test = async () => { setErr(null); setBusy(true); try { setRes(await post("/sources/test", edit ? { ...body(), id: edit.id } : body())); } catch (x) { setErr(x); } finally { setBusy(false); } };
+  const save = async (e: React.FormEvent) => { e.preventDefault(); setErr(null); try { if (edit) await patch(`/sources/${edit.id}`, changed()); else await post("/sources", body()); onClose(); } catch (x) { setErr(x); } };
   const auths: string[] = k.auth ?? ["none", "basic", "bearer"];
-  return <Card title={`➕ ${t("src_add")}`} right={<Btn sm onClick={onClose}>✕</Btn>}><form className="stack" onSubmit={save}>
+  return <Card title={edit ? `✏️ ${t("src_edit")}: ${edit.name}` : `➕ ${t("src_add")}`} right={<Btn sm onClick={onClose}>✕</Btn>}><form className="stack" onSubmit={save}>
     <div className="grid k3"><Field label={t("src_kind")}><select className="input" value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value, auth: (kinds[e.target.value]?.auth ?? ["none"])[0] })}>{Object.entries(kinds).map(([key, v]: any) => <option key={key} value={key}>{v.icon} {v.label}</option>)}</select></Field>
       <Field label={t("src_name")}><input className="input" value={f.name} onChange={set("name")} placeholder={`${f.kind}-prod`} required /></Field>
       <Field label={t("src_url")} hint={t("src_url_help")}><input className="input" value={f.url} onChange={set("url")} placeholder={k.path_hint ?? (k.port ? `https://host:${k.port}` : "")} required /></Field></div>
     <Field label={k.selector ?? t("src_selector")} hint={t("src_sel_help_" + f.kind)}><input className="input" value={f.selector} onChange={set("selector")} placeholder={k.selector_ex ?? ""} /></Field>
     <div className="grid k4"><Field label={t("src_auth")}><select className="input" value={f.auth} onChange={set("auth")}>{auths.map((a) => <option key={a} value={a}>{t("src_auth_" + a)}</option>)}</select></Field>
       <Field label={t("src_user")}><input className="input" value={f.user} onChange={set("user")} disabled={f.auth !== "basic"} /></Field>
-      <Field label={t("src_secret")} hint={t("src_secret_help")}><input className="input" type="password" value={f.secret} onChange={set("secret")} disabled={f.auth === "none"} /></Field>
+      <Field label={t("src_secret")} hint={moved && edit.secret ? t("src_secret_moved") : kept ? t("src_secret_kept") : t("src_secret_help")}><input className="input" type="password" value={f.secret} onChange={set("secret")} disabled={f.auth === "none"} placeholder={kept ? "•••" : ""} autoComplete="new-password" /></Field>
       <Field label={t("src_interval")}><input className="input" type="number" min={5} max={3600} value={f.interval} onChange={set("interval")} /></Field></div>
     <div className="grid k3"><Field label={t("env")}><select className="input" value={f.env} onChange={set("env")}>{ENVS.map((e) => <option key={e} value={e}>{e || "-"}</option>)}</select></Field>
       <Field label={t("ag_site")}><input className="input" value={f.site} onChange={set("site")} placeholder="IST-DC1" /></Field>
@@ -77,6 +83,6 @@ function NewSource({ kinds, onClose }: { kinds: Record<string, any>; onClose: ()
     {res && <div className={res.ok ? "ok" : "err"}>{res.message}</div>}
     {res?.sample?.length > 0 && <Table cols={["ts", "level", "host", "service", "msg"].map((c) => ({ k: c, label: c, render: (r: any) => <span className={c === "msg" ? "mono" : ""}>{String(r[c] ?? "")}</span> }))} rows={res.sample.map((r: any, i: number) => ({ id: i, ...r }))} />}
     <Err e={err} />
-    <div className="row"><Btn type="button" onClick={test} disabled={busy || !f.url}>🧪 {t("src_test")}</Btn><Btn kind="primary" type="submit" disabled={!f.url || !f.name}>💾 {t("src_save")}</Btn></div>
+    <div className="row"><Btn type="button" onClick={test} disabled={busy || !f.url}>🧪 {t("src_test")}</Btn><Btn kind="primary" type="submit" disabled={!f.url || !f.name}>💾 {edit ? t("src_save_edit") : t("src_save")}</Btn></div>
   </form></Card>;
 }

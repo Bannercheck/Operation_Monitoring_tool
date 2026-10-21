@@ -30,6 +30,7 @@ class SourceIn(BaseModel):
     ts_field: str = ""
     lookback_min: int = 15
     team_id: Optional[int] = None
+    id: Optional[int] = None          # /test only: an edited source whose stored secret stands in for an empty one (same address)
 
 
 class SourcePatch(BaseModel):
@@ -90,7 +91,7 @@ def list_sources(acc=Depends(access), user=Depends(require("page.src")), svc=Dep
 def add(body: SourceIn, acc=Depends(access), user=Depends(require("act.sources")), svc=Depends(services)):
     from ..security import pick_team
     tid = None if acc.wide and body.team_id is None else pick_team(acc, "act.sources", body.team_id)
-    d = body.model_dump(); d.pop("team_id", None)
+    d = body.model_dump(); d.pop("team_id", None); d.pop("id", None)
     s = svc.sources.add(wo_sources.Source(id=None, **d))
     if tid is not None:
         ownership.set_team(svc.kb, "sources", s.id, tid)
@@ -98,9 +99,15 @@ def add(body: SourceIn, acc=Depends(access), user=Depends(require("act.sources")
 
 
 @router.post("/test")
-def test_draft(body: SourceIn, user=Depends(require("act.sources"))):
-    """Try a not-yet-saved definition once over its lookback window; nothing is stored."""
-    d = body.model_dump(); d.pop("team_id", None)
+def test_draft(body: SourceIn, acc=Depends(access), user=Depends(require("act.sources")), svc=Depends(services)):
+    """Try a not-yet-saved definition (a new one, or an edit before it is saved) once over its lookback window; nothing is stored.
+    An edit with an empty secret is tried with the stored one, only while the address is unchanged (as the save would keep it)."""
+    d = body.model_dump(); d.pop("team_id", None); sid = d.pop("id", None)
+    if sid is not None:
+        cur, _tid = _mine(svc, acc, sid, write=True)
+        if cur.url == d["url"]:
+            d["secret"] = d["secret"] or cur.secret
+            d["headers"] = d["headers"] or cur.headers
     ok, msg, rows = wo_sources.test_source(wo_sources.Source(id=None, **d))
     return {"ok": ok, "message": msg, "sample": rows[:5]}
 
@@ -114,7 +121,14 @@ def get(sid: int, acc=Depends(access), user=Depends(require("page.src")), svc=De
 @router.patch("/{sid}")
 def update(sid: int, body: SourcePatch, acc=Depends(access), user=Depends(require("act.sources")), svc=Depends(services)):
     _s, tid = _mine(svc, acc, sid, write=True)
-    svc.sources.update(sid, **body.model_dump(exclude_none=True))
+    fields = body.model_dump(exclude_none=True)
+    if body.secret == "":
+        fields.pop("secret")                                   # an empty password field keeps the stored one (a new address still drops it)
+    if body.kind is not None and body.kind not in wo_sources.KINDS:
+        raise HTTPException(422, f"unknown source kind: {body.kind}")
+    if set(fields) - {"name"}:
+        fields["last_err"] = ""                                # an edited (or re-enabled) definition starts without the old error
+    svc.sources.update(sid, **fields)
     return _row(svc.sources.get(sid), tid)
 
 

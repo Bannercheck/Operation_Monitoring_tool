@@ -232,15 +232,20 @@ def rec_time(kind: str, r: dict, tz) -> datetime | None:
 
 def fetch(call, s4_host: str, since: datetime, tz, long_job_min: int = 60, rowcount: int = 2000) -> list[dict]:
     """One poll: every query through `call(xml_bytes) -> answer bytes`; a query the user may not run (no authorisation, the table
-    is missing on this release) is reported as one WARN row and the others still run. The tables are read from the day of `since`
+    is missing on this release) is reported as one WARN row and the others still run; when none can be read (wrong password, the
+    service is off) the poll fails with the first error, so the source shows it. The tables are read from the day of `since`
     (RFC_READ_TABLE filters by date only): records older than the poll window are dropped here, so a poll every 30 s does not
     re-send the day (log lines) nor re-count it (map edges count only records changed since the last poll). Running jobs are
     judged on every poll."""
     rows: list[dict] = []
+    failed: list[str] = []
     for kind, (table, fields) in QUERIES.items():
         try:
             recs = parse_read_table(call(read_table_xml(table, fields, where_for(kind, since, tz), rowcount)), fields)
         except Exception as e:  # noqa: BLE001 - one table failing does not stop the others
+            failed.append(f"{table}: {str(e)[:160]}")
+            if len(failed) == len(QUERIES):                    # nothing could be read (wrong password, service off, wrong client): the source fails
+                raise RuntimeError("no table could be read; " + failed[0]) from e
             hour = datetime.now(UTC).replace(minute=0, second=0, microsecond=0)   # the same line within the hour: once an hour, not every poll
             rows.append({"ts": hour.isoformat(), "level": "WARN", "host": s4_host, "service": "s4-monitor",
                          "msg": f"{table} could not be read: {str(e)[:160]}", "s4.kind": "monitor", "s4.table": table})
