@@ -203,6 +203,20 @@ def s4_answer(body: bytes, deny: set) -> bytes:
 
 
 # ------------------------------------------------------------------------------------------------------------------ server
+def why(got, want: str) -> str:
+    """Why a request was refused, for the operator at this terminal: the user name that came (never the password)."""
+    if not got:
+        return "kimlik gönderilmedi (kaynakta Kimlik 'basic' ve kullanıcı / parola dolu olmalı)"
+    try:
+        u, _, p = base64.b64decode(got.split(" ", 1)[1]).decode("utf-8", "replace").partition(":")
+        wu, _, wp = base64.b64decode(want.split(" ", 1)[1]).decode().partition(":")
+    except Exception:  # noqa: BLE001
+        return "Authorization başlığı okunamadı"
+    if u != wu:
+        return f"kullanıcı '{u}' geldi, beklenen '{wu}'"
+    return f"kullanıcı doğru ('{u}'), parola yanlış ({len(p)} karakter geldi, beklenen {len(wp)})" if p else f"kullanıcı doğru ('{u}'), parola boş geldi"
+
+
 def handler(kind: str, auth: str, deny: set):
     class H(BaseHTTPRequestHandler):
         server_version = "SAP NetWeaver Application Server (mock)"
@@ -212,7 +226,7 @@ def handler(kind: str, auth: str, deny: set):
             body = self.rfile.read(n)
             if auth and self.headers.get("Authorization") != auth:
                 self.send_response(401); self.send_header("WWW-Authenticate", 'Basic realm="SAP"'); self.send_header("Content-Length", "0")
-                self.end_headers(); print(f"{kind}: 401 (wrong user / password)", flush=True); return
+                self.end_headers(); print(f"{datetime.now().strftime('%H:%M:%S')} {kind}: 401, {why(self.headers.get('Authorization'), auth)}", flush=True); return
             if kind == "PO" and "AdapterMessageMonitoring" not in self.path:
                 self.send_response(404); self.send_header("Content-Length", "0"); self.end_headers(); return
             if kind == "S4" and not self.path.startswith("/sap/bc/soap/rfc"):
