@@ -203,6 +203,16 @@ def s4_answer(body: bytes, deny: set) -> bytes:
 
 
 # ------------------------------------------------------------------------------------------------------------------ server
+def same_login(got, want: str) -> bool:
+    """As SAP checks it: the user name in any case (ABAP and the Java UME store it upper-case), the password exactly."""
+    try:
+        u, _, p = base64.b64decode((got or "").split(" ", 1)[1]).decode("utf-8", "replace").partition(":")
+        wu, _, wp = base64.b64decode(want.split(" ", 1)[1]).decode().partition(":")
+    except Exception:  # noqa: BLE001
+        return False
+    return u.upper() == wu.upper() and p == wp
+
+
 def why(got, want: str) -> str:
     """Why a request was refused, for the operator at this terminal: the user name that came (never the password)."""
     if not got:
@@ -212,7 +222,7 @@ def why(got, want: str) -> str:
         wu, _, wp = base64.b64decode(want.split(" ", 1)[1]).decode().partition(":")
     except Exception:  # noqa: BLE001
         return "Authorization başlığı okunamadı"
-    if u != wu:
+    if u.upper() != wu.upper():
         return f"kullanıcı '{u}' geldi, beklenen '{wu}'"
     return f"kullanıcı doğru ('{u}'), parola yanlış ({len(p)} karakter geldi, beklenen {len(wp)})" if p else f"kullanıcı doğru ('{u}'), parola boş geldi"
 
@@ -224,7 +234,7 @@ def handler(kind: str, auth: str, deny: set):
         def do_POST(self):
             n = min(int(self.headers.get("Content-Length") or 0), 1 << 20)
             body = self.rfile.read(n)
-            if auth and self.headers.get("Authorization") != auth:
+            if auth and not same_login(self.headers.get("Authorization"), auth):
                 self.send_response(401); self.send_header("WWW-Authenticate", 'Basic realm="SAP"'); self.send_header("Content-Length", "0")
                 self.end_headers(); print(f"{datetime.now().strftime('%H:%M:%S')} {kind}: 401, {why(self.headers.get('Authorization'), auth)}", flush=True); return
             if kind == "PO" and "AdapterMessageMonitoring" not in self.path:
