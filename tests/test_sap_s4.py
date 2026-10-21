@@ -53,7 +53,7 @@ def test_findings_and_edges():
         t = re.search(rb"<QUERY_TABLE>(\w+)</QUERY_TABLE>", xml).group(1).decode()
         calls.append(t)
         return answer(t)
-    rows = sap_s4.fetch(call, "s4app01", NOW - timedelta(minutes=5), TZ)
+    rows = sap_s4.fetch(call, "s4app01", NOW - timedelta(minutes=15), TZ)
     assert calls == ["TBTCO", "SNAP_BEG", "EDIDC", "ARFCSSTATE"]
     by = {}
     for r in rows:
@@ -65,6 +65,17 @@ def test_findings_and_edges():
     assert by["monitor"][0]["level"] == "WARN" and "ARFCSSTATE" in by["monitor"][0]["msg"]      # one table refused, the rest still read
     edges = {(r["host"], r["flow.remote"], r["flow.count"]) for r in by["flow"]}
     assert edges == {("LS_CRM", "s4app01:3300", 2), ("s4app01", "LS_EINVOICE:3300", 1)}
+
+
+def test_a_later_poll_does_not_resend_the_day():
+    """The tables are read by date: a poll 30 s after the last one keeps only what changed since (and the running job, whose
+    line reads the same every time so the poller's hash set drops it), and counts no map edge twice."""
+    call = lambda xml: answer(re.search(rb"<QUERY_TABLE>(\w+)</QUERY_TABLE>", xml).group(1).decode())   # noqa: E731
+    first = [r for r in sap_s4.fetch(call, "s4app01", NOW - timedelta(minutes=15), TZ) if r.get("s4.kind") == "job"]
+    later = sap_s4.fetch(call, "s4app01", NOW - timedelta(seconds=30), TZ)
+    assert [r["s4.job"] for r in later if r.get("s4.kind") == "job"] == ["ZMM_STOCK_SYNC"]
+    assert [r["msg"] for r in later if r.get("s4.kind") == "job"] == [first[1]["msg"]]
+    assert not [r for r in later if r.get("s4.kind") in ("idoc", "dump")] and not [r for r in later if "flow.dir" in r]
 
 
 class _S4(http.server.BaseHTTPRequestHandler):
@@ -100,3 +111,21 @@ def test_source_end_to_end(tmp_path, monkeypatch):
             {r["endpoint"] for r in kb._exec("SELECT endpoint FROM net_flows")} == {"127.0.0.1:3300", "LS_EINVOICE:3300"}
     finally:
         srv.shutdown()
+
+
+def test_the_test_server_stand_in_speaks_both_protocols():
+    """scripts/sap-mock.py (a test server without SAP): its PO and S/4 answers read like the real ones, the same time window
+    gives the same message ids, and a denied table comes back as NOT_AUTHORIZED."""
+    import importlib.util
+    import pathlib
+    from watchover import sap_po
+    spec = importlib.util.spec_from_file_location("sap_mock", pathlib.Path(__file__).parent.parent / "scripts" / "sap-mock.py")
+    mock = importlib.util.module_from_spec(spec); spec.loader.exec_module(mock)
+    now = datetime.now(timezone.utc)
+    req = sap_po.request_xml(now - timedelta(minutes=10), now)
+    a, b = sap_po.parse_messages(mock.po_answer(req)), sap_po.parse_messages(mock.po_answer(req))
+    assert len(a) >= 40 and [m["id"] for m in a] == [m["id"] for m in b] and {m["adapter"] for m in a} >= {"SOAP", "IDoc", "JDBC"}
+    rows = sap_s4.fetch(lambda xml: mock.s4_answer(xml, {"ARFCSSTATE"}), "s4app01", now - timedelta(hours=3), TZ)
+    kinds = {r.get("s4.kind") for r in rows}
+    assert {"dump", "monitor"} <= kinds and any("flow.dir" in r for r in rows)
+    assert any(r.get("s4.table") == "ARFCSSTATE" for r in rows)

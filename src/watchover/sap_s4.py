@@ -160,8 +160,7 @@ def rows_of(kind: str, recs: list[dict], s4_host: str, tz, now: datetime | None 
             if st == "R":
                 if not start or (now - start).total_seconds() < long_job_min * 60:
                     continue
-                mins = int((now - start).total_seconds() // 60)
-                msg, lvl, ts = f"Job {r.get('JOBNAME')} still running after {mins} min (user {r.get('SDLUNAME')})", "WARN", start
+                msg, lvl, ts = f"Job {r.get('JOBNAME')} running longer than {long_job_min} min (user {r.get('SDLUNAME')})", "WARN", start   # one line per run: the same text every poll
             elif st == "A":
                 took = f" after {(end - start).total_seconds() / 60:.1f} min" if start and end else ""
                 msg, lvl, ts = f"Job {r.get('JOBNAME')} aborted{took} (user {r.get('SDLUNAME')})", "ERROR", end or start
@@ -218,16 +217,35 @@ def flow_rows(kind: str, recs: list[dict], s4_host: str) -> list[dict]:
              "flow.process": f"S4 {ad}", "flow.count": n, "flow.tech": "sap-abap"} for ((src, dst), ad), n in edges.items()]
 
 
+REC_TIME = {"jobs": (("ENDDATE", "ENDTIME"), ("STRTDATE", "STRTTIME")), "dumps": (("DATUM", "UZEIT"),), "idocs": (("UPDDAT", "UPDTIM"),),
+            "trfc": (("ARFCDATUM", "ARFCUZEIT"),)}
+OVERLAP = timedelta(minutes=5)          # SAP clock vs ours; the poller's hash set drops the repeats inside it
+
+
+def rec_time(kind: str, r: dict, tz) -> datetime | None:
+    for d, t in REC_TIME[kind]:
+        ts = sap_ts(r.get(d), r.get(t), tz)
+        if ts:
+            return ts
+    return None
+
+
 def fetch(call, s4_host: str, since: datetime, tz, long_job_min: int = 60, rowcount: int = 2000) -> list[dict]:
     """One poll: every query through `call(xml_bytes) -> answer bytes`; a query the user may not run (no authorisation, the table
-    is missing on this release) is reported as one WARN row and the others still run."""
+    is missing on this release) is reported as one WARN row and the others still run. The tables are read from the day of `since`
+    (RFC_READ_TABLE filters by date only): records older than the poll window are dropped here, so a poll every 30 s does not
+    re-send the day (log lines) nor re-count it (map edges count only records changed since the last poll). Running jobs are
+    judged on every poll."""
     rows: list[dict] = []
     for kind, (table, fields) in QUERIES.items():
         try:
             recs = parse_read_table(call(read_table_xml(table, fields, where_for(kind, since, tz), rowcount)), fields)
         except Exception as e:  # noqa: BLE001 - one table failing does not stop the others
-            rows.append({"ts": datetime.now(UTC).isoformat(), "level": "WARN", "host": s4_host, "service": "s4-monitor",
+            hour = datetime.now(UTC).replace(minute=0, second=0, microsecond=0)   # the same line within the hour: once an hour, not every poll
+            rows.append({"ts": hour.isoformat(), "level": "WARN", "host": s4_host, "service": "s4-monitor",
                          "msg": f"{table} could not be read: {str(e)[:160]}", "s4.kind": "monitor", "s4.table": table})
             continue
-        rows += rows_of(kind, recs, s4_host, tz, long_job_min=long_job_min) + flow_rows(kind, recs, s4_host)
+        fresh = [r for r in recs if (kind == "jobs" and r.get("STATUS") == "R") or (rec_time(kind, r, tz) or since) >= since - OVERLAP]
+        new = [r for r in recs if (rec_time(kind, r, tz) or since) >= since]
+        rows += rows_of(kind, fresh, s4_host, tz, long_job_min=long_job_min) + flow_rows(kind, new, s4_host)
     return rows
