@@ -250,3 +250,4 @@ Sadece geliştirme adımları. Format: araç + sürüm · tarih · yapılan iş.
 | Claude Opus 5.5 (Cowork) | 2026-10-21 | Kaynak düzenleme: ✏️ ile aynı form dolu açılır, boş parola kayıtlıyı korur, adres değişince parola düşer, kaydetmeden test kayıtlı parolayla; S/4 kaynağında hiçbir tablo okunamazsa okuma hatayla başarısız; testler (v1.62.2) |
 | Claude Opus 5.5 (Cowork) | 2026-10-21 | install-rhel.sh: yükseltmede eski Watchover sürüm imajları silinir (kurulu, geri dönüş ve güncelleyicinin sürümleri kalır); alan yetmezse ön kontrol silinecekleri hesaba katar (v1.62.3) |
 | Claude Opus 5.5 (Cowork) | 2026-10-21 | sap-mock.py: 401 cevabında terminale neden yazılır (kimlik gelmedi, kullanıcı farklı, parola yanlış / boş; parola yazılmaz) |
+| Claude Opus 5.5 (Cowork) | 2026-10-21 | sap-mock.py: port kullanımdaysa iz yığını yerine ne yapılacağını yazar (önceki örneği durdur, portu kim tutuyor, başka port) |

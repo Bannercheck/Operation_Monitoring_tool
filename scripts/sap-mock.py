@@ -260,7 +260,16 @@ def main() -> int:
     a = ap.parse_args()
     auth = "Basic " + base64.b64encode(f"{a.user}:{a.password}".encode()).decode() if a.user else ""
     deny = {t.strip().upper() for t in a.deny.split(",") if t.strip()}
-    servers = [ThreadingHTTPServer((a.host, a.po_port), handler("PO", auth, deny)), ThreadingHTTPServer((a.host, a.s4_port), handler("S4", auth, deny))]
+    servers = []
+    for kind, port in (("PO", a.po_port), ("S4", a.s4_port)):
+        try:
+            servers.append(ThreadingHTTPServer((a.host, port), handler(kind, auth, deny)))
+        except OSError as e:
+            for s in servers:
+                s.server_close()
+            print(f"Port {port} kullanımda ({e.strerror}). Önceki taklit sunucu hâlâ çalışıyor olabilir: sudo pkill -f sap-mock.py\n"
+                  f"Portu kim tutuyor: sudo ss -ltnp 'sport = :{port}'   (başka bir servisse: --{kind.lower()}-port ile başka port verin)", file=sys.stderr)
+            return 1
     for s in servers:
         threading.Thread(target=s.serve_forever, daemon=True).start()
     print(f"SAP PO  : http://<bu sunucu>:{a.po_port}   (getMessageList)")
