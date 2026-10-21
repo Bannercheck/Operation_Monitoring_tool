@@ -54,3 +54,7 @@ data/.api.key
 initial-admin-password
 initial-admin-password.tmp
 .lbtest/
+
+# one-file installers (watchover setup)
+dist/
+watchover-kurulum-*.sh

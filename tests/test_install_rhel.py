@@ -58,7 +58,7 @@ echo "dnf $*" >> "$FAKE_LOG"
 [ -z "${FAKE_DNF_FAIL:-}" ] || { echo "Error: Failed to download metadata for repo 'rhel-9-for-x86_64-baseos-rpms'"; exit 1; }
 case " $* " in
   *" repolist "*) echo "rhel-9-for-x86_64-baseos-rpms  Red Hat Enterprise Linux 9 - BaseOS" ;;
-  *" install "*|*" upgrade "*) for a in "$@"; do case "$a" in -*|install|upgrade) ;; *) echo "$a" >> "$FAKE_STATE/rpms" ;; esac; done
+  *" install "*|*" upgrade "*) for a in "$@"; do case "$a" in -*|install|upgrade) ;; *.rpm) basename "$a" | sed -E 's/-[^-]+-[^-]+\.[^.]+\.rpm$//' >> "$FAKE_STATE/rpms" ;; *) echo "$a" >> "$FAKE_STATE/rpms" ;; esac; done
     if [[ " $* " == *" docker-compose-plugin "* ]]; then mkdir -p "$(dirname "$WATCHOVER_COMPOSE_BIN")"; cp "$FAKE_BIN/compose" "$WATCHOVER_COMPOSE_BIN"; chmod 755 "$WATCHOVER_COMPOSE_BIN"; fi ;;
 esac
 exit 0''',
@@ -451,3 +451,108 @@ def test_ram_is_the_installed_amount_not_memtotal(rhel):
     (r / "proc/iomem").unlink(); (r / "proc/meminfo").write_text("MemTotal:        1700000 kB\n")   # a 2 GB machine: still refused
     res = run(rhel, "--check")
     assert res.returncode == 1 and "En az 4 GB RAM gerekir (bu sunucu: 2 GB)" in res.stdout
+
+
+def build_setup(src, *args, **extra):
+    env = {k: v for k, v in os.environ.items() if k.lower() not in ("http_proxy", "https_proxy")}
+    env.update(extra)
+    out = src.parent / "dist"
+    res = subprocess.run(["bash", str(src / "scripts/make-setup.sh"), "--out", str(out), *args], env=env, capture_output=True, text=True, timeout=300)
+    assert res.returncode == 0, res.stdout + res.stderr
+    return next(out.glob("watchover-kurulum-*.sh"))
+
+
+def run_setup(rhel, f, *args, **extra):
+    _, _, env = rhel
+    return subprocess.run(["bash", str(f), *args], env=dict(env, **extra), capture_output=True, text=True, timeout=300)
+
+
+def test_one_file_setup_online(rhel, tmp_path):
+    """watchover setup: one self-checking file (script + archive); --yes installs without a question, the opened files go away."""
+    src, r, env = rhel
+    f = build_setup(src)
+    assert f.name == f"watchover-kurulum-{VER}.sh" and f.read_bytes()[:2] == b"#!" and f.stat().st_size > 65536
+    work = tmp_path / "work"
+    res = run_setup(rhel, f, "--yes", "--workdir", str(work))
+    out = res.stdout
+    assert res.returncode == 0, out[-3000:] + res.stderr
+    assert "sha256 doğru, açıldı" in out and "Ön kontrol" in out and "İşletim sistemi:" in out
+    dest = r / "opt/watchover"
+    assert (dest / "watchover.sh").exists() and envval(dest, "WATCHOVER_EDGE_HOST") == "watchover01.firma.local"
+    assert not (work / f"watchover-kurulum-{VER}").exists()                  # cleaned up
+    assert list((r / "var/log/watchover").glob(f"kurulum-{VER}-*.txt"))         # the run is kept in a log
+    bad = tmp_path / "bad.sh"; data = bytearray(f.read_bytes()); data[70000] ^= 0xFF; bad.write_bytes(bytes(data))
+    res = run_setup(rhel, bad, "--yes", "--workdir", str(work))
+    assert res.returncode == 1 and "sha256 tutmuyor" in res.stderr
+    short = tmp_path / "short.sh"; short.write_bytes(f.read_bytes()[:100000])
+    res = run_setup(rhel, short, "--yes", "--workdir", str(work))
+    assert res.returncode == 1 and "Kurulum dosyası eksik" in res.stderr
+    res = run_setup(rhel, f, "--check", "--yes", "--workdir", str(work))
+    assert res.returncode == 0 and "--check: hiçbir şey kurulmadı" in res.stdout
+
+
+def test_one_file_setup_offline_needs_no_internet_and_no_repository(rhel, tmp_path):
+    """--offline: the bundle (images, Compose) and Podman's RPMs are inside; a server that reaches neither the internet nor a
+    package repository installs from the file alone. The package is for one CPU architecture."""
+    src, r, env = rhel
+    bundle = make_bundle(src); moved = tmp_path / bundle.name; bundle.rename(moved)   # only the copy inside the file counts
+    rpms = tmp_path / "rpms"; rpms.mkdir()
+    for n in ("podman-5.2.2-1.el9", "container-selinux-2.232.1-1.el9", "crun-1.16.1-1.el9", "netavark-1.12.2-1.el9", "aardvark-dns-1.12.2-1.el9",
+              "openssl-3.2.2-6.el9", "chrony-4.5-3.el9"):
+        (rpms / f"{n}.x86_64.rpm").write_bytes(b"\xed\xab\xee\xdb")
+    (rpms / "MANIFEST").write_text("os=el9\narch=x86_64\npackages=podman container-selinux crun netavark aardvark-dns openssl chrony\n")
+    f = build_setup(src, "--offline", WATCHOVER_SETUP_BUNDLE=str(moved), WATCHOVER_SETUP_RPMS=str(rpms))
+    assert f.name == f"watchover-kurulum-{VER}-x86_64-hepsi-dahil.sh"
+    (r / "etc/yum.repos.d/redhat.repo").write_text("")                         # no repository at all
+    res = run_setup(rhel, f, "--yes", "--workdir", str(tmp_path / "w"), FAKE_BLOCK="registry-1.docker.io pypi.org registry.ollama.ai cdn.redhat.com")
+    out = res.stdout; log = calls(rhel); dest = r / "opt/watchover"
+    assert res.returncode == 0, out[-4000:] + res.stderr
+    assert "Podman paketleri kurulum dosyasından: 7 RPM (el9, x86_64)" in out and "Kapalı ağ paketi: watchover-bundle-" in out
+    assert "--disablerepo=*" in log and "podman build" not in log and "podman load" in log and envval(dest, "WATCHOVER_OFFLINE") == "1"
+    assert not any(h in log for h in ("curl https://pypi.org", "curl https://registry-1.docker.io", "curl https://cdn.redhat.com"))
+    res = run_setup(rhel, f, "--yes", "--workdir", str(tmp_path / "w"), WATCHOVER_TEST_ARCH="aarch64")
+    assert res.returncode == 1 and "Bu paket x86_64 için hazırlanmış, bu sunucu aarch64" in res.stderr
+
+
+@pytest.mark.skipif(not shutil.which("whiptail"), reason="whiptail (newt) not installed")
+def test_one_file_setup_window_wizard(rhel, tmp_path):
+    """On a terminal the file is a setup wizard (whiptail): welcome, check, settings, progress bar, result. Driven here through a
+    pseudo-terminal by pressing Enter on every screen (the defaults)."""
+    import fcntl
+    import pty
+    import select
+    import struct
+    import termios
+    import time
+    src, r, env = rhel
+    f = build_setup(src)
+    pid, fd = pty.fork()
+    if pid == 0:
+        os.execvpe("bash", ["bash", str(f), "--workdir", str(tmp_path / "w")], dict(env, TERM="xterm", LINES="30", COLUMNS="100"))
+    fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 30, 100, 0, 0))
+    screen, t0, last = b"", time.time(), 0.0
+    while time.time() - t0 < 180:
+        rd, _, _ = select.select([fd], [], [], 0.3)
+        if rd:
+            try:
+                chunk = os.read(fd, 65536)
+            except OSError:
+                break
+            if not chunk:
+                break
+            screen += chunk
+        if time.time() - last > 1.5:
+            try:
+                os.write(fd, b"\r"); last = time.time()
+            except OSError:
+                break
+    done, status = os.waitpid(pid, os.WNOHANG)
+    if done == 0:                                                              # stuck on a screen: stop it, the assertion shows where
+        os.kill(pid, 9); _, status = os.waitpid(pid, 0)
+    text = screen.decode("utf-8", "replace")
+    assert os.waitstatus_to_exitcode(status) == 0, text[-3000:]
+    for want in ("Watchover", "Devam", "Ön kontrol", "Bileşenler", "Kur", "Kurulum tamamlandı"):
+        assert want in text, want
+    assert (r / "opt/watchover/watchover.sh").exists() and not (tmp_path / "w" / f"watchover-kurulum-{VER}").exists()
+    log = next(p for p in (r / "var/log/watchover").glob(f"kurulum-{VER}-*.txt") if not p.name.endswith("-on-kontrol.txt")).read_text()
+    assert log.count("▸") >= 8                                                # the bar's steps (STEPS in setup-stub.sh)

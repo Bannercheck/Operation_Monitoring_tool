@@ -2,7 +2,27 @@
 
 Watchover şirket içindeki **tek bir sunucuda, tamamen Docker'da** çalışır. Kurulum paketi bu klasördür (`watchover.zip`): imaj sunucuda kaynak koddan derlenir (Node aşaması React arayüzünü, Python aşaması motoru kurar); GitHub, imaj kaydı ya da sunucuda Python gerekmez. Üç konteyner vardır: **dashboard** (React arayüzü + HTTP API 8501, canlı alıcı 8600, konteynerin kendini izleyen ajanı), **postgres** (ürün veritabanı, PostgreSQL 16) ve isteğe bağlı **mcp** (kendi MCP sunucumuz, 8765). Eski Streamlit arayüzü `legacy` profiliyle 8502'de bir süre daha açılabilir. Kod imajın içindedir; ayarlar, sırlar, anlık görüntüler ve loglar `watchover-data` biriminde, veritabanı `watchover-pg` biriminde durur. Güncelleme, yeni paketi klasörün üstüne açıp `./watchover.sh update` demektir; birimlere dokunulmaz. Red Hat sunucuda motor Docker CE ya da Podman olabilir (bölüm 1b); aynı ürünün OpenShift kurulumu `docs/KURULUM_OPENSHIFT.md`'dedir, ikisinin karşılaştırması bölüm 1c.
 
-## 0. RHEL 9: tek komutla kurulum (önerilen)
+## 0. RHEL: tek dosyalık kurulum (önerilen)
+
+Kurulum tek bir dosyadır; Windows'ta bir kurulum programı çalıştırır gibi açılır, sorar ve kurar:
+
+```bash
+sudo bash watchover-kurulum-<sürüm>.sh                 # sihirbaz: doğrulama → ön kontrol → ayarlar → kurulum → sonuç
+sudo bash watchover-kurulum-<sürüm>.sh --yes           # soru sormadan, varsayılanlarla
+sudo bash watchover-kurulum-<sürüm>.sh --check         # yalnız ön kontrol, hiçbir şey değişmez
+```
+
+İki çeşidi vardır:
+
+| Dosya | İçinde | Ne zaman |
+|---|---|---|
+| `watchover-kurulum-<sürüm>.sh` (~40 MB) | Kaynak kod; imajlar sunucuda derlenir | Sunucu internete (ya da şirket aynasına) çıkabiliyorsa; her işlemci mimarisi |
+| `watchover-kurulum-<sürüm>-<mimari>-hepsi-dahil.sh` (GB'larca) | Kaynak kod + bütün imajlar, Ollama modelleri, eğitim ağırlıkları, Compose ve o RHEL ana sürümünün Podman RPM'leri | İnternet ve paket deposu olmayan sunucu; internetli sunucuda da çalışır. Aynı işlemci mimarisi (x86_64 / aarch64) gerekir; RPM'ler aynı RHEL ana sürümü (el8 / el9 / el10) içindir, başka sürümde Podman depodan kurulur |
+
+Dosyayı hazırlamak: internetli dosya herhangi bir kurulu sunucuda ya da kaynak klasöründe `sudo watchover setup` ile (çıktı `dist/`); hepsi dahil dosya **kurulu ve internetli, hedefle aynı mimarideki** bir sunucuda `sudo watchover setup --offline` ile (önce gerekirse `sudo watchover llm on`: modeller de girsin). Dosya kendini doğrular (sha256; eksik ya da bozuk kopya açılmaz), `/var/tmp`'ye açılır (yer yoksa `--workdir KLASÖR`), `install-rhel.sh`'yi çalıştırır, sonunda açılan dosyaları siler; kayıt `/var/log/watchover/kurulum-<sürüm>-<zaman>.txt`. Terminal penceresi varsa sihirbaz (whiptail; yoksa ve internet varsa `newt` kurulur), yoksa aynı sorular yazıyla sorulur. Yükseltme: yeni sürümün dosyasını çalıştırmak; veriler korunur, eski imajlar temizlenir.
+
+### Aynı kurulum, klasörden
+
 
 Desteklenen sürümler **RHEL 8.6+ (8.10 dahil), RHEL 9 (9.0-9.8) ve RHEL 10**; Rocky Linux, AlmaLinux, Oracle Linux ve CentOS Stream aynı şekilde kurulur (çıktıda "RHEL N uyumlu"). RHEL 7 ve 8.0-8.5 açık bir mesajla reddedilir (Podman 4 yok). Motor rootful **Podman** (RHEL 8 ve 9.0-9.4'te 4.x, 9.5+ ve 10'da 5.x; 4.0'dan eskisi reddedilir) + crun, container-selinux; konteyner adları netavark / aardvark-dns ile çözülür, RHEL 8'de netavark depoda yoksa CNI + dnsname eklentisi (`podman-plugins`) kullanılır. RHEL 8'in varsayılanı cgroup v1 de olur (root Podman 4.x). SELinux Enforcing kalır. İşlemci x86_64 ya da aarch64. Kurulumun test düzeneği her sürümün kararlarını sınar; gerçek sunucuda ilk denemesi RHEL 9.8 üzerinde yapıldı, RHEL 8 ve 10'da ilk gerçek kurulum `--check` ile başlatılmalıdır.
 

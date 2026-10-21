@@ -39,6 +39,7 @@
 #   ./watchover.sh save|load FILE   export the built images to a .tgz (build on a machine with internet), import them on an air-gapped server
 #   ./watchover.sh bundle [FILE]    everything an air-gapped server needs in one .tar: all images, downloaded Ollama models, training weights, source
 #   ./watchover.sh unbundle FILE    on the air-gapped server: load the images and model volumes, mark the install offline (no builds, no pulls)
+#   ./watchover.sh setup [--offline]  the one-file installer (sudo bash watchover-kurulum-*.sh: wizard, checks, install); --offline: everything inside, no internet
 #   ./watchover.sh llm prepare      cache the training base weights (done by 'bundle' automatically) so the trainer never needs internet
 #   ./watchover.sh llm auto|bench   measure the bundled LLM here and pick the chat model (14B when this machine carries 5+ tokens/s, else
 #                                   7B; 3B under 2.5): llm on does it after the downloads | tokens/s of one model (llm bench qwen2.5:7b-instruct)
@@ -1225,6 +1226,8 @@ DNS.$i = $h"; fi
   migrate) need_docker; shift; [ -d data ] && docker cp data/. watchover:/data/ 2>/dev/null || true; $COMPOSE exec dashboard python -m watchover.migrate --source /data "$@" ;;
   save)    need_docker; out="${2:-watchover-images-$(version).tgz}"; docker save "watchover:$(version)" "watchover-receiver:$(version)" postgres:16-alpine | gzip > "$out"; say "images saved to $out (copy it with this folder to the air-gapped server, then: ./watchover.sh load $out && ./watchover.sh install)" ;;
   load)    need_docker; [ -f "${2:-}" ] || die "usage: ./watchover.sh load watchover-images-X.Y.tgz"; gunzip -c "$2" | docker load; say "images loaded; ./watchover.sh install skips the build when the image tag matches" ;;
+  setup)   # the one-file installer: watchover-kurulum-<ver>.sh (online) or, with --offline, ...-<arch>-hepsi-dahil.sh (bundle + Podman RPMs)
+    shift; exec bash "$(dirname "$(readlink -f "$0")")/scripts/make-setup.sh" "$@" ;;
   bundle)  # one file for the air-gapped server: images + model volumes + source tree; built where there is internet
     need_docker; out="${2:-watchover-bundle-$(version).tar}"; case "$out" in /*) ;; *) out="$PWD/$out" ;; esac
     have_image "watchover:$(version)" || die "image watchover:$(version) is not built yet: ./watchover.sh install first (and 'llm on' if the server should get the local LLM)"

@@ -301,7 +301,18 @@ repo_urls() {   # enabled repositories of /etc/yum.repos.d: "id URL CA CERT KEY"
 }
 declare -A REPO_TLS=()   # https://host -> "CA CERT KEY" of its repository (the probe uses what dnf uses)
 REPO_HOSTS=""
-if [ "$NEED_PKGS" = 1 ] || [ "$COMPOSE_SRC" = repo ]; then
+# Podman's RPMs carried by the all-in-one setup file (watchover setup --offline; rpms/ next to this folder): used when they were
+# downloaded on the same RHEL major version and CPU architecture, so an air-gapped server without Satellite needs no repository
+LOCAL_RPMS=""
+for d in "$SRC/rpms" "$(dirname "$SRC")/rpms"; do
+  [ -f "$d/MANIFEST" ] && ls "$d"/*.rpm >/dev/null 2>&1 || continue
+  ro=$(sed -n 's/^os=//p' "$d/MANIFEST" | head -1); ra=$(sed -n 's/^arch=//p' "$d/MANIFEST" | head -1)
+  if [ "$ro" = "el$OS_MAJOR" ] && [ "$ra" = "$ARCH" ]; then LOCAL_RPMS="$d"; break; fi
+  note "Paketteki Podman RPM'leri $ro / $ra için, bu sunucu el$OS_MAJOR / $ARCH: paketler depodan kurulacak"
+done
+if [ "$NEED_PKGS" = 1 ] && [ -n "$LOCAL_RPMS" ] && [ "$COMPOSE_SRC" != repo ]; then
+  ok "Podman paketleri kurulum dosyasından: $(ls "$LOCAL_RPMS"/*.rpm | wc -l) RPM (el$OS_MAJOR, $ARCH); paket deposu gerekmiyor"
+elif [ "$NEED_PKGS" = 1 ] || [ "$COMPOSE_SRC" = repo ]; then
   repos=$(repo_urls || true)
   if [ -z "$repos" ]; then
     if [ "$OS_ID" = rhel ]; then bad "Etkin paket deposu yok: sunucu Red Hat aboneliğine kayıtlı değil. sudo subscription-manager register (Satellite: --org ORG --activationkey ANAHTAR)"
@@ -438,6 +449,19 @@ case "$COMPOSE_SRC" in
   file) install_compose_file "$LOCAL_COMPOSE" || die "$LOCAL_COMPOSE çalışmıyor (mimari $ARCH mi?)"; ok "Compose v2 kuruldu: $(basename "$LOCAL_COMPOSE")" ;;
 esac
 if c=$(compose_path); then export WATCHOVER_COMPOSE_BIN="$c"; fi          # rhel-prepare.sh then leaves Docker's repository alone
+local_rpms() {   # the carried RPMs whose package is not installed yet (installed ones, newer or older, are left alone), from no repository
+  local f n list=()
+  for f in "$LOCAL_RPMS"/*.rpm; do
+    n=$(rpm -qp --qf '%{NAME}' "$f" 2>/dev/null || true); [ -n "$n" ] || n=$(basename "$f" | sed -E 's/-[^-]+-[^-]+\.[^.]+\.rpm$//')
+    rpm -q "$n" >/dev/null 2>&1 || list+=("$f")
+  done
+  [ "${#list[@]}" -eq 0 ] || dnf -y --disablerepo='*' --setopt=install_weak_deps=False --skip-broken install "${list[@]}"
+}
+if [ "$NEED_PKGS" = 1 ] && [ -n "$LOCAL_RPMS" ] && [ "$COMPOSE_SRC" != repo ]; then
+  quiet "Podman paketleri kurulum dosyasından kuruluyor (depo kullanılmaz)" local_rpms || die_tail "Paketteki RPM'ler kurulamadı"
+  rpm_ok podman container-selinux || die "Paketteki RPM'lerle Podman kurulamadı: sunucuya paket deposu (Satellite / ayna) tanımlayın ya da paketi bu sürümde hazırlayın"
+  NEED_PKGS=0
+fi
 prep=(--engine podman --no-firewall); [ "$NEED_PKGS" = 1 ] || [ "$COMPOSE_SRC" = repo ] || prep+=(--no-docker)
 if ! quiet "Podman, container-selinux, netavark, Compose v2, podman.socket, chrony (scripts/rhel-prepare.sh)" bash "$SRC/scripts/rhel-prepare.sh" "${prep[@]}"; then
   rpm_ok podman && ! compose_ok || die_tail "Paket kurulumu başarısız (dnf). Depo / proxy / abonelik: yukarıdaki satırlar"

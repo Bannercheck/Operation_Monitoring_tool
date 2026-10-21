@@ -253,3 +253,4 @@ Sadece geliştirme adımları. Format: araç + sürüm · tarih · yapılan iş.
 | Claude Opus 5.5 (Cowork) | 2026-10-21 | sap-mock.py: port kullanımdaysa iz yığını yerine ne yapılacağını yazar (önceki örneği durdur, portu kim tutuyor, başka port) |
 | Claude Opus 5.5 (Cowork) | 2026-10-21 | sap-mock.py: kullanıcı adı SAP gibi büyük-küçük harf duyarsız karşılaştırılır, parola birebir |
 | Claude Opus 5.5 (Cowork) | 2026-10-21 | install-rhel.sh: RHEL 8.6+, 9.x ve 10.x (Rocky, Alma, Oracle, CentOS Stream) desteği; Podman 4.0 alt sınırı, RHEL 8 cgroup v1 ve CNI + dnsname yolu; RHEL 7 / 8.0-8.5 reddi; testler (v1.63.0) |
+| Claude Opus 5.5 (Cowork) | 2026-10-21 | Tek dosyalık kurulum: watchover setup [--offline] → kendi kendini açan watchover-kurulum-*.sh (sha256, whiptail / yazı sihirbazı, ilerleme, sonuç); hepsi dahil dosyada imajlar, modeller, Compose ve Podman RPM'leri; install-rhel.sh pakette gelen RPM'leri kullanır; testler (v1.64.0) |
