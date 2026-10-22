@@ -1275,7 +1275,7 @@ DNS.$i = $h"; fi
     else say "note: no Linux Compose binary here; on an air-gapped RHEL server put docker-compose-linux-$arch next to install-rhel.sh"; fi
     printf 'version=%s\narch=%s\nimages=%s\nvolumes=%s\ncompose=%s\n' "$(version)" "$arch" "$imgs" "$(ls "$tmp/volumes" 2>/dev/null | tr '\n' ' ')" "$([ -f "$tmp/bin/docker-compose" ] && echo 1 || echo 0)" > "$tmp/MANIFEST"
     tar cf "$out" -C "$tmp" MANIFEST bin images.tar.gz volumes source; rm -rf "$tmp"
-    say "bundle written: $out ($(du -h "$out" | cut -f1)). RHEL 9: put it next to install-rhel.sh and run sudo ./install-rhel.sh. Elsewhere:  tar xf $(basename "$out") --strip-components=1 source  &&  ./watchover.sh unbundle $(basename "$out")  &&  ./watchover.sh install" ;;
+    say "bundle written: $out ($(du -h --apparent-size "$out" | cut -f1)). RHEL 9: put it next to install-rhel.sh and run sudo ./install-rhel.sh. Elsewhere:  tar xf $(basename "$out") --strip-components=1 source  &&  ./watchover.sh unbundle $(basename "$out")  &&  ./watchover.sh install" ;;
   unbundle)  # on the air-gapped server: images, model volumes, offline marker
     busy_guard; need_docker; [ -f "${2:-}" ] || die "usage: ./watchover.sh unbundle watchover-bundle-X.Y.tar"
     tmp=$(mktemp -d); tar xf "$2" -C "$tmp" MANIFEST images.tar.gz volumes 2>/dev/null || tar xf "$2" -C "$tmp"
