@@ -15,7 +15,7 @@ RUN npm run build
 
 # stage 2: the Go host agent (wo-agent), built exactly as Dockerfile.receiver builds it. keyd (same image) hashes and signs these
 # binaries for the agents' self-update; the dashboard copies them into the receiver's spool, so what is served is what was signed.
-FROM docker.io/library/golang:1.26.9-alpine AS goagent
+FROM docker.io/library/golang:1.26.10-alpine AS goagent
 WORKDIR /build/goagent
 COPY goagent/ ./
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /out/wo-agent-linux-amd64 . \

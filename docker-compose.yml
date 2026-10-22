@@ -297,7 +297,7 @@ services:
 
   updater:                                        # in-app updates (Sistem › Güncelleme): the ONLY container with the engine socket
     profiles: [updater]                           # started by watchover.sh when WATCHOVER_UPDATER=1 (the default); ./watchover.sh updater off
-    image: ${WATCHOVER_IMAGE:-watchover}-updater:${WATCHOVER_UPDATER_TAG:-2}   # tools only; the logic runs from the install folder
+    image: ${WATCHOVER_IMAGE:-watchover}-updater:${WATCHOVER_UPDATER_TAG:-3}   # tools only; the logic runs from the install folder
     build:
       context: .
       dockerfile: Dockerfile.updater

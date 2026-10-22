@@ -52,7 +52,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 ENV_FILE="${WATCHOVER_ENV_FILE:-.env}"      # the updater builds a release tree with the install folder's .env
-UPDATER_TAG=2                               # watchover-updater:1 carries tools only (its logic runs from this folder): bump when Dockerfile.updater changes
+UPDATER_TAG=3                               # watchover-updater:1 carries tools only (its logic runs from this folder): bump when Dockerfile.updater changes
 COMPOSE="docker compose"
 CMD="${1:-}"
 
@@ -226,6 +226,7 @@ build() {
     if updater_on && ! have_image "watchover-updater:$UPDATER_TAG"; then env_set WATCHOVER_UPDATER 0; say "offline install: the bundle has no watchover-updater image, in-app updates stay off (bundle a newer version)"; fi
     return 0
   fi
+  refresh_bases
   say "building image watchover:$(version) from this source tree (first time: a few minutes, needs internet for PyPI)"
   build_img dashboard --build-arg GIT_REV="$(git_rev)" --build-arg VERSION="$(version)"
   say "building the receiver (Go, a few seconds)"; build_img receiver
@@ -235,6 +236,18 @@ build() {
     build_img updater || { env_set WATCHOVER_UPDATER 0; say "WARNING: the updater image could not be built; in-app updates stay off (./watchover.sh updater on to retry)"; }
   fi
   return 0
+}
+# the newest patch of every floating tag before a build (python:3.11-slim, node:22-alpine, nginx:1.30-alpine, postgres:16-alpine,
+# ollama): a build reuses the base image it finds locally, so without this a long-lived server kept the first one it ever pulled.
+# Failures are only noted (a mirror without one of them); the images already here are used then.
+refresh_bases() {
+  local b f imgs=""
+  for f in Dockerfile Dockerfile.receiver Dockerfile.updater $([ "$(env_get WATCHOVER_LLM)" = 1 ] && echo Dockerfile.trainer); do
+    [ -f "$f" ] && imgs="$imgs $(sed -n 's/^FROM[[:space:]]\{1,\}\([^[:space:]]*\).*/\1/p' "$f")"
+  done
+  imgs="$imgs nginx:1.30-alpine postgres:16-alpine"; [ "$(env_get WATCHOVER_LLM)" != 1 ] || imgs="$imgs ollama/ollama:latest"
+  say "refreshing base images (security patches of the floating tags)"
+  for b in $(printf '%s\n' $imgs | awk '!s[$0]++'); do docker pull -q "$b" >/dev/null 2>&1 || say "  could not refresh $b (the local copy is used)"; done
 }
 # one image: Docker through compose; Podman with podman build (Docker image format keeps HEALTHCHECK) under the name Docker gives
 # 'watchover:<tag>', which is the name compose asks the Podman socket for
@@ -679,7 +692,12 @@ llm_auto() {
   chat=$(printf '%s\n' "$out" | sed -n 's/^CHAT=//p' | head -1); sum=$(printf '%s\n' "$out" | sed -n 's/^SUMMARY=//p' | head -1)
   printf '%s\n' "$out" | sed -n 's/^NOTE=/      /p'
   [ -z "$nopull" ] || say "      14B not downloaded: ${free:-?} GB free on the container store (needs 15)"
-  [ -n "$chat" ] || { say "the LLM speed could not be measured (Ollama not answering?): LLM_MODEL stays ${cur:-qwen2.5:7b-instruct}"; return 0; }
+  if [ -z "$chat" ]; then
+    case "$out" in
+      *"not downloaded"*) say "nothing to measure yet (the 7B is not downloaded): LLM_MODEL stays ${cur:-qwen2.5:7b-instruct}; later: ./watchover.sh llm pull qwen2.5:7b-instruct && ./watchover.sh llm auto" ;;
+      *) say "the LLM speed could not be measured (Ollama not answering?): LLM_MODEL stays ${cur:-qwen2.5:7b-instruct}" ;;
+    esac; return 0
+  fi
   env_set WATCHOVER_LLM_BENCH "$sum ($(date +%Y-%m-%d))"
   [ "$chat" = "$cur" ] || env_set LLM_MODEL "$chat"
   if [ "$(env_get WATCHOVER_SIZING)" = auto ]; then size_env >/dev/null; fi        # the 14B needs a larger memory share
@@ -973,7 +991,7 @@ case "${1:-}" in
         done
         $COMPOSE exec -T ollama ollama list || true
         llm_auto
-        say "bundled Ollama on (chat: $(env_get LLM_MODEL), embeddings: bge-m3; speed here: $(env_get WATCHOVER_LLM_BENCH || true)). Models to download: .env WATCHOVER_LLM_MODELS" ;;
+        say "bundled Ollama on (chat: $(env_get LLM_MODEL), embeddings: bge-m3; speed here: $(s=$(env_get WATCHOVER_LLM_BENCH || true); echo "${s:-not measured}")). Models to download: .env WATCHOVER_LLM_MODELS" ;;
       auto)   # measure again and pick the chat model this machine carries (14B / 7B / 3B); a model you chose yourself stays
         WATCHOVER_LLM_AUTO=1 llm_auto ;;
       bench)  # tokens/s of one model on this machine (generation and prompt reading), with the LLM container's CPU share
@@ -1233,6 +1251,7 @@ DNS.$i = $h"; fi
     have_image "watchover:$(version)" || die "image watchover:$(version) is not built yet: ./watchover.sh install first (and 'llm on' if the server should get the local LLM)"
     tmp=$(mktemp -d); mkdir -p "$tmp/volumes" "$tmp/source"
     have_image "watchover-receiver:$(version)" || die "image watchover-receiver:$(version) is not built yet: ./watchover.sh update first"
+    refresh_bases                                          # the bundle carries today's patches of nginx, PostgreSQL, Ollama
     imgs="watchover:$(version) watchover-receiver:$(version) postgres:16-alpine"
     for i in "watchover-trainer:$(version)" "watchover-updater:$UPDATER_TAG" nginx:1.30-alpine ollama/ollama:latest alpine:latest; do have_image "$i" && imgs="$imgs $i" || true; done
     have_image alpine:latest || docker pull alpine:latest >/dev/null 2>&1 || true; have_image alpine:latest && case " $imgs " in *" alpine:latest "*) ;; *) imgs="$imgs alpine:latest" ;; esac
