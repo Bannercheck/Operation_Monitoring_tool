@@ -191,7 +191,7 @@ keep_vers() { printf '%s\n' "$SRC_VER" "$OLD_VER"; [ ! -f "$DEST/.releases/index
 old_images() {   # "repo:tag" per line
   [ -z "$R" ] && have podman || return 0
   local keep; keep=" $(keep_vers | sed 's/^v//' | tr '\n' ' ') "
-  podman images --format '{{.Repository}}:{{.Tag}}' 2>/dev/null | grep -E '/watchover(-receiver|-trainer)?:[0-9]+\.[0-9]+\.[0-9]+' | while IFS= read -r ref; do
+  podman images --format '{{.Repository}}:{{.Tag}}' 2>/dev/null | grep -E '/watchover(-receiver|-trainer|-postgres|-ollama)?:[0-9]+\.[0-9]+\.[0-9]+' | while IFS= read -r ref; do
     case "$keep" in *" ${ref##*:} "*) ;; *) echo "$ref" ;; esac
   done
 }
@@ -252,7 +252,7 @@ if [ "$OFFLINE" = 1 ]; then
   ok "Kapalı ağ paketi: $(basename "$BUNDLE") (imajlar, modeller ve Compose buradan; internet kullanılmaz)"
   a=$(mf arch); [ -z "$a" ] || [ "$a" = "$ARCH" ] || bad "Paket $a için hazırlanmış, bu sunucu $ARCH: paketi $ARCH bir makinede hazırlayın (./watchover.sh bundle)"
   case " $(mf images) " in *" ${EDGE_IMG:-edge-image} "*) ;; *) EDGE=0; note "Pakette HTTPS (edge) imajı ${EDGE_IMG:-?} yok: panel düz http://…:8501 ile açılır (internetli makinede 'edge on' sonra 'bundle')" ;; esac
-  im=" $(mf images) "; case "$im" in *" ollama/ollama:"*) case "$im $(mf volumes)" in *" watchover-trainer:"*watchover-ollama*) LLM_OFFLINE_OK=1 ;; esac ;; esac
+  im=" $(mf images) "; case "$im" in *" watchover-ollama:"*|*" ollama/ollama:"*) case "$im $(mf volumes)" in *" watchover-trainer:"*watchover-ollama*) LLM_OFFLINE_OK=1 ;; esac ;; esac
 elif [ -n "${BUNDLE_OTHER:-}" ]; then
   bad "Kapalı ağ paketi bulundu ama sürümü bu klasörle aynı değil (v$SRC_VER):${BUNDLE_OTHER}. Aynı sürümün paketini koyun"
 elif [ "$OFFLINE" = 2 ]; then
@@ -584,6 +584,17 @@ else
 fi
 [ "$NO_UPDATER" = 0 ] || [ "$(eget WATCHOVER_UPDATER)" != 0 ] || quiet "Uygulama içi güncelleme kapatılıyor (--no-updater)" W updater off || true
 quiet "Açılışta başlatma (watchover-stack.service)" W autostart on || die_tail "Açılış birimi yazılamadı"
+# the host's Compose: the one rebuilt in the updater image (current Go, patched modules; Dockerfile.updater) replaces Docker's
+# docker-compose-plugin build in Watchover's own plugin path, which watchover.sh looks at first; the RPM is left installed
+patched_compose() {
+  local img="docker.io/library/watchover-updater:$(sed -n 's/^UPDATER_TAG=\([0-9][0-9]*\).*/\1/p' "$DEST/watchover.sh" | head -1)" t c v
+  [ -z "$R" ] && podman image exists "$img" 2>/dev/null || return 0
+  t=$(mktemp -d); c=$(podman create "$img" 2>/dev/null) || { rm -rf "$t"; return 0; }
+  if podman cp "$c:/usr/local/libexec/docker/cli-plugins/docker-compose" "$t/docker-compose" >/dev/null 2>&1 && v=$("$t/docker-compose" version --short 2>/dev/null) \
+     && ver_ge "${v#v}" 2.24.4 && install_compose_file "$t/docker-compose"; then ok "Compose $v: yamalı derleme (/usr/local/lib/docker/cli-plugins)"; fi
+  podman rm "$c" >/dev/null 2>&1 || true; rm -rf "$t"
+}
+patched_compose
 quiet "Gecelik yedek ($(eget WATCHOVER_BACKUP_AT), son $(eget WATCHOVER_BACKUP_KEEP) kopya)" W backup-timer on || die_tail "Yedek zamanlayıcısı kurulamadı"
 
 # ---------------------------------------------------------------------------------------------------------------- firewalld

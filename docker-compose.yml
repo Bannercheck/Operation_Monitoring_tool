@@ -219,7 +219,10 @@ services:
 
   ollama:
     profiles: [llm]
-    image: ollama/ollama:latest
+    image: ${WATCHOVER_IMAGE:-watchover}-ollama:${WATCHOVER_TAG:-local}     # the Ollama release with its binary rebuilt (Dockerfile.ollama)
+    build:
+      context: .
+      dockerfile: Dockerfile.ollama
     container_name: watchover-ollama
     restart: unless-stopped
     environment:
@@ -297,7 +300,7 @@ services:
 
   updater:                                        # in-app updates (Sistem › Güncelleme): the ONLY container with the engine socket
     profiles: [updater]                           # started by watchover.sh when WATCHOVER_UPDATER=1 (the default); ./watchover.sh updater off
-    image: ${WATCHOVER_IMAGE:-watchover}-updater:${WATCHOVER_UPDATER_TAG:-3}   # tools only; the logic runs from the install folder
+    image: ${WATCHOVER_IMAGE:-watchover}-updater:${WATCHOVER_UPDATER_TAG:-4}   # tools only; the logic runs from the install folder
     build:
       context: .
       dockerfile: Dockerfile.updater
@@ -339,7 +342,10 @@ services:
       start_period: 120s
 
   postgres:
-    image: postgres:16-alpine
+    image: ${WATCHOVER_IMAGE:-watchover}-postgres:${WATCHOVER_TAG:-local}   # postgres:16-alpine with su-exec for gosu (Dockerfile.postgres)
+    build:
+      context: .
+      dockerfile: Dockerfile.postgres
     container_name: watchover-postgres
     restart: unless-stopped
     ports:

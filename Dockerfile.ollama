@@ -1,0 +1,22 @@
+# Ollama for Watchover (docker-compose.yml service "ollama", ./watchover.sh llm on): the official release image with its ollama
+# binary rebuilt from the same release's source, with the current Go and patched modules. The release binary was built with
+# Go 1.26.0 and old golang.org/x/{crypto,net,text,image,mod}, klauspost/compress and buger/jsonparser (50 vulnerabilities,
+# Trivy, October 2026) and no newer release existed. Only the Go binary changes: the CPU / GPU backends (/usr/lib/ollama) come
+# from the same release, the binary needs glibc 2.34 (Ubuntu 24.04 has 2.39). Bump both with OLLAMA_VERSION.
+ARG OLLAMA_VERSION=0.40.8
+
+FROM docker.io/library/golang:1.26.10-bookworm AS build
+ARG OLLAMA_VERSION
+ENV GOFLAGS=-mod=mod CGO_ENABLED=1 GOTOOLCHAIN=local
+RUN set -e; d=$(go mod download -json "github.com/ollama/ollama@v$OLLAMA_VERSION" | grep -o '"Dir": "[^"]*"' | cut -d'"' -f4) \
+    && cp -r "$d" /src && chmod -R u+w /src && cd /src \
+    && go get golang.org/x/crypto@v0.58.0 golang.org/x/net@v0.61.0 golang.org/x/text@v0.43.0 golang.org/x/image@v0.47.0 \
+              golang.org/x/mod@v0.42.0 github.com/klauspost/compress@v1.20.3 github.com/buger/jsonparser@v1.6.1 \
+    && go mod tidy \
+    && go build -trimpath -buildmode=pie -ldflags "-w -s -X github.com/ollama/ollama/version.Version=$OLLAMA_VERSION" -o /out/ollama .
+
+FROM docker.io/ollama/ollama:${OLLAMA_VERSION}
+ARG OLLAMA_VERSION
+RUN apt-get update && apt-get upgrade -y && apt-get clean && rm -rf /var/lib/apt/lists/*
+COPY --from=build /out/ollama /usr/bin/ollama
+RUN /usr/bin/ollama --version 2>&1 | grep -q "client version is $OLLAMA_VERSION"

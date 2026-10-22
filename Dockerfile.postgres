@@ -1,0 +1,10 @@
+# PostgreSQL for Watchover (docker-compose.yml service "postgres"): the official postgres:16-alpine with its OS packages
+# upgraded and gosu replaced. gosu (a Go binary built with Go 1.24.6) only drops root to the postgres user in the entrypoint,
+# yet carried 26 Go standard library vulnerabilities (Trivy, October 2026). su-exec (C, Alpine package) does the same with the
+# same arguments ("gosu postgres cmd ..."), so the official entrypoint runs unchanged. Same PostgreSQL binaries and data layout:
+# an existing watchover-pg volume is used as it is.
+ARG PG_TAG=16-alpine
+FROM docker.io/library/postgres:${PG_TAG}
+RUN apk upgrade --no-cache && apk add --no-cache su-exec \
+    && ln -sf /sbin/su-exec /usr/local/bin/gosu \
+    && gosu nobody true && postgres --version

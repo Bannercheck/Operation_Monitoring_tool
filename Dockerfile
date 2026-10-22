@@ -34,8 +34,11 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
 WORKDIR /app
 COPY pyproject.toml README.md CHANGELOG.md requirements.txt ./
 COPY src ./src
+# pip leaves the image once the packages are in: it carries its own copies of urllib3, msgpack and setuptools' pkg_resources
+# (vendored, older, flagged by Trivy) and nothing at run time installs packages
 RUN pip install --no-cache-dir --upgrade "pip>=26.2" "setuptools>=83" "wheel>=0.46.2" \
-    && pip install --no-cache-dir -e ".[mcp,postgres,api]"
+    && pip install --no-cache-dir -e ".[mcp,postgres,api]" \
+    && python -m pip uninstall -y pip && python -c "import watchover, uvicorn, psycopg"
 COPY app.py agent.py mcp_server.py ./
 COPY assets ./assets
 COPY samples ./samples

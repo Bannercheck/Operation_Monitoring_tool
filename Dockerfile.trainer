@@ -15,7 +15,8 @@ COPY src ./src
 COPY samples ./samples
 RUN pip install --no-cache-dir --upgrade "pip>=26.2" "setuptools>=83" "wheel>=0.46.2" \
     && pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu "torch>=2.2" \
-    && pip install --no-cache-dir -e ".[postgres]" "transformers>=4.44" "peft>=0.12"
+    && pip install --no-cache-dir -e ".[postgres]" "transformers>=4.44" "peft>=0.12" \
+    && python -m pip uninstall -y pip && python -c "import watchover, torch, transformers, peft"   # pip's vendored copies: see Dockerfile
 RUN chown -R 10001:0 /app && chmod -R g=u /app
 USER 10001
 VOLUME ["/data", "/hf", "/models"]

@@ -35,7 +35,7 @@ case "$1" in
   info) case "$*" in *CPUs*) echo 8 ;; *MemTotal*) echo "${FAKE_MEM_BYTES:-34359738368}" ;; *NetworkBackend*) echo "${FAKE_NB:-netavark}" ;; esac ;;
   build) prev=""; for a in "$@"; do [ "$prev" = -t ] && norm "$a" >> "$S/images"; prev="$a"; done ;;
   image) case "$2" in exists|inspect) grep -qx "$(norm "$3")" "$S/images" || exit 1 ;; esac ;;
-  load) cat > /dev/null; printf '%s\n' "watchover:$FAKE_VER" "watchover-receiver:$FAKE_VER" postgres:16-alpine "$FAKE_EDGE_IMG" watchover-updater:1 alpine:latest >> "$S/images" ;;
+  load) cat > /dev/null; printf '%s\n' "watchover:$FAKE_VER" "watchover-receiver:$FAKE_VER" "watchover-postgres:$FAKE_VER" "$FAKE_EDGE_IMG" watchover-updater:1 alpine:latest >> "$S/images" ;;
   inspect) if [ "$2" = -f ]; then grep -qx "$4" "$S/containers" && echo true || echo false; fi ;;
   ps) [[ "$*" == *--filter* ]] && sed 's/$/|Up 2 minutes (healthy)/' "$S/containers" ;;
   volume) [ "$2" != exists ] || [[ " ${FAKE_VOLUMES:-} " == *" $3 "* ]] || exit 1 ;;
@@ -172,7 +172,7 @@ def test_fresh_install_then_rerun_is_idempotent(rhel):
     pw = envval(dest, "POSTGRES_PASSWORD"); assert pw and pw != "change-me"
     assert "watchover01.firma.local, watchover01, 10.20.30.40" in envval(dest, "WATCHOVER_EDGE_HOSTS") and "10.88.0.1" not in envval(dest, "WATCHOVER_EDGE_HOSTS")
     # images by podman build, the edge on with its CA exported, updater, units for boot and the nightly backup
-    assert f"podman build --format docker -f Dockerfile -t docker.io/library/watchover:{VER}" in log and "watchover-updater:3" in log
+    assert f"podman build --format docker -f Dockerfile -t docker.io/library/watchover:{VER}" in log and "watchover-updater:4" in log
     assert (dest / "certs/watchover-root.crt").exists()
     units = r / "etc/systemd/system"
     assert f"WorkingDirectory={dest}" in (units / "watchover-stack.service").read_text() and "OnCalendar=*-*-* 02:15:00" in (units / "watchover-backup.timer").read_text()
@@ -232,7 +232,7 @@ def test_corporate_proxy_from_etc_environment(rhel):
 
 def make_bundle(src, compose=True, arch="x86_64"):
     stage = src.parent / "bstage"; (stage / "bin").mkdir(parents=True); (stage / "volumes").mkdir(); (stage / "source").mkdir()
-    (stage / "MANIFEST").write_text(f"version={VER}\narch={arch}\nimages=watchover:{VER} watchover-receiver:{VER} postgres:16-alpine {EDGE_IMG} "
+    (stage / "MANIFEST").write_text(f"version={VER}\narch={arch}\nimages=watchover:{VER} watchover-receiver:{VER} watchover-postgres:{VER} {EDGE_IMG} "
                                     f"watchover-updater:1 alpine:latest\nvolumes=\ncompose={1 if compose else 0}\n")
     (stage / "images.tar.gz").write_bytes(b"\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\x03\x03\x00\x00\x00\x00\x00\x00\x00\x00\x00")
     if compose:

@@ -52,7 +52,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 ENV_FILE="${WATCHOVER_ENV_FILE:-.env}"      # the updater builds a release tree with the install folder's .env
-UPDATER_TAG=3                               # watchover-updater:1 carries tools only (its logic runs from this folder): bump when Dockerfile.updater changes
+UPDATER_TAG=4                               # watchover-updater:1 carries tools only (its logic runs from this folder): bump when Dockerfile.updater changes
 COMPOSE="docker compose"
 CMD="${1:-}"
 
@@ -74,8 +74,9 @@ detect_engine() {
 }
 ENGINE=$(detect_engine) || exit 1
 compose_bin() {   # Compose v2 for Podman: standalone binary or the docker-compose-plugin RPM (only Compose, no Docker engine)
-  local c; for c in "${WATCHOVER_COMPOSE_BIN:-}" "$(command -v docker-compose 2>/dev/null || true)" /usr/libexec/docker/cli-plugins/docker-compose \
-    /usr/local/lib/docker/cli-plugins/docker-compose /usr/lib/docker/cli-plugins/docker-compose /usr/local/libexec/docker/cli-plugins/docker-compose; do
+  # Watchover's own plugin path first: install-rhel.sh puts the patched Compose of the updater image (or the bundle's) there
+  local c; for c in "${WATCHOVER_COMPOSE_BIN:-}" /usr/local/lib/docker/cli-plugins/docker-compose "$(command -v docker-compose 2>/dev/null || true)" \
+    /usr/libexec/docker/cli-plugins/docker-compose /usr/lib/docker/cli-plugins/docker-compose /usr/local/libexec/docker/cli-plugins/docker-compose; do
     [ -n "$c" ] && [ -x "$c" ] && { echo "$c"; return 0; }; done; return 1
 }
 ALPINE=alpine; [ "$ENGINE" = podman ] && ALPINE=docker.io/library/alpine:latest    # helper container for volume copies (no short-name prompt)
@@ -221,7 +222,7 @@ offline() { [ "$(env_get WATCHOVER_OFFLINE)" = "1" ]; }
 have_image() { docker image inspect "$1" >/dev/null 2>&1; }
 build() {
   if offline; then   # air-gapped: the images came in with ./watchover.sh unbundle, never build or pull here
-    have_image "watchover:$(version)" && have_image "watchover-receiver:$(version)" || die "offline install and image watchover:$(version) or watchover-receiver:$(version) is missing: unbundle the bundle of this version first (./watchover.sh unbundle watchover-bundle-$(version).tar)"
+    have_image "watchover:$(version)" && have_image "watchover-receiver:$(version)" && have_image "watchover-postgres:$(version)" || die "offline install and image watchover:$(version), watchover-receiver:$(version) or watchover-postgres:$(version) is missing: unbundle the bundle of this version first (./watchover.sh unbundle watchover-bundle-$(version).tar)"
     say "offline install: using the loaded image watchover:$(version) (no build)"
     if updater_on && ! have_image "watchover-updater:$UPDATER_TAG"; then env_set WATCHOVER_UPDATER 0; say "offline install: the bundle has no watchover-updater image, in-app updates stay off (bundle a newer version)"; fi
     return 0
@@ -230,7 +231,8 @@ build() {
   say "building image watchover:$(version) from this source tree (first time: a few minutes, needs internet for PyPI)"
   build_img dashboard --build-arg GIT_REV="$(git_rev)" --build-arg VERSION="$(version)"
   say "building the receiver (Go, a few seconds)"; build_img receiver
-  [ "$(env_get WATCHOVER_LLM)" = "1" ] && build_img trainer || true
+  say "building PostgreSQL (postgres:16-alpine, su-exec for gosu)"; build_img postgres
+  if [ "$(env_get WATCHOVER_LLM)" = "1" ]; then build_img trainer; build_img ollama; fi
   if updater_on && ! have_image "watchover-updater:$UPDATER_TAG"; then
     say "building the updater image (once: Docker CLI + Compose, bash, Python)"
     build_img updater || { env_set WATCHOVER_UPDATER 0; say "WARNING: the updater image could not be built; in-app updates stay off (./watchover.sh updater on to retry)"; }
@@ -242,10 +244,12 @@ build() {
 # Failures are only noted (a mirror without one of them); the images already here are used then.
 refresh_bases() {
   local b f imgs=""
-  for f in Dockerfile Dockerfile.receiver Dockerfile.updater $([ "$(env_get WATCHOVER_LLM)" = 1 ] && echo Dockerfile.trainer); do
-    [ -f "$f" ] && imgs="$imgs $(sed -n 's/^FROM[[:space:]]\{1,\}\([^[:space:]]*\).*/\1/p' "$f")"
+  for f in Dockerfile Dockerfile.receiver Dockerfile.updater Dockerfile.postgres $([ "$(env_get WATCHOVER_LLM)" = 1 ] && echo Dockerfile.trainer Dockerfile.ollama); do
+    [ -f "$f" ] || continue
+    imgs="$imgs $(awk '/^ARG [A-Za-z_]+=/ { split(substr($0, 5), a, "="); v[a[1]] = a[2] }
+                      /^FROM[ \t]/ { i = $2; for (k in v) gsub("\\$\\{" k "\\}", v[k], i); if (i !~ /\$/) print i }' "$f")"
   done
-  imgs="$imgs nginx:1.30-alpine postgres:16-alpine"; [ "$(env_get WATCHOVER_LLM)" != 1 ] || imgs="$imgs ollama/ollama:latest"
+  imgs="$imgs nginx:1.30-alpine"
   say "refreshing base images (security patches of the floating tags)"
   for b in $(printf '%s\n' $imgs | awk '!s[$0]++'); do docker pull -q "$b" >/dev/null 2>&1 || say "  could not refresh $b (the local copy is used)"; done
 }
@@ -260,9 +264,10 @@ build_img() {
   done
   if [ "$ENGINE" = podman ]; then
     case "$svc" in receiver) f=Dockerfile.receiver; n=watchover-receiver ;; trainer) f=Dockerfile.trainer; n=watchover-trainer ;;
+      postgres) f=Dockerfile.postgres; n=watchover-postgres ;; ollama) f=Dockerfile.ollama; n=watchover-ollama ;;
       updater) f=Dockerfile.updater; n=watchover-updater; tag=$UPDATER_TAG; set -- "$@" --build-arg PODMAN=1 ;; esac
     podman build --format docker -f "$f" -t "docker.io/library/$n:$tag" "$@" .
-  elif [ "$svc" = trainer ]; then $COMPOSE --profile llm build "$@" trainer
+  elif [ "$svc" = trainer ] || [ "$svc" = ollama ]; then $COMPOSE --profile llm build "$@" "$svc"
   elif [ "$svc" = updater ]; then $COMPOSE --profile updater build "$@" updater
   else $COMPOSE build "$@" "$svc"; fi
 }
@@ -932,7 +937,7 @@ case "${1:-}" in
     need_docker; v="${2:-$(version)}"; have_image "watchover:$v" && have_image "watchover-receiver:$v" ;;
   images-rm)   # the images of a release the updater no longer keeps; the engine refuses an image a container still uses
     need_docker; [ -n "${2:-}" ] && [ "$2" != "$(version)" ] || die "usage: ./watchover.sh images-rm VERSION   (never the version of this folder)"
-    for i in watchover watchover-receiver watchover-trainer; do docker image rm "$i:$2" >/dev/null 2>&1 && say "removed $i:$2" || true; done ;;
+    for i in watchover watchover-receiver watchover-trainer watchover-postgres watchover-ollama; do docker image rm "$i:$2" >/dev/null 2>&1 && say "removed $i:$2" || true; done ;;
   health)  # after a start: wait until the dashboard answers /api/health with VERSION; exit 1 after SECONDS
     need_docker; wait_health "${2:-$(version)}" "${3:-180}" || exit 1 ;;
   updater)   # in-app updates: the updater container is the only one with the engine socket; off = no socket in any container
@@ -976,9 +981,11 @@ case "${1:-}" in
           say "existing LLM connection kept ($(env_get LLM_BASE_URL)); the bundled Ollama is an extra option at http://ollama:11434 (LLM › Connection)"
         fi
         if offline; then
+          have_image "watchover-ollama:$(version)" || { env_set WATCHOVER_LLM 0; die "offline install and image watchover-ollama:$(version) is missing: run 'llm on' on the internet machine before 'bundle'"; }
           have_image "watchover-trainer:$(version)" && say "offline install: using the loaded trainer image" || { env_set WATCHOVER_LLM 0; die "offline install and image watchover-trainer:$(version) is missing: run 'llm on' on the internet machine before 'bundle'"; }
         else
           say "building the trainer image (torch CPU, transformers, peft; first time a few minutes)"; build_img trainer
+          say "building the Ollama image (the release binary rebuilt with current Go and patched modules; a few minutes)"; build_img ollama
         fi
         up
         say "waiting for the Ollama service to become healthy"
@@ -1242,7 +1249,7 @@ DNS.$i = $h"; fi
     $COMPOSE exec -T dashboard python -m watchover.demo reset --result
     say "analysis data reset (audited as data-reset in the sign-in log); new findings come from real data only" ;;
   migrate) need_docker; shift; [ -d data ] && docker cp data/. watchover:/data/ 2>/dev/null || true; $COMPOSE exec dashboard python -m watchover.migrate --source /data "$@" ;;
-  save)    need_docker; out="${2:-watchover-images-$(version).tgz}"; docker save "watchover:$(version)" "watchover-receiver:$(version)" postgres:16-alpine | gzip > "$out"; say "images saved to $out (copy it with this folder to the air-gapped server, then: ./watchover.sh load $out && ./watchover.sh install)" ;;
+  save)    need_docker; out="${2:-watchover-images-$(version).tgz}"; docker save "watchover:$(version)" "watchover-receiver:$(version)" "watchover-postgres:$(version)" | gzip > "$out"; say "images saved to $out (copy it with this folder to the air-gapped server, then: ./watchover.sh load $out && ./watchover.sh install)" ;;
   load)    need_docker; [ -f "${2:-}" ] || die "usage: ./watchover.sh load watchover-images-X.Y.tgz"; gunzip -c "$2" | docker load; say "images loaded; ./watchover.sh install skips the build when the image tag matches" ;;
   setup)   # the one-file installer: watchover-kurulum-<ver>.sh (online) or, with --offline, ...-<arch>-hepsi-dahil.sh (bundle + Podman RPMs)
     shift; exec bash "$(dirname "$(readlink -f "$0")")/scripts/make-setup.sh" "$@" ;;
@@ -1252,8 +1259,8 @@ DNS.$i = $h"; fi
     tmp=$(mktemp -d); mkdir -p "$tmp/volumes" "$tmp/source"
     have_image "watchover-receiver:$(version)" || die "image watchover-receiver:$(version) is not built yet: ./watchover.sh update first"
     refresh_bases                                          # the bundle carries today's patches of nginx, PostgreSQL, Ollama
-    imgs="watchover:$(version) watchover-receiver:$(version) postgres:16-alpine"
-    for i in "watchover-trainer:$(version)" "watchover-updater:$UPDATER_TAG" nginx:1.30-alpine ollama/ollama:latest alpine:latest; do have_image "$i" && imgs="$imgs $i" || true; done
+    imgs="watchover:$(version) watchover-receiver:$(version) watchover-postgres:$(version)"
+    for i in "watchover-trainer:$(version)" "watchover-ollama:$(version)" "watchover-updater:$UPDATER_TAG" nginx:1.30-alpine alpine:latest; do have_image "$i" && imgs="$imgs $i" || true; done
     have_image alpine:latest || docker pull alpine:latest >/dev/null 2>&1 || true; have_image alpine:latest && case " $imgs " in *" alpine:latest "*) ;; *) imgs="$imgs alpine:latest" ;; esac
     if have_image "watchover-trainer:$(version)" && ! offline; then
       say "trainer image present: caching the training base weights so auto-learning works on the air-gapped server"
@@ -1272,7 +1279,13 @@ DNS.$i = $h"; fi
     # no download.docker.com, install-rhel.sh installs it from here (bin/docker-compose) before anything else
     mkdir -p "$tmp/bin"; arch=$(uname -m | sed 's/^arm64$/aarch64/; s/^amd64$/x86_64/'); cb=""
     if [ "$(uname -s)" = Linux ]; then cb=$(compose_bin 2>/dev/null || command docker info --format '{{range .ClientInfo.Plugins}}{{if eq .Name "compose"}}{{.Path}}{{end}}{{end}}' 2>/dev/null || true); fi
-    if [ -n "$cb" ] && [ -x "$cb" ]; then cp "$cb" "$tmp/bin/docker-compose"; chmod 755 "$tmp/bin/docker-compose"; say "Compose binary added for linux/$arch ($cb)"
+    if have_image "watchover-updater:$UPDATER_TAG" && c=$(docker create "watchover-updater:$UPDATER_TAG" 2>/dev/null); then   # the patched build
+      docker cp "$c:/usr/local/libexec/docker/cli-plugins/docker-compose" "$tmp/bin/docker-compose" >/dev/null 2>&1 \
+        && "$tmp/bin/docker-compose" version --short >/dev/null 2>&1 && cb="watchover-updater:$UPDATER_TAG" || rm -f "$tmp/bin/docker-compose"
+      docker rm "$c" >/dev/null 2>&1 || true
+    fi
+    if [ -f "$tmp/bin/docker-compose" ]; then chmod 755 "$tmp/bin/docker-compose"; say "Compose binary added for linux/$arch (patched build from $cb)"
+    elif [ -n "$cb" ] && [ -x "$cb" ]; then cp "$cb" "$tmp/bin/docker-compose"; chmod 755 "$tmp/bin/docker-compose"; say "Compose binary added for linux/$arch ($cb)"
     else say "note: no Linux Compose binary here; on an air-gapped RHEL server put docker-compose-linux-$arch next to install-rhel.sh"; fi
     printf 'version=%s\narch=%s\nimages=%s\nvolumes=%s\ncompose=%s\n' "$(version)" "$arch" "$imgs" "$(ls "$tmp/volumes" 2>/dev/null | tr '\n' ' ')" "$([ -f "$tmp/bin/docker-compose" ] && echo 1 || echo 0)" > "$tmp/MANIFEST"
     tar cf "$out" -C "$tmp" MANIFEST bin images.tar.gz volumes source; rm -rf "$tmp"

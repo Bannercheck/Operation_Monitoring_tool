@@ -385,7 +385,8 @@ def test_bundle_and_offline_install(stage):
     names = subprocess.run(["tar", "tf", str(out)], capture_output=True, text=True, check=True).stdout.split()
     assert "MANIFEST" in names and "images.tar.gz" in names
     log = (d / "calls.log").read_text()
-    assert f"docker save watchover:{version(d)} watchover-receiver:{version(d)} postgres:16-alpine" in log and "watchover-trainer:" in log and "ollama/ollama:latest" in log
+    assert f"docker save watchover:{version(d)} watchover-receiver:{version(d)} watchover-postgres:{version(d)}" in log and "watchover-trainer:" in log
+    assert f"watchover-ollama:{version(d)}" in log and "ollama/ollama:latest" not in log and "postgres:16-alpine" not in log.split("docker save", 1)[1].split("\n")[0]
     assert "docker run --rm -v watchover_watchover-ollama:/v:ro" in log      # model volume exported
     assert "run --rm --no-deps -T trainer python" in log                      # base weights cached for offline auto-learning
     (d / "calls.log").write_text("")
