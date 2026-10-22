@@ -501,13 +501,16 @@ if [ "$SRC" != "$DEST" ]; then
   say "Dosyalar: $SRC → $DEST"
   list=$(mktemp)
   ( cd "$SRC" && find . \( -path ./.git -o -path ./.releases -o -path ./.updater -o -path ./backups -o -path ./certs -o -path ./datasets -o -path ./data \
-      -o -path ./web/node_modules -o -path ./node_modules -o -name __pycache__ -o -path ./.pytest_cache \) -prune -o \( -type f -o -type l \) \
+      -o -path ./web/node_modules -o -path ./node_modules -o -name __pycache__ -o -path ./.pytest_cache \
+      -o -path ./demo -o -path ./deploy -o -path ./prompts -o \( -path './tests/*' ! -path './tests/fixtures' ! -path './tests/fixtures/*' \) \) -prune \
+      -o \( -type f -o -type l \) ! -path ./AI_JURI.md ! -path ./submission.json ! -path ./CLAUDE.md \
       ! -name .env ! -name .env.bak ! -name 'watchover-bundle-*.tar' ! -name '*.zip' ! -name 'docker-compose-linux-*' ! -name .install-files \
       ! -name '.edge-mdns.*' -print ) | LC_ALL=C sort > "$list"
   tar -C "$SRC" -cf - -T "$list" | tar -C "$DEST" -xf - --no-same-owner
   if [ -f "$DEST/.install-files" ]; then   # files of the previous release that this one no longer has (only what this script put there)
     LC_ALL=C comm -23 "$DEST/.install-files" "$list" | while IFS= read -r f; do case "$f" in ./*..*|"") ;; ./*) rm -f "$DEST/${f#./}" ;; esac; done
   fi
+  for d in demo deploy prompts tests; do [ ! -d "$DEST/$d" ] || find "$DEST/$d" -depth -type d -empty -delete 2>/dev/null || true; done   # what an older release copied
   cp "$list" "$DEST/.install-files"; rm -f "$list"
   if [ "$(git -C "$SRC" rev-parse --show-toplevel 2>/dev/null || true)" = "$SRC" ]; then git -C "$SRC" rev-parse --short=12 HEAD > "$DEST/.release-rev" 2>/dev/null || true
   elif [ -f "$(dirname "$SRC")/watchover-$SRC_VER.zip" ] && have unzip; then

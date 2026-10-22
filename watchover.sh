@@ -1267,6 +1267,7 @@ DNS.$i = $h"; fi
     done
     say "adding the source tree"
     if git rev-parse HEAD >/dev/null 2>&1; then git archive --format=tar HEAD | tar xf - -C "$tmp/source"; else tar cf - --exclude=./.git --exclude=./.releases --exclude=./.updater --exclude=./data --exclude=./backups --exclude=./certs --exclude=./.env --exclude='./*.tar' --exclude='./*.tgz' --exclude=./web/node_modules . | tar xf - -C "$tmp/source"; fi
+    [ ! -f scripts/prune-tree.sh ] || bash scripts/prune-tree.sh "$tmp/source"   # demo, tests, OpenShift chart: not for a server
     # the Compose v2 binary of this machine (Linux only; images and binary share its CPU architecture): an air-gapped RHEL server has
     # no download.docker.com, install-rhel.sh installs it from here (bin/docker-compose) before anything else
     mkdir -p "$tmp/bin"; arch=$(uname -m | sed 's/^arm64$/aarch64/; s/^amd64$/x86_64/'); cb=""

@@ -470,8 +470,14 @@ def run_setup(rhel, f, *args, **extra):
 def test_one_file_setup_online(rhel, tmp_path):
     """watchover setup: one self-checking file (script + archive); --yes installs without a question, the opened files go away."""
     src, r, env = rhel
+    for rel in ("demo/shot.png", "tests/test_x.py", "tests/fixtures/sample.log", "deploy/openshift/Chart.yaml", "AI_JURI.md"):
+        (src / rel).parent.mkdir(parents=True, exist_ok=True); (src / rel).write_text("x")
     f = build_setup(src)
     assert f.name == f"watchover-kurulum-{VER}.sh" and f.read_bytes()[:2] == b"#!" and f.stat().st_size > 65536
+    ex = tmp_path / "ex"; assert run_setup(rhel, f, "--extract", str(ex)).returncode == 0
+    tree = ex / f"watchover-{VER}"                                             # the server copy has no demo, tests or chart
+    assert (tree / "tests/fixtures/sample.log").exists() and (tree / "install-rhel.sh").exists()
+    assert not any((tree / p).exists() for p in ("demo", "tests/test_x.py", "deploy", "AI_JURI.md"))
     work = tmp_path / "work"
     res = run_setup(rhel, f, "--yes", "--workdir", str(work))
     out = res.stdout
@@ -479,6 +485,7 @@ def test_one_file_setup_online(rhel, tmp_path):
     assert "sha256 doğru, açıldı" in out and "Ön kontrol" in out and "İşletim sistemi:" in out
     dest = r / "opt/watchover"
     assert (dest / "watchover.sh").exists() and envval(dest, "WATCHOVER_EDGE_HOST") == "watchover01.firma.local"
+    assert (dest / "tests/fixtures/sample.log").exists() and not (dest / "demo").exists() and not (dest / "tests/test_x.py").exists()
     assert not (work / f"watchover-kurulum-{VER}").exists()                  # cleaned up
     assert list((r / "var/log/watchover").glob(f"kurulum-{VER}-*.txt"))         # the run is kept in a log
     bad = tmp_path / "bad.sh"; data = bytearray(f.read_bytes()); data[70000] ^= 0xFF; bad.write_bytes(bytes(data))

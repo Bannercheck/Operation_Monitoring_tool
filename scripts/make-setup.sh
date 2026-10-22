@@ -39,6 +39,7 @@ else
     | tar xf - -C "$st/watchover-$VER"
 fi
 [ -f "$st/watchover-$VER/install-rhel.sh" ] || die "install-rhel.sh missing from the tree"
+bash scripts/prune-tree.sh "$st/watchover-$VER"                # demo screenshots, tests, OpenShift chart: not for a server
 
 KIND=online; COMPRESS=gzip; OSL=""; NAME="watchover-kurulum-$VER.sh"; LABEL="internetli"
 if [ "$OFFLINE" = 1 ] && [ -z "${WATCHOVER_SETUP_BUNDLE:-}" ]; then   # the bundle, then the file: twice the images and models (~10-30 GB)
