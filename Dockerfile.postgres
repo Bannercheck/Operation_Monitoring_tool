@@ -5,6 +5,8 @@
 # an existing watchover-pg volume is used as it is.
 ARG PG_TAG=16-alpine
 FROM docker.io/library/postgres:${PG_TAG}
+# gosu is deleted (the layer records the removal, so scanners no longer see the lower layer's binary) and su-exec answers to
+# the name at another place on PATH: replacing the file in place would leave the old one visible in the image's lower layer
 RUN apk upgrade --no-cache && apk add --no-cache su-exec \
-    && ln -sf /sbin/su-exec /usr/local/bin/gosu \
-    && gosu nobody true && postgres --version
+    && rm -f /usr/local/bin/gosu && ln -s /sbin/su-exec /usr/bin/gosu \
+    && [ "$(command -v gosu)" = /usr/bin/gosu ] && gosu nobody true && postgres --version

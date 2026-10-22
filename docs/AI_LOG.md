@@ -258,3 +258,4 @@ Sadece geliştirme adımları. Format: araç + sürüm · tarih · yapılan iş.
 | Claude Opus 5.5 (Cowork) | 2026-10-22 | make-setup / bundle: dosya boyutu gerçek boyutla yazılır (XFS ön ayırması yüzünden du 15 GB dosyayı 20 GB gösteriyordu) |
 | Claude Opus 5.5 (Cowork) | 2026-10-22 | Sunucu kopyası budandı: demo, deploy, prompts, tests (fixtures hariç) ve not dosyaları kurulum dosyasına, pakete ve /opt/watchover'a girmez (scripts/prune-tree.sh, install-rhel.sh); test (v1.64.2) |
 | Claude Opus 5.5 (Cowork) | 2026-10-22 | Trivy bulguları: pip çalışma imajlarından kaldırıldı; Compose ve buildx (updater, UPDATER_TAG 4, ana makine, bundle) ve Ollama 0.40.8 kaynaktan Go 1.26.10 ve yamalı modüllerle derleniyor; PostgreSQL imajında gosu yerine su-exec; testler (v1.64.3) |
+| Claude Opus 5.5 (Cowork) | 2026-10-22 | Dockerfile.postgres: gosu silinip su-exec /usr/bin/gosu olarak konuyor; yerinde değiştirme alt katmandaki eski ikiliyi Trivy'ye görünür bırakıyordu (v1.64.4) |
