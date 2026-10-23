@@ -57,7 +57,7 @@ def test_trusted_proxies_are_validated(tmp_path):
     inc = (tmp_path / "realip.inc").read_text()
     assert "set_real_ip_from 10.0.0.5/32;" in inc and "set_real_ip_from 2001:db8::/32;" in inc and "bad" not in inc and "real_ip_recursive on;" in inc
     assert inc.count("set_real_ip_from") == 3 and "set_real_ip_from /;" not in inc and "edge" not in inc   # "/" stopped nginx (RHEL VM)
-    assert (tmp_path / "resolver.inc").read_text().startswith("resolver 10.89.0.1  valid=10s")     # Podman's gateway DNS; link-local skipped
+    assert (tmp_path / "resolver.inc").read_text().startswith("resolver 10.89.0.1 valid=10s")      # Podman's gateway DNS; link-local skipped
     run("")
     assert (tmp_path / "realip.inc").read_text() == ""                                            # no load balancer: nothing believed
 
@@ -168,3 +168,18 @@ def test_forwarded_headers_believed_only_behind_the_edge(monkeypatch):
     assert got["forwarded_allow_ips"] == "*"
     edge = (ROOT / "docker-compose.edge.yml").read_text()
     assert 'WATCHOVER_FORWARDED_ALLOW: "*"' in edge and "WATCHOVER_FORWARDED_ALLOW" not in (ROOT / "docker-compose.yml").read_text()
+
+
+def test_only_the_container_network_dns_is_used(tmp_path):
+    """Podman 4 (RHEL 8.8) writes the host's resolvers after aardvark-dns into the container's resolv.conf; nginx asked them in
+    turn and took the host resolver's NXDOMAIN for "watchover" as the answer (502 on the offline rehearsal). Only the first
+    nameserver, the container network's own DNS, goes into the resolver line."""
+    script = ENTRY.read_text(encoding="utf-8").replace("/etc/nginx/conf.d", str(tmp_path))
+    resolv = tmp_path / "resolv.conf"
+    resolv.write_text("search dns.podman europe-west3-a.c.proj.internal google.internal\nnameserver 10.89.0.1\nnameserver 169.254.169.254\n")
+    subprocess.run(["sh", "-c", script.replace("/etc/resolv.conf", str(resolv))], env={"PATH": "/usr/bin:/bin"}, capture_output=True, text=True, check=True)
+    line = (tmp_path / "resolver.inc").read_text().splitlines()[0]
+    assert line == "resolver 10.89.0.1 valid=10s ipv6=off;" and "169.254.169.254" not in line
+    resolv.write_text("nameserver 127.0.0.11\n")                                   # Docker's embedded DNS
+    subprocess.run(["sh", "-c", script.replace("/etc/resolv.conf", str(resolv))], env={"PATH": "/usr/bin:/bin"}, capture_output=True, text=True, check=True)
+    assert (tmp_path / "resolver.inc").read_text().startswith("resolver 127.0.0.11 valid=10s")

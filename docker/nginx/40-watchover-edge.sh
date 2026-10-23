@@ -1,6 +1,6 @@
 #!/bin/sh
 # Runs at the nginx container's start (/docker-entrypoint.d), after the template is filled in:
-#  - resolver.inc: the container network's DNS server from /etc/resolv.conf (Docker 127.0.0.11, Podman the network gateway)
+#  - resolver.inc: the container network's DNS server, the first of /etc/resolv.conf (Docker 127.0.0.11, Podman the network gateway)
 #  - realip.inc: the trusted load balancers from WATCHOVER_EDGE_TRUSTED ("10.0.0.5/32 10.0.1.0/24", ./watchover.sh edge lb). Only
 #    from those addresses is X-Forwarded-For believed; with none set, the client address is the connecting one and a forged
 #    header changes nothing.
@@ -14,7 +14,10 @@ case "${WATCHOVER_EDGE_TLS_MIN:-1.2}" in
   *) echo "watchover-edge: WATCHOVER_EDGE_TLS_MIN is 1.2 or 1.3, not '${WATCHOVER_EDGE_TLS_MIN}': using 1.2" >&2
      printf 'ssl_protocols TLSv1.2 TLSv1.3;\n' > /etc/nginx/conf.d/tls.inc ;;
 esac
-ns=$(awk '$1 == "nameserver" && $2 !~ /%/ { if ($2 ~ /:/) printf "[%s] ", $2; else printf "%s ", $2 }' /etc/resolv.conf 2>/dev/null || true)
+# only the FIRST nameserver: the container network's own DNS (Docker 127.0.0.11, Podman's aardvark-dns on the gateway), which
+# knows the container names and forwards the rest. Podman 4 (RHEL 8) also lists the host's resolvers after it; nginx asks every
+# listed server in turn and takes an NXDOMAIN from the host's resolver for "watchover" as the answer: 502 now and then.
+ns=$(awk '$1 == "nameserver" && $2 !~ /%/ { if ($2 ~ /:/) print "[" $2 "]"; else print $2; exit }' /etc/resolv.conf 2>/dev/null || true)
 printf 'resolver %s valid=10s ipv6=off;\nresolver_timeout 3s;\n' "${ns:-127.0.0.11}" > /etc/nginx/conf.d/resolver.inc
 out=/etc/nginx/conf.d/realip.inc
 : > "$out"
