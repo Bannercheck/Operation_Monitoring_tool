@@ -2,6 +2,11 @@
 
 Numaralandırma: büyük sürüm **v1, v2** (ürün sahibinin kararı), küçük güncelleme **v1.1, v1.2** (her devreye alınan özellik adımı), düzeltme **v1.1.1**. Her sürüm `python -m watchover.release <major|minor|patch> "özet"` ile açılır; Sistem › Güncelleme sayfası bu dosyayı gösterir, anlık görüntüler sürüm numarasını taşır.
 
+## v1.64.6 · 2026-10-23 · düzeltme
+
+- keyd sağlık kontrolü Podman 4 uyumlu
+
+
 ## v1.64.5 · 2026-10-23 · düzeltme
 
 - Edge yalnız konteyner ağının DNS'ini kullanır (RHEL 8 / Podman 4 502)

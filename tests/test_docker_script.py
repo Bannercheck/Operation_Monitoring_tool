@@ -880,3 +880,21 @@ def test_admin_password_reads_it_inside_the_container(stage):
     assert r.returncode == 0, r.stderr
     assert "compose exec -T dashboard python -m watchover.useradmin initial-password" in (d / "calls.log").read_text()
     assert "admin-password" in run(stage, "help").stdout
+
+
+def test_no_healthcheck_argument_has_a_space():
+    """Podman 4.4 (RHEL 8.8) splits each argument of a ["CMD", ...] healthcheck at its spaces: keyd's python -c "import socket; ..."
+    became python -c import socket; ... and the container stayed unhealthy (offline rehearsal). A check that needs spaces is one
+    CMD-SHELL string, which Podman passes to the shell whole."""
+    import yaml
+
+    class Loader(yaml.SafeLoader):                                             # Compose's !reset / !override tags: plain values here
+        pass
+    Loader.add_multi_constructor("!", lambda loader, tag, node: None)
+    bad = []
+    for f in sorted(ROOT.glob("docker-compose*.yml")):
+        for name, svc in (yaml.load(f.read_text(), Loader=Loader) or {}).get("services", {}).items():
+            test = ((svc or {}).get("healthcheck") or {}).get("test")
+            if isinstance(test, list) and test and test[0] == "CMD" and any(" " in str(a) for a in test[1:]):
+                bad.append(f"{f.name}:{name}")
+    assert not bad, bad
