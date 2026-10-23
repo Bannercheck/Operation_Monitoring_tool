@@ -21,20 +21,22 @@
 #      only), HTTPS edge with Watchover's internal CA for this server's names and addresses (a company certificate in
 #      certs/watchover.crt + .key wins), in-app updater, start on boot, nightly backup 02:15 (14 kept), firewalld 443 / 80 / 8600
 #   6. local LLM (bundled CPU Ollama) in the background when the server has 16 GB RAM or more and reaches the model registry
-#   7. summary (Turkish) and the go-live checklist; the full log is /var/log/watchover/install-<time>.log
+#   7. this server's own agent (wo-agent, as on every monitored server: its journal, logs and metrics from the first minute),
+#      installed with the Agents panel's verified command against 127.0.0.1; it replaces the built-in in-container agent
+#   8. summary (Turkish) and the go-live checklist; the full log is /var/log/watchover/install-<time>.log
 #
 # Air-gapped: a watchover-bundle-<version>.tar (./watchover.sh bundle) next to this script, or in the folder above it, is used by
 # itself (images, models and the Compose binary come from it; nothing is built or downloaded).
 # Expert options, none needed: --check (preflight only, changes nothing)  --dir DIR (default /opt/watchover)  --host NAME (one more
-# certificate name, e.g. a DNS alias; it becomes the main address)  --no-llm  --no-updater  --skip-netcheck
+# certificate name, e.g. a DNS alias; it becomes the main address)  --no-llm  --no-updater  --no-host-agent  --skip-netcheck
 # Test hooks (never needed on a server): WATCHOVER_TEST_ROOT prefixes /etc, /proc, /sys, /opt, /usr/local and /var (and only its Compose
 # path counts); WATCHOVER_TEST_ARCH.
 set -Eeuo pipefail
 umask 022
-ARGS=("$@"); CLEAN_IMAGES=0; CHECK=0; DEST=""; XHOST=""; NO_LLM=0; NO_UPDATER=0; NETCHECK=1
+ARGS=("$@"); CLEAN_IMAGES=0; CHECK=0; DEST=""; XHOST=""; NO_LLM=0; NO_UPDATER=0; NETCHECK=1; NO_HOST_AGENT=0
 while [ $# -gt 0 ]; do case "$1" in
   --check) CHECK=1 ;; --dir) DEST="${2:?--dir DIR}"; shift ;; --host) XHOST="${2:?--host NAME}"; shift ;;
-  --no-llm) NO_LLM=1 ;; --no-updater) NO_UPDATER=1 ;; --skip-netcheck) NETCHECK=0 ;;
+  --no-llm) NO_LLM=1 ;; --no-updater) NO_UPDATER=1 ;; --no-host-agent) NO_HOST_AGENT=1 ;; --skip-netcheck) NETCHECK=0 ;;
   -h|--help) sed -n '2,/^set -E/p' "$0" | sed '$d; s/^# \{0,1\}//'; exit 0 ;;
   *) echo "Bilinmeyen seçenek: $1   (seçenek gerekmez: sudo ./install-rhel.sh)" >&2; exit 2 ;;
 esac; shift; done
@@ -687,6 +689,48 @@ llm_start() {   # MODELS: ./watchover.sh llm on as a transient systemd unit (sur
 }
 llm_decide
 
+# ---------------------------------------------------------------------------------------------------------------- this server's agent
+# The built-in agent runs inside the dashboard container: it sees the container (its CPU / disk view, no host journal), not the
+# server. The real wo-agent goes onto the host like on every monitored server, with the Agents panel's command (boot.sh checked
+# by its sha256, the signed manifest by keyd's release key, so its self-updates verify too) against the local receiver; its own
+# token (python -m watchover.selfagent), never the fleet key. A re-run (repair, upgrade) leaves a running agent alone: it updates itself.
+HOST_AGENT=""; AGENT_LOG="$LOGDIR/agent-install.log"
+builtin_off() {   # the in-container agent is redundant once the host has its own: stopped, rows removed, off after restarts
+  [ "$(eget WATCHOVER_SELFMON)" = 0 ] && return 0
+  podman exec watchover python -m watchover.selfagent builtin-off >/dev/null 2>&1 || true
+  eset WATCHOVER_SELFMON 0
+}
+host_agent() {
+  local name arch base tok sha fp boot rc
+  if [ "$NO_HOST_AGENT" = 1 ]; then HOST_AGENT="kurulmadı (--no-host-agent)"; return; fi
+  if [ -n "$R" ]; then HOST_AGENT="(test kökü: atlandı)"; return; fi   # needs the real containers: rehearsed on a VM
+  if systemctl is-active --quiet watchover-agent 2>/dev/null; then builtin_off; HOST_AGENT="çalışıyor (watchover-agent; kendini günceller)"; return; fi
+  case "$(uname -m)" in x86_64) arch=amd64 ;; aarch64) arch=arm64 ;; *) HOST_AGENT="kurulmadı: $(uname -m) için wo-agent yok"; return ;; esac
+  running watchover && running watchover-receiver || { note "Sunucu ajanı kurulmadı: panel / alıcı çalışmıyor (sonra: sudo $DEST/install-rhel.sh)"; HOST_AGENT="kurulmadı"; return; }
+  name=$(hostname -s 2>/dev/null || hostname); name=${name:-watchover}
+  base="http://127.0.0.1:$LIVE_PORT"
+  tok=$(mktemp); chmod 600 "$tok"
+  if ! podman exec watchover python -m watchover.selfagent token --name "$name" --env prod > "$tok" 2>>"$AGENT_LOG" || [ ! -s "$tok" ]; then
+    rm -f "$tok"; note "Sunucu ajanı kurulmadı: token alınamadı ($AGENT_LOG)"; HOST_AGENT="kurulmadı"; return
+  fi
+  fp=$(podman exec watchover python -m watchover.selfagent release-key 2>/dev/null | tail -1 || true)
+  boot=$(mktemp); rc=1
+  if [ -n "$fp" ] && curl -fsS --max-time 30 -o "$boot" "$base/agent/boot.sh" 2>>"$AGENT_LOG" \
+     && [ "$(sha256sum "$boot" | cut -d' ' -f1)" = "$(sha256sum "$DEST/scripts/agent-boot.sh" | cut -d' ' -f1)" ]; then
+    bash "$boot" --url "$base/ingest" --release-key "$fp" --token-file "$tok" --name "$name" --env prod --tags watchover-server >>"$AGENT_LOG" 2>&1 && rc=0
+  else   # no signed release yet (keyd starting): the installer itself, the binary pinned by the receiver's own copy
+    sha=$(podman exec watchover-receiver sha256sum "/app/agent/wo-agent-linux-$arch" 2>/dev/null | cut -d' ' -f1 || true)
+    if [ -n "$sha" ] && curl -fsS --max-time 30 -o "$boot" "$base/agent/install.sh" 2>>"$AGENT_LOG"; then
+      bash "$boot" --url "$base/ingest" --token-file "$tok" --name "$name" --env prod --tags watchover-server --agent-sha256 "$sha" >>"$AGENT_LOG" 2>&1 && rc=0
+    fi
+  fi
+  rm -f "$boot" "$tok"; chmod 600 "$AGENT_LOG" 2>/dev/null || true
+  if [ "$rc" = 0 ] && systemctl is-active --quiet watchover-agent 2>/dev/null; then
+    builtin_off; HOST_AGENT="kuruldu: $name (journal, loglar, metrikler; Ajanlar panelinde 'watchover-server' etiketiyle)"; ok "Sunucu ajanı ($name)"
+  else note "Sunucu ajanı kurulamadı: $AGENT_LOG (elle: Ajanlar paneli › kurulum komutu)"; HOST_AGENT="kurulamadı ($AGENT_LOG)"; fi
+}
+host_agent
+
 # ---------------------------------------------------------------------------------------------------------------- summary
 st_unit() { systemctl is-enabled -q "$1" 2>/dev/null && [ -f "$UNITS/$1" ] && echo açık || echo kapalı; }
 CA="$DEST/certs/watchover-root.crt"
@@ -713,6 +757,7 @@ printf ' Şirket ağı     Tek adres (VPN + LB): sudo watchover edge public <ad.
 printf '                sertifikası: sudo watchover edge csr → PKI → sudo watchover edge company <sertifika> [zincir]; kontrol: sudo watchover edge check\n'
 printf ' Masaüstüsüz    Dizüstündeki tarayıcıdan LB VIP / sunucu adresiyle açın ya da SSH tüneli: ssh -L 8443:localhost:%s kullanici@%s → https://localhost:8443/\n' "$HTTPS_PORT" "${IPS[0]:-$EH}"
 fi
+printf ' Sunucu ajanı   %s\n' "$HOST_AGENT"
 printf ' Ajanlar        Arayüzde Ajanlar paneli › kurulum komutu (Linux amd64 / arm64; https adreste CA otomatik doğrulanır)\n'
 printf ' Açık olanlar   Uygulama içi güncelleme: %s · Açılışta başlama: %s · Gecelik yedek: %s %s, son %s kopya (%s)\n' "$UPD" "$(st_unit watchover-stack.service)" \
   "$(st_unit watchover-backup.timer)" "$(eget WATCHOVER_BACKUP_AT)" "$(eget WATCHOVER_BACKUP_KEEP)" "$BDIR"

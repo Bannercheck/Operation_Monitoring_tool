@@ -261,3 +261,4 @@ Sadece geliştirme adımları. Format: araç + sürüm · tarih · yapılan iş.
 | Claude Opus 5.5 (Cowork) | 2026-10-22 | Dockerfile.postgres: gosu silinip su-exec /usr/bin/gosu olarak konuyor; yerinde değiştirme alt katmandaki eski ikiliyi Trivy'ye görünür bırakıyordu (v1.64.4) |
 | Claude Opus 5.5 (Cowork) | 2026-10-23 | Edge: nginx resolver yalnız ilk ad sunucusunu (konteyner ağı DNS'i) kullanır; RHEL 8 / Podman 4'te dış çözücünün NXDOMAIN'i 502 veriyordu (internetsiz provada bulundu); test (v1.64.5) |
 | Claude Opus 5.5 (Cowork) | 2026-10-23 | keyd sağlık kontrolü CMD-SHELL: Podman 4.4 CMD argümanlarını boşluktan bölüyordu (internetsiz provada bulundu); compose dosyaları için test (v1.64.6) |
+| Claude Opus 5.5 (Cowork) | 2026-10-23 | Kurulum sunucunun kendi wo-agent'ını doğrulanmış komutla kurar (selfagent token / release-key / builtin-off), yerleşik konteyner ajanı kapanır, --no-host-agent; sonuç penceresi satır sayımı kelime bazlı; testler (v1.64.7) |

@@ -182,6 +182,7 @@ def test_fresh_install_then_rerun_is_idempotent(rhel):
     assert "firewall-cmd --reload" not in log and "podman network reload --all" in log and "--zone=public --add-port=443/tcp" in log
     # the local LLM goes to the background (32 GB: the 3B chat model), the install never waits for it
     assert "systemd-run --unit=watchover-llm-setup" in log and "llm on" in log
+    assert "Sunucu ajanı   (test kökü: atlandı)" in out          # host_agent needs the real containers (rehearsed on a VM)
     assert "GET /healthz" in out and "X-Forwarded-Proto" in out and "ssh -L 8443:localhost:443 kullanici@10.20.30.40" in out
     assert envval(dest, "WATCHOVER_EDGE_HOSTS").endswith("localhost")       # the SSH-tunnel name is on the certificate too
     for s in ("https://watchover01.firma.local/", "https://10.20.30.40/", f"{dest}/certs/watchover-root.crt", "Ajanlar paneli", "Gecelik yedek: açık 02:15, son 14 kopya",
@@ -496,6 +497,8 @@ def test_one_file_setup_online(rhel, tmp_path):
     assert res.returncode == 1 and "Kurulum dosyası eksik" in res.stderr
     res = run_setup(rhel, f, "--check", "--yes", "--workdir", str(work))
     assert res.returncode == 0 and "--check: hiçbir şey kurulmadı" in res.stdout
+    res = run_setup(rhel, f, "--yes", "--no-host-agent", "--workdir", str(work))
+    assert res.returncode == 0 and "Sunucu ajanı: kurulmadı (--no-host-agent)" in res.stdout
 
 
 def test_one_file_setup_offline_needs_no_internet_and_no_repository(rhel, tmp_path):
