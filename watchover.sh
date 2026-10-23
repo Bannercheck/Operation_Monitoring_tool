@@ -1292,16 +1292,19 @@ DNS.$i = $h"; fi
     say "bundle written: $out ($(du -h --apparent-size "$out" | cut -f1)). RHEL 9: put it next to install-rhel.sh and run sudo ./install-rhel.sh. Elsewhere:  tar xf $(basename "$out") --strip-components=1 source  &&  ./watchover.sh unbundle $(basename "$out")  &&  ./watchover.sh install" ;;
   unbundle)  # on the air-gapped server: images, model volumes, offline marker
     busy_guard; need_docker; [ -f "${2:-}" ] || die "usage: ./watchover.sh unbundle watchover-bundle-X.Y.tar"
-    tmp=$(mktemp -d); tar xf "$2" -C "$tmp" MANIFEST images.tar.gz volumes 2>/dev/null || tar xf "$2" -C "$tmp"
-    [ -f "$tmp/MANIFEST" ] && say "bundle $(sed -n 's/^version=//p' "$tmp/MANIFEST")" || true
-    say "loading images"; gunzip -c "$tmp/images.tar.gz" | docker load
-    for f in "$tmp"/volumes/*.tar; do
-      [ -f "$f" ] || continue; v=$(basename "$f" .tar); n=$(vol_name "$v")
-      say "restoring volume $v -> $n"
+    # Disk: only the image archive is copied out (then loaded from the file, not through a pipe Podman would copy again) and it is
+    # gone before the volumes, which stream from the bundle into their volume. The scratch folder goes on any exit: a failed load
+    # used to leave a ~15 GB copy in /tmp, and the next attempt ran out of space.
+    tmp=$(mktemp -d "${TMPDIR:-/var/tmp}/watchover-unbundle.XXXXXX"); trap 'rm -rf "$tmp"' EXIT
+    p=""; tar tf "$2" 2>/dev/null | grep -qx './MANIFEST' && p="./"
+    tar xOf "$2" "${p}MANIFEST" > "$tmp/MANIFEST" 2>/dev/null && say "bundle $(sed -n 's/^version=//p' "$tmp/MANIFEST")" || true
+    say "loading images"; tar xf "$2" -C "$tmp" "${p}images.tar.gz"; docker load -i "$tmp/images.tar.gz"; rm -f "$tmp/images.tar.gz"
+    for v in $(tar tf "$2" | sed -n 's#^\(\./\)\{0,1\}volumes/\([^/]*\)\.tar$#\2#p'); do
+      n=$(vol_name "$v"); say "restoring volume $v -> $n"
       docker volume inspect "$n" >/dev/null 2>&1 || docker volume create "$n" >/dev/null   # an upgrade: the volume is there (podman refuses a second create)
-      docker run --rm -v "$n":/v -v "$tmp/volumes":/in:z "$ALPINE" tar xf "/in/$v.tar" -C /v || say "could not restore $v"
+      tar xOf "$2" "${p}volumes/$v.tar" | docker run --rm -i -v "$n":/v "$ALPINE" tar xf - -C /v || say "could not restore $v"
     done
-    rm -rf "$tmp"; touch "$ENV_FILE"; env_set WATCHOVER_OFFLINE 1
+    rm -rf "$tmp"; trap - EXIT; touch "$ENV_FILE"; env_set WATCHOVER_OFFLINE 1
     say "offline install marked (.env WATCHOVER_OFFLINE=1: install/update never build, llm on never downloads). Next:  ./watchover.sh install   then  ./watchover.sh llm on  if the bundle carried Ollama models" ;;
   shell)   need_docker; $COMPOSE exec dashboard bash ;;
   version) echo "Watchover v$(version) ($(git_rev))" ;;

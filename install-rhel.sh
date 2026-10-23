@@ -210,6 +210,24 @@ else ok "Konteyner deposu: $(near "$STORE"), $sf GB boş"; fi
 if [ -n "$OLD_IMGS" ] && [ "$CLEAN_IMAGES" = 0 ] && [ "$sf" -ge 20 ]; then
   CLEAN_IMAGES=1; ok "Eski sürüm imajları silinecek: $(echo "$OLD_IMGS" | wc -l) imaj, en çok ~$OLD_GB GB (kurulu sürüm ve geri dönüş sürümü kalır)"
 fi
+# An offline bundle needs room to be loaded, not only to run: the image archive copied out of it, Podman's unpacked copy while it
+# loads (in /var/tmp), the loaded layers (about 2.5 x the gzip), the model volumes. 20 GB free passed while a 15 GB bundle needed
+# far more, and the load stopped half way with "no space left on device". Sizes come from the bundle's own listing.
+if [ -n "$BUNDLE" ]; then
+  read -r BG BV < <(tar tvf "$BUNDLE" 2>/dev/null | awk '{ n = $NF; if (n ~ /(^|\/)images\.tar\.gz$/) g += $3; else if (n ~ /(^|\/)volumes\/[^\/]+\.tar$/) v += $3 } END { printf "%d %d\n", g / 1048576, v / 1048576 }') || true
+  BG=${BG:-0}; BV=${BV:-0}; sfree=$((sf + (CLEAN_IMAGES == 1 ? OLD_GB : 0)))
+  TMPD="${TMPDIR:-/var/tmp}"; need_store=$(( (BG * 5 / 2 + BV) / 1024 + 5 )); need_tmp=$(( BG * 7 / 2 / 1024 + 2 ))
+  if [ "$(stat -c %d "$(near "$TMPD")" 2>/dev/null)" = "$(stat -c %d "$(near "$STORE")" 2>/dev/null)" ]; then
+    need=$((need_store + need_tmp))
+    if [ "$sfree" -lt "$need" ]; then bad "Kapalı ağ paketini yüklemek için $(near "$STORE") diskinde ~$need GB boş alan gerekir (boş: $sfree GB): imajlar yüklenirken geçici kopyaları da aynı diske yazılır. Diski büyütün (önerilen: 150 GB) ya da TMPDIR=<başka disk> ile çalıştırın"
+    else ok "Paketi yüklemek için yer: ~$need GB gerekir, $sfree GB boş"; fi
+  else
+    tf=$(free_gb "$TMPD"); tf=${tf:-0}
+    [ "$sfree" -ge "$need_store" ] || bad "Kapalı ağ paketi için konteyner deposunda ~$need_store GB boş alan gerekir (boş: $sfree GB): diski büyütün"
+    [ "$tf" -ge "$need_tmp" ] || bad "Kapalı ağ paketi yüklenirken geçici klasörde ($(near "$TMPD")) ~$need_tmp GB boş alan gerekir (boş: $tf GB)"
+    [ "$sfree" -lt "$need_store" ] || [ "$tf" -lt "$need_tmp" ] || ok "Paketi yüklemek için yer: depoda ~$need_store GB, geçici klasörde ~$need_tmp GB gerekir"
+  fi
+fi
 df_=$(free_gb "$DEST"); [ "${df_:-0}" -ge 2 ] || bad "Kurulum klasörü için ($(near "$DEST")) en az 2 GB boş alan gerekir"
 fst=$(findmnt -no FSTYPE -T "$(near "$STORE")" 2>/dev/null || stat -f -c %T "$(near "$STORE")" 2>/dev/null || true)
 case "$fst" in

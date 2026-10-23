@@ -266,6 +266,25 @@ def test_air_gapped_bundle_next_to_the_folder(rhel):
     assert not (dest / f"watchover-bundle-{VER}.tar").exists()             # the bundle is not copied into the install folder
 
 
+def test_bundle_too_big_for_the_free_space_stops_before_any_change(rhel, tmp_path):
+    """A 15 GB bundle passed the 20 GB check and the load ran out of space half way: the need now comes from the bundle's own
+    listing (image archive + Podman's unpacked copy + the loaded layers + the model volumes), checked before anything changes."""
+    src, r, env = rhel
+    out = make_bundle(src)
+    big = tmp_path / "big"; (big / "volumes").mkdir(parents=True)
+    with tarfile.open(out) as t:
+        t.extractall(big)
+    with open(big / "images.tar.gz", "r+b") as f:                     # sparse: the listing says 8 GB, the disk holds nothing
+        f.truncate(8 * 1024 ** 3)
+    subprocess.run(["tar", "-S", "-cf", str(out), "-C", str(big), "MANIFEST", "bin", "images.tar.gz", "volumes", "source"], check=True)
+    res = run(rhel, FAKE_FREE_KB=str(30 * 1048576))                    # 30 GB free: above the old 20 GB line
+    assert res.returncode == 1, res.stdout
+    assert "Kapalı ağ paketini yüklemek için" in res.stdout and "~55 GB boş alan gerekir (boş: 30 GB)" in res.stdout
+    assert not (r / "opt/watchover/watchover.sh").exists() and "podman load" not in calls(rhel)
+    res = run(rhel, FAKE_FREE_KB=str(80 * 1048576))
+    assert "Paketi yüklemek için yer: ~55 GB gerekir, 80 GB boş" in res.stdout
+
+
 def test_bundle_for_another_architecture_is_refused(rhel):
     src, r, env = rhel
     make_bundle(src, arch="aarch64")
