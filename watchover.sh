@@ -1296,7 +1296,7 @@ DNS.$i = $h"; fi
     # gone before the volumes, which stream from the bundle into their volume. The scratch folder goes on any exit: a failed load
     # used to leave a ~15 GB copy in /tmp, and the next attempt ran out of space.
     tmp=$(mktemp -d "${TMPDIR:-/var/tmp}/watchover-unbundle.XXXXXX"); trap 'rm -rf "$tmp"' EXIT
-    p=""; tar tf "$2" 2>/dev/null | grep -qx './MANIFEST' && p="./"
+    p=""; tar tf "$2" 2>/dev/null | grep -x './MANIFEST' >/dev/null && p="./"   # not grep -q: tar killed by SIGPIPE fails the pipe (pipefail)
     tar xOf "$2" "${p}MANIFEST" > "$tmp/MANIFEST" 2>/dev/null && say "bundle $(sed -n 's/^version=//p' "$tmp/MANIFEST")" || true
     say "loading images"; tar xf "$2" -C "$tmp" "${p}images.tar.gz"; docker load -i "$tmp/images.tar.gz"; rm -f "$tmp/images.tar.gz"
     for v in $(tar tf "$2" | sed -n 's#^\(\./\)\{0,1\}volumes/\([^/]*\)\.tar$#\2#p'); do

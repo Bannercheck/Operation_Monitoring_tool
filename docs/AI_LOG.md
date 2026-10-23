@@ -265,3 +265,4 @@ Sadece geliştirme adımları. Format: araç + sürüm · tarih · yapılan iş.
 | Claude Opus 5.5 (Cowork) | 2026-10-23 | test_sap_s4 uçtan uca test: sahte S/4 kayıtları test anında zamanlanır; modül yüklenirken alınan saat 13 dakikalık tam koşuda poller penceresinin dışında kalıyordu |
 | Claude Opus 5.5 (Cowork) | 2026-10-23 | unbundle: var olan birim için volume create atlanır (Podman ikinci create'i reddediyordu; kapalı ağ yükseltmesi duruyordu, provada bulundu); test (v1.64.8) |
 | Claude Opus 5.5 (Cowork) | 2026-10-23 | Kapalı ağ paketi: ön kontrol gereken yeri paket listesinden hesaplar ve yetmezse durur; unbundle imajları dosyadan yükler, birimleri akıtır, geçici klasörü hata olsa da siler (provada disk doldu); test (v1.64.9) |
+| Claude Opus 5.5 (Cowork) | 2026-10-23 | host_agent keyd'in imzalı sürümünü 90 sn bekler (imzasız yedek yol yalnız keyd yoksa); unbundle ./ önekli üyeleri bulur (grep -q + pipefail); test (v1.64.10) |

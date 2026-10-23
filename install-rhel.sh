@@ -731,12 +731,18 @@ host_agent() {
   if ! podman exec watchover python -m watchover.selfagent token --name "$name" --env prod > "$tok" 2>>"$AGENT_LOG" || [ ! -s "$tok" ]; then
     rm -f "$tok"; note "Sunucu ajanı kurulmadı: token alınamadı ($AGENT_LOG)"; HOST_AGENT="kurulmadı"; return
   fi
-  fp=$(podman exec watchover python -m watchover.selfagent release-key 2>/dev/null | tail -1 || true)
+  # keyd signs the release a few seconds after it starts; until then the command falls back to the receiver's pinned binary, and an
+  # agent installed without the release key cannot verify its own signed self-updates: wait for the signature (up to 90 s)
+  fp=""; for _ in $(seq 1 "${WATCHOVER_RELEASE_TRIES:-18}"); do
+    fp=$(podman exec watchover python -m watchover.selfagent release-key 2>/dev/null | tail -1 || true)
+    [ -z "$fp" ] || break; sleep 5
+  done
   boot=$(mktemp); rc=1
   if [ -n "$fp" ] && curl -fsS --max-time 30 -o "$boot" "$base/agent/boot.sh" 2>>"$AGENT_LOG" \
      && [ "$(sha256sum "$boot" | cut -d' ' -f1)" = "$(sha256sum "$DEST/scripts/agent-boot.sh" | cut -d' ' -f1)" ]; then
     bash "$boot" --url "$base/ingest" --release-key "$fp" --token-file "$tok" --name "$name" --env prod --tags watchover-server >>"$AGENT_LOG" 2>&1 && rc=0
-  else   # no signed release yet (keyd starting): the installer itself, the binary pinned by the receiver's own copy
+  else   # still no signed release (keyd down): the installer itself, the binary pinned by the receiver's own copy
+    echo "no signed release from keyd after $((${WATCHOVER_RELEASE_TRIES:-18} * 5)) s: installing with --agent-sha256" >> "$AGENT_LOG"
     sha=$(podman exec watchover-receiver sha256sum "/app/agent/wo-agent-linux-$arch" 2>/dev/null | cut -d' ' -f1 || true)
     if [ -n "$sha" ] && curl -fsS --max-time 30 -o "$boot" "$base/agent/install.sh" 2>>"$AGENT_LOG"; then
       bash "$boot" --url "$base/ingest" --token-file "$tok" --name "$name" --env prod --tags watchover-server --agent-sha256 "$sha" >>"$AGENT_LOG" 2>&1 && rc=0

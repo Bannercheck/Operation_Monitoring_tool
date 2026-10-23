@@ -387,6 +387,15 @@ def test_unbundle_over_an_existing_install_keeps_its_volumes(stage, tmp_path):
     log = (d / "calls.log").read_text()
     assert "docker volume inspect watchover_watchover-ollama" in log and "docker volume create watchover_watchover-ollama" not in log
     assert "-v watchover_watchover-ollama:/v" in log and "WATCHOVER_OFFLINE=1" in (d / ".env").read_text()
+    dot = tmp_path / "bundle-dot.tar"                                 # members written as ./MANIFEST, ./volumes/...: found too
+    with tarfile.open(dot, "w") as t:
+        for n in ("MANIFEST", "images.tar.gz", "volumes"):
+            t.add(str(b / n), arcname="./" + n)
+    (d / "calls.log").write_text("")
+    r = run(stage, "unbundle", str(dot))
+    assert r.returncode == 0, r.stdout + r.stderr
+    log = (d / "calls.log").read_text()
+    assert "docker load -i" in log and "docker volume inspect watchover_watchover-ollama" in log and "bundle " in r.stdout
 
 
 def test_backup_rotation(stage):
