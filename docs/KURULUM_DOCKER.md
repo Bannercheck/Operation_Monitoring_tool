@@ -543,7 +543,7 @@ Ajanlar paneli her sunucunun sürümünü ve güncelleme durumunu gösterir (*g�
 
 **Güvenli kurulum komutu.** Paneldeki komut her zaman güncel değerleri taşır:
 ```bash
-# düz http (8600): önce boot.sh sha256 ile, sonra imzalı manifest sürüm anahtarıyla (openssl >= 1.1.1) doğrulanır
+# düz http (8600): önce boot.sh sha256 ile, sonra imzalı manifest sürüm anahtarıyla doğrulanır (her OpenSSL sürümünde)
 f=$(mktemp) && curl -fsSL -o "$f" http://<sunucu>:8600/agent/boot.sh && echo "<boot.sh sha256>  $f" | sha256sum -c --quiet \
   && sudo bash "$f" --url http://<sunucu>:8600/ingest --release-key SHA256:<sürüm anahtarı> --enroll-key wk_… --env prod
 # edge açıkken https: kurulumun kendi CA'sı sha256 ile sabitlenir ve ajan için kurulur (elle CA kopyalamak yok)
@@ -553,7 +553,7 @@ f=$(mktemp) && curl -fsSLk -o "$f" https://<ad>/agent/boot.sh && echo "<boot.sh 
 - `boot.sh` bilerek küçük ve sabittir: komuttaki sha256'sı Watchover yükseltmelerinde ve ajan güncellemelerinde değişmez; sürüm anahtarı da değişmez. Yani bir kez dağıtılan komut (ör. Ansible'da) geçerli kalır, panel ayrıca hep güncelini gösterir. `boot.sh` kurulum betiğinin sha256'sını imzalı manifestten alır; betik de ikili dosyayı aynı manifestle doğrular ve anahtarı sunucuya sabitler. Böyle kurulan sunucu **güvensiz sayılmaz**, düz http ile bile.
 - `-k` yalnız boot.sh'ın indirildiği ilk istekte vardır ve zararsızdır: dosya sha256 ile doğrulanır; CA da (`/agent/ca.crt`) `--ca-sha256` ile. Ondan sonraki her bağlantı bu CA ile normal TLS doğrulamasıyla yapılır; CA `/etc/watchover/ca.pem` olarak kurulur ve iki ajan da onu kullanır (`WATCHOVER_CA`, `WO_CA`).
 - Şirket sertifikası (`./certs/watchover.crt`) kullanılıyorsa ve sunucular o CA'ya zaten güveniyorsa komutta `-k` ve `--ca-sha256` yoktur. Güvenmiyorlarsa şirket kök sertifikasını `./certs/watchover-ca.crt` olarak koyun; alıcı onu sunar, komut onu sabitler.
-- Sunucuda `openssl` (>= 1.1.1; RHEL 8+, Ubuntu 18.04+, Debian 10+'da var) gerekir; yoksa https komutunu kullanın.
+- İmza her OpenSSL sürümünde doğrulanır: OpenSSL 3'te komut satırıyla; OpenSSL 1.1.1'de (RHEL 8) kütüphane sistemin Python'u üzerinden (`/usr/libexec/platform-python` her RHEL 8'de vardır); daha eski OpenSSL'de (RHEL 7: 1.0.2) ya da hiç yokken düz Python ile (RFC 8032, Python 2.7 / 3). Python da yoksa düz http komutu kurulmaz (doğrulanamaz); https komutu TLS ve sabitlenmiş anahtar parmak iziyle çalışır.
 - Eski, güvensiz işaretli kurulumlar kendini güncelleyerek güvenli hale **gelmez**: ilk ikili ve sabitlenen anahtar aynı korumasız kanaldan geldiği için sonraki her "doğrulama" de o kanala dayanır. Bu sunucularda paneldeki komutu bir kez çalıştırmak yeter (kimlik, jeton, kuyruk ve konumlar korunur, güvensiz işareti kalkar).
 - Edge açıkken nginx ajan yollarını da alıcıya yönlendirir: `/ingest`, `/enroll`, `/agent.py`, `/agent/*` (kurulum, `boot.sh`, `ca.crt`, manifest, ikili dosyalar, `/agent/update`, eylem ajanlarının `/agent/v1/` iş kanalı), `/rum`, `/rum.js`, `/mobile` ve OTLP/HTTP `/v1/*`. 8600 açık kalır; `./watchover.sh edge on` kurulumun kendi CA'sını oluşturur, kökü `./certs/watchover-root.crt`'dir, alıcı onu `/agent/ca.crt` olarak sunar.
 

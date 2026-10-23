@@ -740,9 +740,13 @@ host_agent() {
   boot=$(mktemp); rc=1
   if [ -n "$fp" ] && curl -fsS --max-time 30 -o "$boot" "$base/agent/boot.sh" 2>>"$AGENT_LOG" \
      && [ "$(sha256sum "$boot" | cut -d' ' -f1)" = "$(sha256sum "$DEST/scripts/agent-boot.sh" | cut -d' ' -f1)" ]; then
+    cp "$tok" "$tok.2"   # install.sh removes the token file once read: a copy for the fallback below
     bash "$boot" --url "$base/ingest" --release-key "$fp" --token-file "$tok" --name "$name" --env prod --tags watchover-server >>"$AGENT_LOG" 2>&1 && rc=0
-  else   # still no signed release (keyd down): the installer itself, the binary pinned by the receiver's own copy
-    echo "no signed release from keyd after $((${WATCHOVER_RELEASE_TRIES:-18} * 5)) s: installing with --agent-sha256" >> "$AGENT_LOG"
+    [ "$rc" = 0 ] || { echo "the signed install did not succeed (above): trying the receiver's pinned binary" >> "$AGENT_LOG"; mv -f "$tok.2" "$tok"; }
+    rm -f "$tok.2"
+  fi
+  if [ "$rc" != 0 ]; then   # no signed release (keyd down) or the signed path failed: the installer itself, the binary pinned by the receiver's own copy
+    [ -n "$fp" ] || echo "no signed release from keyd after $((${WATCHOVER_RELEASE_TRIES:-18} * 5)) s: installing with --agent-sha256" >> "$AGENT_LOG"
     sha=$(podman exec watchover-receiver sha256sum "/app/agent/wo-agent-linux-$arch" 2>/dev/null | cut -d' ' -f1 || true)
     if [ -n "$sha" ] && curl -fsS --max-time 30 -o "$boot" "$base/agent/install.sh" 2>>"$AGENT_LOG"; then
       bash "$boot" --url "$base/ingest" --token-file "$tok" --name "$name" --env prod --tags watchover-server --agent-sha256 "$sha" >>"$AGENT_LOG" 2>&1 && rc=0
