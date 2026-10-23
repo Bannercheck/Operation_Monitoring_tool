@@ -398,6 +398,44 @@ def test_unbundle_over_an_existing_install_keeps_its_volumes(stage, tmp_path):
     assert "docker load -i" in log and "docker volume inspect watchover_watchover-ollama" in log and "bundle " in r.stdout
 
 
+def _host_tools(d, updates=True):
+    """dnf / rpm stand-ins: podman, crun and netavark are installed; check-update answers 100 with two updates (or 0)."""
+    b = d / "bin"
+    (b / "rpm").write_text('#!/usr/bin/env bash\necho "rpm $*" >> "$FAKE_LOG"\ncase "$2" in podman|crun|netavark) ;; --qf) echo "podman 4.4.1-1"; exit 0 ;; *) exit 1 ;; esac\n')
+    rc = 100 if updates else 0
+    (b / "dnf").write_text('#!/usr/bin/env bash\necho "dnf $*" >> "$FAKE_LOG"\ncase " $* " in *" check-update "*) '
+                           + ('printf "podman.x86_64  4.4.1-14.el8_8  rhel-8-appstream\\ncrun.x86_64  1.8.7-1.el8_8  rhel-8-appstream\\n"; ' if updates else "")
+                           + f'exit {rc} ;; esac\nexit 0\n')
+    for f in ("rpm", "dnf"):
+        (b / f).chmod(0o755)
+
+
+def test_update_all_updates_host_packages_then_watchover(stage, tmp_path):
+    """sudo watchover update all: the container packages from the repositories (stack stopped around them, a backup first), then the
+    given one-file installer; --check only lists. Nothing but the stack's own packages, never a reboot."""
+    d, env = stage
+    run(stage, "install")
+    _host_tools(d)
+    (d / "calls.log").write_text("")
+    r = run(stage, "update", "all", "--check")
+    assert r.returncode == 0, r.stdout + r.stderr
+    log = (d / "calls.log").read_text()
+    assert "podman.x86_64  ->  4.4.1-14.el8_8" in r.stdout and "--check: hiçbir şey değiştirilmedi" in r.stdout
+    assert "dnf -q --refresh check-update podman crun netavark" in log and "-y upgrade" not in log and "compose" not in log
+    pkg = tmp_path / "watchover-kurulum-9.9.9.sh"; pkg.write_text(f'#!/usr/bin/env bash\necho "installer $*" >> "{d / "calls.log"}"\n')
+    (d / "calls.log").write_text("")
+    r = run(stage, "update", "all", str(pkg))
+    assert r.returncode == 0, r.stdout + r.stderr
+    log = (d / "calls.log").read_text()
+    order = [log.index(k) for k in ("pg_dump", "stop", "dnf -y upgrade podman crun netavark", "up -d", "installer --yes")]
+    assert order == sorted(order), log                                   # backup, stop, packages, start, then Watchover
+    assert "kernel" not in log and "reboot" not in log
+    _host_tools(d, updates=False)
+    (d / "calls.log").write_text("")
+    r = run(stage, "update", "all")
+    assert r.returncode == 0 and "Sunucu bileşenleri güncel" in r.stdout and "-y upgrade" not in (d / "calls.log").read_text()
+
+
 def test_backup_rotation(stage):
     d, _ = stage
     run(stage, "install")

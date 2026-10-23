@@ -14,6 +14,9 @@
 #                                   engine: Docker, or rootful Podman (RHEL): WATCHOVER_ENGINE=docker|podman in .env, detected when unset
 #   ./watchover.sh update           new source tree copied over this folder: rebuild the image, recreate the containers, keep the data
 #   ./watchover.sh upgrade          git pull of this folder (local edits set aside and put back) + update: the one-line way to a new version
+#   ./watchover.sh update all [watchover-kurulum-X.sh] [--check]   (root) everything at once: the server's container packages (Podman,
+#                                   crun, netavark, container-selinux, ...) from its repositories / Satellite, then Watchover (the given
+#                                   one-file installer; a git install: upgrade). --check lists what would change and changes nothing
 #   ./watchover.sh start|stop|restart|status|logs [service]
 #   ./watchover.sh mcp on|off       our MCP server as a third container (MCP_API_KEY from .env)
 #   ./watchover.sh otlp on|off      publish the OpenTelemetry ports 4317 (gRPC) / 4318 (HTTP) on the receiver (OTLP/HTTP also on 8600)
@@ -777,6 +780,54 @@ edge_lbtest() {
   say "from a laptop: https://$name:9443 (hosts entry: $name -> $(host_ip)); remove the rehearsal: ./watchover.sh edge lbtest stop"
   [ "$fails" = 0 ] && say "the load balancer path works: the F5 configuration (edge lbconf f5) does the same" || { say "$fails check(s) failed"; return 1; }
 }
+# ---------------------------------------------------------------- update all: the host's container packages, then Watchover
+# Only the packages the stack runs on, from the server's own repositories (Satellite): never the kernel or anything else, never a
+# reboot (a pending one is reported). The stack is stopped around the package update (a running container keeps the old runtime
+# until it restarts) after a backup, then started and checked. Turkcell-style change control: --check first, in the window run it.
+HOST_PKGS="podman crun conmon netavark aardvark-dns containers-common container-selinux podman-plugins slirp4netns fuse-overlayfs openssl chrony"
+update_all() {
+  local pkg="" check=0 have=() p out rc=0 ups
+  while [ $# -gt 0 ]; do case "$1" in --check) check=1 ;; -*) die "usage: sudo watchover update all [watchover-kurulum-X.sh] [--check]" ;; *) pkg="$1" ;; esac; shift; done
+  [ "$(id -u)" = 0 ] || die "root gerekir: sudo watchover update all"
+  [ -z "$pkg" ] || [ -f "$pkg" ] || die "kurulum dosyası bulunamadı: $pkg"
+  command -v dnf >/dev/null 2>&1 && command -v rpm >/dev/null 2>&1 || die "dnf / rpm yok: sunucu bileşenleri yalnız RHEL ailesinde güncellenir"
+  busy_guard
+  for p in $HOST_PKGS; do rpm -q "$p" >/dev/null 2>&1 && have+=("$p"); done
+  [ "${#have[@]}" -gt 0 ] || die "Podman paketleri kurulu değil: önce sudo ./install-rhel.sh"   # an empty list would check every package
+  say "Sunucu bileşenleri: $(rpm -q --qf '%{NAME} %{VERSION}-%{RELEASE}\n' podman crun netavark 2>/dev/null | paste -sd, - | sed 's/,/, /g')"
+  out=$(dnf -q --refresh check-update "${have[@]}" 2>&1) || rc=$?          # 100: updates waiting, 0: none, else: no repository
+  case "$rc" in
+    0) ups=""; say "Sunucu bileşenleri güncel (paket deposuna göre)" ;;
+    100) ups=$(printf '%s\n' "$out" | awk 'NF >= 3 && $1 ~ /\./ && $2 ~ /[0-9]/ {print "    " $1 "  ->  " $2}')
+         say "Güncellenecek sunucu bileşenleri:"; printf '%s\n' "$ups" ;;
+    *) die "paket deposuna ulaşılamadı (Satellite / dnf repolist): $(printf '%s' "$out" | tail -2 | tr '\n' ' ')" ;;
+  esac
+  if [ "$check" = 1 ]; then
+    [ -z "$pkg" ] || say "Watchover: $(basename "$pkg") kurulacak (şu an v$(running_version || version))"
+    say "--check: hiçbir şey değiştirilmedi"; return 0
+  fi
+  if [ -n "$ups" ]; then
+    need_docker
+    say "Yedek alınıyor (güncelleme öncesi)"; bash "$0" backup --no-logs
+    say "Watchover durduruluyor (paketler güncellenirken)"; $COMPOSE $(profiles) $(uprof) stop >/dev/null 2>&1 || true
+    if ! dnf -y upgrade "${have[@]}"; then
+      say "paket güncellemesi başarısız: Watchover eski paketlerle yeniden başlatılıyor"; up; verify_running; die "sunucu bileşenleri güncellenemedi (dnf); ayrıntı yukarıda"
+    fi
+    systemctl daemon-reload >/dev/null 2>&1 || true
+    systemctl try-restart podman.socket >/dev/null 2>&1 || true
+    podman network reload --all >/dev/null 2>&1 || true
+    say "Watchover başlatılıyor"; write_env; up; verify_running
+    say "Sunucu bileşenleri şimdi: $(rpm -q --qf '%{NAME} %{VERSION}-%{RELEASE}\n' podman crun netavark 2>/dev/null | paste -sd, - | sed 's/,/, /g')"
+  fi
+  if command -v needs-restarting >/dev/null 2>&1 && ! needs-restarting -r >/dev/null 2>&1; then
+    say "NOT: işletim sistemi bir yeniden başlatma bekliyor (needs-restarting -r); bakım penceresinde yapın. Watchover açılışta kendisi başlar"
+  fi
+  if [ -n "$pkg" ]; then say "Watchover güncelleniyor: $(basename "$pkg")"; exec bash "$pkg" --yes; fi
+  if ! offline && command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then exec bash "$0" upgrade; fi
+  offline && say "Watchover: yeni sürüm için kurulum dosyasını verin:  sudo watchover update all /var/tmp/watchover-kurulum-<sürüm>-x86_64-hepsi-dahil.sh"
+  return 0
+}
+
 up() {   # inside the updater its own container is left alone (its profile is not active, so it is not an orphan either)
   $COMPOSE $(profiles) up -d --remove-orphans
   in_updater && return 0
@@ -904,6 +955,7 @@ case "${1:-}" in
       "") echo "start on boot: $(autostart_state)" ;;
       *) die "usage: ./watchover.sh autostart on|off" ;; esac ;;
   update)
+    if [ "${2:-}" = all ]; then shift 2; update_all "$@"; exit 0; fi
     busy_guard; need_docker; before=$(running_version); write_env; build; up; docker image prune -f >/dev/null
     say "updated ${before:+from v$before }to v$(version); data volumes untouched"; $COMPOSE ps; verify_running ;;
   upgrade)   # fetch the new version into this folder, then update. Local edits to tracked files (the reason a plain 'git pull' refuses) are

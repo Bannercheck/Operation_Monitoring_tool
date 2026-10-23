@@ -391,6 +391,7 @@ LLM'i açmak: `./watchover.sh llm on` (Ollama başlar, modeller iner: 7B, hızl�
 | `./watchover.sh migrate` | Eski SQLite kurulumunun `.db` dosyalarını PostgreSQL'e kopyalar (bölüm 6) |
 | `./watchover.sh save` / `load DOSYA` | İmajları `.tgz` olarak dışa / içe aktarır (kapalı ağ, bölüm 9) |
 | `./watchover.sh shell` | Dashboard konteynerinde kabuk |
+| `sudo watchover update all [KURULUM_DOSYASI] [--check]` | Hepsini birden günceller (RHEL, root): önce sunucunun konteyner paketleri (podman, crun, conmon, netavark, aardvark-dns, containers-common, container-selinux, podman-plugins, slirp4netns, fuse-overlayfs, openssl, chrony) sunucunun kendi deposundan / Satellite'tan; güncelleme varsa önce yedek alınır, Watchover durdurulur, paketler güncellenir, Watchover başlatılıp doğrulanır. Sonra verilen tek dosyalık kurulumla Watchover yeni sürüme geçer (git kurulumunda `upgrade`). Çekirdeğe ve diğer paketlere dokunmaz, yeniden başlatmaz (bekleyen yeniden başlatmayı yazar). `--check` yalnız listeler; değişiklik yönetimi için önce onu çalıştırın |
 | `./watchover.sh updater on\|off\|status` | Uygulama içi güncelleyici (bölüm 3b): varsayılan açık; `off` motor soketini hiçbir konteynerde bırakmaz |
 | `./watchover.sh build` / `health [SÜRÜM] [SN]` | Yalnız bu ağacın imajlarını derler (hiçbir şeyi yeniden başlatmaz) / panel `/api/health` ile o sürümü verene kadar bekler |
 

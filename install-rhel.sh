@@ -791,6 +791,7 @@ printf ' Yerel LLM      %s\n' "$LLM_STATE"
 [ "$OFFLINE" = 0 ] || printf ' Kapalı ağ      imajlar paketten; güncellemeler: yeni paket + bu betik ya da Sistem › Güncelleme\n'
 printf ' Depolama       /var/lib/containers yerel SSD üzerinde olmalı · ham log diskleri sonradan arayüzden: Sistem › Depolama\n'
 printf ' Komut          sudo watchover status | logs | doctor | backup | checklist   (= %s/watchover.sh)\n' "$DEST"
+printf ' Güncelleme     sudo watchover update all [yeni kurulum dosyası] [--check]: sunucunun konteyner paketleri (Satellite) + Watchover\n'
 printf ' Kayıt          %s\n' "$LOG"
 }
 if [ "${#NOTES[@]}" -gt 0 ]; then printf '\n Dikkat:\n'; printf '   ! %s\n' "${NOTES[@]}"; fi
