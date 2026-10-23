@@ -436,6 +436,37 @@ def test_update_all_updates_host_packages_then_watchover(stage, tmp_path):
     assert r.returncode == 0 and "Sunucu bileşenleri güncel" in r.stdout and "-y upgrade" not in (d / "calls.log").read_text()
 
 
+def test_start_stop_status_all_and_the_host_agent(stage):
+    """One command for everything on the server: 'stop all' stops the host agent's units and the containers, 'start all' starts the
+    containers and the enabled host units, 'status all' lists them with disks and the last backup; 'agent' handles only the agent."""
+    d, env = stage
+    run(stage, "install")
+    sc = d / "bin" / "systemctl"
+    sc.write_text('#!/usr/bin/env bash\necho "systemctl $*" >> "$FAKE_LOG"\ncase "$1" in\n'
+                  '  cat) case "$2" in watchover-agent.service|watchover-update.timer|watchover-stack.service) exit 0 ;; *) exit 1 ;; esac ;;\n'
+                  '  is-enabled) [ "$2" = -q ] && exit 0; echo enabled ;;\n  is-active) echo active ;;\nesac\nexit 0\n')
+    sc.chmod(0o755)
+    (d / "calls.log").write_text("")
+    r = run(stage, "stop", "all")
+    assert r.returncode == 0, r.stdout + r.stderr
+    log = (d / "calls.log").read_text()
+    assert "systemctl stop watchover-agent.service" in log and "systemctl stop watchover-update.timer" in log
+    assert "watchover-actuator" not in log.replace("systemctl cat watchover-actuator.service", "")   # not installed: left alone
+    assert log.index("systemctl stop watchover-agent.service") < log.index("compose") and " stop" in log.split("compose", 1)[1]
+    (d / "calls.log").write_text("")
+    r = run(stage, "start", "all")
+    assert r.returncode == 0, r.stdout + r.stderr
+    log = (d / "calls.log").read_text()
+    assert "up -d" in log and "systemctl start watchover-agent.service" in log and log.index("up -d") < log.index("systemctl start watchover-agent")
+    assert "watchover-agent.service" in r.stdout and "Son yedek:" in r.stdout and "Disk" in r.stdout
+    (d / "calls.log").write_text("")
+    r = run(stage, "agent", "restart")
+    assert r.returncode == 0 and "systemctl restart watchover-agent.service" in (d / "calls.log").read_text()
+    assert "compose" not in (d / "calls.log").read_text()
+    r = run(stage, "help")
+    assert r.returncode == 0 and "start | stop | restart all" in r.stdout and "update all --check" in r.stdout
+
+
 def test_backup_rotation(stage):
     d, _ = stage
     run(stage, "install")

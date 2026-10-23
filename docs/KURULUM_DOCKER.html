@@ -596,6 +596,18 @@ access_log /var/log/nginx/access.log watchover;
 <td>Dashboard konteynerinde kabuk</td>
 </tr>
 <tr>
+<td><code>sudo watchover help</code></td>
+<td>Bütün komutlar Türkçe, işe göre gruplu (günlük, güncelleme, yedek, ajan, kullanıcı, erişim, depolama, LLM)</td>
+</tr>
+<tr>
+<td><code>sudo watchover start\|stop\|restart\|status all</code></td>
+<td>Sunucuda Watchover için çalışan her şey: konteynerler, sunucunun kendi ajanı (<code>watchover-agent</code>, aksiyon ajanı, kendi güncelleme zamanlayıcısı), açılışta başlama ve gecelik yedek. <code>stop all</code> bakım penceresi içindir (ajanın kendini güncellemesi de durur); <code>status all</code> sürümleri, servisleri, diskleri, son yedeği ve LLM'i gösterir</td>
+</tr>
+<tr>
+<td><code>sudo watchover agent status\|start\|stop\|restart\|logs</code></td>
+<td>Yalnız sunucunun kendi ajanı</td>
+</tr>
+<tr>
 <td><code>sudo watchover update all [KURULUM_DOSYASI] [--check]</code></td>
 <td>Hepsini birden günceller (RHEL, root): önce sunucunun konteyner paketleri (podman, crun, conmon, netavark, aardvark-dns, containers-common, container-selinux, podman-plugins, slirp4netns, fuse-overlayfs, openssl, chrony) sunucunun kendi deposundan / Satellite'tan; güncelleme varsa önce yedek alınır, Watchover durdurulur, paketler güncellenir, Watchover başlatılıp doğrulanır. Sonra verilen tek dosyalık kurulumla Watchover yeni sürüme geçer (git kurulumunda <code>upgrade</code>). Çekirdeğe ve diğer paketlere dokunmaz, yeniden başlatmaz (bekleyen yeniden başlatmayı yazar). <code>--check</code> yalnız listeler; değişiklik yönetimi için önce onu çalıştırın</td>
 </tr>

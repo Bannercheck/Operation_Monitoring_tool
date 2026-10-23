@@ -18,6 +18,11 @@
 #                                   crun, netavark, container-selinux, ...) from its repositories / Satellite, then Watchover (the given
 #                                   one-file installer; a git install: upgrade). --check lists what would change and changes nothing
 #   ./watchover.sh start|stop|restart|status|logs [service]
+#   ./watchover.sh start|stop|restart|status all   (root) everything this server runs for Watchover: the containers, the server's own
+#                                   agent (watchover-agent, its actuator and self-update timer), start on boot, the nightly backup;
+#                                   status all adds versions, disks, the last backup and the LLM
+#   ./watchover.sh agent status|start|stop|restart|logs   only the server's own agent (wo-agent, systemd)
+#   ./watchover.sh help             the commands in Turkish, grouped by task
 #   ./watchover.sh mcp on|off       our MCP server as a third container (MCP_API_KEY from .env)
 #   ./watchover.sh otlp on|off      publish the OpenTelemetry ports 4317 (gRPC) / 4318 (HTTP) on the receiver (OTLP/HTTP also on 8600)
 #   ./watchover.sh legacy on|off    the former Streamlit interface as an extra container (:8502) while teams move over
@@ -780,6 +785,81 @@ edge_lbtest() {
   say "from a laptop: https://$name:9443 (hosts entry: $name -> $(host_ip)); remove the rehearsal: ./watchover.sh edge lbtest stop"
   [ "$fails" = 0 ] && say "the load balancer path works: the F5 configuration (edge lbconf f5) does the same" || { say "$fails check(s) failed"; return 1; }
 }
+# ---------------------------------------------------------------- all: the containers plus what runs on the host
+# The server's own agent (install-rhel.sh installs it) and its self-update timer are systemd units outside Compose: 'stop all' for a
+# maintenance window stops them too (no self-update meanwhile), 'start all' brings back the ones that are enabled.
+HOST_UNITS="watchover-agent.service watchover-actuator.service watchover-update.timer"
+STACK_UNITS="watchover-stack.service watchover-backup.timer"
+need_root() { [ "$(id -u)" = 0 ] || die "root gerekir: sudo watchover $*"; }
+host_units() { local u; command -v systemctl >/dev/null 2>&1 || return 0; for u in $HOST_UNITS; do systemctl cat "$u" >/dev/null 2>&1 && echo "$u"; done; return 0; }
+host_ctl() {   # start|stop|restart: the host agent's units (start / restart only the enabled ones)
+  local u
+  for u in $(host_units); do
+    case "$1" in
+      stop) systemctl stop "$u" >/dev/null 2>&1 && say "durduruldu: $u" || say "$u durdurulamadı" ;;
+      *) systemctl is-enabled -q "$u" 2>/dev/null || continue; systemctl "$1" "$u" >/dev/null 2>&1 && say "$([ "$1" = start ] && echo başlatıldı || echo yeniden başlatıldı): $u" || say "$u: $1 başarısız (journalctl -u $u)" ;;
+    esac
+  done
+  [ -n "$(host_units)" ] || say "sunucu ajanı kurulu değil (watchover-agent yok)"
+}
+unit_line() { printf '  %-28s %-9s %s\n' "$1" "$(systemctl is-enabled "$1" 2>/dev/null || echo -)" "$(systemctl is-active "$1" 2>/dev/null || true)"; }
+status_all() {
+  local u d hot cold b rv
+  rv=$(running_version); say "Watchover v$(version)${rv:+ (çalışan: v$rv)}"
+  $COMPOSE $(profiles) $(uprof) ps 2>/dev/null || true
+  if command -v systemctl >/dev/null 2>&1; then
+    printf '\n  %-28s %-9s %s\n' "servis" "açılışta" "durum"
+    for u in $STACK_UNITS $(host_units); do systemctl cat "$u" >/dev/null 2>&1 && unit_line "$u"; done
+  fi
+  ! command -v rpm >/dev/null 2>&1 || printf '\n  Sunucu bileşenleri: %s\n' "$(rpm -q --qf '%{NAME} %{VERSION}\n' podman crun netavark 2>/dev/null | paste -sd, - | sed 's/,/, /g')"
+  hot=$(env_get WATCHOVER_LOG_HOT_PATH); cold=$(env_get WATCHOVER_LOG_COLD_PATH)
+  printf '\n  Disk\n'; for d in /var/lib/containers "$PWD" ${hot:+"$hot"} ${cold:+"$cold"}; do [ -e "$d" ] && df -hP "$d" 2>/dev/null | awk -v p="$d" 'NR == 2 {printf "    %-36s %s boş / %s (%s dolu)\n", p, $4, $2, $5}'; done
+  b=$(ls -1t "$(backup_dir)"/watchover-*.tgz 2>/dev/null | head -1 || true)
+  printf '  Son yedek: %s\n' "${b:+$b ($(date -r "$b" '+%Y-%m-%d %H:%M' 2>/dev/null))}${b:-yok}"
+  printf '  Yerel LLM: %s\n' "$([ "$(env_get WATCHOVER_LLM)" = 1 ] && echo "açık ($(env_get LLM_MODEL))" || echo kapalı)"
+  printf '  Güncellemeler: sudo watchover update all --check\n'
+}
+help_tr() {
+  cat <<'HELPEOF'
+Watchover komutları (sudo watchover …)
+
+Günlük
+  status [all]               konteynerler; all: + sunucu ajanı, servisler, disk, son yedek, LLM
+  start | stop | restart all hepsi: konteynerler + sunucu ajanı + zamanlayıcılar (bakım penceresi için)
+  start | stop | restart [servis]   yalnız konteynerler ya da tek servis (dashboard, receiver, edge, postgres, keyd, ollama)
+  logs [servis]              servisin logları (canlı); sunucu ajanı: agent logs
+  doctor [--check]           adres açılmıyor mu: kontrol eder, onarabildiğini onarır
+  checklist                  devreye alma listesi
+
+Güncelleme
+  update all --check         neyin güncelleneceğini listeler, hiçbir şeyi değiştirmez
+  update all [kurulum.sh]    sunucunun konteyner paketleri (Satellite) + Watchover yeni sürüm
+
+Yedek
+  backup [--no-logs]         elle yedek (gecelik yedek 02:15'te kendiliğinden)
+  restore <dosya>            yedekten geri yükleme
+
+Sunucunun kendi ajanı
+  agent status | start | stop | restart | logs
+
+Kullanıcılar
+  admin-password             ilk yönetici parolası (değiştirilene kadar)
+  user add <e-posta> --admin | user password <e-posta> | user unlock <e-posta> | user list
+
+Erişim ve sertifika
+  edge lb <LB IP/CIDR>       yük dengeleyiciyi güvenilir yap
+  edge csr | edge company <sertifika> [zincir] | edge check | edge cert
+
+Depolama ve kaynak
+  storage show | storage set --hot <dizin> --cold <dizin> [--cold-days N]
+  profile [auto|cpu8|cpu16]  CPU / bellek payları
+
+Yerel LLM
+  llm list | llm on | llm off | llm auto | llm bench <model>
+
+HELPEOF
+}
+
 # ---------------------------------------------------------------- update all: the host's container packages, then Watchover
 # Only the packages the stack runs on, from the server's own repositories (Satellite): never the kernel or anything else, never a
 # reboot (a pending one is reported). The stack is stopped around the package update (a running container keeps the old runtime
@@ -977,11 +1057,28 @@ case "${1:-}" in
     if [ "$stashed" = 1 ]; then git stash pop -q 2>/dev/null || say "WARNING: a local edit conflicts with the new version; it stays in 'git stash list' (git stash show -p)"; fi
     say "source tree now v$(version) ($(git_rev)); rebuilding"
     exec bash "$0" update ;;
-  start)   need_docker; write_env; up; $COMPOSE ps ;;
+  start)
+    if [ "${2:-}" = all ]; then need_root start all; need_docker; write_env; up; host_ctl start; status_all; exit 0; fi
+    need_docker; write_env; up; $COMPOSE ps ;;
   doctor)  need_docker; doctor "${2:-}" ;;
-  stop)    need_docker; $COMPOSE $(profiles) $(uprof) stop ;;
-  restart) need_docker; $COMPOSE $(profiles) restart "${2:-}" ;;
-  status)  need_docker; $COMPOSE $(profiles) $(uprof) ps; docker stats --no-stream $($COMPOSE $(profiles) $(uprof) ps -q) 2>/dev/null || true ;;
+  stop)
+    if [ "${2:-}" = all ]; then need_root stop all; host_ctl stop; need_docker; $COMPOSE $(profiles) $(uprof) stop; say "hepsi durduruldu (açılışta yine başlar; başlatmak: sudo watchover start all)"; exit 0; fi
+    need_docker; $COMPOSE $(profiles) $(uprof) stop ;;
+  restart)
+    if [ "${2:-}" = all ]; then need_root restart all; bash "$0" stop all; exec bash "$0" start all; fi
+    need_docker; $COMPOSE $(profiles) restart "${2:-}" ;;
+  status)
+    if [ "${2:-}" = all ]; then need_docker; status_all; exit 0; fi
+    need_docker; $COMPOSE $(profiles) $(uprof) ps; docker stats --no-stream $($COMPOSE $(profiles) $(uprof) ps -q) 2>/dev/null || true ;;
+  agent)   # the server's own wo-agent (systemd), installed by install-rhel.sh
+    case "${2:-status}" in
+      status) for u in $(host_units); do unit_line "$u"; done; [ -n "$(host_units)" ] || say "sunucu ajanı kurulu değil" ;;
+      start|stop|restart) need_root agent "$2"; host_ctl "$2" ;;
+      logs) exec journalctl -u watchover-agent -n 200 -f ;;
+      *) die "usage: sudo watchover agent status|start|stop|restart|logs" ;;
+    esac ;;
+  help|yardim|yardım) help_tr; printf '\nTüm komutlar ve seçenekleri:\n\n'; awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0" ;;
+  --help-all|-h|--help) awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0" ;;
   logs)    need_docker; $COMPOSE $(profiles) $(uprof) logs -f --tail 200 "${2:-dashboard}" ;;
   build)   # the images of this tree's version, nothing started; the updater runs it in a new release's tree (WATCHOVER_ENV_FILE = the install's .env)
     need_docker; export WATCHOVER_IMAGE=watchover WATCHOVER_TAG="$(version)"; build; say "images of v$(version) ready (nothing restarted)" ;;
