@@ -1297,7 +1297,8 @@ DNS.$i = $h"; fi
     say "loading images"; gunzip -c "$tmp/images.tar.gz" | docker load
     for f in "$tmp"/volumes/*.tar; do
       [ -f "$f" ] || continue; v=$(basename "$f" .tar); n=$(vol_name "$v")
-      say "restoring volume $v -> $n"; docker volume create "$n" >/dev/null
+      say "restoring volume $v -> $n"
+      docker volume inspect "$n" >/dev/null 2>&1 || docker volume create "$n" >/dev/null   # an upgrade: the volume is there (podman refuses a second create)
       docker run --rm -v "$n":/v -v "$tmp/volumes":/in:z "$ALPINE" tar xf "/in/$v.tar" -C /v || say "could not restore $v"
     done
     rm -rf "$tmp"; touch "$ENV_FILE"; env_set WATCHOVER_OFFLINE 1

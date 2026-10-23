@@ -15,6 +15,8 @@ case "$1 $2" in
   "compose ps") [[ "$*" == *--format* ]] && { echo "dashboard healthy"; echo "ollama healthy"; } || echo "NAME  STATUS"; ;;
   "compose config") echo '{"volumes":{"watchover-data":{"name":"watchover_watchover-data"}}}' ;;
   "info --format") case "$3" in *NCPU*) echo 10 ;; *MemTotal*) echo 17179869184 ;; esac ;;
+  "volume inspect") [ -z "${FAKE_VOLUMES+x}" ] || [[ " $FAKE_VOLUMES " == *" $3 "* ]] || exit 1 ;;   # unset: every volume exists
+  "volume create") [[ " ${FAKE_VOLUMES:-} " != *" $3 "* ]] || { echo "Error: volume with name $3 already exists: volume already exists" >&2; exit 125; } ;;   # podman
 esac
 exit 0
 '''
@@ -361,6 +363,30 @@ def test_auto_sizing_on_8_cpu_64_gb_equals_the_cpu8_profile(stage):
     val = lambda t, k: [l for l in t.splitlines() if l.startswith(k + "=")][0].split("=", 1)[1]   # noqa: E731
     assert {k: val(auto, k) for k in keys} == {k: val(fixed, k) for k in keys}
     assert val(auto, "WATCHOVER_PG_SHARED_BUFFERS") == "2048MB" and val(fixed, "WATCHOVER_PG_SHARED_BUFFERS") == "2GB"
+
+
+def test_unbundle_over_an_existing_install_keeps_its_volumes(stage, tmp_path):
+    """An upgrade with a newer bundle: the model volume is already there. Podman refuses a second `volume create` (Docker does
+    not), so unbundle stopped with "volume already exists" on RHEL; the files are now restored into the existing volume."""
+    import gzip
+    import tarfile
+    d, env = stage
+    b = tmp_path / "b"; (b / "volumes").mkdir(parents=True)
+    (b / "MANIFEST").write_text(f"version={version(d)}\n")
+    with gzip.open(b / "images.tar.gz", "wb") as g:
+        g.write(b"")
+    with tarfile.open(b / "volumes" / "watchover-ollama.tar", "w") as t:
+        t.add(str(b / "MANIFEST"), arcname="models/manifest")
+    out = tmp_path / "bundle.tar"
+    with tarfile.open(out, "w") as t:
+        for n in ("MANIFEST", "images.tar.gz", "volumes"):
+            t.add(str(b / n), arcname=n)
+    env["FAKE_VOLUMES"] = "watchover_watchover-ollama"
+    r = run(stage, "unbundle", str(out))
+    assert r.returncode == 0, r.stdout + r.stderr
+    log = (d / "calls.log").read_text()
+    assert "docker volume inspect watchover_watchover-ollama" in log and "docker volume create watchover_watchover-ollama" not in log
+    assert "-v watchover_watchover-ollama:/v" in log and "WATCHOVER_OFFLINE=1" in (d / ".env").read_text()
 
 
 def test_backup_rotation(stage):
