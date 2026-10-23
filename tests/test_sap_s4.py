@@ -2,6 +2,7 @@
 stuck tRFC calls as log lines, IDoc partners and RFC destinations as integration-map edges; one table failing never stops the rest."""
 import http.server
 import re
+import sys
 import threading
 from datetime import datetime, timedelta, timezone
 
@@ -9,16 +10,22 @@ from watchover import sap_s4
 
 TZ = sap_s4._tz("Europe/Istanbul")
 NOW = datetime.now(TZ).replace(microsecond=0)
-D, T = NOW.strftime("%Y%m%d"), (NOW - timedelta(minutes=10)).strftime("%H%M%S")
-EARLY = (NOW - timedelta(hours=3)).strftime("%H%M%S")
 
-TABLES = {
-    "TBTCO": [f"ZFI_DAILY_CLOSE|12345678|BATCH01|A|{D}|{EARLY}|{D}|{T}", f"ZMM_STOCK_SYNC|22345678|BATCH02|R|{D}|{EARLY}|00000000|000000",
-              f"ZSD_QUICK|32345678|BATCH03|R|{D}|{T}|00000000|000000"],
-    "SNAP_BEG": [f"{D}|{T}|s4app01|DEVELOPER|100|FC010TIME_OUT AP005ZPROG"],
-    "EDIDC": [f"0000000000123456|51|2|ORDERS|ORDERS05|LS_CRM|S4PCLNT100|{D}|{T}", f"0000000000123457|53|2|ORDERS|ORDERS05|LS_CRM|S4PCLNT100|{D}|{T}",
-              f"0000000000123458|03|1|INVOIC|INVOIC02|S4PCLNT100|LS_EINVOICE|{D}|{T}"],
-}
+
+def tables(now: datetime) -> dict:
+    """The stand-in's rows, timed 10 minutes / 3 hours before `now`."""
+    D, T = now.strftime("%Y%m%d"), (now - timedelta(minutes=10)).strftime("%H%M%S")
+    EARLY = (now - timedelta(hours=3)).strftime("%H%M%S")
+    return {
+        "TBTCO": [f"ZFI_DAILY_CLOSE|12345678|BATCH01|A|{D}|{EARLY}|{D}|{T}", f"ZMM_STOCK_SYNC|22345678|BATCH02|R|{D}|{EARLY}|00000000|000000",
+                  f"ZSD_QUICK|32345678|BATCH03|R|{D}|{T}|00000000|000000"],
+        "SNAP_BEG": [f"{D}|{T}|s4app01|DEVELOPER|100|FC010TIME_OUT AP005ZPROG"],
+        "EDIDC": [f"0000000000123456|51|2|ORDERS|ORDERS05|LS_CRM|S4PCLNT100|{D}|{T}", f"0000000000123457|53|2|ORDERS|ORDERS05|LS_CRM|S4PCLNT100|{D}|{T}",
+                  f"0000000000123458|03|1|INVOIC|INVOIC02|S4PCLNT100|LS_EINVOICE|{D}|{T}"],
+    }
+
+
+TABLES = tables(NOW)
 
 
 def answer(table: str) -> bytes:
@@ -93,6 +100,8 @@ def test_source_end_to_end(tmp_path, monkeypatch):
     for k in ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY"):
         monkeypatch.delenv(k, raising=False)
     monkeypatch.setenv("WATCHOVER_HOME", str(tmp_path / "home")); monkeypatch.setenv("TZ", "Europe/Istanbul")
+    monkeypatch.setattr(sys.modules[__name__], "TABLES", tables(datetime.now(TZ)))   # the poller reads up to now: rows timed at import
+                                                                       # time were outside its window minutes later in a full run
     from watchover import sources as S
     from watchover.flows import FlowStore
     from watchover.knowledge import Knowledge
