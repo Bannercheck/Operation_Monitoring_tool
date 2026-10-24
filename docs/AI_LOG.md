@@ -273,3 +273,4 @@ Sadece geliştirme adımları. Format: araç + sürüm · tarih · yapılan iş.
 | Claude Opus 5.5 (Cowork) | 2026-10-24 | status all: devre dışı birimde fazladan satır, iki kez yazılan yedek yolu ve stack biriminin 'inactive' görünümü düzeltildi (build'deki ilk gerçek çıktıdan); test (v1.64.15) |
 | Claude Opus 5.5 (Cowork) | 2026-10-24 | setup: kurulum dosyasının tamamının sha256'sı yazılır ve yanına .sha256 bırakılır (önceden yalnız iç arşivin özeti yazılıyordu, sha256sum ile tutmuyordu); test (v1.64.16) |
 | Claude Opus 5.5 (Cowork) | 2026-10-24 | Trivy bulguları: build'e günlük WATCHOVER_OS_REFRESH (önbellekte kalan apt katmanı), trainer filelock>=4.2.1, yamalı edge imajı Dockerfile.edge (nginx:1.30-alpine brotli-libs); test (v1.64.17) |
+| Claude Opus 5.5 (Cowork) | 2026-10-24 | bundle: git'siz kurulum klasöründe dist/ ve eski kurulum dosyaları kaynak ağacına girmez (1.64.17 paketi önceki paketle 29 GB olmuştu); make-setup eski paketleri siler; test (v1.64.18) |

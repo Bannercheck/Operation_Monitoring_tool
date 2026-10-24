@@ -493,7 +493,10 @@ def test_one_file_setup_online(rhel, tmp_path):
     src, r, env = rhel
     for rel in ("demo/shot.png", "tests/test_x.py", "tests/fixtures/sample.log", "deploy/openshift/Chart.yaml", "AI_JURI.md"):
         (src / rel).parent.mkdir(parents=True, exist_ok=True); (src / rel).write_text("x")
-    f = build_setup(src)
+    old = src.parent / "dist" / "watchover-kurulum-0.9.sh"; old.parent.mkdir(exist_ok=True); old.write_text("x")
+    keep = src.parent / "dist" / "watchover-kurulum-0.9-x86_64-hepsi-dahil.sh"; keep.write_text("x")
+    build_setup(src); f = src.parent / "dist" / f"watchover-kurulum-{VER}.sh"
+    assert not old.exists() and keep.exists()                                  # the older online installer goes, the offline one stays
     assert f.name == f"watchover-kurulum-{VER}.sh" and f.read_bytes()[:2] == b"#!" and f.stat().st_size > 65536
     sha = (f.parent / (f.name + ".sha256")).read_text()                       # the whole file's sha256, sha256sum -c format
     assert sha == f"{hashlib.sha256(f.read_bytes()).hexdigest()}  {f.name}\n"

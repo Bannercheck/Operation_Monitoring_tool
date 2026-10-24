@@ -1433,7 +1433,9 @@ DNS.$i = $h"; fi
       docker run --rm -v "$n":/v:ro -v "$tmp/volumes":/out:z "$ALPINE" tar cf "/out/$v.tar" -C /v . || say "could not export $v (skipped)"
     done
     say "adding the source tree"
-    if git rev-parse HEAD >/dev/null 2>&1; then git archive --format=tar HEAD | tar xf - -C "$tmp/source"; else tar cf - --exclude=./.git --exclude=./.releases --exclude=./.updater --exclude=./data --exclude=./backups --exclude=./certs --exclude=./.env --exclude='./*.tar' --exclude='./*.tgz' --exclude=./web/node_modules . | tar xf - -C "$tmp/source"; fi
+    # not a git folder (/opt/watchover of an install): the folder is copied, without dist/ (the one-file installers made here: a
+    # 15 GB package of the previous version went into the next one) and other build output
+    if git rev-parse HEAD >/dev/null 2>&1; then git archive --format=tar HEAD | tar xf - -C "$tmp/source"; else tar cf - --exclude=./.git --exclude=./.releases --exclude=./.updater --exclude=./data --exclude=./backups --exclude=./certs --exclude=./.env --exclude='./*.tar' --exclude='./*.tgz' --exclude=./web/node_modules --exclude=./dist --exclude='./watchover-kurulum-*' --exclude=./.install-files . | tar xf - -C "$tmp/source"; fi
     [ ! -f scripts/prune-tree.sh ] || bash scripts/prune-tree.sh "$tmp/source"   # demo, tests, OpenShift chart: not for a server
     # the Compose v2 binary of this machine (Linux only; images and binary share its CPU architecture): an air-gapped RHEL server has
     # no download.docker.com, install-rhel.sh installs it from here (bin/docker-compose) before anything else

@@ -91,5 +91,11 @@ full=$(sha256sum "$OUT/$NAME" | cut -d' ' -f1); printf '%s  %s\n' "$full" "$NAME
 # the file's own size (du right after writing counts XFS's speculative preallocation: a 15 GB file showed as 20 GB for a while)
 printf '\033[32m✓\033[0m %s  (%s)\n' "$OUT/$NAME" "$(numfmt --to=iec --suffix=B "$(stat -c %s "$OUT/$NAME")" 2>/dev/null || du -h --apparent-size "$OUT/$NAME" | cut -f1)"
 printf '  sha256 %s  (dosyanın tamamı; %s.sha256)\n' "$full" "$NAME"
+# older installers of this kind in the same folder: 15 GB each on the build server, and nothing needs them once the new one is there
+for o in "$OUT"/watchover-kurulum-*.sh; do
+  [ -f "$o" ] && [ "$o" != "$OUT/$NAME" ] || continue
+  case "$o" in *-hepsi-dahil.sh) [ "$KIND" = offline ] || continue ;; *) [ "$KIND" = online ] || continue ;; esac
+  rm -f "$o" "$o.sha256"; printf '  eski paket silindi: %s\n' "$(basename "$o")"
+done
 printf '  Hedef sunucuya kopyalayın, doğrulayın ve çalıştırın:  sha256sum -c %s.sha256 && sudo bash %s\n' "$NAME" "$NAME"
 [ "$KIND" = online ] || printf '  Bu paket %s içindir%s.\n' "$ARCH" "$([ -n "$OSL" ] && echo "; Podman RPM'leri ${OSL%% *} sunucular için" || echo "; Podman hedefte kurulu ya da depodan gelmeli")"

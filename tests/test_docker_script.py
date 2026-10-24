@@ -491,11 +491,13 @@ def test_backup_rotation(stage):
 def test_bundle_and_offline_install(stage):
     d, env = stage
     subprocess.run(["git", "init", "-q"], cwd=d, check=True)   # bundle takes the source tree from git when it can
+    (d / "dist").mkdir(exist_ok=True); (d / "dist/watchover-kurulum-0.9-x86_64-hepsi-dahil.sh").write_text("old package")
     r = run(stage, "bundle")
     assert r.returncode == 0, r.stderr
     out = d / f"watchover-bundle-{version(d)}.tar"
     assert out.exists()
     names = subprocess.run(["tar", "tf", str(out)], capture_output=True, text=True, check=True).stdout.split()
+    assert not [n for n in names if "dist/" in n or "watchover-kurulum-" in n], names   # a previous installer never rides along
     assert "MANIFEST" in names and "images.tar.gz" in names
     log = (d / "calls.log").read_text()
     assert f"docker save watchover:{version(d)} watchover-receiver:{version(d)} watchover-postgres:{version(d)}" in log and "watchover-trainer:" in log
