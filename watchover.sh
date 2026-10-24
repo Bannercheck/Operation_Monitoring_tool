@@ -802,7 +802,11 @@ host_ctl() {   # start|stop|restart: the host agent's units (start / restart onl
   done
   [ -n "$(host_units)" ] || say "sunucu ajanı kurulu değil (watchover-agent yok)"
 }
-unit_line() { printf '  %-28s %-9s %s\n' "$1" "$(systemctl is-enabled "$1" 2>/dev/null || echo -)" "$(systemctl is-active "$1" 2>/dev/null || true)"; }
+unit_line() {   # is-enabled / is-active print their answer AND exit non-zero for "disabled" / "inactive": keep the text, not the code
+  local en ac; en=$(systemctl is-enabled "$1" 2>/dev/null || true); ac=$(systemctl is-active "$1" 2>/dev/null || true)
+  [ "$1" != watchover-stack.service ] || [ "$ac" = active ] || ac="${ac:-inactive} (yalnız açılışta çalışır; konteynerler: yukarıda)"
+  printf '  %-28s %-9s %s\n' "$1" "${en:--}" "${ac:--}"
+}
 status_all() {
   local u d hot cold b rv
   rv=$(running_version); say "Watchover v$(version)${rv:+ (çalışan: v$rv)}"
@@ -815,7 +819,7 @@ status_all() {
   hot=$(env_get WATCHOVER_LOG_HOT_PATH); cold=$(env_get WATCHOVER_LOG_COLD_PATH)
   printf '\n  Disk\n'; for d in /var/lib/containers "$PWD" ${hot:+"$hot"} ${cold:+"$cold"}; do [ -e "$d" ] && df -hP "$d" 2>/dev/null | awk -v p="$d" 'NR == 2 {printf "    %-36s %s boş / %s (%s dolu)\n", p, $4, $2, $5}'; done
   b=$(ls -1t "$(backup_dir)"/watchover-*.tgz 2>/dev/null | head -1 || true)
-  printf '  Son yedek: %s\n' "${b:+$b ($(date -r "$b" '+%Y-%m-%d %H:%M' 2>/dev/null))}${b:-yok}"
+  if [ -n "$b" ]; then printf '  Son yedek: %s (%s)\n' "$b" "$(date -r "$b" '+%Y-%m-%d %H:%M' 2>/dev/null)"; else printf '  Son yedek: yok\n'; fi
   printf '  Yerel LLM: %s\n' "$([ "$(env_get WATCHOVER_LLM)" = 1 ] && echo "açık ($(env_get LLM_MODEL))" || echo kapalı)"
   printf '  Güncellemeler: sudo watchover update all --check\n'
 }

@@ -444,7 +444,8 @@ def test_start_stop_status_all_and_the_host_agent(stage):
     sc = d / "bin" / "systemctl"
     sc.write_text('#!/usr/bin/env bash\necho "systemctl $*" >> "$FAKE_LOG"\ncase "$1" in\n'
                   '  cat) case "$2" in watchover-agent.service|watchover-update.timer|watchover-stack.service) exit 0 ;; *) exit 1 ;; esac ;;\n'
-                  '  is-enabled) [ "$2" = -q ] && exit 0; echo enabled ;;\n  is-active) echo active ;;\nesac\nexit 0\n')
+                  '  is-enabled) [ "$2" = -q ] && exit 0; [ "$2" = watchover-update.timer ] && { echo disabled; exit 1; }; echo enabled ;;\n'
+                  '  is-active) [ "$2" = watchover-stack.service ] && { echo inactive; exit 3; }; echo active ;;\nesac\nexit 0\n')
     sc.chmod(0o755)
     (d / "calls.log").write_text("")
     r = run(stage, "stop", "all")
@@ -459,7 +460,9 @@ def test_start_stop_status_all_and_the_host_agent(stage):
     log = (d / "calls.log").read_text()
     assert "up -d" in log and "systemctl start watchover-agent.service" in log and log.index("up -d") < log.index("systemctl start watchover-agent")
     assert "watchover-agent.service" in r.stdout and "Son yedek:" in r.stdout and "Disk" in r.stdout
+    assert "Son yedek: yok" in r.stdout and "\n- " not in r.stdout                  # no stray "-" line, the path once
     (d / "calls.log").write_text("")
+    assert "watchover-update.timer       disabled" in r.stdout and "yalnız açılışta çalışır" in r.stdout
     r = run(stage, "agent", "restart")
     assert r.returncode == 0 and "systemctl restart watchover-agent.service" in (d / "calls.log").read_text()
     assert "compose" not in (d / "calls.log").read_text()
