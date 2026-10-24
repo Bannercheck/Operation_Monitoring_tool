@@ -17,6 +17,8 @@ RUN set -e; d=$(go mod download -json "github.com/ollama/ollama@v$OLLAMA_VERSION
 
 FROM docker.io/ollama/ollama:${OLLAMA_VERSION}
 ARG OLLAMA_VERSION
-RUN apt-get update && apt-get upgrade -y && apt-get clean && rm -rf /var/lib/apt/lists/*
+# WATCHOVER_OS_REFRESH (the build day, watchover.sh build_img): a new day re-runs the OS upgrade below instead of the cached layer
+ARG WATCHOVER_OS_REFRESH=-
+RUN : "os patches ${WATCHOVER_OS_REFRESH}" && apt-get update && apt-get upgrade -y && apt-get clean && rm -rf /var/lib/apt/lists/*
 COPY --from=build /out/ollama /usr/bin/ollama
 RUN /usr/bin/ollama --version 2>&1 | grep -q "client version is $OLLAMA_VERSION"

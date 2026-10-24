@@ -60,6 +60,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 ENV_FILE="${WATCHOVER_ENV_FILE:-.env}"      # the updater builds a release tree with the install folder's .env
+EDGE_TAG=1.30-alpine                        # watchover-edge:<this> (Dockerfile.edge): keep it equal to the nginx tag in Dockerfile.edge
 UPDATER_TAG=4                               # watchover-updater:1 carries tools only (its logic runs from this folder): bump when Dockerfile.updater changes
 COMPOSE="docker compose"
 CMD="${1:-}"
@@ -241,23 +242,24 @@ build() {
   say "building the receiver (Go, a few seconds)"; build_img receiver
   say "building PostgreSQL (postgres:16-alpine, su-exec for gosu)"; build_img postgres
   if [ "$(env_get WATCHOVER_LLM)" = "1" ]; then build_img trainer; build_img ollama; fi
+  say "building the edge (nginx:1.30-alpine + today's Alpine patches)"
+  build_img edge || { docker tag docker.io/library/nginx:1.30-alpine "watchover-edge:$EDGE_TAG" && say "WARNING: Alpine patches could not be applied to the edge (no access to the Alpine mirror?): it runs the plain nginx:1.30-alpine"; } || say "WARNING: no edge image (nginx:1.30-alpine could not be pulled): HTTPS stays off until ./watchover.sh update"
   if updater_on && ! have_image "watchover-updater:$UPDATER_TAG"; then
     say "building the updater image (once: Docker CLI + Compose, bash, Python)"
     build_img updater || { env_set WATCHOVER_UPDATER 0; say "WARNING: the updater image could not be built; in-app updates stay off (./watchover.sh updater on to retry)"; }
   fi
   return 0
 }
-# the newest patch of every floating tag before a build (python:3.11-slim, node:22-alpine, nginx:1.30-alpine, postgres:16-alpine,
+# the newest patch of every floating tag before a build (python:3.11-slim, node:22-alpine, nginx:1.30-alpine (Dockerfile.edge), postgres:16-alpine,
 # ollama): a build reuses the base image it finds locally, so without this a long-lived server kept the first one it ever pulled.
 # Failures are only noted (a mirror without one of them); the images already here are used then.
 refresh_bases() {
   local b f imgs=""
-  for f in Dockerfile Dockerfile.receiver Dockerfile.updater Dockerfile.postgres $([ "$(env_get WATCHOVER_LLM)" = 1 ] && echo Dockerfile.trainer Dockerfile.ollama); do
+  for f in Dockerfile Dockerfile.receiver Dockerfile.updater Dockerfile.postgres Dockerfile.edge $([ "$(env_get WATCHOVER_LLM)" = 1 ] && echo Dockerfile.trainer Dockerfile.ollama); do
     [ -f "$f" ] || continue
     imgs="$imgs $(awk '/^ARG [A-Za-z_]+=/ { split(substr($0, 5), a, "="); v[a[1]] = a[2] }
                       /^FROM[ \t]/ { i = $2; for (k in v) gsub("\\$\\{" k "\\}", v[k], i); if (i !~ /\$/) print i }' "$f")"
   done
-  imgs="$imgs nginx:1.30-alpine"
   say "refreshing base images (security patches of the floating tags)"
   for b in $(printf '%s\n' $imgs | awk '!s[$0]++'); do docker pull -q "$b" >/dev/null 2>&1 || say "  could not refresh $b (the local copy is used)"; done
 }
@@ -265,6 +267,9 @@ refresh_bases() {
 # 'watchover:<tag>', which is the name compose asks the Podman socket for
 build_img() {
   local svc="$1" f=Dockerfile n=watchover tag k v; tag="$(version)"; shift
+  # the build day: the OS-upgrade layer of every Dockerfile (ARG WATCHOVER_OS_REFRESH) runs again on a new day; the cache kept a
+  # layer from the first build otherwise, and a trainer built two days earlier still had a fixed libbrotli1 CVE
+  set -- --build-arg "WATCHOVER_OS_REFRESH=$(date -u +%Y-%m-%d)" "$@"
   # company proxy (WATCHOVER_HTTP_PROXY / _HTTPS_PROXY / _NO_PROXY in .env, written by install-rhel.sh): apt, apk, pip and npm in
   # the build steps go through it (proxy build args are predefined in Docker and Buildah, nothing of them stays in the image)
   for k in HTTP_PROXY HTTPS_PROXY NO_PROXY; do
@@ -273,10 +278,12 @@ build_img() {
   if [ "$ENGINE" = podman ]; then
     case "$svc" in receiver) f=Dockerfile.receiver; n=watchover-receiver ;; trainer) f=Dockerfile.trainer; n=watchover-trainer ;;
       postgres) f=Dockerfile.postgres; n=watchover-postgres ;; ollama) f=Dockerfile.ollama; n=watchover-ollama ;;
-      updater) f=Dockerfile.updater; n=watchover-updater; tag=$UPDATER_TAG; set -- "$@" --build-arg PODMAN=1 ;; esac
+      updater) f=Dockerfile.updater; n=watchover-updater; tag=$UPDATER_TAG; set -- "$@" --build-arg PODMAN=1 ;;
+      edge) f=Dockerfile.edge; n=watchover-edge; tag=$EDGE_TAG ;; esac
     podman build --format docker -f "$f" -t "docker.io/library/$n:$tag" "$@" .
   elif [ "$svc" = trainer ] || [ "$svc" = ollama ]; then $COMPOSE --profile llm build "$@" "$svc"
   elif [ "$svc" = updater ]; then $COMPOSE --profile updater build "$@" updater
+  elif [ "$svc" = edge ]; then $COMPOSE --profile edge build "$@" edge
   else $COMPOSE build "$@" "$svc"; fi
 }
 # firewalld (RHEL): open | close the host ports a feature publishes (mcp, otlp). Only as root with firewalld running, else nothing;
@@ -1413,7 +1420,7 @@ DNS.$i = $h"; fi
     have_image "watchover-receiver:$(version)" || die "image watchover-receiver:$(version) is not built yet: ./watchover.sh update first"
     refresh_bases                                          # the bundle carries today's patches of nginx, PostgreSQL, Ollama
     imgs="watchover:$(version) watchover-receiver:$(version) watchover-postgres:$(version)"
-    for i in "watchover-trainer:$(version)" "watchover-ollama:$(version)" "watchover-updater:$UPDATER_TAG" nginx:1.30-alpine alpine:latest; do have_image "$i" && imgs="$imgs $i" || true; done
+    for i in "watchover-trainer:$(version)" "watchover-ollama:$(version)" "watchover-updater:$UPDATER_TAG" "watchover-edge:$EDGE_TAG" alpine:latest; do have_image "$i" && imgs="$imgs $i" || true; done
     have_image alpine:latest || docker pull alpine:latest >/dev/null 2>&1 || true; have_image alpine:latest && case " $imgs " in *" alpine:latest "*) ;; *) imgs="$imgs alpine:latest" ;; esac
     if have_image "watchover-trainer:$(version)" && ! offline; then
       say "trainer image present: caching the training base weights so auto-learning works on the air-gapped server"

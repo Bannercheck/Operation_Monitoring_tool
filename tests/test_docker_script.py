@@ -1,6 +1,7 @@
 """watchover.sh drives Docker Compose; here Docker is a fake on PATH that records the calls, so the script's own logic
 (.env generation, secrets, image tag, command order, banner) is checked without a daemon."""
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -57,7 +58,12 @@ def test_install_writes_env_builds_and_starts(stage):
         assert f"{k}={v}\n" in env, (k, v)
     calls = (d / "calls.log").read_text()
     assert "compose build" in calls and f"--build-arg VERSION={version}" in calls and "compose up -d --remove-orphans" in calls
-    assert "compose build receiver" in calls                                   # the Go receiver image is built with the dashboard
+    assert re.search(r"compose build (--build-arg \S+ )*receiver\n", calls)       # the Go receiver image is built with the dashboard
+    # every build carries the build day, so the OS-upgrade layers (ARG WATCHOVER_OS_REFRESH) are not reused from an older build;
+    # the edge is our nginx:1.30-alpine + today's Alpine patches (the upstream image lagged a brotli fix)
+    import datetime
+    assert f"--build-arg WATCHOVER_OS_REFRESH={datetime.datetime.now(datetime.timezone.utc):%Y-%m-%d}" in calls
+    assert "--profile edge build" in calls and "edge" in calls.split("--profile edge build", 1)[1].split("\n")[0]
     assert calls.index("compose build") < calls.index("compose up")
     assert "8501" in r.stdout and "admin@watchover.local" in r.stdout and "Watchover v" in r.stdout
     # second run keeps the secrets, mcp on adds the profile
@@ -262,7 +268,7 @@ def test_llm_on_off(stage):
     assert "WATCHOVER_LLM=1" in env and "LLM_BASE_URL=http://ollama:11434" in env and "LLM_PROVIDER=ollama" in env
     assert "LLM_MODEL=qwen2.5:7b-instruct" in env and "LLM_EMBED_MODEL=bge-m3" in env
     calls = (d / "calls.log").read_text()
-    assert "--profile llm" in calls and "ollama pull qwen2.5:7b-instruct" in calls and "ollama pull bge-m3" in calls and "--profile llm build trainer" in calls
+    assert "--profile llm" in calls and "ollama pull qwen2.5:7b-instruct" in calls and "ollama pull bge-m3" in calls and re.search(r"--profile llm build (--build-arg \S+ )*trainer\n", calls)
     r = run(stage, "llm", "off")
     assert r.returncode == 0 and "WATCHOVER_LLM=0" in (d / ".env").read_text() and "LLM_BASE_URL=" in (d / ".env").read_text()
     assert run(stage, "llm").returncode == 1
@@ -493,6 +499,7 @@ def test_bundle_and_offline_install(stage):
     assert "MANIFEST" in names and "images.tar.gz" in names
     log = (d / "calls.log").read_text()
     assert f"docker save watchover:{version(d)} watchover-receiver:{version(d)} watchover-postgres:{version(d)}" in log and "watchover-trainer:" in log
+    assert "watchover-edge:1.30-alpine" in log.split("docker save", 1)[1].split("\n")[0]   # the patched edge, not the plain nginx
     assert f"watchover-ollama:{version(d)}" in log and "ollama/ollama:latest" not in log and "postgres:16-alpine" not in log.split("docker save", 1)[1].split("\n")[0]
     assert "docker run --rm -v watchover_watchover-ollama:/v:ro" in log      # model volume exported
     assert "run --rm --no-deps -T trainer python" in log                      # base weights cached for offline auto-learning
@@ -871,8 +878,9 @@ def test_podman_engine_socket_compose_and_native_build(server, tmp_path):
     r = run(server, "install")
     assert r.returncode == 0, r.stderr
     log = (d / "calls.log").read_text(); v = version(d)
-    assert f"podman build --format docker -f Dockerfile -t docker.io/library/watchover:{v} --build-arg GIT_REV=" in log and f"--build-arg VERSION={v} ." in log
-    assert f"podman build --format docker -f Dockerfile.receiver -t docker.io/library/watchover-receiver:{v} ." in log
+    assert re.search(rf"podman build --format docker -f Dockerfile -t docker.io/library/watchover:{v} --build-arg WATCHOVER_OS_REFRESH=\S+ --build-arg GIT_REV=\S+ --build-arg VERSION={v} \.\n", log)
+    assert re.search(rf"podman build --format docker -f Dockerfile.receiver -t docker.io/library/watchover-receiver:{v} --build-arg WATCHOVER_OS_REFRESH=\S+ \.\n", log)
+    assert "podman build --format docker -f Dockerfile.edge -t docker.io/library/watchover-edge:1.30-alpine --build-arg WATCHOVER_OS_REFRESH=" in log
     assert f"compose[unix://{sock_path}] up -d --remove-orphans" in log and "docker compose" not in log
     assert "compose build" not in log.replace("podman build", "")                                     # no BuildKit on the socket
     assert envval(d, "WATCHOVER_ENGINE") == "podman" and envval(d, "WATCHOVER_CPUS") == "6" and envval(d, "WATCHOVER_MEMORY") == "16g"

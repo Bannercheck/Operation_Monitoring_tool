@@ -180,7 +180,10 @@ services:
 
   edge:
     profiles: [edge]
-    image: nginx:1.30-alpine
+    image: watchover-edge:1.30-alpine                  # nginx:1.30-alpine + today's Alpine patches (Dockerfile.edge)
+    build:
+      context: .
+      dockerfile: Dockerfile.edge
     container_name: watchover-edge
     restart: unless-stopped
     entrypoint: ["/bin/sh", "/watchover-start.sh"]  # OPENSSL_armcap on a CPU whose kernel reports SVE2 without SVE, then the image's entrypoint

@@ -21,7 +21,9 @@ RUN cd /build/goagent && if [ "$WATCHOVER_BUILD_TESTS" = 1 ]; then go vet ./... 
     && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o /out/wo-agent-linux-arm64 .
 
 FROM docker.io/library/alpine:3.24
-RUN apk upgrade --no-cache && adduser -D -u 10001 -G root -h /home/watchover watchover && mkdir -p /app/agent /data/spool \
+# WATCHOVER_OS_REFRESH (the build day, watchover.sh build_img): a new day re-runs the OS upgrade below instead of the cached layer
+ARG WATCHOVER_OS_REFRESH=-
+RUN : "os patches ${WATCHOVER_OS_REFRESH}" && apk upgrade --no-cache && adduser -D -u 10001 -G root -h /home/watchover watchover && mkdir -p /app/agent /data/spool \
     && chown -R 10001:0 /data /home/watchover && chmod -R g=u /data /home/watchover
 COPY --from=build /out/wo-receiver /usr/local/bin/wo-receiver
 COPY agent.py /app/agent/agent.py

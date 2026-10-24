@@ -28,7 +28,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 \
     WATCHOVER_DOCKER=1 WATCHOVER_GIT_REV=$GIT_REV \
     WATCHOVER_HOME=/data KNOWLEDGE_DB=/data/knowledge.db ACTIONS_DB=/data/actions.db PLAYBOOK_DB=/data/playbook.db \
     LIVE_SPOOL=/data/live/events.jsonl WATCHOVER_LOG=/data/watchover.log LIVE_PORT=8600 HOME=/home/watchover
-RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends curl tini && rm -rf /var/lib/apt/lists/* \
+# WATCHOVER_OS_REFRESH (the build day, watchover.sh build_img): a new day re-runs the OS upgrade below instead of the cached layer
+ARG WATCHOVER_OS_REFRESH=-
+RUN : "os patches ${WATCHOVER_OS_REFRESH}" && apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends curl tini && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --home-dir /home/watchover --uid 10001 --gid 0 watchover && mkdir -p /app /data /keys /secrets /updates \
     && chown -R 10001:0 /app /data /keys /secrets /updates /home/watchover && chmod -R g=u /app /data /updates /home/watchover && chmod 0700 /keys
 WORKDIR /app

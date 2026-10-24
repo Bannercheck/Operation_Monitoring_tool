@@ -1,0 +1,6 @@
+# Watchover edge — the official nginx:1.30-alpine with today's Alpine security patches. The upstream image is rebuilt only now
+# and then, so a fresh CVE fix in one of its libraries (brotli-libs, libxml2, …) reaches it weeks later; this layer takes it the
+# day it is in Alpine. Same nginx, same entrypoint; the config comes from docker/nginx (docker-compose.yml mounts it).
+FROM docker.io/library/nginx:1.30-alpine
+ARG WATCHOVER_OS_REFRESH=-
+RUN : "os patches ${WATCHOVER_OS_REFRESH}" && apk upgrade --no-cache && nginx -v
