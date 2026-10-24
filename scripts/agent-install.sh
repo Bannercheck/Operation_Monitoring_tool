@@ -479,7 +479,14 @@ for _p in "${_paths[@]}"; do _p="$(echo "$_p" | xargs)"; [[ -z "$_p" || "$_p" ==
 if [[ $TEST -eq 1 ]]; then   # before anything running is touched: a failed test leaves the previous install as it was
   log "Connectivity test"
   if [[ $ENGINE == go ]]; then T=("$BIN" ship --test); else T=("$PY" "$DIR/agent.py" --test); fi
-  TOUT="$( set -a; . "$DIR/agent.env.new"; set +a; "${T[@]}" )" || { echo "$TOUT"; rm -f "$DIR/agent.env.new"; die "the receiver at $URL did not accept this agent: check the address/port (firewall on the dashboard machine) and that the token is active"; }
+  # A token issued a moment ago (enrolment, or the dashboard just started) reaches the receiver within seconds: its 401 / 503 /
+  # 502 is retried for up to ${WO_TEST_TRIES:-10} x 3 s; anything else (wrong address, port, firewall) fails at once.
+  TOUT=""; _ok=0
+  for _try in $(seq 1 "${WO_TEST_TRIES:-10}"); do
+    if TOUT="$( set -a; . "$DIR/agent.env.new"; set +a; "${T[@]}" 2>&1 )"; then _ok=1; break; fi
+    case "$TOUT" in *401*|*503*|*502*) [[ $_try -lt ${WO_TEST_TRIES:-10} ]] && { log "receiver not ready for this token yet: retrying ($_try)"; sleep "${WO_TEST_WAIT:-3}"; } ;; *) break ;; esac
+  done
+  [[ $_ok -eq 1 ]] || { echo "$TOUT"; rm -f "$DIR/agent.env.new"; die "the receiver at $URL did not accept this agent: check the address/port (firewall on the dashboard machine) and that the token is active"; }
   echo "$TOUT"
   # the name the dashboard knows this host by (its token decides): pins ("bu sürüme döndür") are bound to it
   _n="$(sed -n 's/.*· agent=\([^ ]*\).*/\1/p' <<<"$TOUT" | head -n1)"

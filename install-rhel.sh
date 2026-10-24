@@ -731,6 +731,16 @@ host_agent() {
   if ! podman exec watchover python -m watchover.selfagent token --name "$name" --env prod > "$tok" 2>>"$AGENT_LOG" || [ ! -s "$tok" ]; then
     rm -f "$tok"; note "Sunucu ajanı kurulmadı: token alınamadı ($AGENT_LOG)"; HOST_AGENT="kurulmadı"; return
   fi
+  # The dashboard publishes active tokens to the receiver every few seconds once it is up (spool auth.json); right after a start it
+  # is still "starting" and a token minted now is unknown to the receiver for a while: the installer's connectivity test got 401.
+  # Wait until the receiver takes it (an empty batch; the header comes from a 0600 file, not the command line).
+  printf 'Authorization: Bearer %s\n' "$(cat "$tok")" > "$tok.h"; chmod 600 "$tok.h"; code=""
+  for _ in $(seq 1 "${WATCHOVER_TOKEN_TRIES:-40}"); do
+    code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 -X POST "$base/ingest" -H @"$tok.h" -H 'Content-Type: application/json' --data '[]' 2>/dev/null || true)
+    case "$code" in 2??) break ;; esac; sleep 3
+  done
+  rm -f "$tok.h"
+  case "$code" in 2??) ;; *) echo "the receiver did not take the new token within $((${WATCHOVER_TOKEN_TRIES:-40} * 3)) s (last HTTP ${code:-none}); trying anyway" >> "$AGENT_LOG" ;; esac
   # keyd signs the release a few seconds after it starts; until then the command falls back to the receiver's pinned binary, and an
   # agent installed without the release key cannot verify its own signed self-updates: wait for the signature (up to 90 s)
   fp=""; for _ in $(seq 1 "${WATCHOVER_RELEASE_TRIES:-18}"); do

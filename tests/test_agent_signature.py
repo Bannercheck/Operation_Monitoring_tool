@@ -83,3 +83,34 @@ def test_nothing_to_check_with_says_so(keys):
     for b in ("bash", "cat", "grep", "printf"):
         (bare / b).symlink_to(shutil.which(b))
     assert verify(keys, path=str(bare)) == 2
+
+
+def _retry_block() -> str:
+    s = (ROOT / "scripts" / "agent-install.sh").read_text()
+    return s[s.index('  TOUT=""; _ok=0'):s.index('  [[ $_ok -eq 1 ]]')]
+
+
+def _run_retry(tmp_path, answers, **env):
+    """The installer's connectivity test against a fake agent that answers each try from ANSWERS (exit code + message)."""
+    (tmp_path / "agent.env.new").write_text("X=1\n")
+    script = tmp_path / "ans"; script.write_text("\n".join(answers) + "\n")
+    fake = tmp_path / "wo-agent"
+    fake.write_text('#!/usr/bin/env bash\nn=$(cat "$CNT" 2>/dev/null || echo 0); n=$((n + 1)); echo $n > "$CNT"\n'
+                    'line=$(sed -n "${n}p" "$ANS"); echo "${line#* }"; exit "${line%% *}"\n')
+    fake.chmod(0o755)
+    body = (f'set -euo pipefail\nlog(){{ echo "LOG $*"; }}\nDIR={tmp_path}\nT=({fake})\n' + _retry_block()
+            + '[[ $_ok -eq 1 ]] && echo PASSED || echo FAILED\n')
+    e = dict(os.environ, CNT=str(tmp_path / "cnt"), ANS=str(script), WO_TEST_WAIT="0", **env)
+    return subprocess.run(["bash", "-c", body], capture_output=True, text=True, env=e), int((tmp_path / "cnt").read_text())
+
+
+def test_connectivity_test_waits_for_a_fresh_token(tmp_path):
+    """A token issued a moment ago is unknown to the receiver for a few seconds (401): retried; a wrong address fails at once."""
+    r, n = _run_retry(tmp_path, ["1 rejected by the receiver (HTTP 401): check the token", "1 rejected by the receiver (HTTP 401)",
+                                 "0 hello accepted · agent=watchover-build"], WO_TEST_TRIES="5")
+    assert "PASSED" in r.stdout and n == 3 and r.stdout.count("retrying") == 2
+
+
+def test_connectivity_test_does_not_retry_a_wrong_address(tmp_path):
+    r, n = _run_retry(tmp_path, ["1 connection refused", "0 never reached"], WO_TEST_TRIES="5")
+    assert "FAILED" in r.stdout and n == 1
