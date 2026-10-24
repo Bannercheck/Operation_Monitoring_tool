@@ -85,7 +85,11 @@ sum=$( (cd "$st" && tar cf - .) | if [ "$COMPRESS" = gzip ]; then gzip -6; else 
 size=$(( $(stat -c %s "$dst") - HDR ))
 header "$sum" "$size" | dd of="$dst" conv=notrunc status=none
 chmod 755 "$dst"; mv "$dst" "$OUT/$NAME"
+# $sum covers only the archive part (the file checks it itself when it opens); the whole file's sha256 goes next to it, so a
+# copy can be checked by hand with sha256sum -c before running it
+full=$(sha256sum "$OUT/$NAME" | cut -d' ' -f1); printf '%s  %s\n' "$full" "$NAME" > "$OUT/$NAME.sha256"
 # the file's own size (du right after writing counts XFS's speculative preallocation: a 15 GB file showed as 20 GB for a while)
-printf '\033[32m✓\033[0m %s  (%s, sha256 %s…)\n' "$OUT/$NAME" "$(numfmt --to=iec --suffix=B "$(stat -c %s "$OUT/$NAME")" 2>/dev/null || du -h --apparent-size "$OUT/$NAME" | cut -f1)" "${sum:0:16}"
-printf '  Hedef sunucuya kopyalayın ve çalıştırın:  sudo bash %s\n' "$NAME"
+printf '\033[32m✓\033[0m %s  (%s)\n' "$OUT/$NAME" "$(numfmt --to=iec --suffix=B "$(stat -c %s "$OUT/$NAME")" 2>/dev/null || du -h --apparent-size "$OUT/$NAME" | cut -f1)"
+printf '  sha256 %s  (dosyanın tamamı; %s.sha256)\n' "$full" "$NAME"
+printf '  Hedef sunucuya kopyalayın, doğrulayın ve çalıştırın:  sha256sum -c %s.sha256 && sudo bash %s\n' "$NAME" "$NAME"
 [ "$KIND" = online ] || printf '  Bu paket %s içindir%s.\n' "$ARCH" "$([ -n "$OSL" ] && echo "; Podman RPM'leri ${OSL%% *} sunucular için" || echo "; Podman hedefte kurulu ya da depodan gelmeli")"

@@ -1,6 +1,6 @@
 """Watchover: universal SRE ingestion and correlation engine (deterministic core, optional LLM enrichment)."""
 
-__version__ = "1.64.15"
+__version__ = "1.64.16"
 
 import os as _os
 

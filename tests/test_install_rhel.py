@@ -2,6 +2,7 @@
 binary, firewall-cmd, getenforce, curl, ss, ...) and a fake root (WATCHOVER_TEST_ROOT: /etc, /proc, /opt, /usr/local, /var), so the
 script's own decisions (preflight verdicts, proxy files, offline bundle, .env, units, firewall, LLM sizing, summary) are checked
 without a RHEL host. What only a real RHEL 9 run proves (SELinux labels, netavark, real builds) is listed in docs/KURULUM_DOCKER.md."""
+import hashlib
 import os
 import re
 import shutil
@@ -494,6 +495,8 @@ def test_one_file_setup_online(rhel, tmp_path):
         (src / rel).parent.mkdir(parents=True, exist_ok=True); (src / rel).write_text("x")
     f = build_setup(src)
     assert f.name == f"watchover-kurulum-{VER}.sh" and f.read_bytes()[:2] == b"#!" and f.stat().st_size > 65536
+    sha = (f.parent / (f.name + ".sha256")).read_text()                       # the whole file's sha256, sha256sum -c format
+    assert sha == f"{hashlib.sha256(f.read_bytes()).hexdigest()}  {f.name}\n"
     ex = tmp_path / "ex"; assert run_setup(rhel, f, "--extract", str(ex)).returncode == 0
     tree = ex / f"watchover-{VER}"                                             # the server copy has no demo, tests or chart
     assert (tree / "tests/fixtures/sample.log").exists() and (tree / "install-rhel.sh").exists()
